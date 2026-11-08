@@ -38,6 +38,20 @@ const (
 
 type searchKey struct{}
 
+type progressKey struct{}
+
+// progressFn reports fan-out progress to the client (MCP notifications/progress).
+type progressFn func(done, total float64, msg string)
+
+func withProgress(ctx context.Context, fn progressFn) context.Context {
+	return context.WithValue(ctx, progressKey{}, fn)
+}
+
+func progressFrom(ctx context.Context) progressFn {
+	fn, _ := ctx.Value(progressKey{}).(progressFn)
+	return fn
+}
+
 func withSearchMode(ctx context.Context) context.Context {
 	return context.WithValue(ctx, searchKey{}, true)
 }
@@ -82,6 +96,13 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		entries []catalogEntry
 		wg      sync.WaitGroup
 	)
+	report := progressFrom(ctx)
+	total := 0
+	for _, srv := range servers {
+		if srv.Enabled || route == "direct" {
+			total++
+		}
+	}
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
 			continue
@@ -123,7 +144,18 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 			}
 			mu.Lock()
 			entries = append(entries, e)
+			done := len(entries)
 			mu.Unlock()
+			if report != nil {
+				msg := fmt.Sprintf("%s: %d tools", srv.Slug, len(e.tools))
+				if hit {
+					msg += " (cached)"
+				}
+				if e.err != nil {
+					msg = fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120))
+				}
+				report(float64(done), float64(total), msg)
+			}
 		}(srv)
 	}
 	wg.Wait()

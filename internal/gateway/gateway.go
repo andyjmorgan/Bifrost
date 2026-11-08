@@ -116,6 +116,12 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/call params"}
 				}
+				if tok, ok := p.Meta["progressToken"]; ok && tok != nil {
+					sess := req.GetSession().(*mcp.ServerSession)
+					ctx = withProgress(ctx, func(done, total float64, msg string) {
+						_ = sess.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: tok, Progress: done, Total: total, Message: msg})
+					})
+				}
 				if searchMode(ctx) && isSearchTool(p.Name) {
 					return g.searchCall(ctx, caller, route, slug, p)
 				}
@@ -154,7 +160,7 @@ const RefreshTool = "refresh_tools"
 func refreshToolDef() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        RefreshTool,
-		Description: "[Gateway] Re-list every server's tools, bypassing and refreshing the gateway cache. Returns the fresh tool list.",
+		Description: "Re-list every server's tools, bypassing and refreshing the gateway cache. Returns the fresh tool list.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
 	}
 }
@@ -175,11 +181,6 @@ func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route strin
 			// Copy: cached tool objects must not be mutated with the prefix.
 			c := *t
 			c.Name = e.srv.Slug + Separator + t.Name
-			if t.Description != "" {
-				c.Description = "[" + e.srv.Name + "] " + t.Description
-			} else {
-				c.Description = "[" + e.srv.Name + "]"
-			}
 			out.Tools = append(out.Tools, &c)
 		}
 	}
