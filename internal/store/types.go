@@ -130,6 +130,8 @@ const (
 	OutcomeSuccess Outcome = "success"
 	OutcomeError   Outcome = "error"
 	OutcomeDenied  Outcome = "denied"
+	// OutcomePartial: the exchange succeeded but part of the fan-out did not (mux tools/list).
+	OutcomePartial Outcome = "partial"
 )
 
 // AuditEvent is one HTTP exchange, inbound or upstream.

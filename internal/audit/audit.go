@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,7 +84,40 @@ const (
 	keyRequestID ctxKey = iota
 	keyInboundID
 	keyTarget
+	keyIssues
 )
+
+// issues collects per-request problems that did not fail the exchange
+// (a server skipped by the mux). Shared by pointer across goroutines.
+type issues struct {
+	mu   sync.Mutex
+	list []string
+}
+
+func withIssues(ctx context.Context) context.Context {
+	return context.WithValue(ctx, keyIssues, &issues{})
+}
+
+// AddIssue notes a non-fatal problem on the inbound exchange; the inbound
+// event's outcome becomes partial.
+func AddIssue(ctx context.Context, msg string) {
+	if is, ok := ctx.Value(keyIssues).(*issues); ok {
+		is.mu.Lock()
+		is.list = append(is.list, msg)
+		is.mu.Unlock()
+	}
+}
+
+// Issues returns the problems noted so far.
+func Issues(ctx context.Context) []string {
+	is, ok := ctx.Value(keyIssues).(*issues)
+	if !ok {
+		return nil
+	}
+	is.mu.Lock()
+	defer is.mu.Unlock()
+	return append([]string(nil), is.list...)
+}
 
 // Target names the downstream server an exchange is for.
 type Target struct {
@@ -123,6 +157,9 @@ func Inherit(src, dst context.Context) context.Context {
 	if id := inboundID(src); id != nil {
 		dst = withInboundID(dst, *id)
 	}
+	if is, ok := src.Value(keyIssues).(*issues); ok {
+		dst = context.WithValue(dst, keyIssues, is)
+	}
 	return dst
 }
 
@@ -130,6 +167,17 @@ func Inherit(src, dst context.Context) context.Context {
 // pointer so a handler that resolves the server after the inbound middleware
 // ran (the mux route) can fill it in with SetTarget.
 func WithTarget(ctx context.Context, t Target) context.Context {
+	if cur, ok := ctx.Value(keyTarget).(*Target); ok {
+		// Already placed by an outer middleware: update in place so that
+		// middleware sees the route and the slug set later.
+		if t.Route != "" {
+			cur.Route = t.Route
+		}
+		if t.ServerID != uuid.Nil {
+			cur.ServerID, cur.Slug = t.ServerID, t.Slug
+		}
+		return ctx
+	}
 	return context.WithValue(ctx, keyTarget, &t)
 }
 
@@ -275,7 +323,8 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 				reqID = uuid.NewString()
 			}
 			eventID := uuid.New()
-			ctx := withInboundID(WithRequestID(req.Context(), reqID), eventID)
+			ctx := withIssues(withInboundID(WithRequestID(auth.WithCallerSlot(req.Context()), reqID), eventID))
+			ctx = WithTarget(ctx, Target{Route: route})
 			req = req.WithContext(ctx)
 
 			var reqBody []byte
@@ -317,6 +366,10 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 				e.Slug = t.Slug
 			}
 			e.Outcome = outcomeFor(e.StatusCode, cw.buf.Bytes())
+			if e.Outcome == store.OutcomeSuccess && len(Issues(req.Context())) > 0 {
+				e.Outcome = store.OutcomePartial
+				e.ErrorType = "upstream_partial"
+			}
 			if e.Outcome == store.OutcomeError {
 				e.ErrorType = "http_" + http.StatusText(e.StatusCode)
 				if e.StatusCode < 400 {
@@ -362,6 +415,27 @@ func clip(b []byte) string {
 }
 
 // ---- upstream transport -------------------------------------------------------
+
+// RecordSkipped writes an upstream-hop event for a server the gateway could
+// not even contact (credential pending or broken, connect failure), so a
+// fan-out that silently dropped a server still leaves a trace.
+func (r *Recorder) RecordSkipped(ctx context.Context, srv *store.Server, route, method, errType, msg string) {
+	e := &store.AuditEvent{
+		CreatedAt: time.Now(), Hop: store.HopUpstream, ParentID: inboundID(ctx), Route: route,
+		HTTPMethod: http.MethodPost, Path: srv.URL, McpMethod: method, StatusCode: 0,
+		Outcome: store.OutcomeError, ErrorType: errType, RequestID: RequestID(ctx),
+		ActorType: string(auth.ActorSystem), Slug: srv.Slug, OwnerID: srv.OwnerID,
+	}
+	id := srv.ID
+	e.ServerID = &id
+	if caller := auth.CallerFrom(ctx); caller != nil {
+		e.ActorType = string(caller.Type)
+		e.ActorSubject = caller.Subject
+		e.APIKeyID = caller.APIKeyID
+		e.APIKeyPrefix = caller.APIKeyPrefix
+	}
+	r.Record(e, &store.AuditPayload{ResponseBody: msg})
+}
 
 // Transport returns a RoundTripper that records each upstream exchange,
 // linking it to the inbound event on the context. redactHeader names a

@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"slices"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -56,13 +57,40 @@ func (c *Caller) Has(scope string) bool {
 
 type callerKey struct{}
 
-// WithCaller stores the caller on the context.
+type callerSlotKey struct{}
+
+// callerSlot lets a middleware that runs before authentication (the audit
+// recorder) see the caller a later middleware attaches.
+type callerSlot struct {
+	mu sync.Mutex
+	c  *Caller
+}
+
+// WithCallerSlot prepares ctx so WithCaller further down the chain is
+// visible to holders of this ctx through CallerFrom.
+func WithCallerSlot(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callerSlotKey{}, &callerSlot{})
+}
+
+// WithCaller stores the caller on the context (and in the slot, if any).
 func WithCaller(ctx context.Context, c *Caller) context.Context {
+	if s, ok := ctx.Value(callerSlotKey{}).(*callerSlot); ok {
+		s.mu.Lock()
+		s.c = c
+		s.mu.Unlock()
+	}
 	return context.WithValue(ctx, callerKey{}, c)
 }
 
 // CallerFrom returns the caller, or nil when unauthenticated.
 func CallerFrom(ctx context.Context) *Caller {
-	c, _ := ctx.Value(callerKey{}).(*Caller)
-	return c
+	if c, ok := ctx.Value(callerKey{}).(*Caller); ok && c != nil {
+		return c
+	}
+	if s, ok := ctx.Value(callerSlotKey{}).(*callerSlot); ok {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.c
+	}
+	return nil
 }

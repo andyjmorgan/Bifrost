@@ -3,7 +3,7 @@
 export type AuthKind = 'none' | 'oauth' | 'basic' | 'header'
 export type CredentialState = 'ok' | 'pending' | 'broken'
 export type Hop = 'inbound' | 'upstream'
-export type Outcome = 'success' | 'error' | 'denied'
+export type Outcome = 'success' | 'error' | 'denied' | 'partial'
 export type OAuthRegistrationKind = 'cimd' | 'dcr'
 
 export type APIKeyScope = 'api:read' | 'api:edit' | 'mcp:execute' | 'mcp:edit'

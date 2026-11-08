@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, RotateCw, X } from 'lucide-react'
+import { Activity, ChevronRight, RotateCw, X } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Badge } from '../ui/components/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/components/dialog'
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { PageHeader } from '../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListRows } from '../components/ListCard'
 import { StatusPill, type Tone } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
-import { CodeBlock, prettyJson } from '../components/JsonBlock'
+import { BodyViewer, findUnavailable } from '../components/PayloadViewer'
 import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type Hop, type Outcome } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
@@ -18,7 +18,7 @@ const PAGE = 25
 const ALL = '__all__'
 const COLS = '130px 90px minmax(0,1.2fr) 110px minmax(0,1.4fr) 64px 110px 80px'
 
-const outcomeTone: Record<Outcome, Tone> = { success: 'success', error: 'danger', denied: 'warning' }
+const outcomeTone: Record<Outcome, Tone> = { success: 'success', partial: 'warning', error: 'danger', denied: 'warning' }
 const hopVariant: Record<Hop, 'info' | 'plum'> = { inbound: 'info', upstream: 'plum' }
 
 interface Filters {
@@ -169,6 +169,7 @@ export function AuditPage() {
               <SelectContent>
                 <SelectItem value={ALL}>Any outcome</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
                 <SelectItem value="error">Error</SelectItem>
                 <SelectItem value="denied">Denied</SelectItem>
               </SelectContent>
@@ -264,45 +265,47 @@ export function AuditPage() {
         />
       </ListCard>
 
-      <AuditDetailDialog event={selected} onClose={() => setSelected(undefined)} />
+      <AuditDetailSheet event={selected} onClose={() => setSelected(undefined)} />
     </div>
   )
 }
 
-function Row({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
-  return (
-    <div className="grid gap-1 py-2 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-4">
-      <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:pt-0.5">{label}</dt>
-      <dd className={cn('min-w-0 break-words text-sm', mono && 'font-mono text-xs')}>{children}</dd>
-    </div>
-  )
-}
-
-function Headers({ headers }: { headers?: Record<string, string> }) {
+/** Header table behind a disclosure, collapsed by default so bodies lead. */
+function Headers({ label, headers }: { label: string; headers?: Record<string, string> }) {
+  const [open, setOpen] = useState(false)
   const entries = Object.entries(headers ?? {}).sort(([a], [b]) => a.localeCompare(b))
-  if (!entries.length) return <p className="text-xs text-muted-foreground">None recorded.</p>
   return (
-    <div className="divide-y divide-border rounded-lg border border-border font-mono text-xs">
-      {entries.map(([k, v]) => (
-        <div key={k} className="grid gap-1 px-3 py-1.5 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:gap-3">
-          <span className="truncate text-muted-foreground" title={k}>
-            {k}
-          </span>
-          <span className="break-all">{v}</span>
-        </div>
-      ))}
-    </div>
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex h-8 w-full items-center gap-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className={cn('size-3.5 transition-transform duration-200', open && 'rotate-90')} />
+        {label}
+        <span className="font-mono text-[11px] font-normal normal-case tracking-normal">· {entries.length}</span>
+      </button>
+      {open &&
+        (entries.length === 0 ? (
+          <p className="mt-1 text-xs text-muted-foreground">None recorded.</p>
+        ) : (
+          <div className="mt-1 divide-y divide-border rounded-lg border border-border font-mono text-xs">
+            {entries.map(([k, v]) => (
+              <div key={k} className="grid gap-1 px-3 py-1.5 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:gap-3">
+                <span className="truncate text-muted-foreground" title={k}>
+                  {k}
+                </span>
+                <span className="break-all">{v}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+    </section>
   )
 }
 
-/** SSE bodies stay raw; anything that parses as JSON is pretty-printed. */
-function Body({ body }: { body?: string }) {
-  if (!body) return <p className="text-xs text-muted-foreground">Empty.</p>
-  const sse = /^(event|data|id|retry):/m.test(body) && !body.trimStart().startsWith('{') && !body.trimStart().startsWith('[')
-  return <CodeBlock wrap>{sse ? body : prettyJson(body)}</CodeBlock>
-}
-
-function AuditDetailDialog({ event, onClose }: { event?: AuditEventDTO; onClose: () => void }) {
+function AuditDetailSheet({ event, onClose }: { event?: AuditEventDTO; onClose: () => void }) {
   const [detail, setDetail] = useState<AuditDetailDTO>()
   const [error, setError] = useState<string>()
   useEffect(() => {
@@ -321,97 +324,96 @@ function AuditDetailDialog({ event, onClose }: { event?: AuditEventDTO; onClose:
 
   const e = detail?.event ?? event
   const payload = detail?.payload
+  const unavailable = useMemo(() => findUnavailable(payload?.responseBody, payload?.responseHeaders), [payload])
+
   return (
-    <Dialog open={!!event} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl" onOpenAutoFocus={(ev) => ev.preventDefault()}>
-        <DialogHeader>
-          <DialogTitle>
+    <Sheet open={!!event} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent onOpenAutoFocus={(ev) => ev.preventDefault()}>
+        <SheetHeader>
+          <SheetTitle>
             {e?.mcpMethod || e?.httpMethod} {e?.toolName && <span className="text-muted-foreground">· {e.toolName}</span>}
-          </DialogTitle>
-          <DialogDescription>
-            {e && (
-              <>
-                {absoluteTime(e.createdAt)} · {e.hop} · request <code className="font-mono">{e.requestId}</code>
-              </>
-            )}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogBody>
-          {error && <Callout tone="danger">{error}</Callout>}
-          {e && (
-            <dl className="divide-y divide-border">
-              <Row label="Outcome">
-                <div className="flex flex-wrap items-center gap-2">
+          </SheetTitle>
+          <SheetDescription asChild>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+              {e && (
+                <>
                   <StatusPill tone={outcomeTone[e.outcome] ?? 'muted'}>{e.outcome}</StatusPill>
-                  <span className="font-mono text-xs text-muted-foreground">HTTP {e.statusCode || '—'}</span>
-                  {e.errorType && <Badge mono variant="danger">{e.errorType}</Badge>}
-                </div>
-              </Row>
-              <Row label="Actor">
-                <span className="text-muted-foreground">{e.actorType}</span> <span className="font-mono text-xs">{e.actorSubject}</span>
-                {e.apiKeyPrefix && <span className="ml-2 font-mono text-xs text-muted-foreground">key {e.apiKeyPrefix}…</span>}
-              </Row>
-              <Row label="Route" mono>
-                {e.route}
-                {e.slug && ` · ${e.slug}`}
-              </Row>
-              <Row label="Request" mono>
-                {e.httpMethod} {e.path}
-              </Row>
-              {(e.jsonrpcId || e.protocolVersion) && (
-                <Row label="JSON-RPC" mono>
-                  {e.jsonrpcId && `id ${e.jsonrpcId}`}
-                  {e.jsonrpcId && e.protocolVersion && ' · '}
-                  {e.protocolVersion && `protocol ${e.protocolVersion}`}
-                </Row>
-              )}
-              <Row label="Size" mono>
-                {e.requestBytes.toLocaleString()} B in · {e.responseBytes.toLocaleString()} B out · {e.durationMs} ms
-              </Row>
-              {e.serverId && (
-                <Row label="Server" mono>
-                  <Link to={`/servers/${e.serverId}`} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-                    {e.serverId}
+                  <Badge mono variant={hopVariant[e.hop] ?? 'muted'}>
+                    {e.hop}
+                  </Badge>
+                  {e.errorType && (
+                    <Badge mono variant="danger">
+                      {e.errorType}
+                    </Badge>
+                  )}
+                  <span className="font-mono">
+                    HTTP {e.statusCode || '—'} · {e.durationMs} ms
+                  </span>
+                  <span className="font-mono" title={absoluteTime(e.createdAt)}>
+                    {relativeTime(e.createdAt)}
+                  </span>
+                  <span className="font-mono">
+                    {e.slug ? (
+                      e.serverId ? (
+                        <Link to={`/servers/${e.serverId}`} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
+                          {e.slug}
+                        </Link>
+                      ) : (
+                        e.slug
+                      )
+                    ) : (
+                      e.route
+                    )}
+                  </span>
+                  <Link
+                    to={`/audit?requestId=${encodeURIComponent(e.requestId)}`}
+                    onClick={onClose}
+                    className="font-mono underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
+                    title="Show every hop of this request"
+                  >
+                    {e.requestId}
                   </Link>
-                </Row>
+                </>
               )}
-              <Row label="Request ID" mono>
-                <Link to={`/audit?requestId=${encodeURIComponent(e.requestId)}`} onClick={onClose} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-                  {e.requestId}
-                </Link>
-                {e.parentId && <span className="ml-2 text-muted-foreground">parent {e.parentId}</span>}
-              </Row>
-            </dl>
-          )}
+            </div>
+          </SheetDescription>
+        </SheetHeader>
+        <SheetBody>
+          {error && <Callout tone="danger">{error}</Callout>}
           {e?.hasPayload && !payload && !error && <p className="text-xs text-muted-foreground">Loading exchange…</p>}
           {e && !e.hasPayload && <p className="text-xs text-muted-foreground">No payload was recorded for this event.</p>}
           {payload && (
-            <div className="space-y-5">
-              <section className="space-y-2">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Request headers</h3>
-                <Headers headers={payload.requestHeaders} />
-              </section>
-              <section className="space-y-2">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Request body</h3>
-                <Body body={payload.requestBody} />
-              </section>
-              <section className="space-y-2">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Response headers</h3>
-                <Headers headers={payload.responseHeaders} />
-              </section>
-              <section className="space-y-2">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Response body</h3>
-                <Body body={payload.responseBody} />
-              </section>
-            </div>
+            <>
+              <Headers label="Request headers" headers={payload.requestHeaders} />
+              <BodyViewer heading="Request" body={payload.requestBody} headers={payload.requestHeaders} />
+              <Headers label="Response headers" headers={payload.responseHeaders} />
+              <BodyViewer
+                heading="Response"
+                body={payload.responseBody}
+                headers={payload.responseHeaders}
+                above={
+                  unavailable.length > 0 && (
+                    <Callout tone="warning" className="text-xs leading-5">
+                      <p className="font-medium">
+                        {unavailable.length === 1 ? 'One server was skipped' : `${unavailable.length} servers were skipped`} while listing tools.
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {unavailable.map((u) => (
+                          <li key={u.slug} className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="font-mono">{u.slug}</span>
+                            {u.name && u.name !== u.slug && <span className="text-muted-foreground">{u.name}</span>}
+                            {u.error && <span className="text-muted-foreground">— {u.error}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </Callout>
+                  )
+                }
+              />
+            </>
           )}
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   )
 }

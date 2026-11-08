@@ -126,7 +126,14 @@ func (c *Connector) Open(ctx context.Context, srv *store.Server) (*Session, erro
 		return nil, err
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-gateway", Version: c.version}, nil)
-	cs, err := client.Connect(dctx, &mcp.StreamableClientTransport{Endpoint: srv.URL, HTTPClient: hc}, nil)
+	cs, err := client.Connect(dctx, &mcp.StreamableClientTransport{
+		Endpoint: srv.URL, HTTPClient: hc,
+		// Connections are opened per call and the gateway never consumes
+		// server-initiated messages, so the standalone GET stream is pure
+		// overhead. Older go-sdk servers also hold the GET without flushing
+		// headers, which would block Connect.
+		DisableStandaloneSSE: true,
+	}, nil)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("upstream %s: connect: %w", srv.Slug, err)

@@ -40,13 +40,18 @@ type Store interface {
 type Gateway struct {
 	store   Store
 	conn    *upstream.Connector
+	rec     *audit.Recorder
 	log     *slog.Logger
 	version string
 }
 
+// MetaKeyUnavailable carries, on a mux tools/list result, the servers that
+// could not be listed: [{slug, name, error}].
+const MetaKeyUnavailable = "ai.andrewmorgan.mcp-gateway/unavailable"
+
 // New builds a gateway.
-func New(s Store, conn *upstream.Connector, log *slog.Logger, version string) *Gateway {
-	return &Gateway{store: s, conn: conn, log: log, version: version}
+func New(s Store, conn *upstream.Connector, rec *audit.Recorder, log *slog.Logger, version string) *Gateway {
+	return &Gateway{store: s, conn: conn, rec: rec, log: log, version: version}
 }
 
 type routeKey struct{}
@@ -129,9 +134,10 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 		tools []*mcp.Tool
 	}
 	var (
-		mu    sync.Mutex
-		parts []part
-		wg    sync.WaitGroup
+		mu          sync.Mutex
+		parts       []part
+		unavailable []map[string]string
+		wg          sync.WaitGroup
 	)
 	for _, srv := range servers {
 		if !srv.Enabled {
@@ -142,13 +148,24 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 			defer wg.Done()
 			tools, err := g.toolsOf(ctx, srv)
 			if err != nil {
-				// One broken server must not take the mux down; it is simply absent.
-				// Credentials awaiting consent or marked broken are expected states.
-				if errors.Is(err, upstream.ErrCredentialPending) || errors.Is(err, upstream.ErrCredentialBroken) {
-					g.log.Debug("mux: server skipped", "slug", srv.Slug, "err", err)
-				} else {
-					g.log.Warn("mux: list tools failed", "slug", srv.Slug, "err", err)
+				// One broken server must not take the mux down, but its absence
+				// is visible: the result's _meta lists it, the inbound audit
+				// event becomes partial and an upstream event records the skip.
+				errType := "upstream"
+				switch {
+				case errors.Is(err, upstream.ErrCredentialPending):
+					errType = "credential_pending"
+				case errors.Is(err, upstream.ErrCredentialBroken):
+					errType = "credential_broken"
 				}
+				g.log.Warn("mux: server unavailable", "slug", srv.Slug, "type", errType, "err", err)
+				audit.AddIssue(ctx, srv.Slug+": "+err.Error())
+				if g.rec != nil {
+					g.rec.RecordSkipped(ctx, srv, route, "tools/list", errType, err.Error())
+				}
+				mu.Lock()
+				unavailable = append(unavailable, map[string]string{"slug": srv.Slug, "name": srv.Name, "error": err.Error()})
+				mu.Unlock()
 				return
 			}
 			for _, t := range tools {
@@ -169,6 +186,10 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{}}
 	for _, p := range parts {
 		out.Tools = append(out.Tools, p.tools...)
+	}
+	if len(unavailable) > 0 {
+		sort.Slice(unavailable, func(i, j int) bool { return unavailable[i]["slug"] < unavailable[j]["slug"] })
+		out.Meta = mcp.Meta{MetaKeyUnavailable: unavailable}
 	}
 	return out, nil
 }

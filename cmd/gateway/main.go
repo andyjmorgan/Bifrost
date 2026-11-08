@@ -73,7 +73,7 @@ func main() {
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
 	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
-	gw := gateway.New(st, conn, log, cfg.Version)
+	gw := gateway.New(st, conn, rec, log, cfg.Version)
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr
 	if !strings.HasPrefix(cfg.ListenAddr, ":") {
