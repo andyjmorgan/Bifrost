@@ -143,7 +143,12 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 			tools, err := g.toolsOf(ctx, srv)
 			if err != nil {
 				// One broken server must not take the mux down; it is simply absent.
-				g.log.Warn("mux: list tools failed", "slug", srv.Slug, "err", err)
+				// Credentials awaiting consent or marked broken are expected states.
+				if errors.Is(err, upstream.ErrCredentialPending) || errors.Is(err, upstream.ErrCredentialBroken) {
+					g.log.Debug("mux: server skipped", "slug", srv.Slug, "err", err)
+				} else {
+					g.log.Warn("mux: list tools failed", "slug", srv.Slug, "err", err)
+				}
 				return
 			}
 			for _, t := range tools {
