@@ -50,7 +50,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   return (text ? JSON.parse(text) : undefined) as T
 }
 
-export type SSEHandler = (event: string, data: unknown) => void
+export type SSEHandler = (event: string, data: unknown, raw: string) => void
 
 /** POST and consume a text/event-stream response, calling onEvent per event until the stream ends. */
 export async function requestSSE(path: string, body: unknown, onEvent: SSEHandler): Promise<void> {
@@ -84,7 +84,7 @@ export async function requestSSE(path: string, body: unknown, onEvent: SSEHandle
     } catch {
       // keep raw text
     }
-    onEvent(event, parsed)
+    onEvent(event, parsed, block)
   }
   for (;;) {
     const { value, done } = await reader.read()

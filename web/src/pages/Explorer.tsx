@@ -334,20 +334,24 @@ export function ExplorerPage() {
   )
 }
 
-type StreamEvent = { kind: 'progress'; progress: number; total?: number; message?: string } | { kind: 'log'; level: string; text: string }
+type StreamEvent = ({ kind: 'progress'; progress: number; total?: number; message?: string } | { kind: 'log'; level: string; text: string } | { kind: 'result' }) & { raw: string }
 
 /** Turns the e2e stream callback into appended state. */
 function collect(set: React.Dispatch<React.SetStateAction<StreamEvent[]>>): E2EEventHandler {
   return (e) => {
-    if (e.type === 'progress') set((prev) => [...prev, { kind: 'progress', progress: e.data.progress, total: e.data.total, message: e.data.message }])
-    else set((prev) => [...prev, { kind: 'log', level: e.data.level, text: typeof e.data.data === 'string' ? e.data.data : JSON.stringify(e.data.data) }])
+    if (e.type === 'progress') set((prev) => [...prev, { kind: 'progress', progress: e.data.progress, total: e.data.total, message: e.data.message, raw: e.raw }])
+    else if (e.type === 'log') set((prev) => [...prev, { kind: 'log', level: e.data.level, text: typeof e.data.data === 'string' ? e.data.data : JSON.stringify(e.data.data), raw: e.raw }])
+    else set((prev) => [...prev, { kind: 'result', raw: e.raw }])
   }
 }
 
 /** Live view of progress and log notifications the upstream sent during a call. */
 function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy: boolean; className?: string }) {
-  const last = [...events].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
+  const [rawView, setRawView] = useState(false)
+  const notifications = events.filter((e) => e.kind !== 'result')
+  const last = [...notifications].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
   const pct = last && last.total ? Math.min(100, Math.round((last.progress / last.total) * 100)) : undefined
+  const rawText = events.map((e) => e.raw).join('\n\n')
   return (
     <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -361,15 +365,28 @@ function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy:
             {last.total ? ` / ${last.total}` : ''}
           </span>
         )}
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setRawView((v) => !v)} aria-pressed={rawView}>
+            {rawView ? 'Pretty' : 'Raw'}
+          </Button>
+          {rawView && <CopyButton value={rawText} label="Copy raw stream" className="size-7" />}
+        </div>
       </div>
+      {rawView && (
+        <CodeBlock className="mt-3 max-h-96" wrap>
+          {rawText || (busy ? 'Waiting for the upstream…' : '')}
+        </CodeBlock>
+      )}
+      {!rawView && (
+        <>
       {pct !== undefined && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-elevated">
           <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
         </div>
       )}
-      {events.length > 0 && (
+          {notifications.length > 0 && (
         <ol className="mt-3 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] leading-5 text-muted-foreground">
-          {events.map((e, i) => (
+          {notifications.map((e, i) => (
             <li key={i} className="truncate">
               {e.kind === 'progress' ? (
                 <>
@@ -384,7 +401,9 @@ function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy:
           ))}
         </ol>
       )}
-      {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
+          {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
+        </>
+      )}
     </div>
   )
 }

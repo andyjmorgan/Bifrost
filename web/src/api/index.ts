@@ -45,15 +45,17 @@ export interface LogEvent {
   logger?: string
   data: unknown
 }
-export type E2EEventHandler = (e: { type: 'progress'; data: ProgressEvent } | { type: 'log'; data: LogEvent }) => void
+export type E2EEventHandler = (e: { type: 'progress'; data: ProgressEvent; raw: string } | { type: 'log'; data: LogEvent; raw: string } | { type: 'result'; raw: string }) => void
 
 /** The e2e endpoints stream SSE: progress/log notifications from the upstream, then one `result` event. */
 async function e2eStream<T>(path: string, input: E2EInput, onEvent?: E2EEventHandler): Promise<E2EResult<T>> {
   let result: E2EResult<T> | undefined
-  await requestSSE(path, input, (event, data) => {
-    if (event === 'result') result = data as E2EResult<T>
-    else if (event === 'progress') onEvent?.({ type: 'progress', data: data as ProgressEvent })
-    else if (event === 'log') onEvent?.({ type: 'log', data: data as LogEvent })
+  await requestSSE(path, input, (event, data, raw) => {
+    if (event === 'result') {
+      result = data as E2EResult<T>
+      onEvent?.({ type: 'result', raw })
+    } else if (event === 'progress') onEvent?.({ type: 'progress', data: data as ProgressEvent, raw })
+    else if (event === 'log') onEvent?.({ type: 'log', data: data as LogEvent, raw })
   })
   if (!result) throw new Error('The stream ended without a result.')
   return result
