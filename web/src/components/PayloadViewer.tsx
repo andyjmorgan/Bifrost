@@ -10,7 +10,7 @@ import { cn } from '../lib'
 // stream (each event's data through the same tree), and plain preformatted text otherwise. Value
 // types take status hues from the tokens so both themes track; keys stay in the code foreground.
 
-type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
+export type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 
 export function tryParseJson(text: string): { ok: true; value: Json } | { ok: false } {
   const t = text.trim()

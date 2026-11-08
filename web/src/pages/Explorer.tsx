@@ -11,7 +11,9 @@ import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../com
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
-import { CodeBlock, JsonBlock } from '../components/JsonBlock'
+import { CodeBlock } from '../components/JsonBlock'
+import { JsonTree, tryParseJson, type Json } from '../components/PayloadViewer'
+import { CopyButton } from '../components/CopyButton'
 import { FormField } from '../components/FormField'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
 import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
@@ -321,7 +323,7 @@ function RawArguments({ schema, draft, onChange }: { schema?: unknown; draft: Dr
       </FormField>
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Input schema</p>
-        <JsonBlock value={schema ?? {}} className="max-h-72" />
+        <div className="max-h-72 overflow-auto"><JsonTree value={(schema ?? {}) as Json} /></div>
       </div>
     </div>
   )
@@ -369,7 +371,7 @@ function ResultPanel({ result, raw }: { result: E2EResult<CallToolResult>; raw: 
           <Callout tone="danger">The tool reported an error. Its content is shown below.</Callout>
         )}
         {raw ? (
-          <JsonBlock value={result} />
+          <JsonView value={result} />
         ) : (
           <>
             {content.map((c, i) => (
@@ -378,17 +380,13 @@ function ResultPanel({ result, raw }: { result: E2EResult<CallToolResult>; raw: 
                   <Badge mono>{c.type}</Badge>
                   {c.mimeType && <span className="font-mono text-[11px] text-muted-foreground">{c.mimeType}</span>}
                 </div>
-                {c.type === 'text' ? (
-                  <CodeBlock wrap>{c.text ?? ''}</CodeBlock>
-                ) : (
-                  <JsonBlock value={c} />
-                )}
+                {c.type === 'text' ? <TextOrJson text={c.text ?? ''} /> : <JsonView value={c} />}
               </div>
             ))}
             {r?.structuredContent !== undefined && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Structured content</p>
-                <JsonBlock value={r.structuredContent} />
+                <JsonView value={r.structuredContent} />
               </div>
             )}
             {result.ok && !content.length && r?.structuredContent === undefined && <p className="text-xs text-muted-foreground">The tool returned no content.</p>}
@@ -397,4 +395,22 @@ function ResultPanel({ result, raw }: { result: E2EResult<CallToolResult>; raw: 
       </div>
     </div>
   )
+}
+
+/** Read-only JSON tree with a copy button; the same viewer the audit drawer uses. */
+function JsonView({ value }: { value: unknown }) {
+  const text = useMemo(() => JSON.stringify(value, null, 2) ?? '', [value])
+  return (
+    <div className="relative">
+      <CopyButton value={text} label="Copy JSON" className="absolute right-2 top-2 z-10 size-7" />
+      <JsonTree value={value as Json} />
+    </div>
+  )
+}
+
+/** Text content that parses as JSON gets the tree; anything else stays monospaced text. */
+function TextOrJson({ text }: { text: string }) {
+  const parsed = useMemo(() => tryParseJson(text), [text])
+  if (parsed.ok && typeof parsed.value === 'object' && parsed.value !== null) return <JsonView value={parsed.value} />
+  return <CodeBlock wrap>{text}</CodeBlock>
 }
