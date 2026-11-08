@@ -97,12 +97,28 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		entries []catalogEntry
 		wg      sync.WaitGroup
 	)
+	// Progress: three steps per server (connecting, connected+listing, done)
+	// on one monotonic counter, since servers finish concurrently. A cached
+	// server completes in a single step but still advances by three.
 	report := progressFrom(ctx)
-	total := 0
+	serverCount := 0
 	for _, srv := range servers {
 		if srv.Enabled || route == "direct" {
-			total++
+			serverCount++
 		}
+	}
+	total := float64(serverCount * 3)
+	var step int
+	var stepMu sync.Mutex
+	advance := func(n int, msg string) {
+		if report == nil {
+			return
+		}
+		stepMu.Lock()
+		step += n
+		cur := step
+		stepMu.Unlock()
+		report(float64(cur), total, msg)
 	}
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
@@ -125,7 +141,8 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				if !force {
 					hint = e.init.ProtocolVersion
 				}
-				if e.tools, e.err = g.toolsOf(ctx, srv, hint); e.err == nil {
+				stage := func(msg string) { advance(1, srv.Slug+": "+msg) }
+				if e.tools, e.err = g.toolsOf(ctx, srv, hint, stage); e.err == nil {
 					g.cacheTools(srv, e.tools)
 				}
 			}
@@ -145,23 +162,33 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 			}
 			mu.Lock()
 			entries = append(entries, e)
-			done := len(entries)
 			mu.Unlock()
-			if report != nil {
-				msg := fmt.Sprintf("%s: %d tools", srv.Slug, len(e.tools))
-				if hit {
-					msg += " (cached)"
-				}
-				if e.err != nil {
-					msg = fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120))
-				}
-				report(float64(done), float64(total), msg)
+			switch {
+			case e.err != nil:
+				// The connect/list steps that did not happen still count.
+				advance(3-stepsTaken(e), fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120)))
+			case hit:
+				advance(3, fmt.Sprintf("%s: %s (cached)", srv.Slug, plural(len(e.tools), "tool")))
+			default:
+				advance(1, fmt.Sprintf("%s: %s", srv.Slug, plural(len(e.tools), "tool")))
 			}
 		}(srv)
 	}
 	wg.Wait()
 	sort.Slice(entries, func(i, j int) bool { return entries[i].srv.Slug < entries[j].srv.Slug })
 	return entries, nil
+}
+
+// stepsTaken is how many of the three progress steps a failed fetch had
+// already reported: connect failures report one, list failures two.
+func stepsTaken(e catalogEntry) int {
+	if e.err == nil {
+		return 3
+	}
+	if strings.Contains(e.err.Error(), "connect:") {
+		return 1
+	}
+	return 2
 }
 
 func unavailableOf(entries []catalogEntry) []map[string]string {

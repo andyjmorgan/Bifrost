@@ -237,12 +237,34 @@ func initHint(b store.CacheBundle) string {
 	return ""
 }
 
-func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersion string) ([]*mcp.Tool, error) {
+// plural renders "1 tool" / "3 tools".
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersion string, stage ...func(string)) ([]*mcp.Tool, error) {
+	report := func(string) {}
+	if len(stage) > 0 && stage[0] != nil {
+		report = stage[0]
+	}
+	if protocolVersion != "" {
+		report("connecting (" + protocolVersion + ")")
+	} else {
+		report("connecting (discovering protocol version)")
+	}
 	sess, err := g.conn.OpenWith(ctx, srv, protocolVersion)
 	if err != nil {
 		return nil, err
 	}
 	defer sess.Close()
+	if ir := sess.InitializeResult(); ir != nil && ir.ServerInfo != nil {
+		report(fmt.Sprintf("connected to %s %s (%s), listing tools", ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ProtocolVersion))
+	} else {
+		report("connected, listing tools")
+	}
 	var tools []*mcp.Tool
 	cursor := ""
 	for {
@@ -291,7 +313,7 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 				fmt.Fprintf(&sb, "%s: unavailable (%s)\n", e.srv.Slug, oneLine(e.err.Error(), 120))
 			} else {
 				total += len(e.tools)
-				fmt.Fprintf(&sb, "%s: %d tools\n", e.srv.Slug, len(e.tools))
+				fmt.Fprintf(&sb, "%s: %s\n", e.srv.Slug, plural(len(e.tools), "tool"))
 			}
 			lines = append(lines, l)
 		}
