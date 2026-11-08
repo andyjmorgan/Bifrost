@@ -31,6 +31,7 @@ type Config struct {
 	RefreshLeeway   time.Duration // refresh tokens expiring within this window
 	AuditRetention  time.Duration
 	UpstreamTimeout time.Duration
+	ToolsCacheTTL   time.Duration // how long a server's tools/list is served from cache; 0 disables
 	Version         string
 }
 
@@ -60,6 +61,9 @@ func FromEnv() (Config, error) {
 		return c, err
 	}
 	if c.AuditRetention, err = durationEnv("MCPGW_AUDIT_RETENTION", 30*24*time.Hour); err != nil {
+		return c, err
+	}
+	if c.ToolsCacheTTL, err = durationEnv("MCPGW_TOOLS_CACHE_TTL", 5*time.Minute); err != nil {
 		return c, err
 	}
 	if c.UpstreamTimeout, err = durationEnv("MCPGW_UPSTREAM_TIMEOUT", 60*time.Second); err != nil {

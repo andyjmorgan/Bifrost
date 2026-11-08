@@ -19,6 +19,7 @@ type Store interface {
 	ServerOwner(ctx context.Context, id uuid.UUID) (*store.Server, error)
 	PurgeAuditBefore(ctx context.Context, t time.Time) (int64, error)
 	PurgeExpiredOAuthStates(ctx context.Context) error
+	PurgeExpiredCache(ctx context.Context) (int64, error)
 }
 
 // Worker owns the tickers.
@@ -90,6 +91,11 @@ func (w *Worker) refreshTokens(ctx context.Context) {
 }
 
 func (w *Worker) purge(ctx context.Context) {
+	if n, err := w.store.PurgeExpiredCache(ctx); err != nil {
+		w.log.Error("worker: cache sweep", "err", err)
+	} else if n > 0 {
+		w.log.Info("worker: cache sweep", "deleted", n)
+	}
 	if n, err := w.store.PurgeAuditBefore(ctx, time.Now().Add(-w.retention)); err != nil {
 		w.log.Error("worker: audit purge", "err", err)
 	} else if n > 0 {

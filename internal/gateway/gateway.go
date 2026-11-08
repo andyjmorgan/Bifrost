@@ -13,13 +13,16 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/andyjmorgan/mcp-gateway/internal/audit"
 	"github.com/andyjmorgan/mcp-gateway/internal/auth"
+	"github.com/andyjmorgan/mcp-gateway/internal/cache"
 	"github.com/andyjmorgan/mcp-gateway/internal/store"
 	"github.com/andyjmorgan/mcp-gateway/internal/upstream"
 )
@@ -34,15 +37,19 @@ const Separator = "__"
 type Store interface {
 	ListServers(ctx context.Context, owner string) ([]*store.Server, error)
 	GetServerBySlug(ctx context.Context, owner, slug string) (*store.Server, error)
+	ListServersWithCache(ctx context.Context, owner, ns string) ([]*store.Server, map[uuid.UUID]json.RawMessage, error)
+	GetServerBySlugWithCache(ctx context.Context, owner, slug, ns string) (*store.Server, json.RawMessage, error)
 }
 
 // Gateway serves the two MCP routes.
 type Gateway struct {
-	store   Store
-	conn    *upstream.Connector
-	rec     *audit.Recorder
-	log     *slog.Logger
-	version string
+	store    Store
+	conn     *upstream.Connector
+	rec      *audit.Recorder
+	cache    *cache.Writer
+	toolsTTL time.Duration
+	log      *slog.Logger
+	version  string
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -50,8 +57,8 @@ type Gateway struct {
 const MetaKeyUnavailable = "ai.andrewmorgan.mcp-gateway/unavailable"
 
 // New builds a gateway.
-func New(s Store, conn *upstream.Connector, rec *audit.Recorder, log *slog.Logger, version string) *Gateway {
-	return &Gateway{store: s, conn: conn, rec: rec, log: log, version: version}
+func New(s Store, conn *upstream.Connector, rec *audit.Recorder, cw *cache.Writer, toolsTTL time.Duration, log *slog.Logger, version string) *Gateway {
+	return &Gateway{store: s, conn: conn, rec: rec, cache: cw, toolsTTL: toolsTTL, log: log, version: version}
 }
 
 type routeKey struct{}
@@ -115,17 +122,39 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 
 func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
 	if route == "direct" {
-		srv, err := g.store.GetServerBySlug(ctx, caller.OwnerID, slug)
+		srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSTools)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
+		}
+		if tools, ok := decodeTools(cached); ok {
+			return &mcp.ListToolsResult{Tools: tools}, nil
 		}
 		tools, err := g.toolsOf(ctx, srv)
 		if err != nil {
 			return nil, upstreamError(srv, err)
 		}
+		g.cacheTools(srv, tools)
 		return &mcp.ListToolsResult{Tools: tools}, nil
 	}
-	servers, err := g.store.ListServers(ctx, caller.OwnerID)
+	return g.muxTools(ctx, caller, route, false)
+}
+
+// RefreshTool is the gateway's own tool on the mux route: re-list every
+// server bypassing the cache, refresh it, and return the fresh list.
+const RefreshTool = "refresh_tools"
+
+func refreshToolDef() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        RefreshTool,
+		Description: "[Gateway] Re-list every server's tools, bypassing and refreshing the gateway cache. Returns the fresh tool list.",
+		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
+	}
+}
+
+// muxTools lists tools across all enabled servers. With force, cached
+// entries are ignored and every server is asked afresh.
+func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
+	servers, cachedTools, err := g.store.ListServersWithCache(ctx, caller.OwnerID, cache.NSTools)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 	}
@@ -146,7 +175,17 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 		wg.Add(1)
 		go func(srv *store.Server) {
 			defer wg.Done()
-			tools, err := g.toolsOf(ctx, srv)
+			var tools []*mcp.Tool
+			hit := false
+			if !force {
+				tools, hit = decodeTools(cachedTools[srv.ID])
+			}
+			var err error
+			if !hit {
+				if tools, err = g.toolsOf(ctx, srv); err == nil {
+					g.cacheTools(srv, tools)
+				}
+			}
 			if err != nil {
 				// One broken server must not take the mux down, but its absence
 				// is visible: the result's _meta lists it, the inbound audit
@@ -183,7 +222,7 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 	}
 	wg.Wait()
 	sort.Slice(parts, func(i, j int) bool { return parts[i].slug < parts[j].slug })
-	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{}}
+	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{refreshToolDef()}}
 	for _, p := range parts {
 		out.Tools = append(out.Tools, p.tools...)
 	}
@@ -195,6 +234,27 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 }
 
 // toolsOf opens a session and pages through its tools.
+// decodeTools turns a cached tools/list back into tools; ok is false on a miss.
+func decodeTools(raw json.RawMessage) ([]*mcp.Tool, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	var tools []*mcp.Tool
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil, false
+	}
+	if tools == nil {
+		tools = []*mcp.Tool{}
+	}
+	return tools, true
+}
+
+// cacheTools stores a server's tools/list off the request path.
+func (g *Gateway) cacheTools(srv *store.Server, tools []*mcp.Tool) {
+	id := srv.ID
+	g.cache.Put(cache.NSTools, id.String(), &id, tools, g.toolsTTL)
+}
+
 func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server) ([]*mcp.Tool, error) {
 	sess, err := g.conn.Open(ctx, srv)
 	if err != nil {
@@ -224,6 +284,30 @@ func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server) ([]*mcp.Tool, 
 
 func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug string, p *mcp.CallToolParamsRaw) (mcp.Result, error) {
 	name := p.Name
+	if route == "mux" && p.Name == RefreshTool {
+		res, err := g.muxTools(ctx, caller, route, true)
+		if err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(res.Tools))
+		for _, t := range res.Tools {
+			if t.Name != RefreshTool {
+				names = append(names, t.Name)
+			}
+		}
+		structured := map[string]any{"tools": res.Tools, "count": len(names)}
+		if u, ok := res.Meta[MetaKeyUnavailable]; ok {
+			structured["unavailable"] = u
+		}
+		summary := fmt.Sprintf("Refreshed %d tools from the gateway's servers.", len(names))
+		if u, ok := res.Meta[MetaKeyUnavailable].([]map[string]string); ok && len(u) > 0 {
+			summary += fmt.Sprintf(" %d server(s) unavailable.", len(u))
+		}
+		return &mcp.CallToolResult{
+			Content:           []mcp.Content{&mcp.TextContent{Text: summary + "\n" + strings.Join(names, "\n")}},
+			StructuredContent: structured,
+		}, nil
+	}
 	if route == "mux" {
 		var ok bool
 		slug, name, ok = strings.Cut(p.Name, Separator)

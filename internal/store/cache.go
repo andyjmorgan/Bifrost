@@ -53,12 +53,50 @@ func (p *Postgres) CacheDelete(ctx context.Context, ns, key string) error {
 	return nil
 }
 
+// PurgeExpiredCache deletes expired rows; the belt to pg_cron's braces (and
+// the only reaper where pg_cron is not installed).
+func (p *Postgres) PurgeExpiredCache(ctx context.Context) (int64, error) {
+	tag, err := p.pool.Exec(ctx, `delete from cache where expires_at <= now()`)
+	if err != nil {
+		return 0, fmt.Errorf("store: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // CacheInvalidateServer drops every cached entry tied to the server.
 func (p *Postgres) CacheInvalidateServer(ctx context.Context, serverID uuid.UUID) error {
 	if _, err := p.pool.Exec(ctx, `delete from cache where server_id=$1`, serverID); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil
+}
+
+// ListServersWithCache returns an owner's servers (oldest first) and, per
+// server, its live cache entry in ns, from one joined query.
+func (p *Postgres) ListServersWithCache(ctx context.Context, owner, ns string) ([]*Server, map[uuid.UUID]json.RawMessage, error) {
+	rows, err := p.pool.Query(ctx, `select s.id, s.owner_id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.created_at, s.updated_at, c.value
+from servers s
+left join cache c on c.server_id = s.id and c.ns = $2 and c.expires_at > now()
+where s.owner_id=$1
+order by s.created_at`, owner, ns)
+	if err != nil {
+		return nil, nil, fmt.Errorf("store: %w", err)
+	}
+	defer rows.Close()
+	var out []*Server
+	cached := map[uuid.UUID]json.RawMessage{}
+	for rows.Next() {
+		var s Server
+		var v json.RawMessage
+		if err := rows.Scan(&s.ID, &s.OwnerID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt, &v); err != nil {
+			return nil, nil, fmt.Errorf("store: %w", err)
+		}
+		if v != nil {
+			cached[s.ID] = v
+		}
+		out = append(out, &s)
+	}
+	return out, cached, rows.Err()
 }
 
 // GetServerBySlugWithCache returns the server and, in the same query, its live

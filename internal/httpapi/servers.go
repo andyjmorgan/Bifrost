@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/andyjmorgan/mcp-gateway/internal/auth"
+	"github.com/andyjmorgan/mcp-gateway/internal/cache"
 	"github.com/andyjmorgan/mcp-gateway/internal/oauthclient"
 	"github.com/andyjmorgan/mcp-gateway/internal/slug"
 	"github.com/andyjmorgan/mcp-gateway/internal/store"
@@ -169,6 +170,7 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (str
 	case store.AuthOAuth:
 		return a.startOAuth(ctx, s, in.Scopes, "")
 	}
+	a.cache.Invalidate(cred.ServerID)
 	return "", a.store.UpsertCredential(ctx, cred)
 }
 
@@ -211,6 +213,7 @@ func (a *API) startOAuth(ctx context.Context, s *store.Server, scopeOverride []s
 	if cred.OAuthScopes == nil {
 		cred.OAuthScopes = []string{}
 	}
+	a.cache.Invalidate(cred.ServerID)
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
@@ -246,6 +249,7 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		s.Enabled = *in.Enabled
 	}
+	a.cache.Invalidate(s.ID)
 	if err := a.store.UpdateServer(r.Context(), s); err != nil {
 		writeStoreErr(w, err)
 		return
@@ -285,6 +289,7 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.AuthKind != in.Kind {
 		s.AuthKind = in.Kind
+		a.cache.Invalidate(s.ID)
 		if err := a.store.UpdateServer(r.Context(), s); err != nil {
 			writeStoreErr(w, err)
 			return
@@ -415,6 +420,9 @@ func (a *API) doPing(ctx context.Context, s *store.Server) PingResult {
 	}
 	if tools, err := sess.ListTools(sess.Ctx, &mcp.ListToolsParams{}); err == nil {
 		res.ToolCount = len(tools.Tools)
+		// A ping is the operator asking "what is this server now": refresh the cache.
+		id := s.ID
+		a.cache.Put(cache.NSTools, id.String(), &id, tools.Tools, a.toolsTTL)
 	} else {
 		res.OK, res.Error = false, err.Error()
 	}

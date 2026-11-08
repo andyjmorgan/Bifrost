@@ -5,7 +5,16 @@
 -- bypasses RLS, so queries also filter explicitly), and a pg_cron job deletes
 -- them every minute. Values are the JSON-RPC results themselves (tools/list
 -- pages, tool results, prompts, resources); meta holds provenance.
-create extension if not exists pg_cron;
+-- pg_cron is optional (local dev runs the plain postgres image): without it
+-- the worker's periodic sweep is the only reaper, which is fine for dev.
+do $$
+begin
+  if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
+    execute 'create extension if not exists pg_cron';
+  else
+    raise notice 'pg_cron not available; cache rows are swept by the worker only';
+  end if;
+end $$;
 
 create table if not exists cache (
   ns         text        not null,
@@ -26,7 +35,10 @@ create policy cache_live on cache using (expires_at > now());
 
 do $$
 begin
-  if not exists (select 1 from cron.job where jobname = 'cache-expire') then
-    perform cron.schedule('cache-expire', '* * * * *', $job$delete from cache where expires_at <= now()$job$);
+  -- Nested so the cron.job reference is only prepared when the extension exists.
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    if not exists (select 1 from cron.job where jobname = 'cache-expire') then
+      perform cron.schedule('cache-expire', '* * * * *', $job$delete from cache where expires_at <= now()$job$);
+    end if;
   end if;
 end $$;

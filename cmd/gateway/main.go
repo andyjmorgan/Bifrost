@@ -17,6 +17,7 @@ import (
 
 	"github.com/andyjmorgan/mcp-gateway/internal/audit"
 	"github.com/andyjmorgan/mcp-gateway/internal/auth"
+	"github.com/andyjmorgan/mcp-gateway/internal/cache"
 	"github.com/andyjmorgan/mcp-gateway/internal/config"
 	"github.com/andyjmorgan/mcp-gateway/internal/crypto"
 	"github.com/andyjmorgan/mcp-gateway/internal/db"
@@ -73,14 +74,15 @@ func main() {
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
 	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
-	gw := gateway.New(st, conn, rec, log, cfg.Version)
+	cw := cache.NewWriter(ctx, st, log)
+	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr
 	if !strings.HasPrefix(cfg.ListenAddr, ":") {
 		selfBase = "http://" + cfg.ListenAddr
 	}
 	api := httpapi.New(httpapi.Deps{
-		Store: st, Keys: keys, Authn: authn, Conn: conn, OAuth: oauth, Gateway: gw, Recorder: rec, Log: log,
+		Store: st, Keys: keys, Authn: authn, Conn: conn, OAuth: oauth, Gateway: gw, Recorder: rec, Cache: cw, ToolsTTL: cfg.ToolsCacheTTL, Log: log,
 		PublicBase: cfg.PublicBaseURL, SelfBase: selfBase, WebRoot: cfg.WebRoot,
 		Config: httpapi.ConfigDTO{DevMode: cfg.DevMode(), OIDCIssuer: cfg.OIDCIssuer, OIDCClientID: cfg.OIDCWebClientID,
 			PublicBaseURL: cfg.PublicBaseURL, Version: cfg.Version, MCPScope: cfg.OIDCScope, AllScopes: auth.AllScopes},

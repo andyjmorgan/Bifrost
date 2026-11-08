@@ -14,6 +14,7 @@ import (
 
 	"github.com/andyjmorgan/mcp-gateway/internal/audit"
 	"github.com/andyjmorgan/mcp-gateway/internal/auth"
+	"github.com/andyjmorgan/mcp-gateway/internal/cache"
 	"github.com/andyjmorgan/mcp-gateway/internal/gateway"
 	"github.com/andyjmorgan/mcp-gateway/internal/oauthclient"
 	"github.com/andyjmorgan/mcp-gateway/internal/store"
@@ -26,6 +27,8 @@ type API struct {
 	keys       *auth.Keys
 	authn      *auth.Authenticator
 	conn       *upstream.Connector
+	cache      *cache.Writer
+	toolsTTL   time.Duration
 	oauth      *oauthclient.Client
 	gw         *gateway.Gateway
 	rec        *audit.Recorder
@@ -42,6 +45,8 @@ type Deps struct {
 	Keys       *auth.Keys
 	Authn      *auth.Authenticator
 	Conn       *upstream.Connector
+	Cache      *cache.Writer
+	ToolsTTL   time.Duration
 	OAuth      *oauthclient.Client
 	Gateway    *gateway.Gateway
 	Recorder   *audit.Recorder
@@ -54,7 +59,7 @@ type Deps struct {
 
 // New builds the API.
 func New(d Deps) *API {
-	return &API{store: d.Store, keys: d.Keys, authn: d.Authn, conn: d.Conn, oauth: d.OAuth, gw: d.Gateway, rec: d.Recorder,
+	return &API{store: d.Store, keys: d.Keys, authn: d.Authn, conn: d.Conn, cache: d.Cache, toolsTTL: d.ToolsTTL, oauth: d.OAuth, gw: d.Gateway, rec: d.Recorder,
 		log: d.Log, publicBase: d.PublicBase, selfBase: d.SelfBase, webRoot: d.WebRoot, cfgDTO: d.Config}
 }
 
