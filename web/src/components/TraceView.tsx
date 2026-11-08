@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { Button } from '../ui/components/button'
 import { Badge } from '../ui/components/badge'
 import { cn } from '../lib'
 import type { AuditEventDTO, AuditTraceDTO, Outcome } from '../api'
@@ -20,6 +21,7 @@ function fmtMs(ms: number): string {
  * (a mux fan-out) overlap in time, sequential ones stack.
  */
 export function TraceView({ trace, currentId, onPick }: { trace: AuditTraceDTO; currentId?: string; onPick: (e: AuditEventDTO) => void }) {
+  const [view, setView] = useState<'flame' | 'list'>('flame')
   const rows = useMemo(() => {
     const all: { e: AuditEventDTO; depth: number }[] = []
     if (trace.root) all.push({ e: trace.root, depth: 0 })
@@ -48,7 +50,17 @@ export function TraceView({ trace, currentId, onPick }: { trace: AuditTraceDTO; 
         <span className="font-mono">{fmtMs(rows.total)} wall</span>
         {failed > 0 && <span className="font-mono text-danger">{failed} failed</span>}
         {!trace.root && <span>No inbound parent: hops grouped by request id.</span>}
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setView('flame')} aria-pressed={view === 'flame'}>
+            Flame
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setView('list')} aria-pressed={view === 'list'}>
+            List
+          </Button>
+        </div>
       </div>
+      {view === 'flame' && <FlameChart items={rows.items} total={rows.total} currentId={currentId} onPick={onPick} />}
+      {view === 'list' && (
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         {rows.items.map(({ e, depth, left, width, offset }) => {
           const current = e.id === currentId
@@ -95,6 +107,101 @@ export function TraceView({ trace, currentId, onPick }: { trace: AuditTraceDTO; 
           <span>{fmtMs(rows.total)}</span>
         </div>
       </div>
+      )}
     </section>
+  )
+}
+
+type Item = { e: AuditEventDTO; depth: number; left: number; width: number; offset: number }
+
+/**
+ * Flame chart: the inbound span as the top lane, then one lane per server
+ * with its hops laid out on the shared time axis. Hops of one server that
+ * overlap in time (rare) spill into an extra sub-lane.
+ */
+function FlameChart({ items, total, currentId, onPick }: { items: Item[]; total: number; currentId?: string; onPick: (e: AuditEventDTO) => void }) {
+  const lanes = useMemo(() => {
+    const out: { label: string; root?: boolean; rows: Item[][] }[] = []
+    const byKey = new Map<string, number>()
+    for (const it of items) {
+      if (it.depth === 0 && it.e.hop === 'inbound') {
+        out.push({ label: 'inbound', root: true, rows: [[it]] })
+        continue
+      }
+      const key = it.e.slug || it.e.route
+      let idx = byKey.get(key)
+      if (idx === undefined) {
+        idx = out.length
+        byKey.set(key, idx)
+        out.push({ label: key, rows: [] })
+      }
+      const lane = out[idx]
+      // First sub-lane whose last item ends before this one starts.
+      const row = lane.rows.find((r) => {
+        const last = r[r.length - 1]
+        return last.offset + Math.max(last.e.durationMs, 1) <= it.offset
+      })
+      if (row) row.push(it)
+      else lane.rows.push([it])
+    }
+    return out
+  }, [items])
+
+  const ticks = [0, 0.25, 0.5, 0.75, 1]
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="divide-y divide-border">
+        {lanes.map((lane) => (
+          <div key={lane.label} className="grid grid-cols-[88px_minmax(0,1fr)] items-stretch sm:grid-cols-[120px_minmax(0,1fr)]">
+            <div className={cn('flex items-center truncate px-3 font-mono text-[11px]', lane.root ? 'text-info' : 'text-muted-foreground')} title={lane.label}>
+              {lane.label}
+            </div>
+            <div className="relative py-1.5 pr-3">
+              {/* grid lines */}
+              {ticks.slice(1, -1).map((t) => (
+                <div key={t} className="pointer-events-none absolute inset-y-0 w-px bg-border/70" style={{ left: `${t * 100}%` }} />
+              ))}
+              {lane.rows.map((row, ri) => (
+                <div key={ri} className="relative h-6 first:mt-0 mt-1">
+                  {row.map((it) => {
+                    const e = it.e
+                    const current = e.id === currentId
+                    const label = `${e.mcpMethod || e.httpMethod}${e.toolName ? ` · ${e.toolName}` : ''}`
+                    return (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => onPick(e)}
+                        title={`${lane.label} · ${label}\n+${fmtMs(it.offset)} · ${fmtMs(e.durationMs)} · HTTP ${e.statusCode || '—'} · ${e.errorType || e.outcome}`}
+                        aria-current={current || undefined}
+                        className={cn(
+                          'absolute inset-y-0 min-w-[3px] overflow-hidden rounded-[4px] px-1.5 text-left font-mono text-[11px] leading-6 text-on-accent outline-none ring-offset-1 ring-offset-card hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent',
+                          barTone[e.outcome] ?? 'bg-muted-foreground',
+                          lane.root && 'opacity-60',
+                          current && 'ring-2 ring-foreground/70',
+                        )}
+                        style={{ left: `${it.left}%`, width: `${Math.max(it.width, 0.4)}%` }}
+                      >
+                        <span className="block truncate">{label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] border-t border-border sm:grid-cols-[120px_minmax(0,1fr)]">
+        <div />
+        <div className="relative mr-3 h-5 font-mono text-[10px] text-faint-foreground">
+          {ticks.map((t) => (
+            <span key={t} className="absolute top-1 -translate-x-1/2 first:translate-x-0 last:-translate-x-full" style={{ left: `${t * 100}%` }}>
+              {fmtMs(Math.round(total * t))}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
