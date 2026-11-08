@@ -95,3 +95,12 @@ DonkeyWork-Lab repo under `clusters/attic/applications/mcp-gateway/`.
 | `internal/httpapi` | REST API, OAuth callback, e2e driver, SPA |
 | `internal/worker` | refresh and retention |
 | `web` | React SPA |
+
+## Search mode
+
+Append `?search=true` to `/mcp` or `/{slug}/mcp` and the gateway lists four tools instead of every
+upstream tool: `tool_search` (its description carries the roster of connected servers; `paths` expands a
+namespace, `names` loads specific tools, `query` ranks by BM25), `list_tools` (200 names per page grouped
+by namespace, `summaries` opt-in), `execute_tool` (`namespace` + `name`, or `slug__tool`) and
+`refresh_tools`. Everything is served from the Postgres cache; `execute_tool` goes through the normal
+audited call path. Servers are the namespaces, matching OpenAI's tool-search shape.
