@@ -15,6 +15,7 @@ import { CodeBlock } from '../components/JsonBlock'
 import { JsonTree, tryParseJson, type Json } from '../components/PayloadViewer'
 import { CopyButton } from '../components/CopyButton'
 import { FormField } from '../components/FormField'
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
 import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
 import { cn } from '../lib'
@@ -210,77 +211,96 @@ export function ExplorerPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <ListCard className="self-start">
-          <ListBar>
-            <span>
-              {tools.length.toLocaleString()} {tools.length === 1 ? 'tool' : 'tools'}
-            </span>
-            {tools.length > 0 && (
-              <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter" aria-label="Filter tools" className="h-8 w-40 text-xs" />
-            )}
-          </ListBar>
-          {visibleTools.length === 0 ? (
-            <ListEmpty
-              icon={Compass}
-              title={listResult ? (tools.length ? 'No tools match' : 'No tools returned') : 'No tools listed yet'}
-              hint={listResult ? undefined : 'Pick a route and key, then list tools to see what the gateway exposes.'}
-            />
-          ) : (
-            <ListRows className="max-h-[640px] overflow-y-auto">
-              {visibleTools.map((t) => (
-                <ListRow
-                  key={t.name}
-                  cols="minmax(0,1fr)"
-                  onClick={() => pick(t)}
-                  className={cn('p-4', selectedName === t.name && 'bg-elevated/60 hover:bg-elevated/60')}
-                >
+      <ListCard>
+        <ListBar>
+          <span>
+            {tools.length.toLocaleString()} {tools.length === 1 ? 'tool' : 'tools'}
+          </span>
+          {tools.length > 0 && (
+            <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter" aria-label="Filter tools" className="h-8 w-48 text-xs" />
+          )}
+        </ListBar>
+        {visibleTools.length === 0 ? (
+          <ListEmpty
+            icon={Compass}
+            title={listResult ? (tools.length ? 'No tools match' : 'No tools returned') : 'No tools listed yet'}
+            hint={listResult ? undefined : 'Pick a route and key, then list tools to see what the gateway exposes.'}
+          />
+        ) : (
+          <ListRows>
+            {visibleTools.map((t) => {
+              const sep = route === MUX ? t.name.indexOf('__') : -1
+              const server = sep > 0 ? t.name.slice(0, sep) : undefined
+              const name = sep > 0 ? t.name.slice(sep + 2) : t.name
+              return (
+                <ListRow key={t.name} cols="minmax(0,1fr) auto" onClick={() => pick(t)} className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={Wrench} tone={selectedName === t.name ? 'accent' : 'muted'} />
-                    <Primary title={<span className="font-mono text-xs">{t.name}</span>} subtitle={t.description?.split('\n')[0]} />
+                    <IconTile icon={Wrench} tone="muted" />
+                    <Primary
+                      title={
+                        <span className="font-mono text-xs">
+                          {server && <span className="text-muted-foreground">{server}__</span>}
+                          {name}
+                        </span>
+                      }
+                      subtitle={t.description?.split('\n')[0]}
+                    />
                   </div>
+                  <Play className="size-4 text-muted-foreground" aria-hidden />
                 </ListRow>
-              ))}
-            </ListRows>
-          )}
-        </ListCard>
+              )
+            })}
+          </ListRows>
+        )}
+      </ListCard>
 
-        <div className="space-y-6">
-          {selected ? (
-            <div className="rounded-2xl border border-border bg-card">
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-5">
-                <div className="min-w-0">
-                  <h2 className="break-all font-mono text-base font-semibold">{selected.name}</h2>
-                  {selected.description && <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selected.description}</p>}
+      <Sheet
+        open={!!selected}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSelectedName(undefined)
+            setCallResult(undefined)
+          }
+        }}
+      >
+        <SheetContent onOpenAutoFocus={(ev) => ev.preventDefault()}>
+          {selected && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="break-all font-mono text-base">{selected.name}</SheetTitle>
+                <SheetDescription asChild>
+                  <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+                    {selected.description ? (
+                      <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selected.description}</p>
+                    ) : (
+                      <span />
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => setRaw((v) => !v)} aria-pressed={raw}>
+                      <Braces /> {raw ? 'Form' : 'Raw JSON'}
+                    </Button>
+                  </div>
+                </SheetDescription>
+              </SheetHeader>
+              <SheetBody>
+                <div className="space-y-5">
+                  {raw ? (
+                    <RawArguments schema={selected.inputSchema} draft={draft} onChange={setDraft} />
+                  ) : (
+                    <SchemaForm schema={selected.inputSchema} draft={draft} onChange={setDraft} disabled={calling} />
+                  )}
+                  {formError && <Callout tone="danger">{formError}</Callout>}
+                  <div className="flex items-center justify-end">
+                    <Button variant="primary" onClick={callTool} disabled={calling || !keyId}>
+                      <Play /> {calling ? 'Calling…' : 'Call tool'}
+                    </Button>
+                  </div>
+                  {callResult && <ResultPanel result={callResult} raw={raw} />}
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setRaw((v) => !v)} aria-pressed={raw}>
-                  <Braces /> {raw ? 'Form' : 'Raw JSON'}
-                </Button>
-              </div>
-              <div className="space-y-5 p-5">
-                {raw ? (
-                  <RawArguments schema={selected.inputSchema} draft={draft} onChange={setDraft} />
-                ) : (
-                  <SchemaForm schema={selected.inputSchema} draft={draft} onChange={setDraft} disabled={calling} />
-                )}
-                {formError && <Callout tone="danger">{formError}</Callout>}
-              </div>
-              <div className="flex items-center justify-end gap-3 border-t border-border p-5">
-                <Button variant="primary" onClick={callTool} disabled={calling || !keyId}>
-                  <Play /> {calling ? 'Calling…' : 'Call tool'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-              <p className="text-sm font-medium">Pick a tool</p>
-              <p className="mt-1 text-xs text-muted-foreground">Its input schema becomes a form here, and the result lands underneath.</p>
-            </div>
+              </SheetBody>
+            </>
           )}
-
-          {callResult && <ResultPanel result={callResult} raw={raw} />}
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
