@@ -32,6 +32,7 @@ const (
 	SearchTool  = "tool_search"
 	ListTool    = "list_tools"
 	ExecuteTool = "execute_tool"
+	DefineTool  = "get_tool_definition"
 	// ListPageSize is the page size of list_tools.
 	ListPageSize = 200
 )
@@ -180,7 +181,7 @@ func (g *Gateway) searchToolsList(ctx context.Context, caller *auth.Caller, rout
 	if err != nil {
 		return nil, err
 	}
-	tools := []*mcp.Tool{searchToolDef(entries, route), listToolDef(), executeToolDef()}
+	tools := []*mcp.Tool{searchToolDef(entries, route), listToolDef(), defineToolDef(), executeToolDef()}
 	if route == "mux" {
 		tools = append(tools, refreshToolDef())
 	}
@@ -253,11 +254,26 @@ func listToolDef() *mcp.Tool {
 		"cursor":    map[string]any{"type": "string", "description": "Opaque cursor from a previous page."},
 		"summaries": map[string]any{"type": "boolean", "default": false, "description": "Include a one-line summary per tool (costs ~5x the tokens of names alone)."},
 	}
-	desc := fmt.Sprintf("List every tool name grouped by server (%d per page) without loading schemas. Use tool_search to get the definition of one you want.", ListPageSize)
+	desc := fmt.Sprintf("List every tool name grouped by server (%d per page) without loading schemas. Use get_tool_definition to load the ones you want.", ListPageSize)
 	return &mcp.Tool{
 		Name:        ListTool,
 		Description: desc,
 		InputSchema: map[string]any{"type": "object", "properties": props, "additionalProperties": false},
+	}
+}
+
+func defineToolDef() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        DefineTool,
+		Description: "Get the full definitions (description and input schema) of tools you already know by name, for example from list_tools. Exact lookup, no ranking.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"names": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"}, "description": "Tool names as shown by list_tools."},
+			},
+			"required":             []string{"names"},
+			"additionalProperties": false,
+		},
 	}
 }
 
@@ -276,7 +292,7 @@ func executeToolDef() *mcp.Tool {
 // ---- tools/call in search mode ---------------------------------------------
 
 func isSearchTool(name string) bool {
-	return name == SearchTool || name == ListTool || name == ExecuteTool
+	return name == SearchTool || name == ListTool || name == ExecuteTool || name == DefineTool
 }
 
 func (g *Gateway) searchCall(ctx context.Context, caller *auth.Caller, route, slug string, p *mcp.CallToolParamsRaw) (mcp.Result, error) {
@@ -297,6 +313,21 @@ func (g *Gateway) searchCall(ctx context.Context, caller *auth.Caller, route, sl
 			return nil, err
 		}
 		return listToolsResult(entries, route, in.Server, in.Cursor, in.Summaries), nil
+	case DefineTool:
+		var in struct {
+			Names []string `json:"names"`
+		}
+		if err := decodeArgs(p.Arguments, &in); err != nil {
+			return nil, err
+		}
+		if len(in.Names) == 0 {
+			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "names is required"}
+		}
+		entries, err := g.catalog(ctx, caller, route, slug, false)
+		if err != nil {
+			return nil, err
+		}
+		return defineToolsResult(entries, route, in.Names), nil
 	case SearchTool:
 		var in struct {
 			Query string `json:"query"`
@@ -434,6 +465,52 @@ func (g *Gateway) toolSearchResult(entries []catalogEntry, route, query string, 
 		Content:           []mcp.Content{&mcp.TextContent{Text: sb.String()}},
 		StructuredContent: map[string]any{"tools": out},
 	}, len(out)
+}
+
+// defineToolsResult looks tools up by their callable name (case-insensitive)
+// and returns the full definitions, naming any it could not find.
+func defineToolsResult(entries []catalogEntry, route string, names []string) *mcp.CallToolResult {
+	type result struct {
+		Server string    `json:"server"`
+		Tool   *mcp.Tool `json:"tool"`
+	}
+	var found []result
+	var missing []string
+	var sb strings.Builder
+	for _, want := range names {
+		var hit *result
+		for _, e := range entries {
+			for _, t := range e.tools {
+				if strings.EqualFold(toolName(route, e.srv.Slug, t.Name), strings.TrimSpace(want)) {
+					c := *t
+					c.Name = toolName(route, e.srv.Slug, t.Name)
+					hit = &result{Server: e.srv.Slug, Tool: &c}
+					break
+				}
+			}
+			if hit != nil {
+				break
+			}
+		}
+		if hit == nil {
+			missing = append(missing, want)
+			continue
+		}
+		found = append(found, *hit)
+		fmt.Fprintf(&sb, "%s — %s\n", hit.Tool.Name, oneLine(firstLine(hit.Tool.Description), 160))
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(&sb, "Not found: %s. Use list_tools or tool_search to find the right name.\n", strings.Join(missing, ", "))
+	}
+	structured := map[string]any{"tools": found}
+	if len(missing) > 0 {
+		structured["notFound"] = missing
+	}
+	return &mcp.CallToolResult{
+		Content:           []mcp.Content{&mcp.TextContent{Text: sb.String()}},
+		StructuredContent: structured,
+		IsError:           len(found) == 0,
+	}
 }
 
 // toolName is the callable name for a tool on a route: slug__tool on the mux,
