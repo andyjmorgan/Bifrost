@@ -52,6 +52,9 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if in.Search {
+		endpoint += "?search=true"
+	}
 	public := a.publicBase + endpoint[len(a.selfBase):]
 	reqID := uuid.NewString()
 	res := E2EResult{Endpoint: public, RequestID: reqID}

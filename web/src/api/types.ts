@@ -191,6 +191,7 @@ export interface AuditQuery {
 }
 
 export interface E2EInput {
+  search?: boolean
   apiKeyId: string
   name?: string
   arguments?: Record<string, unknown>

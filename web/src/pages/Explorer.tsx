@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Braces, Compass, ListTree, Play, Wrench } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
+import { Switch } from '../ui/components/switch'
 import { Badge } from '../ui/components/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
 import { PageHeader } from '../components/PageHeader'
@@ -21,6 +22,7 @@ import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult,
 import { cn } from '../lib'
 
 const MUX = 'mux'
+const SEARCH_STORAGE = 'mcpgw-explorer-search'
 const KEY_STORAGE = 'mcpgw-explorer-key'
 
 // The tool explorer drives the gateway through its own front door, exactly as an agent would:
@@ -28,6 +30,20 @@ const KEY_STORAGE = 'mcpgw-explorer-key'
 // lands in the audit trail with a request id we can link to.
 export function ExplorerPage() {
   const [params, setParams] = useSearchParams()
+  const [search, setSearch] = useState(() => {
+    try {
+      return sessionStorage.getItem(SEARCH_STORAGE) === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SEARCH_STORAGE, search ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [search])
   const route = params.get('route') || MUX
   const [servers, setServers] = useState<ServerDTO[]>([])
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
@@ -95,7 +111,7 @@ export function ExplorerPage() {
     setSelectedName(undefined)
     setCallResult(undefined)
     try {
-      const r = await api.e2e.listTools(route, { apiKeyId: keyId })
+      const r = await api.e2e.listTools(route, { apiKeyId: keyId, search })
       setListResult(r)
       if (!r.ok) toast.error('tools/list failed', { description: r.error })
     } catch (e) {
@@ -125,7 +141,7 @@ export function ExplorerPage() {
     setCalling(true)
     setCallResult(undefined)
     try {
-      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId, name: selected.name, arguments: args }))
+      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId, name: selected.name, arguments: args, search }))
     } catch (e) {
       setCallResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
@@ -146,7 +162,7 @@ export function ExplorerPage() {
       {loadError && <Callout tone="danger">{loadError}</Callout>}
 
       <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-end">
           <FormField label="Route" hint={route === MUX ? 'Tool names are prefixed slug__tool.' : 'Direct route: tool names are unprefixed.'}>
             <Select value={route} onValueChange={setRoute}>
               <SelectTrigger aria-label="Route">
@@ -191,6 +207,11 @@ export function ExplorerPage() {
                 ))}
               </SelectContent>
             </Select>
+          </FormField>
+          <FormField label="Search mode" hint={search ? 'tool_search, list_tools, execute_tool.' : 'Flat list of every tool.'}>
+            <div className="flex h-10 items-center">
+              <Switch checked={search} onCheckedChange={setSearch} aria-label="Search mode" />
+            </div>
           </FormField>
           <Button variant="primary" onClick={listTools} disabled={!keyId || listing} className="md:mb-[26px]">
             <ListTree /> {listing ? 'Listing…' : 'List tools'}

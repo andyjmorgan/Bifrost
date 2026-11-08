@@ -162,6 +162,7 @@ type E2EInput struct {
 	APIKeyID  string         `json:"apiKeyId"`
 	Name      string         `json:"name,omitempty"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+	Search    bool           `json:"search,omitempty"` // call the route in search mode (?search=true)
 }
 
 // AuditTraceDTO is one exchange as a trace: the inbound root (absent for

@@ -25,6 +25,8 @@ type Init struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	ServerName      string `json:"serverName,omitempty"`
 	ServerVersion   string `json:"serverVersion,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Instructions    string `json:"instructions,omitempty"`
 }
 
 // Store is the slice of the Postgres store the writer needs.

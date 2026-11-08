@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -90,7 +88,11 @@ func (g *Gateway) handler(route string) http.Handler {
 			}
 			audit.SetTarget(r.Context(), srv.ID, srv.Slug)
 		}
-		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), routeKey{}, route)))
+		ctx := context.WithValue(r.Context(), routeKey{}, route)
+		if r.URL.Query().Get("search") == "true" {
+			ctx = withSearchMode(ctx)
+		}
+		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -103,6 +105,9 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 			}
 			switch method {
 			case "tools/list":
+				if searchMode(ctx) {
+					return g.searchToolsList(ctx, caller, route, slug)
+				}
 				return g.listTools(ctx, caller, route, slug)
 			case "tools/call":
 				// Server-side params arrive raw: arguments stay as JSON bytes and
@@ -110,6 +115,9 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 				p, ok := req.GetParams().(*mcp.CallToolParamsRaw)
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/call params"}
+				}
+				if searchMode(ctx) && isSearchTool(p.Name) {
+					return g.searchCall(ctx, caller, route, slug, p)
 				}
 				return g.callTool(ctx, caller, route, slug, p)
 			}
@@ -154,85 +162,29 @@ func refreshToolDef() *mcp.Tool {
 // muxTools lists tools across all enabled servers. With force, cached
 // entries are ignored and every server is asked afresh.
 func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
-	servers, cached, err := g.store.ListServersWithCache(ctx, caller.OwnerID, cache.NSTools, cache.NSInit)
+	entries, err := g.catalog(ctx, caller, route, "", force)
 	if err != nil {
-		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
+		return nil, err
 	}
-	type part struct {
-		slug  string
-		tools []*mcp.Tool
-	}
-	var (
-		mu          sync.Mutex
-		parts       []part
-		unavailable []map[string]string
-		wg          sync.WaitGroup
-	)
-	for _, srv := range servers {
-		if !srv.Enabled {
+	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{refreshToolDef()}}
+	for _, e := range entries {
+		if e.err != nil {
 			continue
 		}
-		wg.Add(1)
-		go func(srv *store.Server) {
-			defer wg.Done()
-			var tools []*mcp.Tool
-			hit := false
-			if !force {
-				tools, hit = decodeTools(cached[srv.ID][cache.NSTools])
+		for _, t := range e.tools {
+			// Copy: cached tool objects must not be mutated with the prefix.
+			c := *t
+			c.Name = e.srv.Slug + Separator + t.Name
+			if t.Description != "" {
+				c.Description = "[" + e.srv.Name + "] " + t.Description
+			} else {
+				c.Description = "[" + e.srv.Name + "]"
 			}
-			var err error
-			if !hit {
-				hint := ""
-				if !force {
-					hint = initHint(cached[srv.ID])
-				}
-				if tools, err = g.toolsOf(ctx, srv, hint); err == nil {
-					g.cacheTools(srv, tools)
-				}
-			}
-			if err != nil {
-				// One broken server must not take the mux down, but its absence
-				// is visible: the result's _meta lists it, the inbound audit
-				// event becomes partial and an upstream event records the skip.
-				errType := "upstream"
-				switch {
-				case errors.Is(err, upstream.ErrCredentialPending):
-					errType = "credential_pending"
-				case errors.Is(err, upstream.ErrCredentialBroken):
-					errType = "credential_broken"
-				}
-				g.log.Warn("mux: server unavailable", "slug", srv.Slug, "type", errType, "err", err)
-				audit.AddIssue(ctx, srv.Slug+": "+err.Error())
-				if g.rec != nil {
-					g.rec.RecordSkipped(ctx, srv, route, "tools/list", errType, err.Error())
-				}
-				mu.Lock()
-				unavailable = append(unavailable, map[string]string{"slug": srv.Slug, "name": srv.Name, "error": err.Error()})
-				mu.Unlock()
-				return
-			}
-			for _, t := range tools {
-				t.Name = srv.Slug + Separator + t.Name
-				if t.Description != "" {
-					t.Description = "[" + srv.Name + "] " + t.Description
-				} else {
-					t.Description = "[" + srv.Name + "]"
-				}
-			}
-			mu.Lock()
-			parts = append(parts, part{srv.Slug, tools})
-			mu.Unlock()
-		}(srv)
+			out.Tools = append(out.Tools, &c)
+		}
 	}
-	wg.Wait()
-	sort.Slice(parts, func(i, j int) bool { return parts[i].slug < parts[j].slug })
-	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{refreshToolDef()}}
-	for _, p := range parts {
-		out.Tools = append(out.Tools, p.tools...)
-	}
-	if len(unavailable) > 0 {
-		sort.Slice(unavailable, func(i, j int) bool { return unavailable[i]["slug"] < unavailable[j]["slug"] })
-		out.Meta = mcp.Meta{MetaKeyUnavailable: unavailable}
+	if u := unavailableOf(entries); len(u) > 0 {
+		out.Meta = mcp.Meta{MetaKeyUnavailable: u}
 	}
 	return out, nil
 }
