@@ -27,14 +27,12 @@ func (p *Postgres) CacheGet(ctx context.Context, ns, key string) (json.RawMessag
 }
 
 // CacheSet stores value under (ns, key) for ttl, replacing any earlier row.
-// serverID (optional) ties the row to a server for joins and cascade delete.
-func (p *Postgres) CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value, meta json.RawMessage, ttl time.Duration) error {
-	if meta == nil {
-		meta = json.RawMessage(`{}`)
-	}
-	_, err := p.pool.Exec(ctx, `insert into cache (ns, key, server_id, value, meta, expires_at) values ($1,$2,$3,$4,$5,now()+$6)
-on conflict (ns, key) do update set server_id=excluded.server_id, value=excluded.value, meta=excluded.meta, created_at=now(), expires_at=excluded.expires_at`,
-		ns, key, serverID, value, meta, ttl)
+// serverID (nil for gateway-wide entries such as the mux tools/list) ties the
+// row to a server for the joined lookup and cascade delete.
+func (p *Postgres) CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value json.RawMessage, ttl time.Duration) error {
+	_, err := p.pool.Exec(ctx, `insert into cache (ns, key, server_id, value, expires_at) values ($1,$2,$3,$4,now()+$5)
+on conflict (ns, key) do update set server_id=excluded.server_id, value=excluded.value, expires_at=excluded.expires_at`,
+		ns, key, serverID, value, ttl)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}

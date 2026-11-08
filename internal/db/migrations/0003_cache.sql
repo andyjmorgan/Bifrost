@@ -1,6 +1,6 @@
 -- TTL cache in Postgres instead of a separate key-value store.
 --
--- Rows carry expires_at. A row-level-security policy hides expired rows the
+-- Rows carry expires_at (meta and created_at were dropped in 0005).
 -- instant they expire (for non-superuser roles; the bootstrap superuser
 -- bypasses RLS, so queries also filter explicitly), and a pg_cron job deletes
 -- them every minute. Values are the JSON-RPC results themselves (tools/list
