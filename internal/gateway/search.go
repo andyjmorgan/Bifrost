@@ -114,11 +114,12 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		if report == nil {
 			return
 		}
+		// Send under the lock so notifications leave in counter order; the
+		// spec wants progress to increase with every notification.
 		stepMu.Lock()
+		defer stepMu.Unlock()
 		step += n
-		cur := step
-		stepMu.Unlock()
-		report(float64(cur), total, msg)
+		report(float64(step), total, msg)
 	}
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
