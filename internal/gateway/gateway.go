@@ -160,7 +160,7 @@ const RefreshTool = "refresh_tools"
 func refreshToolDef() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        RefreshTool,
-		Description: "Re-list every server's tools, bypassing and refreshing the gateway cache. Returns the fresh tool list.",
+		Description: "Re-fetch every server's tools, bypassing and refreshing the gateway cache. Returns a per-server summary; call tools/list afterwards for the fresh definitions.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
 	}
 }
@@ -267,27 +267,41 @@ func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersio
 func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug string, p *mcp.CallToolParamsRaw) (mcp.Result, error) {
 	name := p.Name
 	if route == "mux" && p.Name == RefreshTool {
-		res, err := g.muxTools(ctx, caller, route, true)
+		// A method, not a listing: refresh every server and report what
+		// happened. Definitions come from tools/list or get_tool_definition.
+		entries, err := g.catalog(ctx, caller, route, "", true)
 		if err != nil {
 			return nil, err
 		}
-		names := make([]string, 0, len(res.Tools))
-		for _, t := range res.Tools {
-			if t.Name != RefreshTool {
-				names = append(names, t.Name)
+		type line struct {
+			Server string `json:"server"`
+			Tools  int    `json:"tools"`
+			Error  string `json:"error,omitempty"`
+		}
+		var (
+			lines      []line
+			total, bad int
+			sb         strings.Builder
+		)
+		for _, e := range entries {
+			l := line{Server: e.srv.Slug, Tools: len(e.tools)}
+			if e.err != nil {
+				l.Error = e.err.Error()
+				bad++
+				fmt.Fprintf(&sb, "%s: unavailable (%s)\n", e.srv.Slug, oneLine(e.err.Error(), 120))
+			} else {
+				total += len(e.tools)
+				fmt.Fprintf(&sb, "%s: %d tools\n", e.srv.Slug, len(e.tools))
 			}
+			lines = append(lines, l)
 		}
-		structured := map[string]any{"tools": res.Tools, "count": len(names)}
-		if u, ok := res.Meta[MetaKeyUnavailable]; ok {
-			structured["unavailable"] = u
-		}
-		summary := fmt.Sprintf("Refreshed %d tools from the gateway's servers.", len(names))
-		if u, ok := res.Meta[MetaKeyUnavailable].([]map[string]string); ok && len(u) > 0 {
-			summary += fmt.Sprintf(" %d server(s) unavailable.", len(u))
+		summary := fmt.Sprintf("Refreshed %d tools across %d servers", total, len(entries)-bad)
+		if bad > 0 {
+			summary += fmt.Sprintf(", %d unavailable", bad)
 		}
 		return &mcp.CallToolResult{
-			Content:           []mcp.Content{&mcp.TextContent{Text: summary + "\n" + strings.Join(names, "\n")}},
-			StructuredContent: structured,
+			Content:           []mcp.Content{&mcp.TextContent{Text: summary + ".\n" + sb.String()}},
+			StructuredContent: map[string]any{"servers": lines, "tools": total, "unavailable": bad},
 		}, nil
 	}
 	if route == "mux" {
