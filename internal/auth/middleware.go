@@ -16,6 +16,10 @@ type Authenticator struct {
 	PublicBase string
 	MCPScope   string // advertised in MCP challenges
 	Issuer     string
+	// OwnerID, when set, is the tenant every OIDC caller is mapped to. The
+	// gateway is single-tenant: whoever passes the role gate manages the
+	// same servers regardless of which Keycloak identity they signed in with.
+	OwnerID string
 }
 
 // Resource is the canonical resource URL for a request path.
@@ -42,7 +46,14 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 	if a.OIDC == nil {
 		return &Caller{OwnerID: a.DevOwner, Subject: a.DevOwner, Type: ActorDev}, nil
 	}
-	return a.OIDC.Verify(ctx, tok, resource)
+	c, err := a.OIDC.Verify(ctx, tok, resource)
+	if err != nil {
+		return nil, err
+	}
+	if a.OwnerID != "" {
+		c.OwnerID = a.OwnerID
+	}
+	return c, nil
 }
 
 // RequireAPI guards REST routes: a valid caller holding scope (OIDC holds all).

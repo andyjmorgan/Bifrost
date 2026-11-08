@@ -24,6 +24,7 @@ type Config struct {
 	OIDCWebClientID  string // SPA client id, accepted as audience for API calls
 	OIDCRequiredRole string // realm or client role the caller must hold
 	OIDCScope        string // scope advertised for MCP clients, e.g. mcp:gateway
+	OwnerID          string // single-tenant: every role-gated human maps to this owner
 	DevOwner         string
 
 	RefreshInterval time.Duration // background token refresh cadence
@@ -44,6 +45,7 @@ func FromEnv() (Config, error) {
 		OIDCWebClientID:  getenv("MCPGW_OIDC_WEB_CLIENT_ID", "mcp-gateway-web"),
 		OIDCRequiredRole: getenv("MCPGW_OIDC_REQUIRED_ROLE", "mcp-gateway-operator"),
 		OIDCScope:        getenv("MCPGW_OIDC_SCOPE", "mcp:gateway"),
+		OwnerID:          getenv("MCPGW_OWNER_ID", "owner"),
 		DevOwner:         getenv("MCPGW_DEV_OWNER", "dev"),
 		Version:          getenv("MCPGW_VERSION", "dev"),
 	}
