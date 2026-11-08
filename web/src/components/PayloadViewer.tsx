@@ -279,7 +279,7 @@ export function findUnavailable(body?: string, headers?: Record<string, string>)
     const result = d.result
     const candidates = [d._meta, isContainer(result) && !Array.isArray(result) ? result._meta : undefined]
     for (const meta of candidates) {
-      if (!isContainer(meta) || Array.isArray(meta)) continue
+      if (meta === undefined || !isContainer(meta) || Array.isArray(meta)) continue
       const list = meta[UNAVAILABLE_META_KEY]
       if (!Array.isArray(list)) continue
       for (const item of list) {
