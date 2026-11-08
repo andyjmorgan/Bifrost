@@ -442,6 +442,51 @@ func (p *Postgres) GetAuditEvent(ctx context.Context, owner string, id uuid.UUID
 	return e, &pl, nil
 }
 
+// GetAuditTrace returns the inbound root of the exchange that id belongs to
+// (nil when the event has no inbound parent, as for API-initiated pings) and
+// every hop under it in start order. Without a parent, hops sharing the
+// request id form the trace.
+func (p *Postgres) GetAuditTrace(ctx context.Context, owner string, id uuid.UUID) (*AuditEvent, []*AuditEvent, error) {
+	e, err := scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where owner_id=$1 and id=$2`, owner, id))
+	if err != nil {
+		return nil, nil, err
+	}
+	var root *AuditEvent
+	switch {
+	case e.Hop == HopInbound:
+		root = e
+	case e.ParentID != nil:
+		root, err = scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where owner_id=$1 and id=$2`, owner, *e.ParentID))
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, nil, err
+		}
+	}
+	var rows pgx.Rows
+	if root != nil {
+		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where owner_id=$1 and parent_id=$2 order by created_at`, owner, root.ID)
+	} else if e.RequestID != "" {
+		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where owner_id=$1 and request_id=$2 and hop='upstream' order by created_at`, owner, e.RequestID)
+	} else {
+		return nil, []*AuditEvent{e}, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("store: %w", err)
+	}
+	defer rows.Close()
+	var spans []*AuditEvent
+	for rows.Next() {
+		s, err := scanAudit(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		spans = append(spans, s)
+	}
+	if spans == nil {
+		spans = []*AuditEvent{}
+	}
+	return root, spans, rows.Err()
+}
+
 // PurgeAuditBefore deletes events (and payloads by cascade) older than t.
 func (p *Postgres) PurgeAuditBefore(ctx context.Context, t time.Time) (int64, error) {
 	tag, err := p.pool.Exec(ctx, `delete from audit_events where created_at < $1`, t)

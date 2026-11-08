@@ -2,6 +2,7 @@ import { http } from './client'
 import type {
   APIKeyDTO,
   AuditDetailDTO,
+  AuditTraceDTO,
   AuditEventDTO,
   AuditQuery,
   AuthInput,
@@ -62,5 +63,6 @@ export const api = {
   audit: {
     list: (q: AuditQuery) => http.get<PageDTO<AuditEventDTO>>(`/audit${qs(q as Record<string, string | number | undefined>)}`),
     get: (id: string) => http.get<AuditDetailDTO>(`/audit/${encodeURIComponent(id)}`),
+    trace: (id: string) => http.get<AuditTraceDTO>(`/audit/${encodeURIComponent(id)}/trace`),
   },
 }

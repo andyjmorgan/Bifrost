@@ -164,6 +164,13 @@ type E2EInput struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
+// AuditTraceDTO is one exchange as a trace: the inbound root (absent for
+// API-initiated hops) and its upstream spans in start order.
+type AuditTraceDTO struct {
+	Root  *AuditEventDTO  `json:"root,omitempty"`
+	Spans []AuditEventDTO `json:"spans"`
+}
+
 // E2EResult is the raw outcome plus timing.
 type E2EResult struct {
 	OK        bool   `json:"ok"`

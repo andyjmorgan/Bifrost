@@ -95,6 +95,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/api-keys", a.listKeys)
 			r.Get("/audit", a.listAudit)
 			r.Get("/audit/{id}", a.getAudit)
+			r.Get("/audit/{id}/trace", a.getAuditTrace)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeMCPEdit))

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, ChevronRight, RotateCw, X } from 'lucide-react'
+import { Activity, ChevronRight, RotateCw, Waypoints, X } from 'lucide-react'
+import { TraceView } from '../components/TraceView'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Badge } from '../ui/components/badge'
@@ -11,7 +12,7 @@ import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListR
 import { StatusPill, type Tone } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { BodyViewer, findUnavailable } from '../components/PayloadViewer'
-import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type Hop, type Outcome } from '../api'
+import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type AuditTraceDTO, type Hop, type Outcome } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
 const PAGE = 25
@@ -265,7 +266,7 @@ export function AuditPage() {
         />
       </ListCard>
 
-      <AuditDetailSheet event={selected} onClose={() => setSelected(undefined)} />
+      <AuditDetailSheet event={selected} onPick={setSelected} onClose={() => setSelected(undefined)} />
     </div>
   )
 }
@@ -305,9 +306,30 @@ function Headers({ label, headers }: { label: string; headers?: Record<string, s
   )
 }
 
-function AuditDetailSheet({ event, onClose }: { event?: AuditEventDTO; onClose: () => void }) {
+function AuditDetailSheet({ event, onPick, onClose }: { event?: AuditEventDTO; onPick: (e: AuditEventDTO) => void; onClose: () => void }) {
   const [detail, setDetail] = useState<AuditDetailDTO>()
   const [error, setError] = useState<string>()
+  const [mode, setMode] = useState<'detail' | 'trace'>('detail')
+  const [trace, setTrace] = useState<AuditTraceDTO>()
+  const [traceError, setTraceError] = useState<string>()
+  // Reset to the exchange view when the sheet opens on a new request.
+  useEffect(() => {
+    if (!event) return
+    setMode('detail')
+  }, [event?.requestId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!event || mode !== 'trace') return
+    if (trace && (trace.root?.requestId === event.requestId || trace.spans[0]?.requestId === event.requestId)) return
+    let cancelled = false
+    setTraceError(undefined)
+    api.audit
+      .trace(event.id)
+      .then((t) => !cancelled && setTrace(t))
+      .catch((e) => !cancelled && setTraceError(errorMessage(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [event, mode, trace])
   useEffect(() => {
     setDetail(undefined)
     setError(undefined)
@@ -369,20 +391,45 @@ function AuditDetailSheet({ event, onClose }: { event?: AuditEventDTO; onClose: 
                     to={`/audit?requestId=${encodeURIComponent(e.requestId)}`}
                     onClick={onClose}
                     className="font-mono underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
-                    title="Show every hop of this request"
+                    title="Filter the list to this request"
                   >
                     {e.requestId}
                   </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-7 px-2 text-xs"
+                    onClick={() => setMode(mode === 'trace' ? 'detail' : 'trace')}
+                    aria-pressed={mode === 'trace'}
+                  >
+                    <Waypoints /> {mode === 'trace' ? 'Exchange' : 'Trace'}
+                  </Button>
                 </>
               )}
             </div>
           </SheetDescription>
         </SheetHeader>
         <SheetBody>
-          {error && <Callout tone="danger">{error}</Callout>}
-          {e?.hasPayload && !payload && !error && <p className="text-xs text-muted-foreground">Loading exchange…</p>}
-          {e && !e.hasPayload && <p className="text-xs text-muted-foreground">No payload was recorded for this event.</p>}
-          {payload && (
+          {mode === 'trace' && (
+            <>
+              {traceError && <Callout tone="danger">{traceError}</Callout>}
+              {!trace && !traceError && <p className="text-xs text-muted-foreground">Loading trace…</p>}
+              {trace && (
+                <TraceView
+                  trace={trace}
+                  currentId={e?.id}
+                  onPick={(span) => {
+                    onPick(span)
+                    setMode('detail')
+                  }}
+                />
+              )}
+            </>
+          )}
+          {mode === 'detail' && error && <Callout tone="danger">{error}</Callout>}
+          {mode === 'detail' && e?.hasPayload && !payload && !error && <p className="text-xs text-muted-foreground">Loading exchange…</p>}
+          {mode === 'detail' && e && !e.hasPayload && <p className="text-xs text-muted-foreground">No payload was recorded for this event.</p>}
+          {mode === 'detail' && payload && (
             <>
               <Headers label="Request headers" headers={payload.requestHeaders} />
               <BodyViewer heading="Request" body={payload.requestBody} headers={payload.requestHeaders} />

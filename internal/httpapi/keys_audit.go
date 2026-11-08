@@ -95,6 +95,29 @@ func (a *API) listAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (a *API) getAuditTrace(w http.ResponseWriter, r *http.Request) {
+	c := auth.CallerFrom(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	root, spans, err := a.store.GetAuditTrace(r.Context(), c.OwnerID, id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	out := AuditTraceDTO{Spans: make([]AuditEventDTO, 0, len(spans))}
+	if root != nil {
+		d := auditDTO(root)
+		out.Root = &d
+	}
+	for _, s := range spans {
+		out.Spans = append(out.Spans, auditDTO(s))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (a *API) getAudit(w http.ResponseWriter, r *http.Request) {
 	c := auth.CallerFrom(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

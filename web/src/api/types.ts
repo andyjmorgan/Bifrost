@@ -166,6 +166,11 @@ export interface AuditDetailDTO {
   payload?: AuditPayloadDTO
 }
 
+export interface AuditTraceDTO {
+  root?: AuditEventDTO
+  spans: AuditEventDTO[]
+}
+
 export interface PageDTO<T> {
   items: T[]
   total: number
