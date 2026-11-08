@@ -306,8 +306,11 @@ func listToolsResult(entries []catalogEntry, route, server, cursor string, summa
 		Summary   string `json:"summary,omitempty"`
 	}
 	var rows []row
+	// Slugs are lowercase a-z0-9; accept any casing (and a server's display
+	// name) so "Obsidian" or "Web Search" find the right server.
+	server = strings.ToLower(strings.TrimSpace(server))
 	for _, e := range entries {
-		if server != "" && e.srv.Slug != server {
+		if server != "" && e.srv.Slug != server && strings.ToLower(e.srv.Name) != server {
 			continue
 		}
 		for _, t := range e.tools {
