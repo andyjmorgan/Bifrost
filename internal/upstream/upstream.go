@@ -292,8 +292,20 @@ func (c *Connector) OpenSecret(cred *store.Credential) (*store.Secret, error) {
 	return c.openSecret(cred)
 }
 
+// needsRefresh is true inside the leeway window before expiry. Short-lived
+// tokens (lifetime under twice the leeway) use half their lifetime instead,
+// so a 5-minute token with a 10-minute leeway is not refreshed on every call.
 func (c *Connector) needsRefresh(cred *store.Credential) bool {
-	return cred.OAuthExpiresAt != nil && time.Now().Add(c.leeway).After(*cred.OAuthExpiresAt)
+	if cred.OAuthExpiresAt == nil {
+		return false
+	}
+	leeway := c.leeway
+	if cred.LastRefreshedAt != nil {
+		if life := cred.OAuthExpiresAt.Sub(*cred.LastRefreshedAt); life > 0 && life < 2*leeway {
+			leeway = life / 2
+		}
+	}
+	return time.Now().Add(leeway).After(*cred.OAuthExpiresAt)
 }
 
 // NeedsRefresh reports whether a credential is due for a refresh.
@@ -301,7 +313,7 @@ func (c *Connector) NeedsRefresh(cred *store.Credential) bool { return c.needsRe
 
 // refresh serialises refreshes per server, re-reads the credential under
 // the lock (another request may have refreshed already), and persists the
-// new token set. Failure marks the credential broken.
+// new token set. A definitive token-endpoint rejection marks the credential broken.
 func (c *Connector) refresh(ctx context.Context, srv *store.Server, cred *store.Credential, sec *store.Secret) (*store.Secret, error) {
 	muI, _ := c.locks.LoadOrStore(srv.ID, &sync.Mutex{})
 	mu := muI.(*sync.Mutex)
@@ -314,14 +326,22 @@ func (c *Connector) refresh(ctx context.Context, srv *store.Server, cred *store.
 		return c.openSecret(cred)
 	}
 	reg := &oauthclient.Registration{Kind: cred.OAuthRegistrationKind, ClientID: cred.OAuthClientID, ClientSecret: sec.ClientSecret}
-	ts, err := c.oauth.Refresh(ctx, cred.OAuthTokenEndpoint, reg, sec.RefreshToken, cred.OAuthResource, cred.OAuthScopes)
+	// The refresh outlives the caller: a cancelled request must not abort a
+	// token rotation half-way (the old refresh token may already be spent).
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.timeout)
+	defer cancel()
+	ts, err := c.oauth.Refresh(rctx, cred.OAuthTokenEndpoint, reg, sec.RefreshToken, cred.OAuthResource, cred.OAuthScopes)
 	if err != nil {
-		reason := err.Error()
+		// Only a definitive answer from the token endpoint (4xx such as
+		// invalid_grant) breaks the credential. Network errors, timeouts and
+		// 5xx are transient: fail this call and try again next time.
 		var te *oauthclient.TokenError
-		if errors.As(err, &te) {
-			reason = te.Code + ": " + te.Description
+		if !errors.As(err, &te) || te.Status >= 500 {
+			c.log.Warn("token refresh failed (transient)", "slug", srv.Slug, "err", err)
+			return nil, fmt.Errorf("upstream: token refresh failed: %w", err)
 		}
-		if sErr := c.store.SetCredentialState(ctx, srv.ID, store.StateBroken, reason); sErr != nil {
+		reason := te.Code + ": " + te.Description
+		if sErr := c.store.SetCredentialState(rctx, srv.ID, store.StateBroken, reason); sErr != nil {
 			c.log.Error("mark broken failed", "slug", srv.Slug, "err", sErr)
 		}
 		cred.State = store.StateBroken
@@ -333,7 +353,7 @@ func (c *Connector) refresh(ctx context.Context, srv *store.Server, cred *store.
 	if err != nil {
 		return nil, err
 	}
-	if err := c.store.UpdateOAuthTokens(ctx, srv.ID, blob, ts.TokenType, ts.ExpiresAt, ts.RefreshToken != "", ts.Scope); err != nil {
+	if err := c.store.UpdateOAuthTokens(rctx, srv.ID, blob, ts.TokenType, ts.ExpiresAt, ts.RefreshToken != "", ts.Scope); err != nil {
 		return nil, err
 	}
 	now := time.Now()
