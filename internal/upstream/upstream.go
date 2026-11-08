@@ -279,7 +279,9 @@ func (c *Connector) SealSecret(serverID uuid.UUID, s *store.Secret) ([]byte, err
 }
 
 // OpenSecret exposes decryption for the API layer (never returned to clients).
-func (c *Connector) OpenSecret(cred *store.Credential) (*store.Secret, error) { return c.openSecret(cred) }
+func (c *Connector) OpenSecret(cred *store.Credential) (*store.Secret, error) {
+	return c.openSecret(cred)
+}
 
 func (c *Connector) needsRefresh(cred *store.Credential) bool {
 	return cred.OAuthExpiresAt != nil && time.Now().Add(c.leeway).After(*cred.OAuthExpiresAt)

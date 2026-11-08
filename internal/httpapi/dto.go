@@ -166,12 +166,12 @@ type E2EInput struct {
 
 // E2EResult is the raw outcome plus timing.
 type E2EResult struct {
-	OK         bool   `json:"ok"`
-	LatencyMS  int64  `json:"latencyMs"`
-	Endpoint   string `json:"endpoint"`
-	Result     any    `json:"result,omitempty"`
-	Error      string `json:"error,omitempty"`
-	RequestID  string `json:"requestId,omitempty"`
+	OK        bool   `json:"ok"`
+	LatencyMS int64  `json:"latencyMs"`
+	Endpoint  string `json:"endpoint"`
+	Result    any    `json:"result,omitempty"`
+	Error     string `json:"error,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
 }
 
 // MeDTO describes the caller.
@@ -186,12 +186,12 @@ type MeDTO struct {
 
 // ConfigDTO is what the SPA needs before login.
 type ConfigDTO struct {
-	DevMode       bool   `json:"devMode"`
-	OIDCIssuer    string `json:"oidcIssuer,omitempty"`
-	OIDCClientID  string `json:"oidcClientId,omitempty"`
-	PublicBaseURL string `json:"publicBaseUrl"`
-	Version       string `json:"version"`
-	MCPScope      string `json:"mcpScope"`
+	DevMode       bool     `json:"devMode"`
+	OIDCIssuer    string   `json:"oidcIssuer,omitempty"`
+	OIDCClientID  string   `json:"oidcClientId,omitempty"`
+	PublicBaseURL string   `json:"publicBaseUrl"`
+	Version       string   `json:"version"`
+	MCPScope      string   `json:"mcpScope"`
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
