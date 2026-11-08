@@ -97,17 +97,21 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		entries []catalogEntry
 		wg      sync.WaitGroup
 	)
-	// Progress: three steps per server (connecting, connected+listing, done)
-	// on one monotonic counter, since servers finish concurrently. A cached
-	// server completes in a single step but still advances by three.
+	// Progress: three steps (connecting, connected+listing, done) for every
+	// server that actually needs a connection, on one monotonic counter since
+	// servers finish concurrently. Servers answered from cache are silent, so
+	// a search over a warm cache reports nothing.
 	report := progressFrom(ctx)
-	serverCount := 0
+	fetching := 0
 	for _, srv := range servers {
-		if srv.Enabled || route == "direct" {
-			serverCount++
+		if !srv.Enabled && route != "direct" {
+			continue
+		}
+		if _, hit := decodeTools(cached[srv.ID][cache.NSTools]); force || !hit {
+			fetching++
 		}
 	}
-	total := float64(serverCount * 3)
+	total := float64(fetching * 3)
 	var step int
 	var stepMu sync.Mutex
 	advance := func(n int, msg string) {
@@ -169,7 +173,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				// The connect/list steps that did not happen still count.
 				advance(3-stepsTaken(e), fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120)))
 			case hit:
-				advance(3, fmt.Sprintf("%s: %s (cached)", srv.Slug, plural(len(e.tools), "tool")))
+				// served from cache: no progress
 			default:
 				advance(1, fmt.Sprintf("%s: %s", srv.Slug, plural(len(e.tools), "tool")))
 			}
