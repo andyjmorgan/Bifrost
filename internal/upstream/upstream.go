@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,8 +50,10 @@ type Connector struct {
 	log      *slog.Logger
 	timeout  time.Duration
 	leeway   time.Duration
-	version  string
-	locks    sync.Map // serverID -> *sync.Mutex guarding refresh
+	// OnInit is called after each successful connect with the initialize result.
+	OnInit  func(srv *store.Server, ir *mcp.InitializeResult)
+	version string
+	locks   sync.Map // serverID -> *sync.Mutex guarding refresh
 }
 
 // New builds a connector.
@@ -119,6 +122,28 @@ func (s *Session) Close() error {
 // negotiated protocol version on the context, and the outgoing client would
 // otherwise inherit it and speak 2026-07-28 to a server that may not.
 func (c *Connector) Open(ctx context.Context, srv *store.Server) (*Session, error) {
+	return c.OpenWith(ctx, srv, "")
+}
+
+// OpenWith is Open starting the handshake at protocolVersion (the version the
+// server negotiated last time; "" means latest with the discover probe). If
+// the server now rejects that version, it retries once with latest. On
+// success OnInit, if set, is told what the server reported.
+func (c *Connector) OpenWith(ctx context.Context, srv *store.Server, protocolVersion string) (*Session, error) {
+	sess, err := c.open(ctx, srv, protocolVersion)
+	if err != nil && protocolVersion != "" && strings.Contains(err.Error(), "unsupported protocol version") {
+		c.log.Info("upstream: cached protocol version rejected; retrying with latest", "slug", srv.Slug, "version", protocolVersion)
+		sess, err = c.open(ctx, srv, "")
+	}
+	if err == nil && c.OnInit != nil {
+		if ir := sess.InitializeResult(); ir != nil {
+			c.OnInit(srv, ir)
+		}
+	}
+	return sess, err
+}
+
+func (c *Connector) open(ctx context.Context, srv *store.Server, protocolVersion string) (*Session, error) {
 	dctx, cancel := detach(ctx, targetFor(ctx, srv))
 	hc, err := c.HTTPClient(dctx, srv)
 	if err != nil {
@@ -133,7 +158,7 @@ func (c *Connector) Open(ctx context.Context, srv *store.Server) (*Session, erro
 		// overhead. Older go-sdk servers also hold the GET without flushing
 		// headers, which would block Connect.
 		DisableStandaloneSSE: true,
-	}, nil)
+	}, &mcp.ClientSessionOptions{ProtocolVersion: protocolVersion})
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("upstream %s: connect: %w", srv.Slug, err)

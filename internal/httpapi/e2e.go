@@ -38,6 +38,20 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	if route != "mux" {
 		endpoint = a.selfBase + "/" + route + "/mcp"
 	}
+	// An operator listing from the UI is a "what is there now" question:
+	// drop the cache for the target first (synchronously, so the front-door
+	// call below misses and refills it) instead of serving the cached list.
+	if action == "list" {
+		if route == "mux" {
+			if err := a.store.CacheInvalidateOwner(r.Context(), c.OwnerID); err != nil {
+				a.log.Warn("e2e: cache invalidate", "err", err)
+			}
+		} else if s, err := a.store.GetServerBySlug(r.Context(), c.OwnerID, route); err == nil {
+			if err := a.store.CacheInvalidateServer(r.Context(), s.ID); err != nil {
+				a.log.Warn("e2e: cache invalidate", "slug", route, "err", err)
+			}
+		}
+	}
 	public := a.publicBase + endpoint[len(a.selfBase):]
 	reqID := uuid.NewString()
 	res := E2EResult{Endpoint: public, RequestID: reqID}

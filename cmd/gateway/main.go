@@ -27,6 +27,7 @@ import (
 	"github.com/andyjmorgan/mcp-gateway/internal/store"
 	"github.com/andyjmorgan/mcp-gateway/internal/upstream"
 	"github.com/andyjmorgan/mcp-gateway/internal/worker"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
@@ -75,6 +76,14 @@ func main() {
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
 	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
 	cw := cache.NewWriter(ctx, st, log)
+	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
+		in := cache.Init{ProtocolVersion: ir.ProtocolVersion}
+		if ir.ServerInfo != nil {
+			in.ServerName, in.ServerVersion = ir.ServerInfo.Name, ir.ServerInfo.Version
+		}
+		id := srv.ID
+		cw.Put(cache.NSInit, id.String(), &id, in, cfg.ToolsCacheTTL)
+	}
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr

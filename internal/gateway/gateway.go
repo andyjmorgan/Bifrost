@@ -37,8 +37,8 @@ const Separator = "__"
 type Store interface {
 	ListServers(ctx context.Context, owner string) ([]*store.Server, error)
 	GetServerBySlug(ctx context.Context, owner, slug string) (*store.Server, error)
-	ListServersWithCache(ctx context.Context, owner, ns string) ([]*store.Server, map[uuid.UUID]json.RawMessage, error)
-	GetServerBySlugWithCache(ctx context.Context, owner, slug, ns string) (*store.Server, json.RawMessage, error)
+	ListServersWithCache(ctx context.Context, owner string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
+	GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
 }
 
 // Gateway serves the two MCP routes.
@@ -122,14 +122,14 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 
 func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
 	if route == "direct" {
-		srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSTools)
+		srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSTools, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
-		if tools, ok := decodeTools(cached); ok {
+		if tools, ok := decodeTools(cached[cache.NSTools]); ok {
 			return &mcp.ListToolsResult{Tools: tools}, nil
 		}
-		tools, err := g.toolsOf(ctx, srv)
+		tools, err := g.toolsOf(ctx, srv, initHint(cached))
 		if err != nil {
 			return nil, upstreamError(srv, err)
 		}
@@ -154,7 +154,7 @@ func refreshToolDef() *mcp.Tool {
 // muxTools lists tools across all enabled servers. With force, cached
 // entries are ignored and every server is asked afresh.
 func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
-	servers, cachedTools, err := g.store.ListServersWithCache(ctx, caller.OwnerID, cache.NSTools)
+	servers, cached, err := g.store.ListServersWithCache(ctx, caller.OwnerID, cache.NSTools, cache.NSInit)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 	}
@@ -178,11 +178,15 @@ func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route strin
 			var tools []*mcp.Tool
 			hit := false
 			if !force {
-				tools, hit = decodeTools(cachedTools[srv.ID])
+				tools, hit = decodeTools(cached[srv.ID][cache.NSTools])
 			}
 			var err error
 			if !hit {
-				if tools, err = g.toolsOf(ctx, srv); err == nil {
+				hint := ""
+				if !force {
+					hint = initHint(cached[srv.ID])
+				}
+				if tools, err = g.toolsOf(ctx, srv, hint); err == nil {
 					g.cacheTools(srv, tools)
 				}
 			}
@@ -255,8 +259,17 @@ func (g *Gateway) cacheTools(srv *store.Server, tools []*mcp.Tool) {
 	g.cache.Put(cache.NSTools, id.String(), &id, tools, g.toolsTTL)
 }
 
-func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server) ([]*mcp.Tool, error) {
-	sess, err := g.conn.Open(ctx, srv)
+// initHint returns the cached negotiated protocol version, or "" (probe latest).
+func initHint(b store.CacheBundle) string {
+	var in cache.Init
+	if raw := b[cache.NSInit]; raw != nil && json.Unmarshal(raw, &in) == nil {
+		return in.ProtocolVersion
+	}
+	return ""
+}
+
+func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersion string) ([]*mcp.Tool, error) {
+	sess, err := g.conn.OpenWith(ctx, srv, protocolVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +328,7 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("tool name must be <slug>%s<tool>", Separator)}
 		}
 	}
-	srv, err := g.store.GetServerBySlug(ctx, caller.OwnerID, slug)
+	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSInit)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}
@@ -323,7 +336,7 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
 	}
 	audit.SetTarget(ctx, srv.ID, srv.Slug)
-	sess, err := g.conn.Open(ctx, srv)
+	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
 	if err != nil {
 		return nil, upstreamError(srv, err)
 	}

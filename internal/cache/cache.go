@@ -14,7 +14,18 @@ import (
 // Namespaces (the ns column).
 const (
 	NSTools = "tools" // a server's full tools/list, keyed by server id
+	NSInit  = "init"  // what the server reported at initialize (Init), keyed by server id
 )
+
+// Init is the cached initialize result: the negotiated protocol version lets
+// the next connect start there (no discover probe on legacy servers, no
+// initialize on 2026-07-28 ones). It expires like any cache row, so an
+// upgraded server is re-discovered with the latest version at the next miss.
+type Init struct {
+	ProtocolVersion string `json:"protocolVersion"`
+	ServerName      string `json:"serverName,omitempty"`
+	ServerVersion   string `json:"serverVersion,omitempty"`
+}
 
 // Store is the slice of the Postgres store the writer needs.
 type Store interface {
