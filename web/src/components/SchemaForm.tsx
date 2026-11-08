@@ -56,8 +56,41 @@ export function toArguments(schema: JSONSchema | undefined, draft: Draft): Recor
         out[k] = t === 'integer' ? Math.trunc(n) : n
         break
       }
+      case 'array': {
+        // Accept JSON, or plain items one per line / comma-separated (coerced to the item type).
+        const trimmed = raw.trim()
+        if (trimmed.startsWith('[')) {
+          try {
+            out[k] = JSON.parse(trimmed)
+          } catch {
+            throw new Error(`"${k}" must be a valid JSON array, or one item per line.`)
+          }
+          break
+        }
+        const itemType = (s.items && !Array.isArray(s.items) && typeof s.items === 'object' ? (s.items as JSONSchema).type : undefined) as string | undefined
+        const parts = trimmed
+          .split(/[\n,]/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+        out[k] = parts.map((x) => {
+          if (itemType === 'number' || itemType === 'integer') {
+            const n = Number(x)
+            if (!Number.isFinite(n)) throw new Error(`"${k}" items must be numbers.`)
+            return itemType === 'integer' ? Math.trunc(n) : n
+          }
+          if (itemType === 'boolean') return x === 'true'
+          if (itemType === 'object') {
+            try {
+              return JSON.parse(x)
+            } catch {
+              throw new Error(`"${k}" items must be JSON objects.`)
+            }
+          }
+          return x
+        })
+        break
+      }
       case 'object':
-      case 'array':
         try {
           out[k] = JSON.parse(raw)
         } catch {
@@ -128,11 +161,16 @@ export function SchemaForm({ schema, draft, onChange, disabled }: { schema?: JSO
         }
         if (t === 'object' || t === 'array') {
           return (
-            <FormField key={k} label={label} required={required.has(k)} hint={hint ? `${hint} (JSON)` : `JSON ${t}`}>
+            <FormField
+              key={k}
+              label={label}
+              required={required.has(k)}
+              hint={t === 'array' ? (hint ? `${hint} One per line, or a JSON array.` : 'One per line, or a JSON array.') : hint ? `${hint} (JSON)` : 'JSON object'}
+            >
               <Textarea
                 value={value}
                 onChange={(e) => set(k, e.target.value)}
-                placeholder={t === 'array' ? '[]' : '{}'}
+                placeholder={t === 'array' ? 'one item per line' : '{}'}
                 className="min-h-24 font-mono text-xs"
                 spellCheck={false}
                 disabled={disabled}
