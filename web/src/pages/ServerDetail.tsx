@@ -168,14 +168,6 @@ export function ServerDetailPage() {
             <Button variant="secondary" onClick={() => setEditing(true)}>
               <Pencil /> Edit
             </Button>
-            <Button variant="secondary" onClick={() => setReplacing(true)}>
-              <KeyRound /> Replace credential
-            </Button>
-            {oauth && (
-              <Button variant="secondary" onClick={reauthorize} disabled={reauthBusy}>
-                <RefreshCw /> {reauthBusy ? 'Starting…' : 'Re-authorize'}
-              </Button>
-            )}
             <Button variant="danger" onClick={() => setDeleting(true)}>
               <Trash2 /> Delete
             </Button>
@@ -184,9 +176,12 @@ export function ServerDetailPage() {
       />
 
       {error && <Callout tone="danger">{error}</Callout>}
-
-      {ping && (
-        <PingPanel ping={ping} />
+      {ping && <PingPanel ping={ping} />}
+      {cred?.lastError && (
+        <Callout tone="danger">
+          <span className="font-medium">Credential error</span>
+          <span className="ml-2 break-words font-mono text-xs">{cred.lastError}</span>
+        </Callout>
       )}
 
       <DefinitionList>
@@ -196,101 +191,73 @@ export function ServerDetailPage() {
             <span className="text-xs text-muted-foreground">{server.enabled ? 'Reachable through the gateway' : 'Hidden from the mux and direct routes'}</span>
           </div>
         </Definition>
-        <Definition label="Upstream URL" mono>
+        <Definition label="Upstream" mono>
           <span className="break-all">{server.url}</span>
         </Definition>
-        <Definition label="Gateway MCP URL">
+        <Definition label="Gateway">
           <div className="flex items-center gap-2">
             <code className="min-w-0 break-all rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{server.mcpUrl}</code>
             <CopyButton value={server.mcpUrl} label="Copy gateway URL" />
           </div>
         </Definition>
-        <Definition label="Auth kind">
-          <Badge mono variant={authKindBadge[server.authKind]}>
-            {server.authKind}
-          </Badge>
-          <span className="ml-2 text-xs text-muted-foreground">{authKindLabel(server.authKind)}</span>
-        </Definition>
         <Definition label="Credential">
           <div className="flex flex-wrap items-center gap-2">
+            <Badge mono variant={authKindBadge[server.authKind]}>
+              {authKindLabel(server.authKind)}
+            </Badge>
             <StatusPill tone={status.tone}>{status.label}</StatusPill>
-            {cred?.stateReason && <span className="text-xs text-muted-foreground">{cred.stateReason}</span>}
+            <CredentialSummary cred={cred} />
+            {server.authKind !== 'none' && (
+              <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
+                <KeyRound /> Replace
+              </Button>
+            )}
+            {oauth && (
+              <Button variant="link" size="sm" onClick={reauthorize} disabled={reauthBusy}>
+                <RefreshCw /> {reauthBusy ? 'Starting…' : 'Re-authorize'}
+              </Button>
+            )}
           </div>
         </Definition>
-        {cred?.kind === 'basic' && (
-          <Definition label="Username" mono>
-            {cred.basicUsername || '—'}
-          </Definition>
-        )}
-        {cred?.kind === 'header' && (
-          <Definition label="Header" mono>
-            {cred.headerName || '—'}
-          </Definition>
-        )}
-        {cred?.kind === 'oauth' && (
-          <>
-            <Definition label="Scopes">
-              <div className="flex flex-wrap gap-1">
-                {cred.oauthScopes.length ? (
-                  cred.oauthScopes.map((s) => (
-                    <Badge key={s} mono variant="plum">
-                      {s}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground">Server default</span>
-                )}
-              </div>
-            </Definition>
-            <Definition label="Token expires">
-              <div className="flex flex-wrap items-center gap-2">
-                <Time value={cred.oauthExpiresAt} />
-                <span className="text-xs text-muted-foreground">{cred.oauthHasRefreshToken ? 'refresh token on file' : 'no refresh token'}</span>
-              </div>
-            </Definition>
-            <Definition label="Registration">
-              {cred.oauthRegistrationKind ? (
-                <Badge mono>{cred.oauthRegistrationKind}</Badge>
-              ) : (
-                '—'
-              )}
-              <span className="ml-2 text-xs text-muted-foreground">
-                {cred.oauthRegistrationKind === 'cimd' ? 'Client ID metadata document' : cred.oauthRegistrationKind === 'dcr' ? 'Dynamic client registration' : ''}
-              </span>
-            </Definition>
-            <Definition label="Client ID" mono>
-              <span className="break-all">{cred.oauthClientId || '—'}</span>
-            </Definition>
-            <Definition label="Issuer" mono>
-              <span className="break-all">{cred.oauthIssuer || '—'}</span>
-            </Definition>
-            {cred.oauthResource && (
-              <Definition label="Resource" mono>
-                <span className="break-all">{cred.oauthResource}</span>
-              </Definition>
-            )}
-            <Definition label="Last refreshed">
-              <Time value={cred.lastRefreshedAt} />
-            </Definition>
-          </>
-        )}
-        {cred?.lastError && (
-          <Definition label="Last error">
-            <Callout tone="danger">
-              <span className="break-words font-mono text-xs">{cred.lastError}</span>
-            </Callout>
-          </Definition>
-        )}
-        <Definition label="Created">
-          <Time value={server.createdAt} />
-        </Definition>
-        <Definition label="Updated">
-          <Time value={server.updatedAt} />
-        </Definition>
-        <Definition label="ID" mono>
-          {server.id}
-        </Definition>
       </DefinitionList>
+
+      <details className="group text-sm">
+        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground">
+          Details
+        </summary>
+        <DefinitionList className="mt-3">
+          {cred?.kind === 'oauth' && (
+            <>
+              <Definition label="Registration" mono>
+                {cred.oauthRegistrationKind ? cred.oauthRegistrationKind.toUpperCase() : '—'}
+              </Definition>
+              <Definition label="Client ID" mono>
+                <span className="break-all">{cred.oauthClientId || '—'}</span>
+              </Definition>
+              <Definition label="Issuer" mono>
+                <span className="break-all">{cred.oauthIssuer || '—'}</span>
+              </Definition>
+              {cred.oauthResource && (
+                <Definition label="Resource" mono>
+                  <span className="break-all">{cred.oauthResource}</span>
+                </Definition>
+              )}
+              <Definition label="Last refreshed">
+                <Time value={cred.lastRefreshedAt} />
+              </Definition>
+            </>
+          )}
+          <Definition label="Created">
+            <Time value={server.createdAt} />
+          </Definition>
+          <Definition label="Updated">
+            <Time value={server.updatedAt} />
+          </Definition>
+          <Definition label="ID" mono>
+            {server.id}
+          </Definition>
+        </DefinitionList>
+      </details>
 
       <ServerDialog
         open={editing}
@@ -317,6 +284,22 @@ export function ServerDetailPage() {
       />
     </div>
   )
+}
+
+/** One muted phrase describing the stored credential: who/what header, or scopes + expiry for OAuth. */
+function CredentialSummary({ cred }: { cred?: ServerDTO['credential'] }) {
+  if (!cred) return null
+  const parts: string[] = []
+  if (cred.kind === 'basic' && cred.basicUsername) parts.push(`user ${cred.basicUsername}`)
+  if (cred.kind === 'header' && cred.headerName) parts.push(cred.headerName)
+  if (cred.kind === 'oauth') {
+    if (cred.oauthScopes.length) parts.push(cred.oauthScopes.join(' '))
+    if (cred.oauthExpiresAt) parts.push(`expires ${relativeTime(cred.oauthExpiresAt)}`)
+    if (!cred.oauthHasRefreshToken && cred.state === 'ok') parts.push('no refresh token')
+  }
+  if (cred.stateReason) parts.push(cred.stateReason)
+  if (!parts.length) return null
+  return <span className="font-mono text-xs text-muted-foreground">{parts.join(' · ')}</span>
 }
 
 function PingPanel({ ping }: { ping: PingResult }) {
