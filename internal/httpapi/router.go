@@ -86,7 +86,7 @@ func (a *API) Router() http.Handler {
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(a.rec.Inbound("direct", true), a.authn.RequireMCP(), withTarget("direct"))
-		r.Handle("/{slug:[a-z0-9]{1,12}}/mcp", a.gw.DirectHandler())
+		r.Handle("/{slug:[A-Za-z0-9]{1,12}}/mcp", a.gw.DirectHandler())
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {

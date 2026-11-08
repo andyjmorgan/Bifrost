@@ -73,7 +73,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			SupportedProtocolVersions: []string{ProtocolVersion},
 			Logger:                    g.log,
 		})
-		srv.AddReceivingMiddleware(g.middleware(route, chi.URLParam(r, "slug")))
+		srv.AddReceivingMiddleware(g.middleware(route, strings.ToLower(chi.URLParam(r, "slug"))))
 		return srv
 	}, &mcp.StreamableHTTPOptions{Stateless: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +81,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			// Resolve early so the inbound audit event carries the server even
 			// when the request fails before reaching a method handler.
 			caller := auth.CallerFrom(r.Context())
-			srv, err := g.store.GetServerBySlug(r.Context(), caller.OwnerID, chi.URLParam(r, "slug"))
+			srv, err := g.store.GetServerBySlug(r.Context(), caller.OwnerID, strings.ToLower(chi.URLParam(r, "slug")))
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -211,6 +211,22 @@ func (g *Gateway) cacheTools(srv *store.Server, tools []*mcp.Tool) {
 	g.cache.Put(cache.NSTools, id.String(), &id, tools, g.toolsTTL)
 }
 
+// canonicalToolName returns the cached tool whose name matches ignoring case,
+// or name unchanged when there is no such tool (or an exact match exists).
+func canonicalToolName(tools []*mcp.Tool, name string) string {
+	for _, t := range tools {
+		if t.Name == name {
+			return name
+		}
+	}
+	for _, t := range tools {
+		if strings.EqualFold(t.Name, name) {
+			return t.Name
+		}
+	}
+	return name
+}
+
 // initHint returns the cached negotiated protocol version, or "" (probe latest).
 func initHint(b store.CacheBundle) string {
 	var in cache.Init
@@ -280,12 +296,19 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("tool name must be <slug>%s<tool>", Separator)}
 		}
 	}
-	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSInit)
+	// Slugs are lowercase by construction; models are not always.
+	slug = strings.ToLower(slug)
+	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSInit, cache.NSTools)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}
 	if !srv.Enabled {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
+	}
+	// Tool names are passed through verbatim, except that a case-only mismatch
+	// against the cached list is corrected (upstreams are case-sensitive).
+	if tools, ok := decodeTools(cached[cache.NSTools]); ok {
+		name = canonicalToolName(tools, name)
 	}
 	audit.SetTarget(ctx, srv.ID, srv.Slug)
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
