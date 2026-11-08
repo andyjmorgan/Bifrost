@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -60,21 +63,52 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	res := E2EResult{Endpoint: public, RequestID: reqID}
 	start := time.Now()
 
+	// The whole exchange streams to the browser as SSE: the upstream may
+	// elect to send progress and log notifications before its result, and
+	// the UI shows them as they arrive. The final event is the E2EResult.
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	var emitMu sync.Mutex
+	emit := func(event string, v any) {
+		b, _ := json.Marshal(v)
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	finish := func() {
+		res.LatencyMS = time.Since(start).Milliseconds()
+		emit("result", res)
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	hc := &http.Client{Transport: &headerRT{base: http.DefaultTransport, headers: map[string]string{"Authorization": "Bearer " + secret, "X-Request-Id": reqID}}, Timeout: 60 * time.Second}
-	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-gateway-ui", Version: a.cfgDTO.Version}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-gateway-ui", Version: a.cfgDTO.Version}, &mcp.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, n *mcp.ProgressNotificationClientRequest) {
+			emit("progress", map[string]any{"progress": n.Params.Progress, "total": n.Params.Total, "message": n.Params.Message})
+		},
+		LoggingMessageHandler: func(_ context.Context, n *mcp.LoggingMessageRequest) {
+			emit("log", map[string]any{"level": n.Params.Level, "logger": n.Params.Logger, "data": n.Params.Data})
+		},
+	})
 	sess, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: hc}, nil)
 	if err != nil {
 		res.Error = err.Error()
-		res.LatencyMS = time.Since(start).Milliseconds()
-		writeJSON(w, http.StatusOK, res)
+		finish()
 		return
 	}
 	defer sess.Close()
 	switch action {
 	case "list":
-		out, err := sess.ListTools(ctx, &mcp.ListToolsParams{})
+		params := &mcp.ListToolsParams{}
+		params.SetProgressToken(reqID)
+		out, err := sess.ListTools(ctx, params)
 		if err != nil {
 			res.Error = err.Error()
 		} else {
@@ -82,10 +116,13 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 		}
 	case "call":
 		if in.Name == "" {
-			writeErr(w, http.StatusBadRequest, "name is required")
+			res.Error = "name is required"
+			finish()
 			return
 		}
-		out, err := sess.CallTool(ctx, &mcp.CallToolParams{Name: in.Name, Arguments: in.Arguments})
+		params := &mcp.CallToolParams{Name: in.Name, Arguments: in.Arguments}
+		params.SetProgressToken(reqID)
+		out, err := sess.CallTool(ctx, params)
 		if err != nil {
 			res.Error = err.Error()
 		} else {
@@ -95,11 +132,9 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	default:
-		writeErr(w, http.StatusNotFound, "unknown action")
-		return
+		res.Error = "unknown action"
 	}
-	res.LatencyMS = time.Since(start).Milliseconds()
-	writeJSON(w, http.StatusOK, res)
+	finish()
 }
 
 type headerRT struct {

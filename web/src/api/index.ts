@@ -1,4 +1,4 @@
-import { http } from './client'
+import { requestSSE, http } from './client'
 import type {
   APIKeyDTO,
   AuditDetailDTO,
@@ -35,6 +35,30 @@ function qs(params: Record<string, string | number | undefined>): string {
   return s ? `?${s}` : ''
 }
 
+export interface ProgressEvent {
+  progress: number
+  total?: number
+  message?: string
+}
+export interface LogEvent {
+  level: string
+  logger?: string
+  data: unknown
+}
+export type E2EEventHandler = (e: { type: 'progress'; data: ProgressEvent } | { type: 'log'; data: LogEvent }) => void
+
+/** The e2e endpoints stream SSE: progress/log notifications from the upstream, then one `result` event. */
+async function e2eStream<T>(path: string, input: E2EInput, onEvent?: E2EEventHandler): Promise<E2EResult<T>> {
+  let result: E2EResult<T> | undefined
+  await requestSSE(path, input, (event, data) => {
+    if (event === 'result') result = data as E2EResult<T>
+    else if (event === 'progress') onEvent?.({ type: 'progress', data: data as ProgressEvent })
+    else if (event === 'log') onEvent?.({ type: 'log', data: data as LogEvent })
+  })
+  if (!result) throw new Error('The stream ended without a result.')
+  return result
+}
+
 export const api = {
   me: () => http.get<MeDTO>('/me'),
 
@@ -50,8 +74,8 @@ export const api = {
   },
 
   e2e: {
-    listTools: (route: string, input: E2EInput) => http.post<E2EResult<ListToolsResult>>(`/e2e/${encodeURIComponent(route)}/tools/list`, input),
-    callTool: (route: string, input: E2EInput) => http.post<E2EResult<CallToolResult>>(`/e2e/${encodeURIComponent(route)}/tools/call`, input),
+    listTools: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<ListToolsResult>(`/e2e/${encodeURIComponent(route)}/tools/list`, input, onEvent),
+    callTool: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<CallToolResult>(`/e2e/${encodeURIComponent(route)}/tools/call`, input, onEvent),
   },
 
   apiKeys: {

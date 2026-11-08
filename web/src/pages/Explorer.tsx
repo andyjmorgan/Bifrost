@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type React from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Braces, Compass, ListTree, Play, Wrench } from 'lucide-react'
@@ -18,7 +19,7 @@ import { CopyButton } from '../components/CopyButton'
 import { FormField } from '../components/FormField'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
-import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EEventHandler, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
 import { cn } from '../lib'
 
 const MUX = 'mux'
@@ -64,6 +65,9 @@ export function ExplorerPage() {
   const [callResult, setCallResult] = useState<E2EResult<CallToolResult>>()
   const [formError, setFormError] = useState<string>()
   const [raw, setRaw] = useState(false)
+  // Notifications streamed from the upstream during the current list/call.
+  const [listEvents, setListEvents] = useState<StreamEvent[]>([])
+  const [callEvents, setCallEvents] = useState<StreamEvent[]>([])
 
   useEffect(() => {
     Promise.all([api.servers.list(), api.apiKeys.list()])
@@ -110,8 +114,9 @@ export function ExplorerPage() {
     setListResult(undefined)
     setSelectedName(undefined)
     setCallResult(undefined)
+    setListEvents([])
     try {
-      const r = await api.e2e.listTools(route, { apiKeyId: keyId, search })
+      const r = await api.e2e.listTools(route, { apiKeyId: keyId, search }, collect(setListEvents))
       setListResult(r)
       if (!r.ok) toast.error('tools/list failed', { description: r.error })
     } catch (e) {
@@ -140,8 +145,9 @@ export function ExplorerPage() {
     setFormError(undefined)
     setCalling(true)
     setCallResult(undefined)
+    setCallEvents([])
     try {
-      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId, name: selected.name, arguments: args, search }))
+      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId, name: selected.name, arguments: args, search }, collect(setCallEvents)))
     } catch (e) {
       setCallResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
@@ -217,6 +223,7 @@ export function ExplorerPage() {
             <ListTree /> {listing ? 'Listing…' : 'List tools'}
           </Button>
         </div>
+        {(listing || listEvents.length > 0) && <StreamPanel events={listEvents} busy={listing} className="mt-4" />}
         {listResult && (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <StatusPill tone={listResult.ok ? 'success' : 'danger'}>{listResult.ok ? 'tools/list ok' : 'tools/list failed'}</StatusPill>
@@ -315,6 +322,7 @@ export function ExplorerPage() {
                       <Play /> {calling ? 'Calling…' : 'Call tool'}
                     </Button>
                   </div>
+                  {(calling || callEvents.length > 0) && <StreamPanel events={callEvents} busy={calling} />}
                   {callResult && <ResultPanel result={callResult} raw={raw} />}
                 </div>
               </SheetBody>
@@ -322,6 +330,61 @@ export function ExplorerPage() {
           )}
         </SheetContent>
       </Sheet>
+    </div>
+  )
+}
+
+type StreamEvent = { kind: 'progress'; progress: number; total?: number; message?: string } | { kind: 'log'; level: string; text: string }
+
+/** Turns the e2e stream callback into appended state. */
+function collect(set: React.Dispatch<React.SetStateAction<StreamEvent[]>>): E2EEventHandler {
+  return (e) => {
+    if (e.type === 'progress') set((prev) => [...prev, { kind: 'progress', progress: e.data.progress, total: e.data.total, message: e.data.message }])
+    else set((prev) => [...prev, { kind: 'log', level: e.data.level, text: typeof e.data.data === 'string' ? e.data.data : JSON.stringify(e.data.data) }])
+  }
+}
+
+/** Live view of progress and log notifications the upstream sent during a call. */
+function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy: boolean; className?: string }) {
+  const last = [...events].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
+  const pct = last && last.total ? Math.min(100, Math.round((last.progress / last.total) * 100)) : undefined
+  return (
+    <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <StatusPill tone={busy ? 'info' : 'muted'}>{busy ? 'Streaming' : 'Stream'}</StatusPill>
+        <span className="font-mono">
+          {events.length} {events.length === 1 ? 'event' : 'events'}
+        </span>
+        {last && (
+          <span className="font-mono">
+            {last.progress}
+            {last.total ? ` / ${last.total}` : ''}
+          </span>
+        )}
+      </div>
+      {pct !== undefined && (
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-elevated">
+          <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {events.length > 0 && (
+        <ol className="mt-3 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] leading-5 text-muted-foreground">
+          {events.map((e, i) => (
+            <li key={i} className="truncate">
+              {e.kind === 'progress' ? (
+                <>
+                  <span className="text-faint-foreground">{e.progress}</span> {e.message}
+                </>
+              ) : (
+                <>
+                  <span className="text-warning">{e.level}</span> {e.text}
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
     </div>
   )
 }
