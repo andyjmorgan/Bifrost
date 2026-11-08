@@ -84,9 +84,11 @@ export function login(returnTo?: string, idpHint?: string): void {
     window.location.assign(returnTo && returnTo.startsWith('/') ? returnTo : DEFAULT_ROUTE)
     return
   }
-  const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('/auth') && returnTo !== '/' ? returnTo : DEFAULT_ROUTE
+  // An explicit returnTo wins; otherwise keep whatever a 401 bounce stored, else the default.
+  const safe = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('/auth') && returnTo !== '/' ? returnTo : undefined
   try {
-    sessionStorage.setItem(RETURN_TO_KEY, safe)
+    if (safe) sessionStorage.setItem(RETURN_TO_KEY, safe)
+    else if (!sessionStorage.getItem(RETURN_TO_KEY)) sessionStorage.setItem(RETURN_TO_KEY, DEFAULT_ROUTE)
   } catch {
     // storage unavailable: we land on the default route
   }

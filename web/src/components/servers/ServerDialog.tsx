@@ -5,7 +5,7 @@ import { Input } from '../../ui/components/input'
 import { Textarea } from '../../ui/components/textarea'
 import { FormField, FormSection } from '../FormField'
 import { Callout } from '../Callout'
-import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../../api'
+import { api, errorMessage, type CreateServerResult, type ServerDTO, type UpdateServerInput } from '../../api'
 import { AuthFields, emptyAuthDraft, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
 import { slugPreview } from './credential'
 
@@ -70,7 +70,7 @@ export function ServerDialog({
     setError(undefined)
     try {
       if (editing && server) {
-        const patch: Record<string, string> = {}
+        const patch: UpdateServerInput = {}
         if (name !== server.name) patch.name = name
         if (url !== server.url) patch.url = url
         if (draft.description !== server.description) patch.description = draft.description
