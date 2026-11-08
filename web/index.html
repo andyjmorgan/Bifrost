@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="One front door for your MCP servers: credentials, audit, and a single multiplexed endpoint for agents." />
+    <meta name="theme-color" content="#0b0f13" />
+    <link rel="icon" type="image/svg+xml" href="/brand/am-ai-sage-light.svg" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href="/brand/am-ai-sage-dark.svg" media="(prefers-color-scheme: dark)" />
+    <title>mcp-gateway</title>
+    <meta property="og:site_name" content="andrewmorgan.ai" />
+    <meta property="og:title" content="mcp-gateway" />
+    <meta property="og:type" content="website" />
+    <script>
+      // Apply the stored theme before paint so the first frame doesn't flash the wrong one.
+      try {
+        document.documentElement.classList.toggle('dark', (localStorage.getItem('mcpgw-theme') || 'dark') === 'dark')
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
