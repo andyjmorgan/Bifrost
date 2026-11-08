@@ -174,7 +174,11 @@ func roster(entries []catalogEntry) string {
 		if e.err != nil {
 			sb.WriteString(" (unavailable)")
 		} else {
-			fmt.Fprintf(&sb, " (%d tools)", len(e.tools))
+			if n := len(e.tools); n == 1 {
+				sb.WriteString(" (1 tool)")
+			} else {
+				fmt.Fprintf(&sb, " (%d tools)", n)
+			}
 		}
 		sb.WriteByte('\n')
 	}
