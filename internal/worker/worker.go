@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/andyjmorgan/mcp-gateway/internal/store"
-	"github.com/andyjmorgan/mcp-gateway/internal/upstream"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
 )
 
 // Store is the slice of persistence the worker uses.

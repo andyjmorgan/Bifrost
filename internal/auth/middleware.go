@@ -121,7 +121,7 @@ func (a *Authenticator) ProtectedResourceMetadata() http.Handler {
 			scopes = fmt.Sprintf(`"scopes_supported":[%q],`, a.MCPScope)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"resource":%q,"authorization_servers":[%q],%s"bearer_methods_supported":["header"],"resource_name":"mcp-gateway"}`,
+		fmt.Fprintf(w, `{"resource":%q,"authorization_servers":[%q],%s"bearer_methods_supported":["header"],"resource_name":"mcp-bifrost"}`,
 			a.PublicBase+suffix, a.Issuer, scopes)
 	})
 }

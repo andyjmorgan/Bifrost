@@ -18,11 +18,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/mcp-gateway/internal/audit"
-	"github.com/andyjmorgan/mcp-gateway/internal/auth"
-	"github.com/andyjmorgan/mcp-gateway/internal/cache"
-	"github.com/andyjmorgan/mcp-gateway/internal/store"
-	"github.com/andyjmorgan/mcp-gateway/internal/upstream"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
 )
 
 // ProtocolVersion is the only version the front door accepts.
@@ -55,7 +55,7 @@ type Gateway struct {
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
 // could not be listed: [{slug, name, error}].
-const MetaKeyUnavailable = "ai.andrewmorgan.mcp-gateway/unavailable"
+const MetaKeyUnavailable = "ai.andrewmorgan.mcp-bifrost/unavailable"
 
 // New builds a gateway.
 func New(s Store, conn *upstream.Connector, rec *audit.Recorder, cw *cache.Writer, toolsTTL time.Duration, log *slog.Logger, version string) *Gateway {
@@ -72,7 +72,7 @@ func (g *Gateway) DirectHandler() http.Handler { return g.handler("direct") }
 
 func (g *Gateway) handler(route string) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		srv := mcp.NewServer(&mcp.Implementation{Name: "mcp-gateway", Version: g.version}, &mcp.ServerOptions{
+		srv := mcp.NewServer(&mcp.Implementation{Name: "mcp-bifrost", Version: g.version}, &mcp.ServerOptions{
 			SupportedProtocolVersions: []string{ProtocolVersion},
 			Logger:                    g.log,
 		})

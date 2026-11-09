@@ -3,7 +3,7 @@ package httpapi
 import (
 	"time"
 
-	"github.com/andyjmorgan/mcp-gateway/internal/store"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
 )
 
 // ServerDTO is a server with its credential summary (never the secret).

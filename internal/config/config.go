@@ -14,7 +14,7 @@ import (
 type Config struct {
 	ListenAddr    string
 	DSN           string
-	PublicBaseURL string // external base, no trailing slash, e.g. https://mcp-gateway.andrewmorgan.ai
+	PublicBaseURL string // external base, no trailing slash, e.g. https://mcp-bifrost.donkeywork.dev
 	WebRoot       string // directory holding the built SPA; empty disables static serving
 	MasterKey     []byte // 32 bytes, AES-256-GCM key for secrets at rest
 

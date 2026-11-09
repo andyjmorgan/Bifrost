@@ -15,12 +15,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/mcp-gateway/internal/audit"
-	"github.com/andyjmorgan/mcp-gateway/internal/auth"
-	"github.com/andyjmorgan/mcp-gateway/internal/cache"
-	"github.com/andyjmorgan/mcp-gateway/internal/store"
-	"github.com/andyjmorgan/mcp-gateway/internal/toolsearch"
-	"github.com/andyjmorgan/mcp-gateway/internal/upstream"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/toolsearch"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
 )
 
 // Search mode (?search=true) replaces the flat tool list with a small,

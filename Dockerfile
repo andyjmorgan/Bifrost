@@ -1,4 +1,4 @@
-# mcp-gateway: Go service (MCP front door + REST API + worker) serving the React SPA.
+# mcp-bifrost: Go service (MCP front door + REST API + worker) serving the React SPA.
 FROM node:22-alpine AS frontend
 WORKDIR /web
 COPY web/package*.json ./

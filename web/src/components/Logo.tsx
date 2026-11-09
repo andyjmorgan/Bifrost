@@ -19,7 +19,7 @@ export function Logo({
       {!compact && (
         <div className="leading-none">
           <span className="block text-sm font-semibold tracking-tight">andrewmorgan.ai</span>
-          <span className="mt-1 block font-mono text-[11px] font-medium tracking-tight text-accent">mcp-gateway</span>
+          <span className="mt-1 block font-mono text-[11px] font-medium tracking-tight text-accent">mcp-bifrost</span>
         </div>
       )}
     </div>

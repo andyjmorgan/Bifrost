@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andyjmorgan/mcp-gateway/internal/store"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
 )
 
 func TestNeedsRefreshScalesLeewayToLifetime(t *testing.T) {

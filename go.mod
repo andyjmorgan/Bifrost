@@ -1,4 +1,4 @@
-module github.com/andyjmorgan/mcp-gateway
+module github.com/andyjmorgan/Mcp-Bifrost
 
 go 1.26.4
 

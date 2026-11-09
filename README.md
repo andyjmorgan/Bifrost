@@ -1,106 +1,109 @@
-# mcp-gateway
+# Mcp-Bifrost
 
-A single-tenant MCP gateway. You register downstream MCP servers (each with its own credential), and the
-gateway exposes them to MCP clients through one front door that speaks only the 2026-07-28 protocol:
+One MCP connection to all of your MCP servers.
 
-- `POST /mcp` multiplexes every registered server. Tools are named `<slug>__<tool>`; a `tools/call` opens
-  only that server's connection.
-- `POST /{slug}/mcp` is a 1:1 pass-through to one server.
+Bifrost is an MCP gateway. You register upstream MCP servers with their credentials, and agents connect to a single front door that fans out to all of them, injects the right credentials, caches what it learns, and audits every hop.
 
-Downstream, the gateway speaks whatever version the server offers (2024-11-05 through 2026-07-28, HTTP
-only, never stdio). Nothing is cached yet: every request opens the upstream connection on demand.
-
-## Credentials
-
-Each server carries one credential of kind `none`, `basic`, `header` (any header name and value, which
-covers `X-Api-Key` and static bearer tokens) or `oauth`. Secret material is sealed with AES-256-GCM
-under `MCPGW_MASTER_KEY` and bound to the server id.
-
-The credential is applied by an `http.RoundTripper` middleware on the downstream client
-(`internal/upstream`). For OAuth it refreshes an expiring token inline before the call, retries once
-after a 401 following a refresh, and marks the credential `broken` when the refresh fails. A worker
-(`internal/worker`) also refreshes anything due to expire before its next 4-hourly pass.
-
-Adding an OAuth server runs discovery (`WWW-Authenticate` → protected resource metadata → authorization
-server metadata), registers the gateway as a client (CIMD using `/.well-known/mcp-client-metadata.json`
-when the server advertises it, otherwise RFC 7591 dynamic registration), requests the scopes the server
-asked for, and hands the UI a consent URL. The callback at `/oauth/callback` stores the token set and
-scopes on the credential.
-
-## Slugs
-
-A slug is the server's name lowercased and reduced to `[a-z0-9]`, at most 12 characters, unique per
-owner and immutable. On collision the tail is overwritten with a counter: `atlassian`, `atlassia1`,
-`atlassi11`. Renaming the server never changes it.
-
-## Front-door auth
-
-- Keycloak (`Agents` realm) access tokens whose `aud` contains the SPA client id or the gateway's
-  `/mcp` URL and that carry the realm role `mcp-gateway-operator`.
-- Gateway API keys (`mcpg_…`) with scopes `api:read`, `api:edit` (manage keys), `mcp:edit` (manage
-  servers and credentials), `mcp:execute` (call `/mcp`, `/{slug}/mcp`, ping, e2e).
-
-Unauthenticated MCP requests get a 401 with an RFC 9728 `resource_metadata` pointer so CIMD/DCR
-clients can onboard themselves.
-
-## Audit
-
-Every inbound and upstream HTTP exchange is recorded (`internal/audit`): actor, key, slug, route,
-JSON-RPC method and tool, status, outcome, bytes, duration, plus redacted headers and bodies. Upstream
-events link to their inbound parent through `requestId`. Retention is 30 days.
-
-## Run it
-
-```bash
-docker run -d --name mcpgw-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_USER=mcpgw -e POSTGRES_DB=mcpgw -p 15432:5432 postgres:17
-export MCPGW_DSN='postgres://mcpgw:dev@127.0.0.1:15432/mcpgw?sslmode=disable'
-export MCPGW_MASTER_KEY=$(head -c 32 /dev/urandom | base64 -w0)
-go run ./cmd/gateway            # dev mode: no MCPGW_OIDC_ISSUER → every request is owner "dev"
-cd web && npm install && npm run dev   # SPA on :5173, proxied to :8080
+```
+agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth, CIMD)
+          (one API key or OIDC token)   ├──► telegram   (X-Api-Key)
+                                        ├──► websearch  (no auth)
+                                        └──► …          (Basic, Bearer, …)
 ```
 
-| Env | Meaning |
-|---|---|
-| `MCPGW_LISTEN_ADDR` | default `:8080` |
-| `MCPGW_DSN` | Postgres DSN (required) |
-| `MCPGW_MASTER_KEY` | base64 of 32 random bytes (required) |
-| `MCPGW_PUBLIC_BASE_URL` | external base URL; builds MCP URLs, the CIMD document and the OAuth callback |
-| `MCPGW_WEBROOT` | directory with the built SPA |
-| `MCPGW_OIDC_ISSUER` | Keycloak realm issuer; unset = dev mode |
-| `MCPGW_OIDC_WEB_CLIENT_ID` | SPA client id (default `mcp-gateway-web`) |
-| `MCPGW_OIDC_REQUIRED_ROLE` | role gate (default `mcp-gateway-operator`) |
-| `MCPGW_OIDC_SCOPE` | scope advertised to MCP clients (default `mcp:gateway`) |
-| `MCPGW_REFRESH_INTERVAL` / `MCPGW_REFRESH_LEEWAY` | worker cadence (4h) and early-refresh window (10m) |
-| `MCPGW_AUDIT_RETENTION` | default 720h |
-| `MCPGW_UPSTREAM_TIMEOUT` | per-request upstream timeout (60s) |
+## What it does
 
-`./build.sh` builds and pushes the image to the lab registry. Deployment manifests live in the
-DonkeyWork-Lab repo under `clusters/attic/applications/mcp-gateway/`.
+- **Front door** on the Model Context Protocol, 2026-07-28 only. `/mcp` multiplexes every registered server (tool names are `slug__tool`); `/{slug}/mcp` is one server, one-to-one. Downstream it speaks whatever version each server negotiates, from 2024-11-05 up.
+- **Credential registry** with three kinds: OAuth 2.1 (discovery from `WWW-Authenticate`, protected-resource and authorization-server metadata, client registration by Client ID Metadata Document first and Dynamic Client Registration as fallback, PKCE, refresh), HTTP Basic, and a static header such as `X-Api-Key` or `Authorization: Bearer`. Secrets are sealed with AES-256-GCM in Postgres.
+- **Credential middleware**: an `http.RoundTripper` chain on the upstream client adds the credential, refreshes OAuth tokens near expiry or on a 401, and marks a credential broken only when the token endpoint definitively rejects it. A background worker refreshes tokens that will expire before its next pass.
+- **Search mode**: append `?search=true` and the front door offers four small tools instead of every upstream tool: `tool_search` (BM25 over names, descriptions and schemas, with the connected servers described up front), `list_tools`, `get_tool_definition`, `execute_tool`, plus `refresh_tools`. An agent's context stops scaling with the number of servers behind the gateway.
+- **Cache in Postgres**, not Redis: each server's tools and initialize result live in a TTL table, swept by pg_cron and the worker, hidden at read time by a row-level-security policy. Refills are single-flighted across processes with advisory locks. Ping, the Explorer and `refresh_tools` bypass and rewrite the cache.
+- **Audit everything**: inbound and upstream hops with full JSON-RPC bodies, auth headers redacted, 30-day retention. The UI shows each exchange with JSON and SSE viewers, and each request as a trace: a flame chart of every upstream connection under the inbound span.
+- **Progress**: fan-outs report MCP progress notifications per server stage when the client sends a progress token.
+- **Web UI** for servers, an Explorer that lists and calls tools through the real front door as you, API keys, and the audit log. Sign-in is OIDC with PKCE.
+
+## Routes
+
+| Route | Purpose |
+|---|---|
+| `POST /mcp` | all servers, tools named `slug__tool` |
+| `POST /{slug}/mcp` | one server, unprefixed tool names |
+| `…?search=true` | search mode on either route |
+| `GET /.well-known/oauth-protected-resource` | RFC 9728 metadata for the front door |
+| `GET /.well-known/mcp-client-metadata.json` | the gateway's own CIMD document for upstream registration |
+| `GET /oauth/callback` | consent callback for upstream OAuth |
+| `/api/v1/*` | REST API: servers, credentials, API keys, audit, e2e |
+| `/` | the SPA |
+
+Front-door callers authenticate with an OIDC bearer token (audience and realm-role checked) or a gateway API key. API keys carry scopes: `api:read`, `api:edit`, `mcp:execute`, `mcp:edit`.
+
+## Running it
+
+One container: the Go binary serves the API, the front door, the worker and the built SPA.
+
+```sh
+./build.sh                       # builds web/, the Go binary and the image; tags with the short SHA
+MCPGW_DSN='postgres://…' MCPGW_MASTER_KEY="$(head -c 32 /dev/urandom | base64 -w0)" ./gateway
+./gateway create-key -name ops   # bootstrap an API key (prints it once)
+```
+
+Postgres needs pg_cron for the cache sweep in production; without it the worker's sweep is the only reaper, which is fine for development. A Dockerfile for `postgres:17` plus `postgresql-17-cron` is small enough to live next to your manifests.
+
+### Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MCPGW_LISTEN_ADDR` | `:8080` | |
+| `MCPGW_DSN` | | Postgres connection string |
+| `MCPGW_MASTER_KEY` | | base64, 32 bytes; seals credentials and API key plaintext |
+| `MCPGW_PUBLIC_BASE_URL` | | external origin; used for CIMD, callbacks and audiences |
+| `MCPGW_OIDC_ISSUER` | unset = dev mode | OIDC issuer for the UI and MCP bearer tokens |
+| `MCPGW_OIDC_WEB_CLIENT_ID` | `mcp-gateway-web` | SPA client id |
+| `MCPGW_OIDC_REQUIRED_ROLE` | `mcp-gateway-operator` | realm role required to sign in |
+| `MCPGW_OWNER_ID` | `owner` | single-tenant owner every OIDC login maps to |
+| `MCPGW_TOOLS_CACHE_TTL` | `5m` | tools and initialize cache lifetime; `0` disables |
+| `MCPGW_REFRESH_INTERVAL` | `4h` | worker cadence |
+| `MCPGW_REFRESH_LEEWAY` | `10m` | refresh tokens expiring within this window (capped at half the token lifetime) |
+| `MCPGW_AUDIT_RETENTION` | `720h` | |
+| `MCPGW_UPSTREAM_TIMEOUT` | `60s` | |
+
+Dev mode (no `MCPGW_OIDC_ISSUER`) treats every request as the owner, so the UI and API work without a login.
+
+## Registering servers
+
+```sh
+curl -X POST $BASE/api/v1/servers -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{
+  "name": "Web Search", "url": "https://search.example/mcp",
+  "description": "Search the web. Use it to find pages when you do not have a URL.",
+  "auth": {"kind": "header", "headerName": "X-Api-Key", "headerValue": "…"}
+}'
+```
+
+The slug is derived from the name (lowercase `a-z0-9`, 12 characters, collisions bump the tail) and never changes. For `auth.kind: oauth` the response carries an `authorizeUrl` to open in a browser; the gateway handles the callback. Write descriptions as capabilities, because search mode shows them to the model.
+
+## Design notes
+
+- Connections are opened per call. There is no session cache yet; the init cache removes the discovery probe and the tools cache removes most listing traffic, which covers the common case.
+- The front door accepts only 2026-07-28. Clients on older SDKs are rejected with a clear error.
+- Single tenant by design. Multi-tenancy would mean removing the owner mapping and scoping the cache and audit by owner, both of which are already keyed that way.
+- No Redis, no message bus. Postgres does the cache, the locks and the queue-shaped work; in-process goroutines do the async writes.
 
 ## Layout
 
-| Package | Role |
-|---|---|
-| `cmd/gateway` | wiring |
-| `internal/config` | env config |
-| `internal/db` | pgx pool + embedded migrations |
-| `internal/store` | records and the Postgres store |
-| `internal/crypto` | AES-GCM sealing |
-| `internal/slug` | slug derivation |
-| `internal/auth` | callers, API keys, Keycloak OIDC, front-door middleware, PRM |
-| `internal/oauthclient` | discovery, CIMD/DCR registration, PKCE, exchange, refresh |
-| `internal/upstream` | credential + audit RoundTrippers, MCP client sessions |
-| `internal/gateway` | the MCP front door (mux and direct) |
-| `internal/audit` | recorder, inbound middleware, upstream transport |
-| `internal/httpapi` | REST API, OAuth callback, e2e driver, SPA |
-| `internal/worker` | refresh and retention |
-| `web` | React SPA |
+```
+cmd/gateway          main, create-key
+internal/gateway     front door: mux, direct, search mode, progress
+internal/upstream    connector, credential transport, refresh
+internal/oauthclient discovery, CIMD/DCR, PKCE, token exchange
+internal/auth        OIDC, API keys, scopes, RFC 9728 challenge
+internal/audit       recorder, inbound middleware, upstream transport
+internal/cache       async cache writer
+internal/toolsearch  BM25
+internal/store       Postgres
+internal/db          pool and embedded migrations
+web/                 React, Vite, Tailwind 4
+```
 
-## Search mode
+## License
 
-Append `?search=true` to `/mcp` or `/{slug}/mcp` and the gateway lists four tools instead of every
-upstream tool: `tool_search` (its description carries the roster of connected servers; `paths` expands a
-namespace, `names` loads specific tools, `query` ranks by BM25), `list_tools` (200 names per page grouped
-by namespace, `summaries` opt-in), `execute_tool` (`namespace` + `name`, or `slug__tool`) and
-`refresh_tools`. Everything is served from the Postgres cache; `execute_tool` goes through the normal
-audited call path. Servers are the namespaces, matching OpenAI's tool-search shape.
+MIT.
