@@ -17,7 +17,17 @@ var migrations embed.FS
 
 // Open connects to Postgres and runs any pending migrations.
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	pc, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("db: %w", err)
+	}
+	// Advisory locks hold a connection for the duration of an upstream fetch,
+	// and the mux fans out to every server at once, so keep headroom above
+	// pgx's default of max(4, NumCPU) unless the DSN says otherwise.
+	if pc.MaxConns < 32 && !strings.Contains(dsn, "pool_max_conns") {
+		pc.MaxConns = 32
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, fmt.Errorf("db: %w", err)
 	}

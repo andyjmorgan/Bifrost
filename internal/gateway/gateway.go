@@ -37,6 +37,9 @@ type Store interface {
 	GetServerBySlug(ctx context.Context, owner, slug string) (*store.Server, error)
 	ListServersWithCache(ctx context.Context, owner string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
 	GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
+	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
+	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value json.RawMessage, ttl time.Duration) error
+	WithAdvisoryLock(ctx context.Context, key string, fn func(ctx context.Context) error) error
 }
 
 // Gateway serves the two MCP routes.
@@ -143,11 +146,10 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 		if tools, ok := decodeTools(cached[cache.NSTools]); ok {
 			return &mcp.ListToolsResult{Tools: tools}, nil
 		}
-		tools, err := g.toolsOf(ctx, srv, initHint(cached))
+		tools, err := g.fetchTools(ctx, srv, initHint(cached), false, nil)
 		if err != nil {
 			return nil, upstreamError(srv, err)
 		}
-		g.cacheTools(srv, tools)
 		return &mcp.ListToolsResult{Tools: tools}, nil
 	}
 	return g.muxTools(ctx, caller, route, false)
@@ -206,12 +208,6 @@ func decodeTools(raw json.RawMessage) ([]*mcp.Tool, bool) {
 	return tools, true
 }
 
-// cacheTools stores a server's tools/list off the request path.
-func (g *Gateway) cacheTools(srv *store.Server, tools []*mcp.Tool) {
-	id := srv.ID
-	g.cache.Put(cache.NSTools, id.String(), &id, tools, g.toolsTTL)
-}
-
 // canonicalToolName returns the cached tool whose name matches ignoring case,
 // or name unchanged when there is no such tool (or an exact match exists).
 func canonicalToolName(tools []*mcp.Tool, name string) string {
@@ -243,6 +239,38 @@ func plural(n int, word string) string {
 		return "1 " + word
 	}
 	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// fetchTools fills a server's tools/list under a Postgres advisory lock so
+// concurrent misses, in this process or any other replica, cost one upstream
+// connection: the lock holder re-checks the cache (unless forced), fetches,
+// writes the row synchronously and releases; waiters then find the row.
+func (g *Gateway) fetchTools(ctx context.Context, srv *store.Server, protocolVersion string, force bool, stage func(string)) ([]*mcp.Tool, error) {
+	var tools []*mcp.Tool
+	err := g.store.WithAdvisoryLock(ctx, "tools:"+srv.ID.String(), func(ctx context.Context) error {
+		if !force {
+			if raw, err := g.store.CacheGet(ctx, cache.NSTools, srv.ID.String()); err == nil {
+				if cached, ok := decodeTools(raw); ok {
+					tools = cached // another caller filled it while we waited
+					return nil
+				}
+			}
+		}
+		var err error
+		if tools, err = g.toolsOf(ctx, srv, protocolVersion, stage); err != nil {
+			return err
+		}
+		if g.toolsTTL > 0 {
+			if b, err := json.Marshal(tools); err == nil {
+				id := srv.ID
+				if err := g.store.CacheSet(ctx, cache.NSTools, id.String(), &id, b, g.toolsTTL); err != nil {
+					g.log.Warn("cache write failed", "slug", srv.Slug, "err", err)
+				}
+			}
+		}
+		return nil
+	})
+	return tools, err
 }
 
 func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersion string, stage ...func(string)) ([]*mcp.Tool, error) {

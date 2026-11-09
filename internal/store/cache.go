@@ -61,6 +61,29 @@ func (p *Postgres) CacheInvalidateOwner(ctx context.Context, owner string) error
 	return nil
 }
 
+// WithAdvisoryLock runs fn while holding a Postgres session advisory lock
+// for key, so work keyed on a server (a cache refill) is single-flighted
+// across every gateway process. The lock lives on one pooled connection for
+// the duration; waiters block on the same lock and run after the holder.
+func (p *Postgres) WithAdvisoryLock(ctx context.Context, key string, fn func(ctx context.Context) error) error {
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `select pg_advisory_lock(hashtext($1))`, key); err != nil {
+		return fmt.Errorf("store: lock %s: %w", key, err)
+	}
+	defer func() {
+		// Unlock even if ctx is done; otherwise the session keeps the lock
+		// until the connection is closed.
+		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, _ = conn.Exec(uctx, `select pg_advisory_unlock(hashtext($1))`, key)
+	}()
+	return fn(ctx)
+}
+
 // PurgeExpiredCache deletes expired rows; the belt to pg_cron's braces (and
 // the only reaper where pg_cron is not installed).
 func (p *Postgres) PurgeExpiredCache(ctx context.Context) (int64, error) {

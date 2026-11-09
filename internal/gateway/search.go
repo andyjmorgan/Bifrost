@@ -147,9 +147,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 					hint = e.init.ProtocolVersion
 				}
 				stage := func(msg string) { advance(1, srv.Slug+": "+msg) }
-				if e.tools, e.err = g.toolsOf(ctx, srv, hint, stage); e.err == nil {
-					g.cacheTools(srv, e.tools)
-				}
+				e.tools, e.err = g.fetchTools(ctx, srv, hint, force, stage)
 			}
 			if e.err != nil {
 				errType := "upstream"
