@@ -82,7 +82,7 @@ func main() {
 			in.ServerName, in.ServerVersion, in.Title = ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ServerInfo.Title
 		}
 		id := srv.ID
-		cw.Put(cache.NSInit, id.String(), &id, in, cfg.ToolsCacheTTL)
+		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, in, cfg.ToolsCacheTTL)
 	}
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
 

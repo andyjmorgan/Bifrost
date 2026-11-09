@@ -61,6 +61,9 @@ func New(s Store, sealer *crypto.Sealer, oauth *oauthclient.Client, rec *audit.R
 	return &Connector{store: s, sealer: sealer, oauth: oauth, recorder: rec, log: log, timeout: timeout, leeway: leeway, version: version}
 }
 
+// Timeout is the per-call upstream budget.
+func (c *Connector) Timeout() time.Duration { return c.timeout }
+
 func baseTransport() *http.Transport {
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,

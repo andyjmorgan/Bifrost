@@ -5,10 +5,13 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
 )
 
 // Namespaces (the ns column).
@@ -31,16 +34,15 @@ type Init struct {
 
 // Store is the slice of the Postgres store the writer needs.
 type Store interface {
-	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value json.RawMessage, ttl time.Duration) error
-	CacheInvalidateServer(ctx context.Context, serverID uuid.UUID) error
+	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
 }
 
 type job struct {
-	ns, key    string
-	serverID   *uuid.UUID
-	value      json.RawMessage
-	ttl        time.Duration
-	invalidate *uuid.UUID
+	ns, key   string
+	serverID  *uuid.UUID
+	updatedAt time.Time
+	value     json.RawMessage
+	ttl       time.Duration
 }
 
 // Writer applies cache writes off the request path.
@@ -64,14 +66,12 @@ func (w *Writer) run(ctx context.Context) {
 			return
 		case j := <-w.queue:
 			wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			var err error
-			if j.invalidate != nil {
-				err = w.s.CacheInvalidateServer(wctx, *j.invalidate)
-			} else {
-				err = w.s.CacheSet(wctx, j.ns, j.key, j.serverID, j.value, j.ttl)
-			}
+			err := w.s.CacheSet(wctx, j.ns, j.key, j.serverID, j.updatedAt, j.value, j.ttl)
 			cancel()
-			if err != nil {
+			switch {
+			case errors.Is(err, store.ErrStale):
+				w.log.Debug("cache write skipped: server changed since fetch", "ns", j.ns, "key", j.key)
+			case err != nil:
 				w.log.Warn("cache write failed", "ns", j.ns, "key", j.key, "err", err)
 			}
 		}
@@ -89,8 +89,10 @@ func (w *Writer) enqueue(j job) {
 	}
 }
 
-// Put stores v (JSON-marshalled) under (ns, key) for ttl. A ttl <= 0 is a no-op.
-func (w *Writer) Put(ns, key string, serverID *uuid.UUID, v any, ttl time.Duration) {
+// Put stores v (JSON-marshalled) under (ns, key) for ttl. A ttl <= 0 is a
+// no-op. updatedAt is the server's updated_at when v was fetched; the write
+// is dropped if the server changed since (see store.CacheSet).
+func (w *Writer) Put(ns, key string, serverID *uuid.UUID, updatedAt time.Time, v any, ttl time.Duration) {
 	if w == nil || ttl <= 0 {
 		return
 	}
@@ -99,14 +101,6 @@ func (w *Writer) Put(ns, key string, serverID *uuid.UUID, v any, ttl time.Durati
 		w.log.Warn("cache marshal failed", "ns", ns, "key", key, "err", err)
 		return
 	}
-	w.enqueue(job{ns: ns, key: key, serverID: serverID, value: b, ttl: ttl})
+	w.enqueue(job{ns: ns, key: key, serverID: serverID, updatedAt: updatedAt, value: b, ttl: ttl})
 }
 
-// Invalidate drops every cached entry tied to a server (edit, new credential).
-func (w *Writer) Invalidate(serverID uuid.UUID) {
-	if w == nil {
-		return
-	}
-	id := serverID
-	w.enqueue(job{invalidate: &id})
-}

@@ -93,15 +93,22 @@ func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, er
 	return out, rows.Err()
 }
 
-// UpdateServer writes the mutable fields (not slug, owner, auth kind).
+// UpdateServer writes the mutable fields (not slug, owner, auth kind) and
+// refreshes s.UpdatedAt, which conditional cache writes are checked against.
+// Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	tag, err := p.pool.Exec(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, updated_at=now() where owner_id=$1 and id=$2`,
-		s.OwnerID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind)
+	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, updated_at=now() where owner_id=$1 and id=$2 returning updated_at`,
+		s.OwnerID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	if !s.Enabled {
+		if _, err := p.pool.Exec(ctx, `delete from cache where server_id=$1`, s.ID); err != nil {
+			return fmt.Errorf("store: %w", err)
+		}
 	}
 	return nil
 }
@@ -162,6 +169,23 @@ secret_blob=excluded.secret_blob, last_refreshed_at=excluded.last_refreshed_at, 
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
+	return p.credentialChanged(ctx, c.ServerID, c.State)
+}
+
+// credentialChanged is the bookkeeping after a credential write: the server
+// row's updated_at moves so in-flight cache writes from the old credential
+// are rejected, and a credential that is not usable (pending consent, broken)
+// takes the server's cache rows with it, so nothing advertises tools that
+// cannot be called.
+func (p *Postgres) credentialChanged(ctx context.Context, serverID uuid.UUID, state CredentialState) error {
+	if _, err := p.pool.Exec(ctx, `update servers set updated_at=now() where id=$1`, serverID); err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	if state != StateOK {
+		if _, err := p.pool.Exec(ctx, `delete from cache where server_id=$1`, serverID); err != nil {
+			return fmt.Errorf("store: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -188,7 +212,7 @@ func (p *Postgres) SetCredentialState(ctx context.Context, serverID uuid.UUID, s
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	return nil
+	return p.credentialChanged(ctx, serverID, state)
 }
 
 // ExpiringOAuthCredentials lists OAuth credentials with a refresh token that

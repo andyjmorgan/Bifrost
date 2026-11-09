@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
@@ -38,8 +39,7 @@ type Store interface {
 	ListServersWithCache(ctx context.Context, owner string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
 	GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
-	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value json.RawMessage, ttl time.Duration) error
-	WithAdvisoryLock(ctx context.Context, key string, fn func(ctx context.Context) error) error
+	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
 }
 
 // Gateway serves the two MCP routes.
@@ -51,6 +51,11 @@ type Gateway struct {
 	toolsTTL time.Duration
 	log      *slog.Logger
 	version  string
+	// flights collapses concurrent tools/list refills for the same server
+	// into one upstream fetch per process. Across replicas the worst case is
+	// one fetch per replica per cold key; writes are idempotent and guarded
+	// by the server's updated_at, so no cross-process lock is needed.
+	flights singleflight.Group
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -146,7 +151,7 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 		if tools, ok := decodeTools(cached[cache.NSTools]); ok {
 			return &mcp.ListToolsResult{Tools: tools}, nil
 		}
-		tools, err := g.fetchTools(ctx, srv, initHint(cached), false, nil)
+		tools, _, err := g.fetchTools(ctx, srv, initHint(cached), false, nil)
 		if err != nil {
 			return nil, upstreamError(srv, err)
 		}
@@ -241,35 +246,76 @@ func plural(n int, word string) string {
 	return fmt.Sprintf("%d %ss", n, word)
 }
 
-// fetchTools fills a server's tools/list under a Postgres advisory lock so
-// concurrent misses, in this process or any other replica, cost one upstream
-// connection: the lock holder re-checks the cache (unless forced), fetches,
-// writes the row synchronously and releases; waiters then find the row.
-func (g *Gateway) fetchTools(ctx context.Context, srv *store.Server, protocolVersion string, force bool, stage func(string)) ([]*mcp.Tool, error) {
-	var tools []*mcp.Tool
-	err := g.store.WithAdvisoryLock(ctx, "tools:"+srv.ID.String(), func(ctx context.Context) error {
-		if !force {
-			if raw, err := g.store.CacheGet(ctx, cache.NSTools, srv.ID.String()); err == nil {
-				if cached, ok := decodeTools(raw); ok {
-					tools = cached // another caller filled it while we waited
-					return nil
-				}
-			}
+// fetchTools fills a server's tools/list. Concurrent misses for the same
+// server in this process share one upstream fetch (singleflight); the leader
+// fetches on a context detached from its own request so a client that gives
+// up does not fail the followers, then writes the row synchronously. Nothing
+// is held on a database connection while the upstream is in flight.
+//
+// steps is how many progress stages this caller reported through stage (0
+// when it joined another caller's fetch), so fan-outs can keep their counters
+// honest.
+func (g *Gateway) fetchTools(ctx context.Context, srv *store.Server, protocolVersion string, force bool, stage func(string)) (tools []*mcp.Tool, steps int, err error) {
+	key := srv.ID.String()
+	if force {
+		key += "!" // a forced refill must not be answered by a leader that re-read the cache
+	}
+	counted := func(msg string) {
+		steps++
+		if stage != nil {
+			stage(msg)
 		}
-		var err error
-		if tools, err = g.toolsOf(ctx, srv, protocolVersion, stage); err != nil {
-			return err
-		}
-		if g.toolsTTL > 0 {
-			if b, err := json.Marshal(tools); err == nil {
-				id := srv.ID
-				if err := g.store.CacheSet(ctx, cache.NSTools, id.String(), &id, b, g.toolsTTL); err != nil {
-					g.log.Warn("cache write failed", "slug", srv.Slug, "err", err)
-				}
-			}
-		}
-		return nil
+	}
+	ch := g.flights.DoChan(key, func() (any, error) {
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), g.conn.Timeout())
+		defer cancel()
+		return g.refill(fctx, srv, protocolVersion, force, counted)
 	})
+	select {
+	case r := <-ch:
+		if r.Err != nil {
+			return nil, steps, r.Err
+		}
+		return r.Val.([]*mcp.Tool), steps, nil
+	case <-ctx.Done():
+		return nil, steps, ctx.Err()
+	}
+}
+
+// refill is the leader's half of fetchTools: re-check the cache (unless
+// forced), list upstream, write the row if the server has not changed since.
+func (g *Gateway) refill(ctx context.Context, srv *store.Server, protocolVersion string, force bool, stage func(string)) ([]*mcp.Tool, error) {
+	if !force {
+		if raw, err := g.store.CacheGet(ctx, cache.NSTools, srv.ID.String()); err == nil {
+			if cached, ok := decodeTools(raw); ok {
+				return cached, nil // another process filled it meanwhile
+			}
+		}
+	}
+	tools, err := g.toolsOf(ctx, srv, protocolVersion, stage)
+	if err != nil {
+		return nil, err
+	}
+	if g.toolsTTL > 0 {
+		if b, err := json.Marshal(tools); err == nil {
+			id := srv.ID
+			switch err := g.store.CacheSet(ctx, cache.NSTools, id.String(), &id, srv.UpdatedAt, b, g.toolsTTL); {
+			case errors.Is(err, store.ErrStale):
+				g.log.Info("tools cache write skipped: server changed during fetch", "slug", srv.Slug)
+			case err != nil:
+				g.log.Warn("cache write failed", "slug", srv.Slug, "err", err)
+			}
+		}
+	}
+	return tools, nil
+}
+
+// RefreshServer lists a server's tools now, bypassing and rewriting the
+// cache: the admin paths (create, edit, credential change, OAuth consent)
+// call it so the row reflects the current configuration, and a failure
+// leaves whatever row was there in place.
+func (g *Gateway) RefreshServer(ctx context.Context, srv *store.Server) ([]*mcp.Tool, error) {
+	tools, _, err := g.fetchTools(ctx, srv, "", true, nil)
 	return tools, err
 }
 

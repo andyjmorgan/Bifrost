@@ -138,6 +138,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				_ = json.Unmarshal(raw, &e.init)
 			}
 			hit := false
+			steps := 0
 			if !force {
 				e.tools, hit = decodeTools(bundle[cache.NSTools])
 			}
@@ -147,7 +148,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 					hint = e.init.ProtocolVersion
 				}
 				stage := func(msg string) { advance(1, srv.Slug+": "+msg) }
-				e.tools, e.err = g.fetchTools(ctx, srv, hint, force, stage)
+				e.tools, steps, e.err = g.fetchTools(ctx, srv, hint, force, stage)
 			}
 			if e.err != nil {
 				errType := "upstream"
@@ -166,32 +167,21 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 			mu.Lock()
 			entries = append(entries, e)
 			mu.Unlock()
+			// Stages this caller did not report itself (a failed connect, or a
+			// fetch shared with another caller) still count towards the total.
 			switch {
 			case e.err != nil:
-				// The connect/list steps that did not happen still count.
-				advance(3-stepsTaken(e), fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120)))
+				advance(3-steps, fmt.Sprintf("%s: unavailable (%s)", srv.Slug, oneLine(e.err.Error(), 120)))
 			case hit:
 				// served from cache: no progress
 			default:
-				advance(1, fmt.Sprintf("%s: %s", srv.Slug, plural(len(e.tools), "tool")))
+				advance(3-steps, fmt.Sprintf("%s: %s", srv.Slug, plural(len(e.tools), "tool")))
 			}
 		}(srv)
 	}
 	wg.Wait()
 	sort.Slice(entries, func(i, j int) bool { return entries[i].srv.Slug < entries[j].srv.Slug })
 	return entries, nil
-}
-
-// stepsTaken is how many of the three progress steps a failed fetch had
-// already reported: connect failures report one, list failures two.
-func stepsTaken(e catalogEntry) int {
-	if e.err == nil {
-		return 3
-	}
-	if strings.Contains(e.err.Error(), "connect:") {
-		return 1
-	}
-	return 2
 }
 
 func unavailableOf(entries []catalogEntry) []map[string]string {

@@ -27,11 +27,27 @@ func (p *Postgres) CacheGet(ctx context.Context, ns, key string) (json.RawMessag
 }
 
 // CacheSet stores value under (ns, key) for ttl, replacing any earlier row.
-// serverID (nil for gateway-wide entries such as the mux tools/list) ties the
-// row to a server for the joined lookup and cascade delete.
-func (p *Postgres) CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, value json.RawMessage, ttl time.Duration) error {
-	_, err := p.pool.Exec(ctx, `insert into cache (ns, key, server_id, value, expires_at) values ($1,$2,$3,$4,now()+$5)
-on conflict (ns, key) do update set server_id=excluded.server_id, value=excluded.value, expires_at=excluded.expires_at`,
+// serverID (nil for gateway-wide entries) ties the row to a server for the
+// joined lookup and cascade delete. ifUpdatedAt, when set with a serverID,
+// makes the write conditional: it lands only while the server row still has
+// that updated_at, so a fetch that started before an edit or credential
+// change cannot overwrite the row with a list from the old configuration.
+// Such a write returns ErrStale.
+func (p *Postgres) CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error {
+	const upsert = ` on conflict (ns, key) do update set server_id=excluded.server_id, value=excluded.value, expires_at=excluded.expires_at`
+	if serverID != nil && !ifUpdatedAt.IsZero() {
+		tag, err := p.pool.Exec(ctx, `insert into cache (ns, key, server_id, value, expires_at)
+select $1, $2, $3, $4, now()+$5 from servers where id=$3 and updated_at=$6`+upsert,
+			ns, key, serverID, value, ttl, ifUpdatedAt)
+		if err != nil {
+			return fmt.Errorf("store: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrStale
+		}
+		return nil
+	}
+	_, err := p.pool.Exec(ctx, `insert into cache (ns, key, server_id, value, expires_at) values ($1,$2,$3,$4,now()+$5)`+upsert,
 		ns, key, serverID, value, ttl)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
@@ -59,29 +75,6 @@ func (p *Postgres) CacheInvalidateOwner(ctx context.Context, owner string) error
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil
-}
-
-// WithAdvisoryLock runs fn while holding a Postgres session advisory lock
-// for key, so work keyed on a server (a cache refill) is single-flighted
-// across every gateway process. The lock lives on one pooled connection for
-// the duration; waiters block on the same lock and run after the holder.
-func (p *Postgres) WithAdvisoryLock(ctx context.Context, key string, fn func(ctx context.Context) error) error {
-	conn, err := p.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	defer conn.Release()
-	if _, err := conn.Exec(ctx, `select pg_advisory_lock(hashtext($1))`, key); err != nil {
-		return fmt.Errorf("store: lock %s: %w", key, err)
-	}
-	defer func() {
-		// Unlock even if ctx is done; otherwise the session keeps the lock
-		// until the connection is closed.
-		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_, _ = conn.Exec(uctx, `select pg_advisory_unlock(hashtext($1))`, key)
-	}()
-	return fn(ctx)
 }
 
 // PurgeExpiredCache deletes expired rows; the belt to pg_cron's braces (and

@@ -170,8 +170,28 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (str
 	case store.AuthOAuth:
 		return a.startOAuth(ctx, s, in.Scopes, "")
 	}
-	a.cache.Invalidate(cred.ServerID)
-	return "", a.store.UpsertCredential(ctx, cred)
+	if err := a.store.UpsertCredential(ctx, cred); err != nil {
+		return "", err
+	}
+	a.warmTools(ctx, s.OwnerID, s.ID)
+	return "", nil
+}
+
+// warmTools lists a server's tools with its current configuration and
+// rewrites the cache row. Called after anything that changes how the server
+// is reached; a failure is logged and leaves the previous row (if any) in
+// place, so an edit never empties the catalogue on its own. The server is
+// re-read first so the write carries the new updated_at.
+func (a *API) warmTools(ctx context.Context, owner string, id uuid.UUID) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	s, err := a.store.GetServer(ctx, owner, id)
+	if err != nil || !s.Enabled {
+		return
+	}
+	if _, err := a.gw.RefreshServer(ctx, s); err != nil {
+		a.log.Warn("tools refresh after change failed", "slug", s.Slug, "err", err)
+	}
 }
 
 // startOAuth discovers, registers and prepares the consent redirect. The
@@ -213,7 +233,6 @@ func (a *API) startOAuth(ctx context.Context, s *store.Server, scopeOverride []s
 	if cred.OAuthScopes == nil {
 		cred.OAuthScopes = []string{}
 	}
-	a.cache.Invalidate(cred.ServerID)
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
@@ -249,11 +268,14 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	if in.Enabled != nil {
 		s.Enabled = *in.Enabled
 	}
-	a.cache.Invalidate(s.ID)
 	if err := a.store.UpdateServer(r.Context(), s); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
+	// Refetch with the new configuration rather than dropping the row: a
+	// delete would send every concurrent caller upstream at once, and a
+	// failed refetch should not take a working catalogue down with it.
+	a.warmTools(r.Context(), s.OwnerID, s.ID)
 	writeJSON(w, http.StatusOK, a.withCredential(r.Context(), s))
 }
 
@@ -289,7 +311,6 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.AuthKind != in.Kind {
 		s.AuthKind = in.Kind
-		a.cache.Invalidate(s.ID)
 		if err := a.store.UpdateServer(r.Context(), s); err != nil {
 			writeStoreErr(w, err)
 			return
@@ -390,6 +411,7 @@ func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		redirect("error", err.Error())
 		return
 	}
+	a.warmTools(r.Context(), st.OwnerID, st.ServerID)
 	redirect("ok", "")
 }
 
@@ -422,7 +444,7 @@ func (a *API) doPing(ctx context.Context, s *store.Server) PingResult {
 		res.ToolCount = len(tools.Tools)
 		// A ping is the operator asking "what is this server now": refresh the cache.
 		id := s.ID
-		a.cache.Put(cache.NSTools, id.String(), &id, tools.Tools, a.toolsTTL)
+		a.cache.Put(cache.NSTools, id.String(), &id, s.UpdatedAt, tools.Tools, a.toolsTTL)
 	} else {
 		res.OK, res.Error = false, err.Error()
 	}
