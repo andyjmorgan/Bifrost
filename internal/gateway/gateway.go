@@ -315,7 +315,14 @@ func (g *Gateway) refill(ctx context.Context, srv *store.Server, protocolVersion
 // call it so the row reflects the current configuration, and a failure
 // leaves whatever row was there in place.
 func (g *Gateway) RefreshServer(ctx context.Context, srv *store.Server) ([]*mcp.Tool, error) {
-	tools, _, err := g.fetchTools(ctx, srv, "", true, nil)
+	hint := ""
+	if raw, err := g.store.CacheGet(ctx, cache.NSInit, srv.ID.String()); err == nil {
+		var in cache.Init
+		if json.Unmarshal(raw, &in) == nil {
+			hint = in.ProtocolVersion
+		}
+	}
+	tools, _, err := g.fetchTools(ctx, srv, hint, true, nil)
 	return tools, err
 }
 

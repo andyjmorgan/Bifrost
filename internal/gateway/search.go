@@ -143,12 +143,11 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				e.tools, hit = decodeTools(bundle[cache.NSTools])
 			}
 			if !hit {
-				hint := ""
-				if !force {
-					hint = e.init.ProtocolVersion
-				}
+				// A forced refresh is about the tool list, not the protocol:
+				// start at the cached version too. Upgrades are re-discovered
+				// when the init row expires, which bounds detection by one TTL.
 				stage := func(msg string) { advance(1, srv.Slug+": "+msg) }
-				e.tools, steps, e.err = g.fetchTools(ctx, srv, hint, force, stage)
+				e.tools, steps, e.err = g.fetchTools(ctx, srv, e.init.ProtocolVersion, force, stage)
 			}
 			if e.err != nil {
 				errType := "upstream"
