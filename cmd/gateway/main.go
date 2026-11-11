@@ -77,7 +77,10 @@ func main() {
 	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
-		in := cache.Init{ProtocolVersion: ir.ProtocolVersion, Instructions: ir.Instructions}
+		in := cache.Init{ProtocolVersion: ir.ProtocolVersion, Instructions: ir.Instructions, Caps: &cache.Caps{}}
+		if c := ir.Capabilities; c != nil {
+			in.Caps.Tools, in.Caps.Prompts, in.Caps.Resources = c.Tools != nil, c.Prompts != nil, c.Resources != nil
+		}
 		if ir.ServerInfo != nil {
 			in.ServerName, in.ServerVersion, in.Title = ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ServerInfo.Title
 		}

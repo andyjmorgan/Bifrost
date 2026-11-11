@@ -33,6 +33,34 @@ type Init struct {
 	ServerVersion   string `json:"serverVersion,omitempty"`
 	Title           string `json:"title,omitempty"`
 	Instructions    string `json:"instructions,omitempty"`
+	// Caps records which surfaces the server declared, so listings skip
+	// servers without one instead of asking. nil means not recorded (an
+	// entry written before this field existed): ask.
+	Caps *Caps `json:"caps,omitempty"`
+}
+
+// Caps is the subset of server capabilities the gateway routes on.
+type Caps struct {
+	Tools     bool `json:"tools"`
+	Prompts   bool `json:"prompts"`
+	Resources bool `json:"resources"`
+}
+
+// Has reports whether the surface named by a cache namespace was declared.
+// Unknown namespaces are assumed present.
+func (in Init) Has(ns string) bool {
+	if in.Caps == nil {
+		return true
+	}
+	switch ns {
+	case NSTools:
+		return in.Caps.Tools
+	case NSPrompts:
+		return in.Caps.Prompts
+	case NSResources, NSTemplates:
+		return in.Caps.Resources
+	}
+	return true
 }
 
 // Store is the slice of the Postgres store the writer needs.

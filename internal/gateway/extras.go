@@ -59,6 +59,9 @@ func (g *Gateway) fetchList(ctx context.Context, srv *store.Server, ns, protocol
 			return nil, err
 		}
 		defer sess.Close()
+		if !declares(sess.InitializeResult(), ns) {
+			return json.RawMessage("[]"), nil
+		}
 		raw, err := fetch(sess)
 		if err != nil {
 			// A server without the surface answers "method not found": that is
@@ -90,6 +93,21 @@ func (g *Gateway) fetchList(ctx context.Context, srv *store.Server, ns, protocol
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// declares reports whether an initialize result advertises the surface a
+// namespace is cached under.
+func declares(ir *mcp.InitializeResult, ns string) bool {
+	if ir == nil || ir.Capabilities == nil {
+		return true
+	}
+	switch ns {
+	case cache.NSPrompts:
+		return ir.Capabilities.Prompts != nil
+	case cache.NSResources, cache.NSTemplates:
+		return ir.Capabilities.Resources != nil
+	}
+	return true
 }
 
 // pagedFetchers return the JSON array for a namespace by paging the upstream.
@@ -189,9 +207,13 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 			if raw := bundle[cache.NSInit]; raw != nil {
 				_ = json.Unmarshal(raw, &l.init)
 			}
-			if raw := bundle[ns]; raw != nil && !force {
-				l.raw = raw
-			} else {
+			switch {
+			case bundle[cache.NSInit] != nil && !l.init.Has(ns):
+				// The server declared no such surface: nothing to ask.
+				l.raw = json.RawMessage("[]")
+			case bundle[ns] != nil && !force:
+				l.raw = bundle[ns]
+			default:
 				l.raw, l.err = g.fetchList(ctx, srv, ns, l.init.ProtocolVersion, force, fetch)
 			}
 			if l.err != nil {

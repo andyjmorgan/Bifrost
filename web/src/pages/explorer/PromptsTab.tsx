@@ -219,7 +219,7 @@ function PromptResult({ result }: { result: E2EResult<GetPromptResult> }) {
   const messages = r?.messages ?? []
   return (
     <div className="rounded-2xl border border-border bg-card">
-      <ResultHead result={result} label={{ ok: 'Success', failed: 'Transport error' }} />
+      <ResultHead result={result} label={{ ok: 'Success', failed: 'Error' }} />
       <div className="space-y-4 p-5">
         {!result.ok && result.error && (
           <Callout tone="danger">

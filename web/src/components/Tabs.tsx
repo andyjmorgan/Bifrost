@@ -58,7 +58,8 @@ export function Tabs<K extends string>({
             onKeyDown={(event) => onKeyDown(event, index)}
             className={cn(
               '-mb-px inline-flex items-center gap-2 border-b-2 px-3 pb-3 pt-1 text-sm font-medium transition-colors',
-              active ? 'border-accent text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+              // `!`: index.css sets an unlayered `* { border-color }` that otherwise beats every border-colour utility.
+              active ? '!border-accent text-foreground' : '!border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {tab.icon}

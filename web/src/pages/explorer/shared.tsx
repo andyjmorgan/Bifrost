@@ -109,7 +109,7 @@ export function StreamPanel({ events, busy, label, className }: { events: Stream
   const parsed = useMemo(() => parseSse(rawText), [rawText])
   return (
     <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <StatusPill tone={busy ? 'info' : 'muted'}>{busy ? 'Streaming' : 'Stream'}</StatusPill>
         {label && <span className="font-mono text-foreground">{label}</span>}
         <span className="font-mono">
@@ -187,7 +187,7 @@ export function UnavailableCallout({ result, what, className }: { result: unknow
           <li key={u.slug} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-mono">{u.slug}</span>
             {u.name && u.name !== u.slug && <span className="text-muted-foreground">{u.name}</span>}
-            {u.error && <span className="break-all text-muted-foreground">— {u.error}</span>}
+            {u.error && <span className="break-words text-muted-foreground">— {u.error}</span>}
           </li>
         ))}
       </ul>
