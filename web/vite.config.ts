@@ -36,6 +36,7 @@ export default defineConfig({
             '@radix-ui/react-slot',
           ],
           oidc: ['oidc-client-ts'],
+          codemirror: ['@codemirror/state', '@codemirror/view', '@codemirror/autocomplete', '@codemirror/language', '@codemirror/commands', '@lezer/highlight'],
         },
       },
     },

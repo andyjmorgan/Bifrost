@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Eye, Play, Wrench } from 'lucide-react'
 import { Button } from '../../ui/components/button'
@@ -17,26 +17,29 @@ import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primar
 import { api, errorMessage, problemsOf, type PolicyInput, type PolicyPreviewResult, type PolicyPreviewTool, type PolicyProblem, type ServerDTO } from '../../api'
 import { cn } from '../../lib'
 
-const MUX = 'mux'
+export const MUX = 'mux'
 const COLS = 'minmax(0,1.6fr) 110px 100px 100px minmax(0,1fr) minmax(0,1fr)'
 
 /** Runs the unsaved policy against a route's live tools and shows what each tool becomes. */
-export function PolicyPreview({ input, onProblems }: { input: () => PolicyInput; onProblems: (p: PolicyProblem[]) => void }) {
-  const [servers, setServers] = useState<ServerDTO[]>([])
-  const [route, setRoute] = useState(MUX)
+export function PolicyPreview({
+  input,
+  onProblems,
+  servers,
+  route,
+  onRouteChange: setRoute,
+}: {
+  input: () => PolicyInput
+  onProblems: (p: PolicyProblem[]) => void
+  servers: ServerDTO[]
+  route: string
+  onRouteChange: (route: string) => void
+}) {
   const [extra, setExtra] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [result, setResult] = useState<PolicyPreviewResult>()
   const [filter, setFilter] = useState('')
   const [selected, setSelected] = useState<PolicyPreviewTool>()
-
-  useEffect(() => {
-    api.servers
-      .list()
-      .then(setServers)
-      .catch(() => {})
-  }, [])
 
   const run = async () => {
     setBusy(true)

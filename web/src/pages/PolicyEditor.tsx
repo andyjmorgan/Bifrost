@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { ArrowDown, ArrowLeft, ArrowUp, Copy, ListChecks, Plus, Save, Trash2, X } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
-import { Textarea } from '../ui/components/textarea'
 import { Switch } from '../ui/components/switch'
 import { Badge } from '../ui/components/badge'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/components/select'
@@ -13,8 +12,9 @@ import { FormField, FormSection } from '../components/FormField'
 import { Callout } from '../components/Callout'
 import { ListBar, ListCard, ListEmpty } from '../components/ListCard'
 import { CelReference } from '../components/policies/Reference'
-import { PolicyPreview } from '../components/policies/Preview'
-import { ApiError, api, errorMessage, problemsOf, type PolicyDTO, type PolicyField, type PolicyInput, type PolicyProblem, type PolicyRule } from '../api'
+import { MUX, PolicyPreview } from '../components/policies/Preview'
+import { CelEditor, type CelCompletionData } from '../components/policies/CelEditor'
+import { ApiError, api, errorMessage, problemsOf, type PolicyDTO, type PolicyField, type PolicyInput, type PolicyProblem, type PolicyRule, type ServerDTO } from '../api'
 import { cn } from '../lib'
 
 // Served by GET /policies/fields; this copy only fills in if that call fails.
@@ -37,8 +37,6 @@ const GROUPS: { label: string; match: (f: string) => boolean }[] = [
   { label: 'Identity', match: (f) => f === 'name' || f === 'title' || f === 'description' },
   { label: 'Annotations', match: (f) => f.startsWith('annotations.') },
 ]
-
-const mono = 'font-mono text-xs leading-5'
 
 interface Assignment {
   key: string
@@ -116,6 +114,36 @@ function PolicyEditor({ id }: { id: string }) {
   const [nameError, setNameError] = useState<string>()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string>()
+  const [servers, setServers] = useState<ServerDTO[]>([])
+  const [route, setRoute] = useState(MUX)
+
+  useEffect(() => {
+    api.servers
+      .list()
+      .then(setServers)
+      .catch(() => {})
+  }, [])
+
+  // Tool names for completion come from a no-rules preview of the selected route, fetched the
+  // first time they are asked for and kept per route. A failed fetch is dropped so it can retry.
+  const toolNames = useRef(new Map<string, Promise<{ name: string; server: string }[]>>())
+  const completions = useMemo<CelCompletionData>(
+    () => ({
+      servers: servers.map((s) => ({ slug: s.slug, name: s.name })),
+      loadToolNames: () => {
+        let p = toolNames.current.get(route)
+        if (!p) {
+          p = api.policies
+            .preview({ policy: { name: '', description: '', invert: false, rules: [] }, route })
+            .then((r) => r.tools.map((t) => ({ name: t.upstream, server: t.server })))
+          p.catch(() => toolNames.current.delete(route))
+          toolNames.current.set(route, p)
+        }
+        return p
+      },
+    }),
+    [servers, route],
+  )
 
   useEffect(() => {
     api.policies
@@ -330,6 +358,7 @@ function PolicyEditor({ id }: { id: string }) {
                 onDuplicate={() => duplicate(i)}
                 onRemove={() => removeRule(i)}
                 onBlur={validateNow}
+                completions={completions}
               />
             ))}
           </ol>
@@ -343,7 +372,7 @@ function PolicyEditor({ id }: { id: string }) {
           <h2 className="text-base font-semibold tracking-tight">Preview</h2>
           <p className="mt-1 text-xs text-muted-foreground">Runs the unsaved policy against a route's current tools. Hidden tools stay listed, dimmed.</p>
         </div>
-        <PolicyPreview input={input} onProblems={setProblems} />
+        <PolicyPreview input={input} onProblems={setProblems} servers={servers} route={route} onRouteChange={setRoute} />
       </div>
     </div>
   )
@@ -360,6 +389,7 @@ function RuleRow({
   onDuplicate,
   onRemove,
   onBlur,
+  completions,
 }: {
   index: number
   count: number
@@ -371,6 +401,7 @@ function RuleRow({
   onDuplicate: () => void
   onRemove: () => void
   onBlur: () => void
+  completions: CelCompletionData
 }) {
   const used = new Set(rule.then.map((a) => a.field))
   const setAssignment = (key: string, patch: Partial<Assignment>) => onChange({ then: rule.then.map((a) => (a.key === key ? { ...a, ...patch } : a)) })
@@ -411,15 +442,16 @@ function RuleRow({
       <div className={cn('space-y-4 md:pl-9', !rule.enabled && 'opacity-60')}>
         {problems?.rule.map((m, i) => <Problem key={i}>{m}</Problem>)}
         <FormField label="When" hint={problems?.when.length ? undefined : 'A CEL boolean. Use true to match every tool.'}>
-          <Textarea
+          <CelEditor
             value={rule.when}
-            onChange={(e) => onChange({ when: e.target.value })}
+            onChange={(when) => onChange({ when })}
             onBlur={onBlur}
-            spellCheck={false}
-            rows={2}
+            kind="bool"
+            condition
+            completions={completions}
             placeholder='tool.name.startsWith("delete")'
-            aria-label="When"
-            className={cn(mono, 'min-h-16', problems?.when.length && 'border-danger/40')}
+            ariaLabel="When"
+            invalid={!!problems?.when.length}
           />
           {problems?.when.map((m, i) => <Problem key={i}>{m}</Problem>)}
         </FormField>
@@ -446,6 +478,7 @@ function RuleRow({
                   onChange={(patch) => setAssignment(a.key, patch)}
                   onRemove={() => onChange({ then: rule.then.filter((x) => x.key !== a.key) })}
                   onBlur={onBlur}
+                  completions={completions}
                 />
               ))}
             </div>
@@ -464,6 +497,7 @@ function AssignmentRow({
   onChange,
   onRemove,
   onBlur,
+  completions,
 }: {
   assignment: Assignment
   fields: PolicyField[]
@@ -472,6 +506,7 @@ function AssignmentRow({
   onChange: (patch: Partial<Assignment>) => void
   onRemove: () => void
   onBlur: () => void
+  completions: CelCompletionData
 }) {
   const field = fields.find((f) => f.name === a.field)
   const groups = useMemo(() => {
@@ -509,14 +544,17 @@ function AssignmentRow({
           </SelectContent>
         </Select>
         <div className="flex min-w-0 items-center gap-2">
-          <Input
+          <CelEditor
             value={a.expr}
-            onChange={(e) => onChange({ expr: e.target.value })}
+            onChange={(expr) => onChange({ expr })}
             onBlur={onBlur}
-            spellCheck={false}
+            kind={field?.kind ?? 'string'}
+            singleLine
+            completions={completions}
             placeholder={field?.kind === 'string' ? '"text" or tool.description + " …"' : 'true'}
-            aria-label={`${a.field || 'Field'} expression`}
-            className={cn(mono, 'min-w-0 flex-1', problems?.length && 'border-danger/40')}
+            ariaLabel={`${a.field || 'Field'} expression`}
+            invalid={!!problems?.length}
+            className="flex-1"
           />
           {field?.kind === 'bool' && (
             <div className="flex shrink-0 overflow-hidden rounded-lg border border-border" role="group" aria-label="Literal">
