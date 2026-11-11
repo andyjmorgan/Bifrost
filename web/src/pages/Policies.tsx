@@ -113,7 +113,7 @@ export function PoliciesPage() {
                     title={
                       <span className="inline-flex max-w-full items-center gap-2">
                         <span className="truncate">{p.name}</span>
-                        {p.invert && <Badge variant="info">allow-list</Badge>}
+                        {p.invert && <Badge variant="info">hidden by default</Badge>}
                       </span>
                     }
                     subtitle={p.description || 'No description.'}

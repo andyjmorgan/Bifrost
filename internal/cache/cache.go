@@ -16,8 +16,11 @@ import (
 
 // Namespaces (the ns column).
 const (
-	NSTools = "tools" // a server's full tools/list, keyed by server id
-	NSInit  = "init"  // what the server reported at initialize (Init), keyed by server id
+	NSTools     = "tools"     // a server's full tools/list, keyed by server id
+	NSInit      = "init"      // what the server reported at initialize (Init), keyed by server id
+	NSPrompts   = "prompts"   // prompts/list
+	NSResources = "resources" // resources/list
+	NSTemplates = "templates" // resources/templates/list
 )
 
 // Init is the cached initialize result: the negotiated protocol version lets

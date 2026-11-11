@@ -14,12 +14,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/common/types/ref"
 	"cel.dev/cel-go/ext"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -131,6 +134,23 @@ var env = func() *cel.Env {
 		cel.Variable("server", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("route", cel.StringType),
 		ext.Strings(),
+		// regexReplace(text, pattern, replacement): RE2 replace-all with $1
+		// style group references, as a member call on strings:
+		// tool.description.regexReplace("\\s+", " "). CEL's own replace is a
+		// literal substring swap and matches only tests.
+		cel.Function("regexReplace",
+			cel.MemberOverload("string_regexReplace_string_string", []*cel.Type{cel.StringType, cel.StringType, cel.StringType}, cel.StringType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					text, _ := args[0].Value().(string)
+					pattern, _ := args[1].Value().(string)
+					repl, _ := args[2].Value().(string)
+					re, err := compileRegex(pattern)
+					if err != nil {
+						return types.NewErr("regexReplace: %v", err)
+					}
+					return types.String(re.ReplaceAllString(text, repl))
+				})),
+		),
 	)
 	if err != nil {
 		panic(err)
@@ -237,6 +257,22 @@ func firstLine(s string) string {
 		s = s[:i]
 	}
 	return strings.TrimSpace(s)
+}
+
+// compileRegex caches patterns: a policy evaluates the same expression for
+// every tool on every listing.
+var regexCache sync.Map // pattern -> *regexp.Regexp
+
+func compileRegex(pattern string) (*regexp.Regexp, error) {
+	if v, ok := regexCache.Load(pattern); ok {
+		return v.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	regexCache.Store(pattern, re)
+	return re, nil
 }
 
 // Hit records one rule that matched a tool.

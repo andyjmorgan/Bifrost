@@ -110,3 +110,24 @@ func TestNameCarriesSlug(t *testing.T) {
 		t.Error("pick should be untouched")
 	}
 }
+
+func TestRegexReplace(t *testing.T) {
+	c, err := Compile(&Policy{Rules: []Rule{
+		{When: `true`, Then: map[string]string{"description": `tool.description.regexReplace("\\(deprecated:[^)]*\\)\\s*", "").regexReplace("^(\\w+)", "${1}!")`}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ds := Apply(context.Background(), []*Compiled{c}, []*mcp.Tool{{Name: "a", Description: "Fetch (deprecated: use x) a page."}}, Server{Slug: "s"}, "direct")
+	if got := ds[0].Tool.Description; got != "Fetch! a page." {
+		t.Errorf("got %q", got)
+	}
+	bad, err := Compile(&Policy{Rules: []Rule{{When: `true`, Then: map[string]string{"description": `tool.description.regexReplace("(", "")`}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ds = Apply(context.Background(), []*Compiled{bad}, []*mcp.Tool{{Name: "a", Description: "x"}}, Server{}, "direct")
+	if ds[0].Tool.Description != "x" || len(ds[0].Hits) == 0 || ds[0].Hits[0].Error == "" {
+		t.Errorf("a bad pattern should leave the tool alone and record an error: %+v", ds[0])
+	}
+}

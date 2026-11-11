@@ -298,13 +298,33 @@ function PolicyEditor({ id }: { id: string }) {
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this policy is for" />
           </FormField>
         </div>
-        <label className="flex cursor-pointer items-start gap-3">
-          <Switch checked={invert} onCheckedChange={setInvert} className="mt-0.5" aria-label="Invert (allow-list)" />
-          <span>
-            <span className="block text-sm font-medium">Invert (allow-list)</span>
-            <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Every tool starts hidden; rules opt tools in with visible = true.</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm font-medium">Before any rule runs</span>
+          <div className="flex overflow-hidden rounded-lg border border-border" role="group" aria-label="Starting visibility">
+            {(
+              [
+                [false, 'All tools visible'],
+                [true, 'All tools hidden'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setInvert(v)}
+                aria-pressed={invert === v}
+                className={cn(
+                  'h-9 cursor-pointer px-3 text-xs font-medium transition-colors',
+                  invert === v ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated/60 hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs leading-5 text-muted-foreground">
+            {invert ? 'Rules opt tools in with visible = true (an allow-list).' : 'Rules hide tools with visible = false.'}
           </span>
-        </label>
+        </div>
       </div>
 
       <ListCard>
@@ -336,7 +356,7 @@ function PolicyEditor({ id }: { id: string }) {
           <ListEmpty
             icon={ListChecks}
             title="No rules yet"
-            hint={invert ? 'An allow-list with no rules hides every tool.' : 'A policy with no rules changes nothing.'}
+            hint={invert ? 'Starting hidden with no rules hides every tool.' : 'A policy with no rules changes nothing.'}
             action={
               <Button variant="secondary" onClick={addRule}>
                 <Plus /> Add rule

@@ -53,7 +53,7 @@ export function CelReference() {
       </summary>
       <div className="mt-3 space-y-5 rounded-2xl border border-border bg-card p-5">
         <p className="text-xs leading-5 text-muted-foreground">
-          Every tool starts visible, or hidden when the policy is an allow-list. Rules run top to bottom; a matching rule applies its assignments
+          Every tool starts visible, or hidden when the policy starts with all tools hidden. Rules run top to bottom; a matching rule applies its assignments
           before the next rule sees the tool. Values are CEL expressions: <code className="font-mono">true</code>,{' '}
           <code className="font-mono">"text"</code>, or a template like <code className="font-mono">tool.description + " (read-only)"</code>.
         </p>

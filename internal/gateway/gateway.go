@@ -84,6 +84,11 @@ func (g *Gateway) handler(route string) http.Handler {
 		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version}, &mcp.ServerOptions{
 			SupportedProtocolVersions: []string{ProtocolVersion},
 			Logger:                    g.log,
+			// Advertise the surfaces the middleware forwards; nothing is
+			// registered on this server itself.
+			HasTools:     true,
+			HasPrompts:   true,
+			HasResources: true,
 		})
 		srv.AddReceivingMiddleware(g.middleware(route, strings.ToLower(chi.URLParam(r, "slug"))))
 		return srv
@@ -139,6 +144,24 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 					return g.searchCall(ctx, caller, route, slug, p)
 				}
 				return g.callTool(ctx, caller, route, slug, p)
+			case "prompts/list":
+				return g.listPrompts(ctx, caller, route, slug)
+			case "prompts/get":
+				p, ok := req.GetParams().(*mcp.GetPromptParams)
+				if !ok {
+					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid prompts/get params"}
+				}
+				return g.getPrompt(ctx, caller, route, slug, p)
+			case "resources/list":
+				return g.listResources(ctx, caller, route, slug)
+			case "resources/templates/list":
+				return g.listResourceTemplates(ctx, caller, route, slug)
+			case "resources/read":
+				p, ok := req.GetParams().(*mcp.ReadResourceParams)
+				if !ok {
+					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid resources/read params"}
+				}
+				return g.readResource(ctx, caller, route, slug, p)
 			}
 			return next(ctx, method, req)
 		}
