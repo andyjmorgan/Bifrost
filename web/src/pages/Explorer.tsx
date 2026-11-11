@@ -12,7 +12,6 @@ import { PageHeader } from '../components/PageHeader'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
-import { ToolHints } from '../components/ToolHints'
 import { Callout } from '../components/Callout'
 import { CodeBlock } from '../components/JsonBlock'
 import { JsonTree, tryParseJson, type Json } from '../components/PayloadViewer'
@@ -275,10 +274,7 @@ export function ExplorerPage() {
                       subtitle={t.description?.split('\n')[0]}
                     />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <ToolHints annotations={t.annotations} compact />
-                    <Play className="size-4 text-muted-foreground" aria-hidden />
-                  </div>
+                  <Play className="size-4 text-muted-foreground" aria-hidden />
                 </ListRow>
               )
             })}
@@ -302,10 +298,9 @@ export function ExplorerPage() {
                 <SheetTitle className="break-all font-mono text-base">{selected.name}</SheetTitle>
                 <SheetDescription asChild>
                   <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex w-full flex-wrap items-center gap-2">
-                      {(selected.title || selected.annotations?.title) && <span className="text-sm font-medium text-foreground">{selected.title || selected.annotations?.title}</span>}
-                      <ToolHints annotations={selected.annotations} />
-                    </div>
+                    {(selected.title || selected.annotations?.title) && (
+                      <span className="w-full text-sm font-medium text-foreground">{selected.title || selected.annotations?.title}</span>
+                    )}
                     {selected.description ? (
                       <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selected.description}</p>
                     ) : (
@@ -319,6 +314,14 @@ export function ExplorerPage() {
               </SheetHeader>
               <SheetBody>
                 <div className="space-y-5">
+                  <details className="group text-sm">
+                    <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Definition
+                    </summary>
+                    <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border bg-code p-3">
+                      <JsonTree value={selected as unknown as Json} />
+                    </div>
+                  </details>
                   {raw ? (
                     <RawArguments schema={selected.inputSchema} draft={draft} onChange={setDraft} />
                   ) : (
