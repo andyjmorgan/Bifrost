@@ -13,7 +13,7 @@ import (
 var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrStale is a conditional cache write that lost to a newer server change.
-	ErrStale = errors.New("store: stale cache write")
+	ErrStale    = errors.New("store: stale cache write")
 	ErrConflict = errors.New("store: conflict")
 )
 

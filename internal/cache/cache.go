@@ -103,4 +103,3 @@ func (w *Writer) Put(ns, key string, serverID *uuid.UUID, updatedAt time.Time, v
 	}
 	w.enqueue(job{ns: ns, key: key, serverID: serverID, updatedAt: updatedAt, value: b, ttl: ttl})
 }
-

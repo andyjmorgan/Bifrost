@@ -1,7 +1,9 @@
 // The CEL cheat sheet shown under the rule list. Mirrors the reference in the policies contract.
 
 const VARIABLES: [string, string][] = [
-  ['tool.name, tool.title, tool.description', 'Strings, "" when unset.'],
+  ['tool.name', 'The upstream tool name, never prefixed: "flip", not "coinserver__flip".'],
+  ['tool.fullName', 'slug__name on every route, for rules written against what clients see.'],
+  ['tool.title, tool.description', 'Strings, "" when unset.'],
   ['tool.annotations.readOnlyHint', 'Bool, default false.'],
   ['tool.annotations.destructiveHint', 'Bool, default true.'],
   ['tool.annotations.idempotentHint', 'Bool, default false.'],

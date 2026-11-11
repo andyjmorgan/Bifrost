@@ -86,3 +86,22 @@ func TestCompileProblems(t *testing.T) {
 		t.Errorf("disabled rules must not be compiled: %v", err)
 	}
 }
+
+func TestFullNameAndPrefixLint(t *testing.T) {
+	c, err := Compile(&Policy{Rules: []Rule{{When: `tool.fullName.startsWith("coin")`, Then: map[string]string{"visible": "false"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ds := Apply(context.Background(), []*Compiled{c}, []*mcp.Tool{{Name: "flip"}}, Server{Slug: "coinserver"}, "direct")
+	if ds[0].Visible {
+		t.Error("fullName should be coinserver__flip on every route")
+	}
+	for _, when := range []string{`tool.name == "coinserver__flip"`, `tool.name.startsWith("coin__")`, `tool.name in ["a", "coinserver__flip"]`} {
+		if _, err := Compile(&Policy{Rules: []Rule{{When: when, Then: map[string]string{"visible": "false"}}}}); err == nil {
+			t.Errorf("expected a lint problem for %s", when)
+		}
+	}
+	if _, err := Compile(&Policy{Rules: []Rule{{When: `tool.name.startsWith("flip") && server.slug == "coinserver"`, Then: map[string]string{"visible": "false"}}}}); err != nil {
+		t.Errorf("false positive: %v", err)
+	}
+}

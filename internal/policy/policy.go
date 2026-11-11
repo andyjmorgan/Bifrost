@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -173,6 +174,8 @@ func Compile(p *Policy) (*Compiled, error) {
 		}
 		if strings.TrimSpace(r.When) == "" {
 			problems = append(problems, Problem{Rule: i, Message: "when is required (use true to always match)"})
+		} else if msg := lintPrefixedName(r.When); msg != "" {
+			problems = append(problems, Problem{Rule: i, Message: msg})
 		} else if prog, err := compile(r.When, KindBool); err != nil {
 			problems = append(problems, Problem{Rule: i, Message: err.Error()})
 		} else {
@@ -228,6 +231,18 @@ func compile(expr string, want Kind) (cel.Program, error) {
 
 // firstLine trims a cel-go issue to what a rule author needs: one line,
 // without the "ERROR: <input>:" prefix or the parser's expected-token dump.
+// prefixedNameLiteral spots tool.name compared or matched against a literal
+// that carries a slug prefix ("coinserver__flip"), which can never match
+// because tool.name is the bare upstream name.
+var prefixedNameLiteral = regexp.MustCompile(`tool\.name\s*(?:==|!=|\.(?:startsWith|endsWith|contains|matches)\(|in\s*\[[^\]]*)\s*"[^"]*__`)
+
+func lintPrefixedName(when string) string {
+	if prefixedNameLiteral.MatchString(when) {
+		return `tool.name is the upstream name without the slug prefix, so it never contains "__": match the server with server.slug, or use tool.fullName for the slug__name form`
+	}
+	return ""
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
@@ -277,8 +292,13 @@ func apply(ctx context.Context, policies []*Compiled, t *mcp.Tool, srv map[strin
 	d := Decision{Tool: &cp, Upstream: t.Name, Visible: true}
 	act := map[string]any{"tool": toMap(&cp), "server": srv, "route": route}
 	tool := act["tool"].(map[string]any)
+	slug, _ := srv["slug"].(string)
 	refresh := func() {
 		tool = toMap(&cp)
+		// fullName is the mux spelling, slug__name, on every route: the
+		// prefix is what people see in clients, so rules may match on it
+		// without having to know that tool.name is the bare upstream name.
+		tool["fullName"] = slug + "__" + cp.Name
 		tool["visible"] = d.Visible
 		tool["confirm"] = d.Confirm
 		act["tool"] = tool

@@ -27,7 +27,8 @@ export interface CelCompleterOptions {
 const v = (label: string, detail: string, type = 'property'): Completion => ({ label, detail, type })
 
 const TOOL_FIELDS: Completion[] = [
-  v('name', 'string, the tool name'),
+  v('name', 'string, the upstream tool name (no slug prefix)'),
+  v('fullName', 'string, slug__name on every route'),
   v('title', 'string, "" when unset'),
   v('description', 'string, "" when unset'),
   v('annotations', 'hints with spec defaults applied'),
@@ -198,8 +199,8 @@ function openString(text: string, base: number): StringScan | null {
   return open && { start: open.start, quote: open.quote }
 }
 
-const AFTER_EQ = /(server\.slug|tool\.name|route)\s*(==|!=)\s*$/
-const AFTER_IN = /(server\.slug|tool\.name|route)\s+in\s*\[(?:[^\]]*,)?\s*$/
+const AFTER_EQ = /(server\.slug|tool\.name|tool\.fullName|route)\s*(==|!=)\s*$/
+const AFTER_IN = /(server\.slug|tool\.name|tool\.fullName|route)\s+in\s*\[(?:[^\]]*,)?\s*$/
 
 function quotedApply(value: string, quote: string) {
   return (view: EditorView, _c: Completion, from: number, to: number) => {
@@ -219,6 +220,7 @@ async function literalValues(subject: string, data: CelCompletionData | undefine
   if (!data?.loadToolNames) return []
   try {
     const tools = await data.loadToolNames()
+    if (subject === 'tool.fullName') return tools.map((t) => ({ label: `${t.server}__${t.name}`, detail: t.server }))
     const seen = new Map<string, string[]>()
     for (const t of tools) seen.set(t.name, [...(seen.get(t.name) ?? []), t.server])
     return [...seen].map(([label, servers]) => ({ label, detail: servers.join(', ') }))

@@ -96,7 +96,7 @@ A policy is a list of rules. Every tool starts visible, or hidden when the polic
 }
 ```
 
-Rules see `tool` (name, title, description, annotations with defaults, annotationsRaw, inputSchema, outputSchema, icons, meta, visible, confirm), `server` (slug, name, description, instructions, protocolVersion, url) and `route`. Assignable fields: `visible`, `confirm`, `confirmMessage`, `name`, `title`, `description` and the four annotation hints. Values are CEL expressions, so a literal is `true` or `"text"` and a template is `tool.description + " (read-only)"`.
+Rules see `tool` (name as the upstream sends it, fullName as `slug__name`, title, description, annotations with defaults, annotationsRaw, inputSchema, outputSchema, icons, meta, visible, confirm), `server` (slug, name, description, instructions, protocolVersion, url) and `route`. Assignable fields: `visible`, `confirm`, `confirmMessage`, `name`, `title`, `description` and the four annotation hints. Values are CEL expressions, so a literal is `true` or `"text"` and a template is `tool.description + " (read-only)"`.
 
 ```sh
 curl -X PUT $BASE/api/v1/bindings/mux -H "Authorization: Bearer $KEY" -d '{"policyIds":["…"]}'       # global route
