@@ -206,6 +206,7 @@ export interface E2EInput {
   apiKeyId: string
   name?: string
   arguments?: Record<string, unknown>
+  uri?: string
 }
 
 export interface E2EResult<T = unknown> {
@@ -267,6 +268,101 @@ export interface CallToolResult {
   content?: MCPContent[]
   structuredContent?: unknown
   isError?: boolean
+}
+
+export interface MCPIcon {
+  src: string
+  mimeType?: string
+  sizes?: string[]
+  [key: string]: unknown
+}
+
+export interface MCPPromptArgument {
+  name: string
+  title?: string
+  description?: string
+  required?: boolean
+}
+
+export interface MCPPrompt {
+  name: string
+  title?: string
+  description?: string
+  arguments?: MCPPromptArgument[]
+  icons?: MCPIcon[]
+  _meta?: Record<string, unknown>
+}
+
+export interface ListPromptsResult {
+  prompts: MCPPrompt[]
+  _meta?: Record<string, unknown>
+}
+
+export interface MCPResourceContents {
+  uri: string
+  mimeType?: string
+  text?: string
+  blob?: string
+  _meta?: Record<string, unknown>
+}
+
+export type MCPPromptContent =
+  | { type: 'text'; text: string }
+  | { type: 'image' | 'audio'; data: string; mimeType: string }
+  | { type: 'resource'; resource: MCPResourceContents }
+  | { type: 'resource_link'; uri: string; name?: string; title?: string; description?: string; mimeType?: string }
+
+export interface MCPPromptMessage {
+  role: 'user' | 'assistant'
+  content: MCPPromptContent
+}
+
+export interface GetPromptResult {
+  description?: string
+  messages: MCPPromptMessage[]
+  _meta?: Record<string, unknown>
+}
+
+export interface MCPResourceAnnotations {
+  audience?: string[]
+  priority?: number
+  lastModified?: string
+}
+
+export interface MCPResource {
+  uri: string
+  name: string
+  title?: string
+  description?: string
+  mimeType?: string
+  size?: number
+  annotations?: MCPResourceAnnotations
+  _meta?: Record<string, unknown>
+}
+
+export interface ListResourcesResult {
+  resources: MCPResource[]
+  _meta?: Record<string, unknown>
+}
+
+export interface MCPResourceTemplate {
+  uriTemplate: string
+  name: string
+  title?: string
+  description?: string
+  mimeType?: string
+  annotations?: MCPResourceAnnotations
+  _meta?: Record<string, unknown>
+}
+
+export interface ListResourceTemplatesResult {
+  resourceTemplates: MCPResourceTemplate[]
+  _meta?: Record<string, unknown>
+}
+
+export interface ReadResourceResult {
+  contents: MCPResourceContents[]
+  _meta?: Record<string, unknown>
 }
 
 // Policies: ordered CEL rules that shape what a route exposes. A route is "mux" (the global /mcp)

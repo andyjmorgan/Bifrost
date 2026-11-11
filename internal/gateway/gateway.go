@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -185,21 +186,101 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 	return g.muxTools(ctx, caller, route, false)
 }
 
-// RefreshTool is the gateway's own tool on the mux route: re-list every
-// server bypassing the cache, refresh it, and return the fresh list.
-const RefreshTool = "refresh_tools"
+// RefreshTool is the gateway's own tool on the mux route: re-read every
+// server's tools, prompts and resources bypassing the cache, refresh it,
+// and report per server.
+const RefreshTool = "refresh_services"
 
 func refreshToolDef() *mcp.Tool {
 	f, t := false, true
 	return &mcp.Tool{
 		Name:        RefreshTool,
-		Title:       "Refresh tools",
-		Description: "Re-fetch every server's tools, bypassing and refreshing the gateway cache. Returns a per-server summary; call tools/list afterwards for the fresh definitions.",
+		Title:       "Refresh services",
+		Description: "Re-fetch every server's tools, prompts, resources and resource templates, bypassing and refreshing the gateway cache. Returns a per-server summary; list afterwards for the fresh definitions.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
 		// Rewrites the gateway's own cache, nothing beyond it: not read-only,
 		// not destructive, safe to repeat, closed world.
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &f, IdempotentHint: t, OpenWorldHint: &f},
 	}
+}
+
+// refreshServices is the refresh_services tool: every surface of every
+// server re-fetched (tools first, with progress; then prompts, resources
+// and templates concurrently) and a per-server summary. Definitions come
+// from the list methods afterwards.
+func (g *Gateway) refreshServices(ctx context.Context, caller *auth.Caller, route string) (mcp.Result, error) {
+	entries, err := g.catalog(ctx, caller, route, "", true, nil)
+	if err != nil {
+		return nil, err
+	}
+	type surface struct {
+		ns    string
+		fetch func(*upstream.Session) (json.RawMessage, error)
+		got   []listing
+		err   error
+	}
+	surfaces := []*surface{
+		{ns: cache.NSPrompts, fetch: fetchPrompts},
+		{ns: cache.NSResources, fetch: fetchResources},
+		{ns: cache.NSTemplates, fetch: fetchTemplates},
+	}
+	var wg sync.WaitGroup
+	for _, sf := range surfaces {
+		wg.Add(1)
+		go func(sf *surface) {
+			defer wg.Done()
+			sf.got, sf.err = g.listings(ctx, caller, route, "", sf.ns, true, sf.fetch)
+		}(sf)
+	}
+	wg.Wait()
+	type line struct {
+		Server    string `json:"server"`
+		Tools     int    `json:"tools"`
+		Prompts   int    `json:"prompts"`
+		Resources int    `json:"resources"`
+		Templates int    `json:"templates"`
+		Error     string `json:"error,omitempty"`
+	}
+	count := func(sf *surface, slug string) int {
+		for _, l := range sf.got {
+			if l.srv.Slug == slug && l.err == nil {
+				var items []json.RawMessage
+				_ = json.Unmarshal(l.raw, &items)
+				return len(items)
+			}
+		}
+		return 0
+	}
+	var (
+		lines  []line
+		totals line
+		bad    int
+		sb     strings.Builder
+	)
+	for _, e := range entries {
+		l := line{Server: e.srv.Slug, Tools: len(e.tools)}
+		if e.err != nil {
+			l.Error = e.err.Error()
+			bad++
+			fmt.Fprintf(&sb, "%s: unavailable (%s)\n", e.srv.Slug, oneLine(e.err.Error(), 120))
+		} else {
+			l.Prompts, l.Resources, l.Templates = count(surfaces[0], e.srv.Slug), count(surfaces[1], e.srv.Slug), count(surfaces[2], e.srv.Slug)
+			totals.Tools += l.Tools
+			totals.Prompts += l.Prompts
+			totals.Resources += l.Resources
+			totals.Templates += l.Templates
+			fmt.Fprintf(&sb, "%s: %s, %s, %s, %s\n", e.srv.Slug, plural(l.Tools, "tool"), plural(l.Prompts, "prompt"), plural(l.Resources, "resource"), plural(l.Templates, "template"))
+		}
+		lines = append(lines, l)
+	}
+	summary := fmt.Sprintf("Refreshed %d servers: %s, %s, %s, %s", len(entries)-bad, plural(totals.Tools, "tool"), plural(totals.Prompts, "prompt"), plural(totals.Resources, "resource"), plural(totals.Templates, "template"))
+	if bad > 0 {
+		summary += fmt.Sprintf(", %d unavailable", bad)
+	}
+	return &mcp.CallToolResult{
+		Content:           []mcp.Content{&mcp.TextContent{Text: summary + ".\n" + sb.String()}},
+		StructuredContent: map[string]any{"servers": lines, "tools": totals.Tools, "prompts": totals.Prompts, "resources": totals.Resources, "templates": totals.Templates, "unavailable": bad},
+	}, nil
 }
 
 // muxTools lists tools across all enabled servers. With force, cached
@@ -400,42 +481,7 @@ func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersio
 func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug string, p *mcp.CallToolParamsRaw) (mcp.Result, error) {
 	name := p.Name
 	if route == "mux" && p.Name == RefreshTool {
-		// A method, not a listing: refresh every server and report what
-		// happened. Definitions come from tools/list or get_tool_definition.
-		entries, err := g.catalog(ctx, caller, route, "", true, nil)
-		if err != nil {
-			return nil, err
-		}
-		type line struct {
-			Server string `json:"server"`
-			Tools  int    `json:"tools"`
-			Error  string `json:"error,omitempty"`
-		}
-		var (
-			lines      []line
-			total, bad int
-			sb         strings.Builder
-		)
-		for _, e := range entries {
-			l := line{Server: e.srv.Slug, Tools: len(e.tools)}
-			if e.err != nil {
-				l.Error = e.err.Error()
-				bad++
-				fmt.Fprintf(&sb, "%s: unavailable (%s)\n", e.srv.Slug, oneLine(e.err.Error(), 120))
-			} else {
-				total += len(e.tools)
-				fmt.Fprintf(&sb, "%s: %s\n", e.srv.Slug, plural(len(e.tools), "tool"))
-			}
-			lines = append(lines, l)
-		}
-		summary := fmt.Sprintf("Refreshed %d tools across %d servers", total, len(entries)-bad)
-		if bad > 0 {
-			summary += fmt.Sprintf(", %d unavailable", bad)
-		}
-		return &mcp.CallToolResult{
-			Content:           []mcp.Content{&mcp.TextContent{Text: summary + ".\n" + sb.String()}},
-			StructuredContent: map[string]any{"servers": lines, "tools": total, "unavailable": bad},
-		}, nil
+		return g.refreshServices(ctx, caller, route)
 	}
 	if route == "mux" {
 		var ok bool

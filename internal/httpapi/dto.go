@@ -178,6 +178,7 @@ type E2EInput struct {
 	APIKeyID  string         `json:"apiKeyId"`
 	Name      string         `json:"name,omitempty"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+	URI       string         `json:"uri,omitempty"`    // resources/read
 	Search    bool           `json:"search,omitempty"` // call the route in search mode (?search=true)
 }
 

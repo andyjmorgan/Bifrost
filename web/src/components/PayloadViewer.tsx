@@ -291,3 +291,24 @@ export function findUnavailable(body?: string, headers?: Record<string, string>)
   }
   return out
 }
+
+/**
+ * Reads the unavailable-servers marker off an already-parsed MCP result object (its `_meta`). Items
+ * carry `slug` (what the gateway writes today) or `server`; both are accepted.
+ */
+export function unavailableFrom(result: unknown): UnavailableServer[] {
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) return []
+  const meta = (result as { _meta?: unknown })._meta
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return []
+  const list = (meta as Record<string, unknown>)[UNAVAILABLE_META_KEY]
+  if (!Array.isArray(list)) return []
+  const out: UnavailableServer[] = []
+  for (const item of list) {
+    if (typeof item !== 'object' || item === null) continue
+    const o = item as Record<string, unknown>
+    const slug = typeof o.slug === 'string' ? o.slug : typeof o.server === 'string' ? o.server : undefined
+    if (!slug) continue
+    out.push({ slug, name: typeof o.name === 'string' ? o.name : undefined, error: typeof o.error === 'string' ? o.error : undefined })
+  }
+  return out
+}

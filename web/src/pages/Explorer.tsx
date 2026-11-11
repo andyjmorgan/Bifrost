@@ -1,51 +1,53 @@
-import { useEffect, useMemo, useState } from 'react'
-import type React from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Braces, Compass, ListTree, Play, Wrench } from 'lucide-react'
+import { Braces, Compass, FileText, ListTree, MessageSquareText, Play, Wrench } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Switch } from '../ui/components/switch'
 import { Badge } from '../ui/components/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
 import { PageHeader } from '../components/PageHeader'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
-import { CodeBlock } from '../components/JsonBlock'
-import { JsonTree, SseList, parseSse, tryParseJson, type Json } from '../components/PayloadViewer'
-import { CopyButton } from '../components/CopyButton'
+import { JsonTree, type Json } from '../components/PayloadViewer'
 import { FormField } from '../components/FormField'
+import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
-import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EEventHandler, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
 import { cn } from '../lib'
+import { Definition, JsonView, ListOutcome, MUX, RequestLink, StreamPanel, TargetFields, TextOrJson, UnavailableCallout, collect, type StreamEvent } from './explorer/shared'
+import { PromptsTab } from './explorer/PromptsTab'
+import { ResourcesTab } from './explorer/ResourcesTab'
 
-const MUX = 'mux'
 const SEARCH_STORAGE = 'mcpgw-explorer-search'
 const KEY_STORAGE = 'mcpgw-explorer-key'
 
-// The tool explorer drives the gateway through its own front door, exactly as an agent would:
-// the chosen API key authenticates, the route picks the mux or one server, and every exchange
-// lands in the audit trail with a request id we can link to.
+type TabKey = 'tools' | 'prompts' | 'resources'
+const TABS: Tab<TabKey>[] = [
+  { key: 'tools', label: 'Tools', icon: <Wrench className="size-4" /> },
+  { key: 'prompts', label: 'Prompts', icon: <MessageSquareText className="size-4" /> },
+  { key: 'resources', label: 'Resources', icon: <FileText className="size-4" /> },
+]
+
+/** Props every tab gets: the shared route/key and a renderer for the shared route/key selects. */
+export interface TabProps {
+  route: string
+  keyId: string
+  fields: (routeHint: string) => ReactNode
+}
+
+// The explorer drives the gateway through its own front door, exactly as an agent would: the
+// chosen API key authenticates, the route picks the mux or one server, and every exchange lands
+// in the audit trail with a request id we can link to. Route and key are shared across the
+// Tools, Prompts and Resources tabs; each tab keeps its own results while you switch.
 export function ExplorerPage() {
   const [params, setParams] = useSearchParams()
-  const [search, setSearch] = useState(() => {
-    try {
-      return sessionStorage.getItem(SEARCH_STORAGE) === '1'
-    } catch {
-      return false
-    }
-  })
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(SEARCH_STORAGE, search ? '1' : '0')
-    } catch {
-      // ignore
-    }
-  }, [search])
   const route = params.get('route') || MUX
+  const tabParam = params.get('tab')
+  const tab: TabKey = tabParam === 'prompts' || tabParam === 'resources' ? tabParam : 'tools'
   const [servers, setServers] = useState<ServerDTO[]>([])
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
   const [keyId, setKeyId] = useState<string>(() => {
@@ -56,18 +58,6 @@ export function ExplorerPage() {
     }
   })
   const [loadError, setLoadError] = useState<string>()
-  const [listing, setListing] = useState(false)
-  const [listResult, setListResult] = useState<E2EResult<ListToolsResult>>()
-  const [filter, setFilter] = useState('')
-  const [selectedName, setSelectedName] = useState<string>()
-  const [draft, setDraft] = useState<Draft>({})
-  const [calling, setCalling] = useState(false)
-  const [callResult, setCallResult] = useState<E2EResult<CallToolResult>>()
-  const [formError, setFormError] = useState<string>()
-  const [raw, setRaw] = useState(false)
-  // Notifications streamed from the upstream during the current list/call.
-  const [listEvents, setListEvents] = useState<StreamEvent[]>([])
-  const [callEvents, setCallEvents] = useState<StreamEvent[]>([])
 
   useEffect(() => {
     Promise.all([api.servers.list(), api.apiKeys.list()])
@@ -91,22 +81,82 @@ export function ExplorerPage() {
     }
   }, [keyId])
 
+  const setParam = (name: string, value: string | undefined) => {
+    const p = new URLSearchParams(params)
+    if (value === undefined) p.delete(name)
+    else p.set(name, value)
+    setParams(p, { replace: true })
+  }
+  const setRoute = (r: string) => setParam('route', r === MUX ? undefined : r)
+  const setTab = (t: TabKey) => setParam('tab', t === 'tools' ? undefined : t)
+
+  const enabledServers = servers.filter((s) => s.enabled)
+  const fields = (routeHint: string) => (
+    <TargetFields route={route} onRouteChange={setRoute} routeHint={routeHint} keyId={keyId} onKeyChange={setKeyId} servers={enabledServers} keys={usableKeys} />
+  )
+  // Keying each tab by route resets its listing and selection when the route changes.
+  const props: TabProps = { route, keyId, fields }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Gateway"
+        title="Explorer"
+        description="List and call tools, prompts and resources through the gateway's front door with one of your API keys, exactly as an agent would. Every call is audited."
+      />
+
+      <Tabs tabs={TABS} value={tab} onChange={setTab} label="Explorer surface" />
+
+      {loadError && <Callout tone="danger">{loadError}</Callout>}
+
+      {/* All three panels stay mounted (inactive ones hidden) so switching tabs keeps each tab's results. */}
+      <TabPanel tabKey="tools" className={cn(tab !== 'tools' && 'hidden')}>
+        <ToolsTab key={route} {...props} />
+      </TabPanel>
+      <TabPanel tabKey="prompts" className={cn(tab !== 'prompts' && 'hidden')}>
+        <PromptsTab key={route} {...props} />
+      </TabPanel>
+      <TabPanel tabKey="resources" className={cn(tab !== 'resources' && 'hidden')}>
+        <ResourcesTab key={route} {...props} />
+      </TabPanel>
+    </div>
+  )
+}
+
+function ToolsTab({ route, keyId, fields }: TabProps) {
+  const [search, setSearch] = useState(() => {
+    try {
+      return sessionStorage.getItem(SEARCH_STORAGE) === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SEARCH_STORAGE, search ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [search])
+  const [listing, setListing] = useState(false)
+  const [listResult, setListResult] = useState<E2EResult<ListToolsResult>>()
+  const [filter, setFilter] = useState('')
+  const [selectedName, setSelectedName] = useState<string>()
+  const [draft, setDraft] = useState<Draft>({})
+  const [calling, setCalling] = useState(false)
+  const [callResult, setCallResult] = useState<E2EResult<CallToolResult>>()
+  const [formError, setFormError] = useState<string>()
+  const [raw, setRaw] = useState(false)
+  // Notifications streamed from the upstream during the current list/call.
+  const [listEvents, setListEvents] = useState<StreamEvent[]>([])
+  const [callEvents, setCallEvents] = useState<StreamEvent[]>([])
+
   const tools = listResult?.result?.tools ?? []
   const visibleTools = useMemo(() => {
     const q = filter.trim().toLowerCase()
     return q ? tools.filter((t) => t.name.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q)) : tools
   }, [tools, filter])
   const selected: MCPTool | undefined = tools.find((t) => t.name === selectedName)
-
-  const setRoute = (r: string) => {
-    const p = new URLSearchParams(params)
-    if (r === MUX) p.delete('route')
-    else p.set('route', r)
-    setParams(p, { replace: true })
-    setListResult(undefined)
-    setSelectedName(undefined)
-    setCallResult(undefined)
-  }
 
   const listTools = async () => {
     if (!keyId) return
@@ -155,65 +205,11 @@ export function ExplorerPage() {
     }
   }
 
-  const enabledServers = servers.filter((s) => s.enabled)
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Gateway"
-        title="Explorer"
-        description="List and call tools through the gateway's front door with one of your API keys, exactly as an agent would. Every call is audited."
-      />
-
-      {loadError && <Callout tone="danger">{loadError}</Callout>}
-
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-end">
-          <FormField label="Route" hint={route === MUX ? 'Tool names are prefixed slug__tool.' : 'Direct route: tool names are unprefixed.'}>
-            <Select value={route} onValueChange={setRoute}>
-              <SelectTrigger aria-label="Route">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={MUX}>All servers (/mcp)</SelectItem>
-                {enabledServers.map((s) => (
-                  <SelectItem key={s.id} value={s.slug}>
-                    <span className="font-mono text-xs">{s.slug}</span>
-                    <span className="ml-2 text-muted-foreground">{s.name}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField
-            label="API key"
-            hint={
-              usableKeys.length ? (
-                'Only keys with mcp:execute that are not revoked.'
-              ) : (
-                <>
-                  No usable key.{' '}
-                  <Link to="/api-keys" className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-                    Create one with mcp:execute
-                  </Link>
-                  .
-                </>
-              )
-            }
-          >
-            <Select value={keyId} onValueChange={setKeyId} disabled={!usableKeys.length}>
-              <SelectTrigger aria-label="API key">
-                <SelectValue placeholder="Choose a key" />
-              </SelectTrigger>
-              <SelectContent>
-                {usableKeys.map((k) => (
-                  <SelectItem key={k.id} value={k.id}>
-                    {k.name} <span className="ml-2 font-mono text-xs text-muted-foreground">{k.prefix}…</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
+          {fields(route === MUX ? 'Tool names are prefixed slug__tool.' : 'Direct route: tool names are unprefixed.')}
           <FormField label="Search mode" hint={search ? 'tool_search, list_tools, execute_tool.' : 'Flat list of every tool.'}>
             <div className="flex h-10 items-center">
               <Switch checked={search} onCheckedChange={setSearch} aria-label="Search mode" />
@@ -224,19 +220,8 @@ export function ExplorerPage() {
           </Button>
         </div>
         {(listing || listEvents.length > 0) && <StreamPanel events={listEvents} busy={listing} className="mt-4" />}
-        {listResult && (
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <StatusPill tone={listResult.ok ? 'success' : 'danger'}>{listResult.ok ? 'tools/list ok' : 'tools/list failed'}</StatusPill>
-            <span className="font-mono">{listResult.latencyMs} ms</span>
-            {listResult.endpoint && <span className="font-mono">{listResult.endpoint}</span>}
-            {listResult.requestId && <RequestLink id={listResult.requestId} />}
-          </div>
-        )}
-        {listResult && !listResult.ok && listResult.error && (
-          <Callout tone="danger" className="mt-4">
-            <span className="break-words font-mono text-xs">{listResult.error}</span>
-          </Callout>
-        )}
+        {listResult && <ListOutcome result={listResult} method="tools/list" />}
+        {listResult?.ok && <UnavailableCallout result={listResult.result} what="tools" className="mt-4" />}
       </div>
 
       <ListCard>
@@ -314,14 +299,7 @@ export function ExplorerPage() {
               </SheetHeader>
               <SheetBody>
                 <div className="space-y-5">
-                  <details className="group text-sm">
-                    <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Definition
-                    </summary>
-                    <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border bg-code p-3">
-                      <JsonTree value={selected as unknown as Json} />
-                    </div>
-                  </details>
+                  <Definition value={selected} />
                   {raw ? (
                     <RawArguments schema={selected.inputSchema} draft={draft} onChange={setDraft} />
                   ) : (
@@ -342,67 +320,6 @@ export function ExplorerPage() {
         </SheetContent>
       </Sheet>
     </div>
-  )
-}
-
-type StreamEvent = ({ kind: 'progress'; progress: number; total?: number; message?: string } | { kind: 'log'; level: string; text: string } | { kind: 'result' }) & { raw: string }
-
-/** Turns the e2e stream callback into appended state. */
-function collect(set: React.Dispatch<React.SetStateAction<StreamEvent[]>>): E2EEventHandler {
-  return (e) => {
-    if (e.type === 'progress') set((prev) => [...prev, { kind: 'progress', progress: e.data.progress, total: e.data.total, message: e.data.message, raw: e.raw }])
-    else if (e.type === 'log') set((prev) => [...prev, { kind: 'log', level: e.data.level, text: typeof e.data.data === 'string' ? e.data.data : JSON.stringify(e.data.data), raw: e.raw }])
-    else set((prev) => [...prev, { kind: 'result', raw: e.raw }])
-  }
-}
-
-/** The e2e stream as it arrived: progress and log notifications, then the result, each event rendered like the audit SSE viewer. */
-function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy: boolean; className?: string }) {
-  const [rawView, setRawView] = useState(false)
-  const last = [...events].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
-  const pct = last && last.total ? Math.min(100, Math.round((last.progress / last.total) * 100)) : undefined
-  const rawText = events.map((e) => e.raw).join('\n\n')
-  const parsed = useMemo(() => parseSse(rawText), [rawText])
-  return (
-    <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <StatusPill tone={busy ? 'info' : 'muted'}>{busy ? 'Streaming' : 'Stream'}</StatusPill>
-        <span className="font-mono">
-          {events.length} {events.length === 1 ? 'event' : 'events'}
-        </span>
-        {last && (
-          <span className="font-mono">
-            {last.progress}
-            {last.total ? ` / ${last.total}` : ''}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setRawView((v) => !v)} aria-pressed={rawView}>
-            {rawView ? 'Tree' : 'Raw'}
-          </Button>
-          <CopyButton value={rawText} label="Copy raw stream" className="size-7" />
-        </div>
-      </div>
-      {pct !== undefined && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-elevated">
-          <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
-        </div>
-      )}
-      {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
-      {events.length > 0 && (
-        <div className="mt-3 max-h-[32rem] overflow-auto">
-          {rawView ? <CodeBlock wrap>{rawText}</CodeBlock> : <SseList events={parsed} />}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function RequestLink({ id }: { id: string }) {
-  return (
-    <Link to={`/audit?requestId=${encodeURIComponent(id)}`} className="font-mono underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-      {id}
-    </Link>
   )
 }
 
@@ -510,20 +427,3 @@ function ResultPanel({ result, raw }: { result: E2EResult<CallToolResult>; raw: 
   )
 }
 
-/** Read-only JSON tree with a copy button; the same viewer the audit drawer uses. */
-function JsonView({ value }: { value: unknown }) {
-  const text = useMemo(() => JSON.stringify(value, null, 2) ?? '', [value])
-  return (
-    <div className="relative">
-      <CopyButton value={text} label="Copy JSON" className="absolute right-2 top-2 z-10 size-7" />
-      <JsonTree value={value as Json} />
-    </div>
-  )
-}
-
-/** Text content that parses as JSON gets the tree; anything else stays monospaced text. */
-function TextOrJson({ text }: { text: string }) {
-  const parsed = useMemo(() => tryParseJson(text), [text])
-  if (parsed.ok && typeof parsed.value === 'object' && parsed.value !== null) return <JsonView value={parsed.value} />
-  return <CodeBlock wrap>{text}</CodeBlock>
-}

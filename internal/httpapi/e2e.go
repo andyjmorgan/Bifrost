@@ -18,10 +18,15 @@ import (
 
 // e2e drives the gateway's own front door as one of the caller's API keys,
 // so the UI exercises exactly the path an external MCP client takes.
-// route is "mux" or a slug; action is "list" or "call".
+// route is "mux" or a slug; surface is tools, prompts or resources; action is
+// list or call (tools), list or get (prompts), list, templates or read
+// (resources).
 func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	c := auth.CallerFrom(r.Context())
-	route, action := chi.URLParam(r, "route"), chi.URLParam(r, "action")
+	route, surface, action := chi.URLParam(r, "route"), chi.URLParam(r, "surface"), chi.URLParam(r, "action")
+	if surface == "" {
+		surface = "tools"
+	}
 	var in E2EInput
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -104,8 +109,8 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer sess.Close()
-	switch action {
-	case "list":
+	switch surface + "/" + action {
+	case "tools/list":
 		params := &mcp.ListToolsParams{}
 		params.SetProgressToken(reqID)
 		out, err := sess.ListTools(ctx, params)
@@ -114,7 +119,7 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 		} else {
 			res.OK, res.Result = true, out
 		}
-	case "call":
+	case "tools/call":
 		if in.Name == "" {
 			res.Error = "name is required"
 			finish()
@@ -130,6 +135,59 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			if out.IsError {
 				res.Error = "tool returned an error"
 			}
+		}
+	case "prompts/list":
+		out, err := sess.ListPrompts(ctx, &mcp.ListPromptsParams{})
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK, res.Result = true, out
+		}
+	case "prompts/get":
+		if in.Name == "" {
+			res.Error = "name is required"
+			finish()
+			return
+		}
+		args := map[string]string{}
+		for k, v := range in.Arguments {
+			if sv, ok := v.(string); ok {
+				args[k] = sv
+			} else if b, err := json.Marshal(v); err == nil {
+				args[k] = string(b)
+			}
+		}
+		out, err := sess.GetPrompt(ctx, &mcp.GetPromptParams{Name: in.Name, Arguments: args})
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK, res.Result = true, out
+		}
+	case "resources/list":
+		out, err := sess.ListResources(ctx, &mcp.ListResourcesParams{})
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK, res.Result = true, out
+		}
+	case "resources/templates":
+		out, err := sess.ListResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{})
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK, res.Result = true, out
+		}
+	case "resources/read":
+		if in.URI == "" {
+			res.Error = "uri is required"
+			finish()
+			return
+		}
+		out, err := sess.ReadResource(ctx, &mcp.ReadResourceParams{URI: in.URI})
+		if err != nil {
+			res.Error = err.Error()
+		} else {
+			res.OK, res.Result = true, out
 		}
 	default:
 		res.Error = "unknown action"

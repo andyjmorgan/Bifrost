@@ -15,6 +15,11 @@ import type {
   DiscoverResult,
   E2EResult,
   ListToolsResult,
+  ListPromptsResult,
+  GetPromptResult,
+  ListResourcesResult,
+  ListResourceTemplatesResult,
+  ReadResourceResult,
   MeDTO,
   OAuthStartInput,
   OAuthStartResult,
@@ -88,6 +93,12 @@ export const api = {
   e2e: {
     listTools: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<ListToolsResult>(`/e2e/${encodeURIComponent(route)}/tools/list`, input, onEvent),
     callTool: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<CallToolResult>(`/e2e/${encodeURIComponent(route)}/tools/call`, input, onEvent),
+    listPrompts: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<ListPromptsResult>(`/e2e/${encodeURIComponent(route)}/prompts/list`, input, onEvent),
+    getPrompt: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<GetPromptResult>(`/e2e/${encodeURIComponent(route)}/prompts/get`, input, onEvent),
+    listResources: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<ListResourcesResult>(`/e2e/${encodeURIComponent(route)}/resources/list`, input, onEvent),
+    listResourceTemplates: (route: string, input: E2EInput, onEvent?: E2EEventHandler) =>
+      e2eStream<ListResourceTemplatesResult>(`/e2e/${encodeURIComponent(route)}/resources/templates`, input, onEvent),
+    readResource: (route: string, input: E2EInput, onEvent?: E2EEventHandler) => e2eStream<ReadResourceResult>(`/e2e/${encodeURIComponent(route)}/resources/read`, input, onEvent),
   },
 
   apiKeys: {
