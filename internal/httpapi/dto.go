@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // ServerDTO is a server with its credential summary (never the secret).

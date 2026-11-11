@@ -12,13 +12,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/gateway"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/oauthclient"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
+	"github.com/andyjmorgan/Bifrost/internal/audit"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/upstream"
 )
 
 // API holds the dependencies of every handler.

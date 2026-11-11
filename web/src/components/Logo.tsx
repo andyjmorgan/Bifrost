@@ -14,12 +14,12 @@ export function Logo({
   const mark = cn('size-8 shrink-0 rounded-[21%] drop-shadow-sm dark:drop-shadow-none', imageClassName)
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
-      <img src="/brand/am-ai-sage-light.svg" alt="andrewmorgan.ai" className={cn(mark, 'dark:hidden')} />
-      <img src="/brand/am-ai-sage-dark.svg" alt="andrewmorgan.ai" className={cn(mark, 'hidden dark:block')} />
+      <img src="/brand/am-ai-sage-light.svg" alt="Bifrost" className={cn(mark, 'dark:hidden')} />
+      <img src="/brand/am-ai-sage-dark.svg" alt="Bifrost" className={cn(mark, 'hidden dark:block')} />
       {!compact && (
         <div className="leading-none">
-          <span className="block text-sm font-semibold tracking-tight">andrewmorgan.ai</span>
-          <span className="mt-1 block font-mono text-[11px] font-medium tracking-tight text-accent">mcp-bifrost</span>
+          <span className="block text-sm font-semibold tracking-tight">Bifrost</span>
+          <span className="mt-1 block font-mono text-[11px] font-medium tracking-tight text-accent">mcp gateway</span>
         </div>
       )}
     </div>

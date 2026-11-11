@@ -256,7 +256,7 @@ export function BodyViewer({
 
 /* ---------- gateway _meta ---------- */
 
-export const UNAVAILABLE_META_KEY = 'ai.andrewmorgan.mcp-bifrost/unavailable'
+export const UNAVAILABLE_META_KEY = 'ai.andrewmorgan.bifrost/unavailable'
 
 export interface UnavailableServer {
   slug: string

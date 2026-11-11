@@ -15,8 +15,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // MaxBody caps how much of a body is persisted.

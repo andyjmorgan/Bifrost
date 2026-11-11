@@ -32,8 +32,8 @@ import { logout } from '../auth'
 import { toggleTheme, useTheme } from '../theme'
 import type { MeDTO } from '../api'
 
-export const REPO = 'https://github.com/andyjmorgan/Mcp-Bifrost'
-export const DOCS = 'https://github.com/andyjmorgan/Mcp-Bifrost#readme'
+export const REPO = 'https://github.com/andyjmorgan/Bifrost'
+export const DOCS = 'https://github.com/andyjmorgan/Bifrost#readme'
 
 // Sidebar groups. Each icon carries its own hue so the rail reads at a glance when collapsed.
 const navigation: { label?: string; items: { name: string; href: string; icon: typeof Server; color: string }[] }[] = [

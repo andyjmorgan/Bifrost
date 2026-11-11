@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 type apiError struct {

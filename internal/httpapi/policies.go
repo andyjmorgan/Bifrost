@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/policy"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/policy"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // ---- DTOs -------------------------------------------------------------------

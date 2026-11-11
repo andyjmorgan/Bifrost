@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/audit"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
 )
 
 // e2e drives the gateway's own front door as one of the caller's API keys,
@@ -89,7 +89,7 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	hc := &http.Client{Transport: &headerRT{base: http.DefaultTransport, headers: map[string]string{"Authorization": "Bearer " + secret, "X-Request-Id": reqID}}, Timeout: 60 * time.Second}
-	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-bifrost-ui", Version: a.cfgDTO.Version}, &mcp.ClientOptions{
+	client := mcp.NewClient(&mcp.Implementation{Name: "bifrost-ui", Version: a.cfgDTO.Version}, &mcp.ClientOptions{
 		ProgressNotificationHandler: func(_ context.Context, n *mcp.ProgressNotificationClientRequest) {
 			emit("progress", map[string]any{"progress": n.Params.Progress, "total": n.Params.Total, "message": n.Params.Message})
 		},

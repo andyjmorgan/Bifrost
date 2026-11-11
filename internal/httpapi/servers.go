@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/oauthclient"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/slug"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/slug"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 func (a *API) withCredential(ctx context.Context, s *store.Server) ServerDTO {

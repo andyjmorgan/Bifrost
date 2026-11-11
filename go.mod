@@ -1,4 +1,4 @@
-module github.com/andyjmorgan/Mcp-Bifrost
+module github.com/andyjmorgan/Bifrost
 
 go 1.26.4
 

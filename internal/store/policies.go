@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/policy"
+	"github.com/andyjmorgan/Bifrost/internal/policy"
 )
 
 const policyCols = `id, owner_id, name, description, invert, rules, created_at, updated_at`

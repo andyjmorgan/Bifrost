@@ -68,7 +68,7 @@ func New(publicBase string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
 	}
-	return &Client{HTTP: httpClient, PublicBase: strings.TrimRight(publicBase, "/"), ClientName: "mcp-bifrost", RedirectURI: strings.TrimRight(publicBase, "/") + "/oauth/callback"}
+	return &Client{HTTP: httpClient, PublicBase: strings.TrimRight(publicBase, "/"), ClientName: "Bifrost", RedirectURI: strings.TrimRight(publicBase, "/") + "/oauth/callback"}
 }
 
 // CIMDURL is where the gateway serves its client metadata document.

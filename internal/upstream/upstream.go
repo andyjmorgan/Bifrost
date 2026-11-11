@@ -21,11 +21,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/crypto"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/oauthclient"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/audit"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/crypto"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // Store is the slice of persistence the connector needs.
@@ -153,7 +153,7 @@ func (c *Connector) open(ctx context.Context, srv *store.Server, protocolVersion
 		cancel()
 		return nil, err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-bifrost", Version: c.version}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "bifrost", Version: c.version}, nil)
 	cs, err := client.Connect(dctx, &mcp.StreamableClientTransport{
 		Endpoint: srv.URL, HTTPClient: hc,
 		// Connections are opened per call and the gateway never consumes

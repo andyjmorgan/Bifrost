@@ -1,4 +1,4 @@
-// Command gateway runs mcp-bifrost: MCP front door, REST API, SPA and
+// Command gateway runs Bifrost: MCP front door, REST API, SPA and
 // the token-refresh worker, all in one process.
 package main
 
@@ -15,18 +15,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/config"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/crypto"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/db"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/gateway"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/httpapi"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/oauthclient"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/worker"
+	"github.com/andyjmorgan/Bifrost/internal/audit"
+	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/config"
+	"github.com/andyjmorgan/Bifrost/internal/crypto"
+	"github.com/andyjmorgan/Bifrost/internal/db"
+	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/httpapi"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/upstream"
+	"github.com/andyjmorgan/Bifrost/internal/worker"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

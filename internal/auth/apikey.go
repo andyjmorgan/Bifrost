@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/crypto"
-	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/crypto"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // KeyPrefix marks a gateway API key.

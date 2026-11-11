@@ -1,5 +1,5 @@
 {
-  "name": "mcp-bifrost-web",
+  "name": "bifrost-web",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,4 +1,4 @@
-# Mcp-Bifrost
+# Bifrost
 
 One MCP connection to all of your MCP servers.
 
