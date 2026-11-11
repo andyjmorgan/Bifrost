@@ -1,8 +1,8 @@
 // The CEL cheat sheet shown under the rule list. Mirrors the reference in the policies contract.
 
 const VARIABLES: [string, string][] = [
-  ['tool.name', 'The upstream tool name, never prefixed: "flip", not "coinserver__flip".'],
-  ['tool.fullName', 'slug__name on every route, for rules written against what clients see.'],
+  ['tool.name', 'slug__name on every route, as clients see it on /mcp: "coinserver__flip".'],
+  ['tool.baseName', 'The bare upstream name: "flip". The name assignment sets this part.'],
   ['tool.title, tool.description', 'Strings, "" when unset.'],
   ['tool.annotations.readOnlyHint', 'Bool, default false.'],
   ['tool.annotations.destructiveHint', 'Bool, default true.'],
@@ -24,7 +24,7 @@ const FUNCTIONS = ['startsWith', 'endsWith', 'contains', 'matches (RE2)', 'lower
 
 const EXAMPLES: { when: string; then?: [string, string][]; note?: string }[] = [
   {
-    when: 'tool.name.startsWith("delete") || (tool.annotations.destructiveHint && !tool.annotations.readOnlyHint)',
+    when: 'tool.baseName.startsWith("delete") || (tool.annotations.destructiveHint && !tool.annotations.readOnlyHint)',
     then: [['visible', 'false']],
   },
   {
@@ -40,7 +40,7 @@ const EXAMPLES: { when: string; then?: [string, string][]; note?: string }[] = [
     note: 'Not "x-mcp-header" in string(tool.inputSchema).',
   },
   { when: 'has(tool.meta["com.example/tier"]) && tool.meta["com.example/tier"] == "gold"' },
-  { when: 'tool.name.matches("^(get|list|read)_")', then: [['annotations.readOnlyHint', 'true']] },
+  { when: 'tool.baseName.matches("^(get|list|read)_")', then: [['annotations.readOnlyHint', 'true']] },
 ]
 
 const label = 'text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'

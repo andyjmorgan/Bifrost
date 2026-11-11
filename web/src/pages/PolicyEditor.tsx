@@ -441,7 +441,7 @@ function RuleRow({
 
       <div className={cn('space-y-4 md:pl-9', !rule.enabled && 'opacity-60')}>
         {problems?.rule.map((m, i) => <Problem key={i}>{m}</Problem>)}
-        <FormField label="When" hint={problems?.when.length ? undefined : 'A CEL boolean. tool.name is the upstream name without the slug prefix; use server.slug for the server, or tool.fullName for slug__name.'}>
+        <FormField label="When" hint={problems?.when.length ? undefined : 'A CEL boolean. tool.name is slug__name on every route; tool.baseName is the bare upstream name.'}>
           <CelEditor
             value={rule.when}
             onChange={(when) => onChange({ when })}

@@ -27,8 +27,8 @@ export interface CelCompleterOptions {
 const v = (label: string, detail: string, type = 'property'): Completion => ({ label, detail, type })
 
 const TOOL_FIELDS: Completion[] = [
-  v('name', 'string, the upstream tool name (no slug prefix)'),
-  v('fullName', 'string, slug__name on every route'),
+  v('name', 'string, slug__name as clients see it on /mcp'),
+  v('baseName', 'string, the bare upstream name'),
   v('title', 'string, "" when unset'),
   v('description', 'string, "" when unset'),
   v('annotations', 'hints with spec defaults applied'),
@@ -133,8 +133,9 @@ const TOP_LEVEL: Completion[] = [
 const s = (template: string, label: string, detail: string): Completion => snippetCompletion(template, { label, detail, type: 'text', boost: -1 })
 
 const WHEN_SNIPPETS: Completion[] = [
-  s('tool.name.startsWith("${}")', 'tool.name.startsWith("…")', 'name prefix'),
-  s('tool.name.matches("^${}")', 'tool.name.matches("^…")', 'RE2 match'),
+  s('tool.name.startsWith("${}")', 'tool.name.startsWith("…")', 'slug__name prefix'),
+  s('tool.baseName.matches("^${}")', 'tool.baseName.matches("^…")', 'RE2 on the bare name'),
+  s('server.slug == "${}"', 'server.slug == "…"', 'one server'),
   s('tool.name in ["${}"]', 'tool.name in […]', 'one of a list'),
   s('server.slug == "${}"', 'server.slug == "…"', 'one server'),
   s('tool.annotations.destructiveHint && !tool.annotations.readOnlyHint', 'destructive && !readOnly', 'destructive tools'),
@@ -199,8 +200,8 @@ function openString(text: string, base: number): StringScan | null {
   return open && { start: open.start, quote: open.quote }
 }
 
-const AFTER_EQ = /(server\.slug|tool\.name|tool\.fullName|route)\s*(==|!=)\s*$/
-const AFTER_IN = /(server\.slug|tool\.name|tool\.fullName|route)\s+in\s*\[(?:[^\]]*,)?\s*$/
+const AFTER_EQ = /(server\.slug|tool\.name|tool\.baseName|route)\s*(==|!=)\s*$/
+const AFTER_IN = /(server\.slug|tool\.name|tool\.baseName|route)\s+in\s*\[(?:[^\]]*,)?\s*$/
 
 function quotedApply(value: string, quote: string) {
   return (view: EditorView, _c: Completion, from: number, to: number) => {
@@ -220,7 +221,7 @@ async function literalValues(subject: string, data: CelCompletionData | undefine
   if (!data?.loadToolNames) return []
   try {
     const tools = await data.loadToolNames()
-    if (subject === 'tool.fullName') return tools.map((t) => ({ label: `${t.server}__${t.name}`, detail: t.server }))
+    if (subject === 'tool.name') return tools.map((t) => ({ label: `${t.server}__${t.name}`, detail: t.server }))
     const seen = new Map<string, string[]>()
     for (const t of tools) seen.set(t.name, [...(seen.get(t.name) ?? []), t.server])
     return [...seen].map(([label, servers]) => ({ label, detail: servers.join(', ') }))

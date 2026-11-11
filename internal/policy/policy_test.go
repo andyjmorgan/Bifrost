@@ -11,11 +11,11 @@ import (
 func TestApply(t *testing.T) {
 	f := false
 	p := &Policy{Name: "p", Rules: []Rule{
-		{Name: "hide deletes", When: `tool.name.startsWith("delete") || (tool.annotations.destructiveHint && !tool.annotations.readOnlyHint)`, Then: map[string]string{"visible": "false"}},
-		{Name: "confirm sends", When: `tool.name.matches("^send_")`, Then: map[string]string{"confirm": "true", "confirmMessage": `"Send via " + server.slug + "?"`, "description": `tool.description + " (confirmed)"`}},
+		{Name: "hide deletes", When: `tool.baseName.startsWith("delete") || (tool.annotations.destructiveHint && !tool.annotations.readOnlyHint)`, Then: map[string]string{"visible": "false"}},
+		{Name: "confirm sends", When: `tool.baseName.matches("^send_")`, Then: map[string]string{"confirm": "true", "confirmMessage": `"Send via " + server.slug + "?"`, "description": `tool.description + " (confirmed)"`}},
 		{Name: "meta", When: `has(tool.meta.x) && tool.meta.x == "y"`, Then: map[string]string{"annotations.readOnlyHint": "true"}},
 		{Name: "missing key is a non-match", When: `tool.meta.missing == 1`, Then: map[string]string{"visible": "false"}},
-		{Name: "sees earlier mutations", When: `tool.description.endsWith("(confirmed)")`, Then: map[string]string{"title": `"Guarded " + tool.name`}},
+		{Name: "sees earlier mutations", When: `tool.description.endsWith("(confirmed)")`, Then: map[string]string{"title": `"Guarded " + tool.baseName`}},
 	}}
 	c, err := Compile(p)
 	if err != nil {
@@ -87,21 +87,26 @@ func TestCompileProblems(t *testing.T) {
 	}
 }
 
-func TestFullNameAndPrefixLint(t *testing.T) {
-	c, err := Compile(&Policy{Rules: []Rule{{When: `tool.fullName.startsWith("coin")`, Then: map[string]string{"visible": "false"}}}})
+func TestNameCarriesSlug(t *testing.T) {
+	c, err := Compile(&Policy{Rules: []Rule{
+		{When: `tool.name.startsWith("coin")`, Then: map[string]string{"annotations.destructiveHint": "true"}},
+		{When: `tool.baseName == "flip"`, Then: map[string]string{"name": `"toss"`}},
+		{When: `tool.name == "coinserver__toss"`, Then: map[string]string{"visible": "false"}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ds := Apply(context.Background(), []*Compiled{c}, []*mcp.Tool{{Name: "flip"}}, Server{Slug: "coinserver"}, "direct")
+	ds := Apply(context.Background(), []*Compiled{c}, []*mcp.Tool{{Name: "flip"}, {Name: "pick"}}, Server{Slug: "coinserver"}, "direct")
+	if ds[0].Tool.Annotations == nil || ds[0].Tool.Annotations.DestructiveHint == nil || !*ds[0].Tool.Annotations.DestructiveHint {
+		t.Error("tool.name should carry the slug prefix on every route")
+	}
+	if ds[0].Tool.Name != "toss" || ds[0].Upstream != "flip" {
+		t.Errorf("name assignment sets the bare name: got %q upstream %q", ds[0].Tool.Name, ds[0].Upstream)
+	}
 	if ds[0].Visible {
-		t.Error("fullName should be coinserver__flip on every route")
+		t.Error("a later rule should see the renamed tool as coinserver__toss")
 	}
-	for _, when := range []string{`tool.name == "coinserver__flip"`, `tool.name.startsWith("coin__")`, `tool.name in ["a", "coinserver__flip"]`} {
-		if _, err := Compile(&Policy{Rules: []Rule{{When: when, Then: map[string]string{"visible": "false"}}}}); err == nil {
-			t.Errorf("expected a lint problem for %s", when)
-		}
-	}
-	if _, err := Compile(&Policy{Rules: []Rule{{When: `tool.name.startsWith("flip") && server.slug == "coinserver"`, Then: map[string]string{"visible": "false"}}}}); err != nil {
-		t.Errorf("false positive: %v", err)
+	if !ds[1].Visible || ds[1].Tool.Name != "pick" {
+		t.Error("pick should be untouched")
 	}
 }
