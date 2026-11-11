@@ -19,12 +19,20 @@ import type {
   OAuthStartResult,
   PageDTO,
   PingResult,
+  PolicyDTO,
+  PolicyField,
+  PolicyInput,
+  PolicyPreviewInput,
+  PolicyPreviewResult,
+  PolicyRule,
+  RouteBindingsDTO,
+  ValidatePolicyResult,
   ServerDTO,
   UpdateServerInput,
 } from './types'
 
 export * from './types'
-export { ApiError, errorMessage } from './client'
+export { ApiError, errorMessage, problemsOf } from './client'
 
 function qs(params: Record<string, string | number | undefined>): string {
   const p = new URLSearchParams()
@@ -90,5 +98,22 @@ export const api = {
     list: (q: AuditQuery) => http.get<PageDTO<AuditEventDTO>>(`/audit${qs(q as Record<string, string | number | undefined>)}`),
     get: (id: string) => http.get<AuditDetailDTO>(`/audit/${encodeURIComponent(id)}`),
     trace: (id: string) => http.get<AuditTraceDTO>(`/audit/${encodeURIComponent(id)}/trace`),
+  },
+
+  policies: {
+    list: () => http.get<PolicyDTO[]>('/policies'),
+    get: (id: string) => http.get<PolicyDTO>(`/policies/${encodeURIComponent(id)}`),
+    fields: () => http.get<PolicyField[]>('/policies/fields'),
+    create: (input: PolicyInput) => http.post<PolicyDTO>('/policies', input),
+    update: (id: string, input: PolicyInput) => http.patch<PolicyDTO>(`/policies/${encodeURIComponent(id)}`, input),
+    remove: (id: string) => http.delete(`/policies/${encodeURIComponent(id)}`),
+    validate: (rules: PolicyRule[]) => http.post<ValidatePolicyResult>('/policies/validate', { rules }),
+    preview: (input: PolicyPreviewInput) => http.post<PolicyPreviewResult>('/policies/preview', input),
+  },
+
+  bindings: {
+    list: () => http.get<RouteBindingsDTO[]>('/bindings'),
+    get: (route: string) => http.get<RouteBindingsDTO>(`/bindings/${encodeURIComponent(route)}`),
+    put: (route: string, policyIds: string[]) => http.put<RouteBindingsDTO>(`/bindings/${encodeURIComponent(route)}`, { policyIds }),
   },
 }

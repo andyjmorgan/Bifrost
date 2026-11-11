@@ -22,6 +22,7 @@ import (
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/policy"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
 )
@@ -40,6 +41,7 @@ type Store interface {
 	GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
+	ListBindings(ctx context.Context, owner string) ([]store.Binding, error)
 }
 
 // Gateway serves the two MCP routes.
@@ -56,6 +58,8 @@ type Gateway struct {
 	// one fetch per replica per cold key; writes are idempotent and guarded
 	// by the server's updated_at, so no cross-process lock is needed.
 	flights singleflight.Group
+	// policies compiles each bound policy once per version.
+	policies policy.Cache
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -124,8 +128,9 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/call params"}
 				}
+				sess := req.GetSession().(*mcp.ServerSession)
+				ctx = withSession(ctx, sess)
 				if tok, ok := p.Meta["progressToken"]; ok && tok != nil {
-					sess := req.GetSession().(*mcp.ServerSession)
 					ctx = withProgress(ctx, func(done, total float64, msg string) {
 						_ = sess.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: tok, Progress: done, Total: total, Message: msg})
 					})
@@ -144,18 +149,15 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 
 func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
 	if route == "direct" {
-		srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSTools, cache.NSInit)
+		entries, err := g.catalog(ctx, caller, route, slug, false, nil)
 		if err != nil {
-			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
+			return nil, err
 		}
-		if tools, ok := decodeTools(cached[cache.NSTools]); ok {
-			return &mcp.ListToolsResult{Tools: tools}, nil
+		e := entries[0]
+		if e.err != nil {
+			return nil, upstreamError(e.srv, e.err)
 		}
-		tools, _, err := g.fetchTools(ctx, srv, initHint(cached), false, nil)
-		if err != nil {
-			return nil, upstreamError(srv, err)
-		}
-		return &mcp.ListToolsResult{Tools: tools}, nil
+		return &mcp.ListToolsResult{Tools: e.tools}, nil
 	}
 	return g.muxTools(ctx, caller, route, false)
 }
@@ -175,7 +177,7 @@ func refreshToolDef() *mcp.Tool {
 // muxTools lists tools across all enabled servers. With force, cached
 // entries are ignored and every server is asked afresh.
 func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
-	entries, err := g.catalog(ctx, caller, route, "", force)
+	entries, err := g.catalog(ctx, caller, route, "", force, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +374,7 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 	if route == "mux" && p.Name == RefreshTool {
 		// A method, not a listing: refresh every server and report what
 		// happened. Definitions come from tools/list or get_tool_definition.
-		entries, err := g.catalog(ctx, caller, route, "", true)
+		entries, err := g.catalog(ctx, caller, route, "", true, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -423,9 +425,37 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 	if !srv.Enabled {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
 	}
-	// Tool names are passed through verbatim, except that a case-only mismatch
-	// against the cached list is corrected (upstreams are case-sensitive).
-	if tools, ok := decodeTools(cached[cache.NSTools]); ok {
+	b, err := g.loadPolicies(ctx, caller.OwnerID)
+	if err != nil {
+		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "policies: " + err.Error()}
+	}
+	if len(b.forRoute(route, srv.ID)) > 0 {
+		// Policies decide whether the tool exists on this route, whether it
+		// needs confirming, and which upstream name it maps to. They need the
+		// tool list, so a cold cache costs one listing here.
+		tools, ok := decodeTools(cached[cache.NSTools])
+		if !ok {
+			if tools, _, err = g.fetchTools(ctx, srv, initHint(cached), false, nil); err != nil {
+				return nil, upstreamError(srv, err)
+			}
+		}
+		var in cache.Init
+		if raw := cached[cache.NSInit]; raw != nil {
+			_ = json.Unmarshal(raw, &in)
+		}
+		d := findDecision(shape(ctx, b, route, srv, in, tools), name)
+		if d == nil || !d.Visible {
+			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
+		}
+		if d.Confirm {
+			if res, err := g.confirm(ctx, p, d, srv); err != nil || res != nil {
+				return res, err
+			}
+		}
+		name = d.Upstream
+	} else if tools, ok := decodeTools(cached[cache.NSTools]); ok {
+		// Tool names are passed through verbatim, except that a case-only mismatch
+		// against the cached list is corrected (upstreams are case-sensitive).
 		name = canonicalToolName(tools, name)
 	}
 	audit.SetTarget(ctx, srv.ID, srv.Slug)

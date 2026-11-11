@@ -11,6 +11,7 @@ import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { BindingsCard } from '../components/policies/Bindings'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
@@ -220,6 +221,8 @@ export function ServerDetailPage() {
           </div>
         </Definition>
       </DefinitionList>
+
+      <BindingsCard route={server.slug} title="Policies" hint="No policies bound. Global policies still apply on /mcp." />
 
       <details className="group text-sm">
         <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground">

@@ -11,6 +11,8 @@ import { ServersPage } from './pages/Servers'
 import { ServerDetailPage } from './pages/ServerDetail'
 import { ExplorerPage } from './pages/Explorer'
 import { ApiKeysPage } from './pages/ApiKeys'
+import { PoliciesPage } from './pages/Policies'
+import { PolicyEditorPage } from './pages/PolicyEditor'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 
@@ -52,6 +54,8 @@ export function App() {
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:id" element={<ServerDetailPage />} />
           <Route path="/explorer" element={<ExplorerPage />} />
+          <Route path="/policies" element={<PoliciesPage />} />
+          <Route path="/policies/:id" element={<PolicyEditorPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/profile" element={<ProfilePage />} />

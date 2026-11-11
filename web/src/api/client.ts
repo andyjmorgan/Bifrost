@@ -3,10 +3,13 @@ import { getAccessToken, isDevMode, signOutOn401 } from '../auth'
 /** An API failure with the HTTP status and the `{error}` message from the body when there is one. */
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** The parsed JSON error body, when there was one (e.g. `{error, problems}`). */
+  body?: unknown
+  constructor(status: number, message: string, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.body = body
   }
 }
 
@@ -14,11 +17,13 @@ const BASE = '/api/v1'
 
 async function parseError(res: Response): Promise<ApiError> {
   let message = `${res.status} ${res.statusText}`.trim()
+  let parsed: unknown
   try {
     const text = await res.text()
     if (text) {
       try {
         const body = JSON.parse(text) as { error?: string; message?: string }
+        parsed = body
         message = body.error || body.message || text
       } catch {
         message = text
@@ -27,7 +32,7 @@ async function parseError(res: Response): Promise<ApiError> {
   } catch {
     // keep the status line
   }
-  return new ApiError(res.status, message)
+  return new ApiError(res.status, message, parsed)
 }
 
 /** Fetch against /api/v1 with the bearer token, JSON parsing, and ApiError on non-2xx. */
@@ -112,4 +117,11 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message
   if (e instanceof Error) return e.message
   return String(e)
+}
+
+/** The `problems` array a 400 compile error carries, or undefined. */
+export function problemsOf(e: unknown): { rule: number; field?: string; message: string }[] | undefined {
+  if (!(e instanceof ApiError) || e.status !== 400) return undefined
+  const body = e.body as { problems?: unknown } | undefined
+  return Array.isArray(body?.problems) ? (body.problems as { rule: number; field?: string; message: string }[]) : undefined
 }

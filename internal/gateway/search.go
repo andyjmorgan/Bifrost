@@ -18,6 +18,7 @@ import (
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/audit"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/auth"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/cache"
+	"github.com/andyjmorgan/Mcp-Bifrost/internal/policy"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/toolsearch"
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/upstream"
@@ -65,17 +66,27 @@ func searchMode(ctx context.Context) bool {
 // catalogEntry is one server's view in the catalogue: its cached initialize
 // result and its tools (unprefixed), or the error that made it unavailable.
 type catalogEntry struct {
-	srv   *store.Server
-	init  cache.Init
-	tools []*mcp.Tool
-	err   error
+	srv       *store.Server
+	init      cache.Init
+	tools     []*mcp.Tool       // what the route exposes: shaped, visible only
+	decisions []policy.Decision // every upstream tool with its outcome (preview)
+	err       error
 }
 
 // catalog gathers every enabled server on the route with its tools, from
 // cache where live, fetching (and caching) the misses concurrently. With
 // force, every server is asked afresh. Unavailable servers are recorded in
 // the audit (issue + skip event) and returned with err set.
-func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug string, force bool) ([]catalogEntry, error) {
+// catalog lists every server on the route (one server on direct) with its
+// tools shaped by the bound policies. policies nil loads the owner's
+// bindings; a preview passes its own.
+func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug string, force bool, policies *bound) ([]catalogEntry, error) {
+	if policies == nil {
+		var err error
+		if policies, err = g.loadPolicies(ctx, caller.OwnerID); err != nil {
+			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "policies: " + err.Error()}
+		}
+	}
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
 	if route == "direct" {
@@ -149,6 +160,10 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				stage := func(msg string) { advance(1, srv.Slug+": "+msg) }
 				e.tools, steps, e.err = g.fetchTools(ctx, srv, e.init.ProtocolVersion, force, stage)
 			}
+			if e.err == nil {
+				e.decisions = shape(ctx, policies, route, srv, e.init, e.tools)
+				e.tools = visibleTools(e.decisions)
+			}
 			if e.err != nil {
 				errType := "upstream"
 				switch {
@@ -196,7 +211,7 @@ func unavailableOf(entries []catalogEntry) []map[string]string {
 // ---- tools/list in search mode ---------------------------------------------
 
 func (g *Gateway) searchToolsList(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
-	entries, err := g.catalog(ctx, caller, route, slug, false)
+	entries, err := g.catalog(ctx, caller, route, slug, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +342,7 @@ func (g *Gateway) searchCall(ctx context.Context, caller *auth.Caller, route, sl
 		if err := decodeArgs(p.Arguments, &in); err != nil {
 			return nil, err
 		}
-		entries, err := g.catalog(ctx, caller, route, slug, false)
+		entries, err := g.catalog(ctx, caller, route, slug, false, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -342,7 +357,7 @@ func (g *Gateway) searchCall(ctx context.Context, caller *auth.Caller, route, sl
 		if len(in.Names) == 0 {
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "names is required"}
 		}
-		entries, err := g.catalog(ctx, caller, route, slug, false)
+		entries, err := g.catalog(ctx, caller, route, slug, false, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +370,7 @@ func (g *Gateway) searchCall(ctx context.Context, caller *auth.Caller, route, sl
 		if err := decodeArgs(p.Arguments, &in); err != nil {
 			return nil, err
 		}
-		entries, err := g.catalog(ctx, caller, route, slug, false)
+		entries, err := g.catalog(ctx, caller, route, slug, false, nil)
 		if err != nil {
 			return nil, err
 		}

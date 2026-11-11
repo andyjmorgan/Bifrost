@@ -245,3 +245,94 @@ export interface CallToolResult {
   structuredContent?: unknown
   isError?: boolean
 }
+
+// Policies: ordered CEL rules that shape what a route exposes. A route is "mux" (the global /mcp)
+// or a server slug.
+export interface PolicyRule {
+  id: string
+  name: string
+  enabled?: boolean
+  when: string
+  then: Record<string, string>
+}
+
+export interface PolicyBindingRef {
+  route: string
+  serverId?: string
+  serverName?: string
+}
+
+export interface PolicyDTO {
+  id: string
+  name: string
+  description: string
+  invert: boolean
+  rules: PolicyRule[]
+  createdAt: string
+  updatedAt: string
+  bindings: PolicyBindingRef[]
+}
+
+export interface PolicyInput {
+  name: string
+  description: string
+  invert: boolean
+  rules: PolicyRule[]
+}
+
+export interface PolicyField {
+  name: string
+  kind: 'bool' | 'string'
+  doc: string
+}
+
+export interface PolicyProblem {
+  rule: number
+  field?: string
+  message: string
+}
+
+export interface ValidatePolicyResult {
+  problems: PolicyProblem[]
+}
+
+export interface PolicyHit {
+  policy: string
+  rule: string
+  set?: string[]
+  error?: string
+}
+
+/** The shaped tool definition as the client will see it. */
+export type Tool = MCPTool & { [key: string]: unknown }
+
+export interface PolicyPreviewTool {
+  server: string
+  upstream: string
+  name: string
+  visible: boolean
+  confirm: boolean
+  confirmMessage?: string
+  changed: string[]
+  hits: PolicyHit[]
+  tool: Tool
+}
+
+export interface PolicyPreviewInput {
+  policy: PolicyInput
+  route: string
+  extra?: boolean
+}
+
+export interface PolicyPreviewResult {
+  route: string
+  tools: PolicyPreviewTool[]
+  unavailable?: { server: string; error: string }[]
+}
+
+export interface RouteBindingsDTO {
+  route: string
+  serverId?: string
+  serverName?: string
+  policies: { id: string; name: string }[]
+}

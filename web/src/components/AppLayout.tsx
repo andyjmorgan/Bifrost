@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Server,
+  ShieldCheck,
   Sun,
   UserRound,
   X,
@@ -41,6 +42,7 @@ const navigation: { label?: string; items: { name: string; href: string; icon: t
     items: [
       { name: 'Servers', href: '/servers', icon: Server, color: 'text-accent' },
       { name: 'Explorer', href: '/explorer', icon: Compass, color: 'text-plum' },
+      { name: 'Policies', href: '/policies', icon: ShieldCheck, color: 'text-success' },
     ],
   },
   { label: 'Access', items: [{ name: 'API keys', href: '/api-keys', icon: KeySquare, color: 'text-info' }] },

@@ -81,6 +81,28 @@ curl -X POST $BASE/api/v1/servers -H "Authorization: Bearer $KEY" -H 'Content-Ty
 
 The slug is derived from the name (lowercase `a-z0-9`, 12 characters, collisions bump the tail) and never changes. For `auth.kind: oauth` the response carries an `authorizeUrl` to open in a browser; the gateway handles the callback. Write descriptions as capabilities, because search mode shows them to the model.
 
+## Policies
+
+A policy is a list of rules. Every tool starts visible, or hidden when the policy is inverted, which makes it an allow-list. Rules run top to bottom; a rule whose `when` is true applies its `then` assignments before the next rule looks at the tool.
+
+```json
+{
+  "name": "guard",
+  "rules": [
+    {"name": "hide destructive", "when": "tool.annotations.destructiveHint && !tool.annotations.readOnlyHint", "then": {"visible": "false"}},
+    {"name": "confirm sends", "when": "tool.name.matches(\"^send_\")", "then": {"confirm": "true", "confirmMessage": "\"Send via \" + server.slug + \"?\""}},
+    {"name": "mark reads", "when": "tool.name.matches(\"^(get|list|read)_\")", "then": {"annotations.readOnlyHint": "true"}}
+  ]
+}
+```
+
+Rules see `tool` (name, title, description, annotations with defaults, annotationsRaw, inputSchema, outputSchema, icons, meta, visible, confirm), `server` (slug, name, description, instructions, protocolVersion, url) and `route`. Assignable fields: `visible`, `confirm`, `confirmMessage`, `name`, `title`, `description` and the four annotation hints. Values are CEL expressions, so a literal is `true` or `"text"` and a template is `tool.description + " (read-only)"`.
+
+```sh
+curl -X PUT $BASE/api/v1/bindings/mux -H "Authorization: Bearer $KEY" -d '{"policyIds":["…"]}'       # global route
+curl -X PUT $BASE/api/v1/bindings/telegram -H "Authorization: Bearer $KEY" -d '{"policyIds":["…"]}'  # one server
+```
+
 ## Design notes
 
 - Connections are opened per call. There is no session cache yet; the init cache removes the discovery probe and the tools cache removes most listing traffic, which covers the common case.
