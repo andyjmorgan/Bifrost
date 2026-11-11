@@ -196,9 +196,9 @@ export function UnavailableCallout({ result, what, className }: { result: unknow
 }
 
 /** The collapsed "Definition" disclosure at the top of a sheet. */
-export function Definition({ value }: { value: unknown }) {
+export function Definition({ value, defaultOpen = false }: { value: unknown; defaultOpen?: boolean }) {
   return (
-    <details className="group text-sm">
+    <details className="group text-sm" open={defaultOpen}>
       <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Definition</summary>
       <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border bg-code p-3">
         <JsonTree value={value as Json} />

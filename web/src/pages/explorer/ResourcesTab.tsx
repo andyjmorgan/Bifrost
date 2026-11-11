@@ -227,7 +227,7 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
                     void read()
                   }}
                 >
-                  {definition && <Definition value={definition} />}
+                  {definition && <Definition value={definition} defaultOpen />}
                   {sel.kind !== 'resource' && (
                     <FormField label="URI" required hint={sel.kind === 'template' ? 'Replace each {placeholder} with a value, then read.' : undefined}>
                       <Input value={uri} onChange={(e) => setUri(e.target.value)} disabled={reading} className="font-mono" aria-label="URI" />
