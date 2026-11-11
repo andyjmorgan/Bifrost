@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"context"
 	"errors"
 	"fmt"
@@ -413,6 +414,35 @@ func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	a.warmTools(r.Context(), st.OwnerID, st.ServerID)
 	redirect("ok", "")
+}
+
+// discover opens a session and returns the initialize result as the server
+// sent it. Opening also refreshes the init cache (OnInit), so this is the
+// operator's way to re-read instructions and capabilities after an upgrade.
+func (a *API) discover(w http.ResponseWriter, r *http.Request) {
+	s, ok := a.loadServer(w, r)
+	if !ok {
+		return
+	}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	sess, err := a.conn.Open(ctx, s)
+	if err != nil {
+		writeJSON(w, http.StatusOK, DiscoverResult{OK: false, LatencyMS: time.Since(start).Milliseconds(), Error: err.Error()})
+		return
+	}
+	defer sess.Close()
+	res := DiscoverResult{OK: true, LatencyMS: time.Since(start).Milliseconds()}
+	if ir := sess.InitializeResult(); ir != nil {
+		res.ProtocolVersion, res.Instructions = ir.ProtocolVersion, ir.Instructions
+		res.ServerInfo, _ = json.Marshal(ir.ServerInfo)
+		res.Capabilities, _ = json.Marshal(ir.Capabilities)
+		if len(ir.Meta) > 0 {
+			res.Meta, _ = json.Marshal(ir.Meta)
+		}
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 // ping opens a session to the server with its credential and reports.

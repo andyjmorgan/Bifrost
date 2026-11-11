@@ -12,6 +12,7 @@ import type {
   CreateServerInput,
   CreateServerResult,
   E2EInput,
+  DiscoverResult,
   E2EResult,
   ListToolsResult,
   MeDTO,
@@ -81,6 +82,7 @@ export const api = {
     putCredential: (id: string, input: AuthInput) => http.put<CreateServerResult>(`/servers/${encodeURIComponent(id)}/credential`, input),
     oauthStart: (id: string, input: OAuthStartInput) => http.post<OAuthStartResult>(`/servers/${encodeURIComponent(id)}/oauth/start`, input),
     ping: (id: string) => http.post<PingResult>(`/servers/${encodeURIComponent(id)}/ping`),
+    discover: (id: string) => http.post<DiscoverResult>(`/servers/${encodeURIComponent(id)}/discover`),
   },
 
   e2e: {

@@ -96,6 +96,17 @@ export interface OAuthStartResult {
   authorizeUrl: string
 }
 
+export interface DiscoverResult {
+  ok: boolean
+  latencyMs: number
+  protocolVersion?: string
+  serverInfo?: { name: string; title?: string; description?: string; version: string; websiteUrl?: string; icons?: unknown[] }
+  capabilities?: Record<string, unknown>
+  instructions?: string
+  _meta?: Record<string, unknown>
+  error?: string
+}
+
 export interface PingResult {
   ok: boolean
   latencyMs: number

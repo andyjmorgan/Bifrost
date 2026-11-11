@@ -165,7 +165,7 @@ export function parseSse(body: string): SseEvent[] {
   return events
 }
 
-function SseList({ events }: { events: SseEvent[] }) {
+export function SseList({ events }: { events: SseEvent[] }) {
   if (!events.length) return <p className="text-xs text-muted-foreground">No events in the stream.</p>
   return (
     <ol className="divide-y divide-border rounded-lg border border-border">

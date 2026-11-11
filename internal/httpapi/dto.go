@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/andyjmorgan/Mcp-Bifrost/internal/store"
@@ -81,6 +82,21 @@ type PingResult struct {
 	ServerVersion   string `json:"serverVersion,omitempty"`
 	ToolCount       int    `json:"toolCount"`
 	Error           string `json:"error,omitempty"`
+}
+
+// DiscoverResult is what the server reported at initialize, verbatim:
+// the negotiated protocol version, its implementation record, capabilities,
+// instructions and any _meta. Capabilities and Meta are passed through as
+// raw JSON so new spec fields show without a gateway change.
+type DiscoverResult struct {
+	OK              bool            `json:"ok"`
+	LatencyMS       int64           `json:"latencyMs"`
+	ProtocolVersion string          `json:"protocolVersion,omitempty"`
+	ServerInfo      json.RawMessage `json:"serverInfo,omitempty"`
+	Capabilities    json.RawMessage `json:"capabilities,omitempty"`
+	Instructions    string          `json:"instructions,omitempty"`
+	Meta            json.RawMessage `json:"_meta,omitempty"`
+	Error           string          `json:"error,omitempty"`
 }
 
 // APIKeyDTO is a key without its secret.

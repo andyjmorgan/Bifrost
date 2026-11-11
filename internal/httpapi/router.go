@@ -123,6 +123,7 @@ func (a *API) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeMCPExecute))
 			r.Post("/servers/{id}/ping", a.ping)
+			r.Post("/servers/{id}/discover", a.discover)
 			r.Post("/e2e/{route:[a-z0-9]{1,12}}/tools/{action:list|call}", a.e2e)
 			r.Post("/policies/preview", a.previewPolicy)
 		})

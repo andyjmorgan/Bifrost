@@ -14,7 +14,7 @@ import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CodeBlock } from '../components/JsonBlock'
-import { JsonTree, tryParseJson, type Json } from '../components/PayloadViewer'
+import { JsonTree, SseList, parseSse, tryParseJson, type Json } from '../components/PayloadViewer'
 import { CopyButton } from '../components/CopyButton'
 import { FormField } from '../components/FormField'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
@@ -356,13 +356,13 @@ function collect(set: React.Dispatch<React.SetStateAction<StreamEvent[]>>): E2EE
   }
 }
 
-/** Live view of progress and log notifications the upstream sent during a call. */
+/** The e2e stream as it arrived: progress and log notifications, then the result, each event rendered like the audit SSE viewer. */
 function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy: boolean; className?: string }) {
   const [rawView, setRawView] = useState(false)
-  const notifications = events.filter((e) => e.kind !== 'result')
-  const last = [...notifications].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
+  const last = [...events].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
   const pct = last && last.total ? Math.min(100, Math.round((last.progress / last.total) * 100)) : undefined
   const rawText = events.map((e) => e.raw).join('\n\n')
+  const parsed = useMemo(() => parseSse(rawText), [rawText])
   return (
     <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -378,42 +378,21 @@ function StreamPanel({ events, busy, className }: { events: StreamEvent[]; busy:
         )}
         <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setRawView((v) => !v)} aria-pressed={rawView}>
-            {rawView ? 'Pretty' : 'Raw'}
+            {rawView ? 'Tree' : 'Raw'}
           </Button>
-          {rawView && <CopyButton value={rawText} label="Copy raw stream" className="size-7" />}
+          <CopyButton value={rawText} label="Copy raw stream" className="size-7" />
         </div>
       </div>
-      {rawView && (
-        <CodeBlock className="mt-3 max-h-96" wrap>
-          {rawText || (busy ? 'Waiting for the upstream…' : '')}
-        </CodeBlock>
-      )}
-      {!rawView && (
-        <>
       {pct !== undefined && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-elevated">
           <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
         </div>
       )}
-          {notifications.length > 0 && (
-        <ol className="mt-3 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] leading-5 text-muted-foreground">
-          {notifications.map((e, i) => (
-            <li key={i} className="truncate">
-              {e.kind === 'progress' ? (
-                <>
-                  <span className="text-faint-foreground">{e.progress}</span> {e.message}
-                </>
-              ) : (
-                <>
-                  <span className="text-warning">{e.level}</span> {e.text}
-                </>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-          {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
-        </>
+      {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
+      {events.length > 0 && (
+        <div className="mt-3 max-h-[32rem] overflow-auto">
+          {rawView ? <CodeBlock wrap>{rawText}</CodeBlock> : <SseList events={parsed} />}
+        </div>
       )}
     </div>
   )
