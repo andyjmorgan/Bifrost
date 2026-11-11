@@ -17,10 +17,7 @@ export function Logo({
       <img src="/brand/am-ai-sage-light.svg" alt="Bifrost" className={cn(mark, 'dark:hidden')} />
       <img src="/brand/am-ai-sage-dark.svg" alt="Bifrost" className={cn(mark, 'hidden dark:block')} />
       {!compact && (
-        <div className="leading-none">
-          <span className="block text-sm font-semibold tracking-tight">Bifrost</span>
-          <span className="mt-1 block font-mono text-[11px] font-medium tracking-tight text-accent">mcp gateway</span>
-        </div>
+        <span className="text-lg font-semibold leading-none tracking-tight">Bifrost</span>
       )}
     </div>
   )
