@@ -198,6 +198,33 @@ func refreshToolDef() *mcp.Tool {
 		Title:       "Refresh services",
 		Description: "Re-fetch every server's tools, prompts, resources and resource templates, bypassing and refreshing the gateway cache. Returns a per-server summary; list afterwards for the fresh definitions.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"refreshed":   map[string]any{"type": "integer", "description": "Servers refreshed successfully."},
+				"unavailable": map[string]any{"type": "integer", "description": "Servers that could not be reached; their cached entries are kept."},
+				"tools":       map[string]any{"type": "integer"},
+				"prompts":     map[string]any{"type": "integer"},
+				"resources":   map[string]any{"type": "integer"},
+				"templates":   map[string]any{"type": "integer"},
+				"servers": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"server":    map[string]any{"type": "string"},
+							"tools":     map[string]any{"type": "integer"},
+							"prompts":   map[string]any{"type": "integer"},
+							"resources": map[string]any{"type": "integer"},
+							"templates": map[string]any{"type": "integer"},
+							"error":     map[string]any{"type": "string"},
+						},
+						"required": []string{"server", "tools", "prompts", "resources", "templates"},
+					},
+				},
+			},
+			"required": []string{"refreshed", "unavailable", "tools", "prompts", "resources", "templates", "servers"},
+		},
 		// Rewrites the gateway's own cache, nothing beyond it: not read-only,
 		// not destructive, safe to repeat, closed world.
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &f, IdempotentHint: t, OpenWorldHint: &f},
@@ -255,32 +282,33 @@ func (g *Gateway) refreshServices(ctx context.Context, caller *auth.Caller, rout
 		lines  []line
 		totals line
 		bad    int
-		sb     strings.Builder
 	)
 	for _, e := range entries {
 		l := line{Server: e.srv.Slug, Tools: len(e.tools)}
 		if e.err != nil {
-			l.Error = e.err.Error()
+			l.Error = oneLine(e.err.Error(), 200)
 			bad++
-			fmt.Fprintf(&sb, "%s: unavailable (%s)\n", e.srv.Slug, oneLine(e.err.Error(), 120))
 		} else {
 			l.Prompts, l.Resources, l.Templates = count(surfaces[0], e.srv.Slug), count(surfaces[1], e.srv.Slug), count(surfaces[2], e.srv.Slug)
 			totals.Tools += l.Tools
 			totals.Prompts += l.Prompts
 			totals.Resources += l.Resources
 			totals.Templates += l.Templates
-			fmt.Fprintf(&sb, "%s: %s, %s, %s, %s\n", e.srv.Slug, plural(l.Tools, "tool"), plural(l.Prompts, "prompt"), plural(l.Resources, "resource"), plural(l.Templates, "template"))
 		}
 		lines = append(lines, l)
 	}
-	summary := fmt.Sprintf("Refreshed %d servers: %s, %s, %s, %s", len(entries)-bad, plural(totals.Tools, "tool"), plural(totals.Prompts, "prompt"), plural(totals.Resources, "resource"), plural(totals.Templates, "template"))
-	if bad > 0 {
-		summary += fmt.Sprintf(", %d unavailable", bad)
+	if lines == nil {
+		lines = []line{}
 	}
-	return &mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.TextContent{Text: summary + ".\n" + sb.String()}},
-		StructuredContent: map[string]any{"servers": lines, "tools": totals.Tools, "prompts": totals.Prompts, "resources": totals.Resources, "templates": totals.Templates, "unavailable": bad},
-	}, nil
+	return structured(map[string]any{
+		"refreshed":   len(entries) - bad,
+		"unavailable": bad,
+		"tools":       totals.Tools,
+		"prompts":     totals.Prompts,
+		"resources":   totals.Resources,
+		"templates":   totals.Templates,
+		"servers":     lines,
+	}, false), nil
 }
 
 // muxTools lists tools across all enabled servers. With force, cached

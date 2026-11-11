@@ -281,6 +281,29 @@ func searchToolDef(entries []catalogEntry, route string) *mcp.Tool {
 			"required":             []string{"query"},
 			"additionalProperties": false,
 		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tools": toolList(),
+				"hint":  map[string]any{"type": "string"},
+			},
+			"required": []string{"tools"},
+		},
+	}
+}
+
+// toolList is the output schema shared by tool_search and get_tool_definition.
+func toolList() map[string]any {
+	return map[string]any{
+		"type": "array",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"server": map[string]any{"type": "string", "description": "Slug of the server that owns the tool."},
+				"tool":   map[string]any{"type": "object", "description": "The full MCP tool definition; its name is the callable name."},
+			},
+			"required": []string{"server", "tool"},
+		},
 	}
 }
 
@@ -297,6 +320,26 @@ func listToolDef() *mcp.Tool {
 		Annotations: gatewayHints(true),
 		Description: desc,
 		InputSchema: map[string]any{"type": "object", "properties": props, "additionalProperties": false},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tools": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"server":  map[string]any{"type": "string"},
+							"name":    map[string]any{"type": "string", "description": "The callable name."},
+							"summary": map[string]any{"type": "string"},
+						},
+						"required": []string{"server", "name"},
+					},
+				},
+				"total":      map[string]any{"type": "integer", "description": "Tools matching the filter across all pages."},
+				"nextCursor": map[string]any{"type": "string", "description": "Present when more pages follow."},
+			},
+			"required": []string{"tools", "total"},
+		},
 	}
 }
 
@@ -313,6 +356,15 @@ func defineToolDef() *mcp.Tool {
 			},
 			"required":             []string{"names"},
 			"additionalProperties": false,
+		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tools":    toolList(),
+				"notFound": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"hint":     map[string]any{"type": "string"},
+			},
+			"required": []string{"tools"},
 		},
 	}
 }
@@ -441,31 +493,14 @@ func listToolsResult(entries []catalogEntry, route, server, cursor string, summa
 			page[i].Summary = ""
 		}
 	}
-	structured := map[string]any{"tools": page, "total": len(rows)}
-	// Text form: the namespace once as a header, bare names beneath. Cheaper
-	// than repeating the prefix per line and unambiguous to reassemble.
-	var sb strings.Builder
-	lastNS := ""
-	for _, r := range page {
-		if r.Namespace != lastNS {
-			fmt.Fprintf(&sb, "%s:\n", r.Namespace)
-			lastNS = r.Namespace
-		}
-		sb.WriteString("  " + r.Name)
-		if r.Summary != "" {
-			sb.WriteString(" — " + r.Summary)
-		}
-		sb.WriteByte('\n')
+	if page == nil {
+		page = []row{}
 	}
+	out := map[string]any{"tools": page, "total": len(rows)}
 	if end < len(rows) {
-		next := base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
-		structured["nextCursor"] = next
-		fmt.Fprintf(&sb, "\n%d more; pass cursor %q for the next page.", len(rows)-end, next)
+		out["nextCursor"] = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
 	}
-	if len(page) == 0 {
-		sb.WriteString("No tools.")
-	}
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: sb.String()}}, StructuredContent: structured}
+	return structured(out, false)
 }
 
 func firstLine(s string) string {
@@ -493,20 +528,16 @@ func (g *Gateway) toolSearchResult(entries []catalogEntry, route, query string, 
 		Tool   *mcp.Tool `json:"tool"`
 	}
 	out := make([]result, 0, len(hits))
-	var sb strings.Builder
 	for _, h := range hits {
 		c := *h.Doc.Tool
 		c.Name = toolName(route, h.Doc.Namespace, h.Doc.Tool.Name)
 		out = append(out, result{Server: h.Doc.Namespace, Tool: &c})
-		fmt.Fprintf(&sb, "%s — %s\n", c.Name, oneLine(firstLine(c.Description), 160))
 	}
+	res := map[string]any{"tools": out}
 	if len(out) == 0 {
-		sb.WriteString("No tools matched. Connected servers:\n" + roster(entries))
+		res["hint"] = "No tools matched. Connected servers:\n" + roster(entries)
 	}
-	return &mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.TextContent{Text: sb.String()}},
-		StructuredContent: map[string]any{"tools": out},
-	}, len(out)
+	return structured(res, false), len(out)
 }
 
 // defineToolsResult looks tools up by their callable name (case-insensitive)
@@ -516,9 +547,8 @@ func defineToolsResult(entries []catalogEntry, route string, names []string) *mc
 		Server string    `json:"server"`
 		Tool   *mcp.Tool `json:"tool"`
 	}
-	var found []result
+	found := []result{}
 	var missing []string
-	var sb strings.Builder
 	for _, want := range names {
 		var hit *result
 		for _, e := range entries {
@@ -539,19 +569,27 @@ func defineToolsResult(entries []catalogEntry, route string, names []string) *mc
 			continue
 		}
 		found = append(found, *hit)
-		fmt.Fprintf(&sb, "%s — %s\n", hit.Tool.Name, oneLine(firstLine(hit.Tool.Description), 160))
 	}
+	res := map[string]any{"tools": found}
 	if len(missing) > 0 {
-		fmt.Fprintf(&sb, "Not found: %s. Use list_tools or tool_search to find the right name.\n", strings.Join(missing, ", "))
+		res["notFound"] = missing
+		res["hint"] = "Use list_tools or tool_search to find the right name."
 	}
-	structured := map[string]any{"tools": found}
-	if len(missing) > 0 {
-		structured["notFound"] = missing
+	return structured(res, len(found) == 0)
+}
+
+// structured builds a tool result whose text block is the serialized JSON of
+// its structured content, as the spec asks of tools that return structured
+// content, so text-only clients see the same data.
+func structured(v map[string]any, isError bool) *mcp.CallToolResult {
+	b, err := json.Marshal(v)
+	if err != nil {
+		b = []byte(`{"error":"` + err.Error() + `"}`)
 	}
 	return &mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.TextContent{Text: sb.String()}},
-		StructuredContent: structured,
-		IsError:           len(found) == 0,
+		Content:           []mcp.Content{&mcp.TextContent{Text: string(b)}},
+		StructuredContent: v,
+		IsError:           isError,
 	}
 }
 
