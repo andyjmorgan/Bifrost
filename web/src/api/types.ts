@@ -222,10 +222,22 @@ export interface JSONSchema {
   [key: string]: unknown
 }
 
+export interface MCPToolAnnotations {
+  title?: string
+  readOnlyHint?: boolean
+  destructiveHint?: boolean
+  idempotentHint?: boolean
+  openWorldHint?: boolean
+}
+
 export interface MCPTool {
   name: string
+  title?: string
   description?: string
   inputSchema?: JSONSchema
+  outputSchema?: JSONSchema
+  annotations?: MCPToolAnnotations
+  _meta?: Record<string, unknown>
 }
 
 export interface ListToolsResult {

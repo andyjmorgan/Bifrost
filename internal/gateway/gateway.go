@@ -167,10 +167,15 @@ func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slu
 const RefreshTool = "refresh_tools"
 
 func refreshToolDef() *mcp.Tool {
+	f, t := false, true
 	return &mcp.Tool{
 		Name:        RefreshTool,
+		Title:       "Refresh tools",
 		Description: "Re-fetch every server's tools, bypassing and refreshing the gateway cache. Returns a per-server summary; call tools/list afterwards for the fresh definitions.",
 		InputSchema: map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
+		// Rewrites the gateway's own cache, nothing beyond it: not read-only,
+		// not destructive, safe to repeat, closed world.
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &f, IdempotentHint: t, OpenWorldHint: &f},
 	}
 }
 

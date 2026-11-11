@@ -12,6 +12,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
+import { ToolHints } from '../components/ToolHints'
 import { Callout } from '../components/Callout'
 import { CodeBlock } from '../components/JsonBlock'
 import { JsonTree, tryParseJson, type Json } from '../components/PayloadViewer'
@@ -274,7 +275,10 @@ export function ExplorerPage() {
                       subtitle={t.description?.split('\n')[0]}
                     />
                   </div>
-                  <Play className="size-4 text-muted-foreground" aria-hidden />
+                  <div className="flex items-center gap-3">
+                    <ToolHints annotations={t.annotations} compact />
+                    <Play className="size-4 text-muted-foreground" aria-hidden />
+                  </div>
                 </ListRow>
               )
             })}
@@ -298,6 +302,10 @@ export function ExplorerPage() {
                 <SheetTitle className="break-all font-mono text-base">{selected.name}</SheetTitle>
                 <SheetDescription asChild>
                   <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex w-full flex-wrap items-center gap-2">
+                      {(selected.title || selected.annotations?.title) && <span className="text-sm font-medium text-foreground">{selected.title || selected.annotations?.title}</span>}
+                      <ToolHints annotations={selected.annotations} />
+                    </div>
                     {selected.description ? (
                       <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selected.description}</p>
                     ) : (

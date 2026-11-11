@@ -269,6 +269,8 @@ func searchToolDef(entries []catalogEntry, route string) *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        SearchTool,
+		Title:       "Search tools",
+		Annotations: gatewayHints(true),
 		Description: desc,
 		InputSchema: map[string]any{
 			"type": "object",
@@ -291,6 +293,8 @@ func listToolDef() *mcp.Tool {
 	desc := fmt.Sprintf("List every tool name grouped by server (%d per page) without loading schemas. Use get_tool_definition to load the ones you want.", ListPageSize)
 	return &mcp.Tool{
 		Name:        ListTool,
+		Title:       "List tools",
+		Annotations: gatewayHints(true),
 		Description: desc,
 		InputSchema: map[string]any{"type": "object", "properties": props, "additionalProperties": false},
 	}
@@ -299,6 +303,8 @@ func listToolDef() *mcp.Tool {
 func defineToolDef() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        DefineTool,
+		Title:       "Get tool definition",
+		Annotations: gatewayHints(true),
 		Description: "Get the full definitions (description and input schema) of tools you already know by name, for example from list_tools. Exact lookup, no ranking.",
 		InputSchema: map[string]any{
 			"type": "object",
@@ -318,6 +324,8 @@ func executeToolDef() *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        ExecuteTool,
+		Title:       "Execute tool",
+		Annotations: gatewayHints(false),
 		Description: "Execute a tool found with tool_search. The result is the tool's own result, passed through unchanged.",
 		InputSchema: map[string]any{"type": "object", "properties": props, "required": []string{"name"}, "additionalProperties": false},
 	}
@@ -573,4 +581,15 @@ func (g *Gateway) executeTool(ctx context.Context, caller *auth.Caller, route, s
 	}
 	// Same name form as the flat route, so callTool does the slug split.
 	return g.callTool(ctx, caller, route, slug, &mcp.CallToolParamsRaw{Name: in.Name, Arguments: args})
+}
+
+// gatewayHints annotates a gateway-owned tool: read-only ones read the
+// catalogue, execute_tool inherits whatever the target does, so it stays at
+// the spec defaults except for the closed world.
+func gatewayHints(readOnly bool) *mcp.ToolAnnotations {
+	f := false
+	if readOnly {
+		return &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: &f, IdempotentHint: true, OpenWorldHint: &f}
+	}
+	return &mcp.ToolAnnotations{OpenWorldHint: &f}
 }
