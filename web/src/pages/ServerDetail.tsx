@@ -16,7 +16,7 @@ import { IconTile } from '../components/IconTile'
 import { FormField } from '../components/FormField'
 import { CatalogCard } from '../components/entitlements/CatalogCard'
 import { NewEntitlementDialog } from '../components/entitlements/NewEntitlementDialog'
-import { selectionSummary } from '../components/entitlements/selection'
+import { rulesPhrase, selectionSummary } from '../components/entitlements/selection'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
@@ -463,7 +463,10 @@ function EntitlementsCard({
                   <span className="font-mono text-xs text-muted-foreground">{e.grants.length}</span>
                 </Cell>
                 <Cell label="Selection">
-                  <span className="text-xs">{selectionSummary(e.selection)}</span>
+                  <span className="flex min-w-0 items-baseline gap-2 text-xs">
+                    <span className="truncate">{selectionSummary(e.selection)}</span>
+                    {rulesPhrase(e.rules?.length) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(e.rules?.length)}</span>}
+                  </span>
                 </Cell>
                 <RowActions>
                   <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => onOpen(e)}>

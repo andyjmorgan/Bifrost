@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Telescope } from 'lucide-react'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows } from '../ListCard'
 import type { CapabilityDTO } from '../../api'
 import { absoluteTime, relativeTime } from '../../lib'
 import { KINDS } from './selection'
+import { CapabilitySheet } from './CapabilitySheet'
 
 const COLS = 'minmax(0,1.6fr) 150px 150px'
 
@@ -17,7 +18,7 @@ function Time({ value }: { value: string }) {
 
 /**
  * The server's catalog: every capability the gateway has seen on it, grouped by kind. Read-only;
- * entitlements choose from it.
+ * entitlements choose from it. A row opens its definition in a sheet.
  */
 export function CatalogCard({
   caps,
@@ -29,6 +30,9 @@ export function CatalogCard({
   /** Ping / list actions offered in the empty state. */
   seedActions?: ReactNode
 }) {
+  const [openKey, setOpenKey] = useState<string>()
+  const keyOf = (c: CapabilityDTO) => `${c.kind}:${c.name}`
+  const open = caps.find((c) => keyOf(c) === openKey)
   return (
     <ListCard>
       <ListBar>
@@ -60,7 +64,7 @@ export function CatalogCard({
                 </div>
                 <ListRows className="border-b border-border last:border-b-0">
                   {group.map((c) => (
-                    <ListRow key={`${c.kind}:${c.name}`} cols={COLS} className="py-3">
+                    <ListRow key={keyOf(c)} cols={COLS} className="py-3" onClick={() => setOpenKey(keyOf(c))}>
                       <span className="block truncate font-mono text-xs" title={c.name}>
                         {c.name}
                       </span>
@@ -78,6 +82,7 @@ export function CatalogCard({
           })}
         </>
       )}
+      <CapabilitySheet cap={open} onClose={() => setOpenKey(undefined)} />
     </ListCard>
   )
 }

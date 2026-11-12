@@ -41,14 +41,13 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
   const selected: MCPPrompt | undefined = prompts.find((p) => p.name === selectedName)
 
   const listPrompts = async () => {
-    if (!keyId) return
     setListing(true)
     setListResult(undefined)
     setSelectedName(undefined)
     setGetResult(undefined)
     setListEvents([])
     try {
-      const r = await api.e2e.listPrompts(route, { apiKeyId: keyId }, collect(setListEvents))
+      const r = await api.e2e.listPrompts(route, { apiKeyId: keyId || undefined }, collect(setListEvents))
       setListResult(r)
       if (!r.ok) toast.error('prompts/list failed', { description: r.error })
     } catch (e) {
@@ -67,7 +66,7 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
   }
 
   const getPrompt = async () => {
-    if (!selected || !keyId) return
+    if (!selected) return
     const missing = (selected.arguments ?? []).filter((a) => a.required && !args[a.name]?.trim()).map((a) => a.name)
     if (missing.length) {
       setFormError(`Required: ${missing.join(', ')}.`)
@@ -80,7 +79,7 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
     setGetResult(undefined)
     setGetEvents([])
     try {
-      setGetResult(await api.e2e.getPrompt(route, { apiKeyId: keyId, name: selected.name, arguments: sent }, collect(setGetEvents)))
+      setGetResult(await api.e2e.getPrompt(route, { apiKeyId: keyId || undefined, name: selected.name, arguments: sent }, collect(setGetEvents)))
     } catch (e) {
       setGetResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
@@ -93,7 +92,7 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           {fields(route === MUX ? 'Prompt names are prefixed slug__prompt.' : 'Direct route: prompt names are unprefixed.')}
-          <Button variant="primary" onClick={listPrompts} disabled={!keyId || listing} className="md:mb-[26px]">
+          <Button variant="primary" onClick={listPrompts} disabled={listing} className="md:mb-[26px]">
             <ListTree /> {listing ? 'Listing…' : 'List prompts'}
           </Button>
         </div>
@@ -195,7 +194,7 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
                   )}
                   {formError && <Callout tone="danger">{formError}</Callout>}
                   <div className="flex items-center justify-end">
-                    <Button type="submit" variant="primary" disabled={getting || !keyId}>
+                    <Button type="submit" variant="primary" disabled={getting}>
                       <Play /> {getting ? 'Getting…' : 'Get prompt'}
                     </Button>
                   </div>

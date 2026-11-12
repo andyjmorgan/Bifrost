@@ -273,7 +273,8 @@ export interface AuditQuery {
 
 export interface E2EInput {
   search?: boolean
-  apiKeyId: string
+  /** Omitted = the call goes through the front door as the signed-in user; present = act as that key. */
+  apiKeyId?: string
   name?: string
   arguments?: Record<string, unknown>
   uri?: string
@@ -475,8 +476,8 @@ export interface EntitlementDTO {
   description: string
   mcpUrl: string
   selection: Selection
-  /** Reserved for call-time rules; always [] for now. */
-  policies: unknown[]
+  /** Advanced rules, evaluated top to bottom after the allow lists. Always an array. */
+  rules: Rule[]
   generation: number
   grants: GrantDTO[]
   createdAt: string
@@ -489,6 +490,8 @@ export interface EntitlementInput {
   slug?: string
   description: string
   selection?: Selection
+  /** Omit to leave unchanged; PATCH sends the full list. */
+  rules?: Rule[]
 }
 
 export type CapabilityKind = 'tool' | 'prompt' | 'resource' | 'template'
@@ -499,6 +502,28 @@ export interface CapabilityDTO {
   fingerprint?: string
   firstSeenAt: string
   lastSeenAt: string
+  /** The tool / prompt / resource / template object exactly as the server last sent it. */
+  definition?: unknown
+}
+
+/** A call-time rule. The last enabled rule whose kinds and `when` match sets the outcome. */
+export interface Rule {
+  /** Client-generated and stable (crypto.randomUUID()). */
+  id: string
+  name: string
+  /** undefined = enabled. */
+  enabled?: boolean
+  action: 'allow' | 'deny'
+  /** Empty or undefined = any kind. */
+  kinds?: CapabilityKind[]
+  /** CEL boolean expression. */
+  when: string
+}
+
+/** A compile problem; `rule` is the 0-based index into the submitted list. */
+export interface RuleProblem {
+  rule: number
+  message: string
 }
 
 /** One slug the caller holds (the member portal). */
@@ -518,4 +543,6 @@ export interface ExposureDTO {
   conflict?: string
   /** "kind:name" this slug exposes (seen on the server and inside the selection). */
   capabilities: string[]
+  /** Count of advanced rules on that entitlement. */
+  rules: number
 }

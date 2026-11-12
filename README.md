@@ -98,7 +98,17 @@ curl -X PUT $BASE/api/v1/entitlements/$EID/grants -H "Authorization: Bearer $KEY
 }'
 ```
 
-`/mcp` is the union of every entitlement the caller holds; `/mcp?slugs=a,b` narrows it to named slugs, and a slug the caller does not hold is an error. A server marked exclusive refuses a caller holding two of its entitlements. What a server has been seen to offer is recorded under `/servers/{id}/capabilities` as governance data for the editor and the server page; it never filters. Advanced CEL rules will run after the allow lists, in order, and may enable or disable; `policies` on the entitlement is reserved for them.
+After the allow lists come the entitlement's **rules**: an ordered list of CEL conditions, each allow or deny, optionally scoped to kinds. Each enabled rule whose `when` is true sets the outcome, and the last match wins, so an allow can re-enable what a list left out and a later deny can cut again. Rules see `tool` / `prompt` / `resource` / `template` (or `capability` for any kind), `server`, `caller` (user, role, key), `client` (name, capabilities) and `route`. A rule that errors denies; a rule list that does not compile fails the entitlement closed and the listing says why.
+
+```json
+{"rules": [
+  {"id": "r1", "name": "reads",         "action": "allow", "kinds": ["tool"], "when": "tool.name.matches(\"^(get|list|read)_\")"},
+  {"id": "r2", "name": "no destructive", "action": "deny",  "kinds": ["tool"], "when": "tool.annotations.destructiveHint && !tool.annotations.readOnlyHint"},
+  {"id": "r3", "name": "admins only",    "action": "deny",                     "when": "caller.role != \"admin\""}
+]}
+```
+
+`/mcp` is the union of every entitlement the caller holds; `/mcp?slugs=a,b` narrows it to named slugs, and a slug the caller does not hold is an error. A server marked exclusive refuses a caller holding two of its entitlements. What a server has been seen to offer, with the definition it sent, is recorded under `/servers/{id}/capabilities` as governance data for the editor and the server page; it never filters.
 
 ## Design notes
 

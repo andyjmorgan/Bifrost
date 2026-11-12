@@ -7,7 +7,7 @@ import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
-import { KINDS, capabilitySummary, groupCapabilities, viaLabel } from '../components/entitlements/selection'
+import { KINDS, capabilitySummary, groupCapabilities, rulesPhrase, viaLabel } from '../components/entitlements/selection'
 import { api, errorMessage, type ExposureDTO } from '../api'
 import { cn } from '../lib'
 
@@ -108,6 +108,7 @@ export function PortalPage() {
                             {expanded ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
                             {Object.keys(x.selection ?? {}).length === 0 ? 'Everything · ' : ''}
                             {capabilitySummary(x.capabilities)}
+                            {rulesPhrase(x.rules) && <span className="ml-1.5 text-muted-foreground">{rulesPhrase(x.rules)}</span>}
                           </span>
                         </Cell>
                         <Cell label="Via">

@@ -40,8 +40,8 @@ export interface TabProps {
   fields: (routeHint: string) => ReactNode
 }
 
-// The explorer drives the gateway through its own front door, exactly as an agent would: the
-// chosen API key authenticates, the route picks the mux or one entitlement slug, and every exchange lands
+// The explorer drives the gateway through its own front door, exactly as an agent would: your own
+// session (or an API key you pick) authenticates, the route picks the mux or one entitlement slug, and every exchange lands
 // in the audit trail with a request id we can link to. Route and key are shared across the
 // Tools, Prompts and Resources tabs; each tab keeps its own results while you switch.
 export function ExplorerPage() {
@@ -58,6 +58,7 @@ export function ExplorerPage() {
       return ''
     }
   })
+  const [keysLoaded, setKeysLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string>()
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export function ExplorerPage() {
         setLoadError(undefined)
       })
       .catch((e) => setLoadError(errorMessage(e)))
+      .finally(() => setKeysLoaded(true))
   }, [])
 
   const { userId } = useMe()
@@ -80,12 +82,14 @@ export function ExplorerPage() {
         .sort((a, b) => Number(b.createdBy === userId) - Number(a.createdBy === userId)),
     [keys, userId],
   )
+  // An empty keyId is "you": the call goes through the front door with your own session. A remembered
+  // key that is no longer usable falls back to that.
   useEffect(() => {
-    if (usableKeys.length && !usableKeys.some((k) => k.id === keyId)) setKeyId(usableKeys[0].id)
-  }, [usableKeys, keyId])
+    if (keysLoaded && keyId && !usableKeys.some((k) => k.id === keyId)) setKeyId('')
+  }, [keysLoaded, usableKeys, keyId])
   useEffect(() => {
     try {
-      if (keyId) sessionStorage.setItem(KEY_STORAGE, keyId)
+      sessionStorage.setItem(KEY_STORAGE, keyId)
     } catch {
       // ignore
     }
@@ -113,7 +117,7 @@ export function ExplorerPage() {
       <PageHeader
         eyebrow="Gateway"
         title="Explorer"
-        description="List and call tools, prompts and resources through the gateway's front door with one of your API keys, exactly as an agent would. Every call is audited."
+        description="List and call tools, prompts and resources through the gateway's front door as yourself or as one of your API keys, exactly as an agent would. Every call is audited."
       />
 
       <Tabs tabs={TABS} value={tab} onChange={setTab} label="Explorer surface" />
@@ -170,14 +174,13 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
   const selected: MCPTool | undefined = tools.find((t) => t.name === selectedName)
 
   const listTools = async () => {
-    if (!keyId) return
     setListing(true)
     setListResult(undefined)
     setSelectedName(undefined)
     setCallResult(undefined)
     setListEvents([])
     try {
-      const r = await api.e2e.listTools(route, { apiKeyId: keyId, search }, collect(setListEvents))
+      const r = await api.e2e.listTools(route, { apiKeyId: keyId || undefined, search }, collect(setListEvents))
       setListResult(r)
       if (!r.ok) toast.error('tools/list failed', { description: r.error })
     } catch (e) {
@@ -195,7 +198,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
   }
 
   const callTool = async () => {
-    if (!selected || !keyId) return
+    if (!selected) return
     let args: Record<string, unknown>
     try {
       args = toArguments(selected.inputSchema, draft)
@@ -208,7 +211,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
     setCallResult(undefined)
     setCallEvents([])
     try {
-      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId, name: selected.name, arguments: args, search }, collect(setCallEvents)))
+      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId || undefined, name: selected.name, arguments: args, search }, collect(setCallEvents)))
     } catch (e) {
       setCallResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
@@ -226,7 +229,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
               <Switch checked={search} onCheckedChange={setSearch} aria-label="Search mode" />
             </div>
           </FormField>
-          <Button variant="primary" onClick={listTools} disabled={!keyId || listing} className="md:mb-[26px]">
+          <Button variant="primary" onClick={listTools} disabled={listing} className="md:mb-[26px]">
             <ListTree /> {listing ? 'Listing…' : 'List tools'}
           </Button>
         </div>
@@ -248,7 +251,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
           <ListEmpty
             icon={Compass}
             title={listResult ? (tools.length ? 'No tools match' : 'No tools returned') : 'No tools listed yet'}
-            hint={listResult ? undefined : 'Pick a route and key, then list tools to see what the gateway exposes.'}
+            hint={listResult ? undefined : 'Pick a route, then list tools to see what the gateway exposes.'}
           />
         ) : (
           <ListRows>
@@ -318,7 +321,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
                   )}
                   {formError && <Callout tone="danger">{formError}</Callout>}
                   <div className="flex items-center justify-end">
-                    <Button variant="primary" onClick={callTool} disabled={calling || !keyId}>
+                    <Button variant="primary" onClick={callTool} disabled={calling}>
                       <Play /> {calling ? 'Calling…' : 'Call tool'}
                     </Button>
                   </div>

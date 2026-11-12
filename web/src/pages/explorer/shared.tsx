@@ -13,10 +13,13 @@ import type { APIKeyDTO, E2EEventHandler, E2EResult, ExposureDTO } from '../../a
 import { cn } from '../../lib'
 
 export const MUX = 'mux'
+/** The key picker's "you" option; Radix Select needs a non-empty value. Maps to keyId ''. */
+const SELF = '__self__'
 
 /** The route and key every tab drives the gateway with; owned by the page, shared across tabs. */
 export interface Target {
   route: string
+  /** '' = the signed-in session (no apiKeyId sent). */
   keyId: string
 }
 
@@ -31,7 +34,7 @@ export function collect(set: React.Dispatch<React.SetStateAction<StreamEvent[]>>
   }
 }
 
-/** Route and API key selects, shared by every tab's control card. */
+/** Route and act-as selects, shared by every tab's control card. */
 export function TargetFields({
   route,
   onRouteChange,
@@ -70,30 +73,16 @@ export function TargetFields({
           </SelectContent>
         </Select>
       </FormField>
-      <FormField
-        label="API key"
-        hint={
-          keys.length ? (
-            'Only keys with mcp:execute that are not revoked.'
-          ) : (
-            <>
-              No usable key.{' '}
-              <Link to="/api-keys" className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-                Create one with mcp:execute
-              </Link>
-              .
-            </>
-          )
-        }
-      >
-        <Select value={keyId} onValueChange={onKeyChange} disabled={!keys.length}>
-          <SelectTrigger aria-label="API key">
-            <SelectValue placeholder="Choose a key" />
+      <FormField label="Act as" hint={keyId ? 'Only keys with mcp:execute that are not revoked.' : 'Your signed-in session, with exactly what you hold.'}>
+        <Select value={keyId || SELF} onValueChange={(v) => onKeyChange(v === SELF ? '' : v)}>
+          <SelectTrigger aria-label="Act as">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value={SELF}>You (signed-in session)</SelectItem>
             {keys.map((k) => (
               <SelectItem key={k.id} value={k.id}>
-                {k.name} <span className="ml-2 font-mono text-xs text-muted-foreground">{k.prefix}…</span>
+                Act as key: {k.name} <span className="ml-2 font-mono text-xs text-muted-foreground">{k.prefix}…</span>
               </SelectItem>
             ))}
           </SelectContent>

@@ -95,3 +95,9 @@ export function viaLabel(via: string): string {
   if (via === 'role:member') return 'Members'
   return via
 }
+
+/** "1 rule" / "3 rules"; undefined when there are none, so callers render nothing. */
+export function rulesPhrase(n: number | undefined): string | undefined {
+  if (!n) return undefined
+  return `${n} ${n === 1 ? 'rule' : 'rules'}`
+}

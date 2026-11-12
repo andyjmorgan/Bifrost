@@ -64,7 +64,6 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
   const total = resources.length + templates.length
 
   const list = async () => {
-    if (!keyId) return
     setListing(true)
     setResResult(undefined)
     setTplResult(undefined)
@@ -85,8 +84,8 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
     }
     try {
       await Promise.all([
-        run('resources/list', () => api.e2e.listResources(route, { apiKeyId: keyId }, collect(setResEvents)), setResResult),
-        run('resources/templates', () => api.e2e.listResourceTemplates(route, { apiKeyId: keyId }, collect(setTplEvents)), setTplResult),
+        run('resources/list', () => api.e2e.listResources(route, { apiKeyId: keyId || undefined }, collect(setResEvents)), setResResult),
+        run('resources/templates', () => api.e2e.listResourceTemplates(route, { apiKeyId: keyId || undefined }, collect(setTplEvents)), setTplResult),
       ])
     } finally {
       setListing(false)
@@ -103,12 +102,12 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
 
   const read = async (target = uri) => {
     const u = target.trim()
-    if (!u || !keyId) return
+    if (!u) return
     setReading(true)
     setReadResult(undefined)
     setReadEvents([])
     try {
-      setReadResult(await api.e2e.readResource(route, { apiKeyId: keyId, uri: u }, collect(setReadEvents)))
+      setReadResult(await api.e2e.readResource(route, { apiKeyId: keyId || undefined, uri: u }, collect(setReadEvents)))
     } catch (e) {
       setReadResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
@@ -127,7 +126,7 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           {fields(route === MUX ? 'Resources from every server; each shows its owning server.' : 'Direct route: one server’s resources.')}
-          <Button variant="primary" onClick={list} disabled={!keyId || listing} className="md:mb-[26px]">
+          <Button variant="primary" onClick={list} disabled={listing} className="md:mb-[26px]">
             <ListTree /> {listing ? 'Listing…' : 'List resources'}
           </Button>
         </div>
@@ -141,7 +140,7 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
           <FormField label="Read a URI" hint="Any resource URI the route can resolve, listed or not." className="min-w-0 flex-1">
             <Input value={directUri} onChange={(e) => setDirectUri(e.target.value)} placeholder="file:///path/to/thing" className="font-mono" aria-label="Resource URI" />
           </FormField>
-          <Button type="submit" disabled={!keyId || !directUri.trim()} className="sm:mb-[26px]">
+          <Button type="submit" disabled={!directUri.trim()} className="sm:mb-[26px]">
             <BookOpen /> Read
           </Button>
         </form>
@@ -234,7 +233,7 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
                     </FormField>
                   )}
                   <div className="flex items-center justify-end">
-                    <Button type="submit" variant="primary" disabled={reading || !keyId || !uri.trim()}>
+                    <Button type="submit" variant="primary" disabled={reading || !uri.trim()}>
                       <BookOpen /> {reading ? 'Reading…' : 'Read'}
                     </Button>
                   </div>

@@ -35,6 +35,8 @@ import type {
   GrantInput,
   CapabilityDTO,
   ExposureDTO,
+  Rule,
+  RuleProblem,
   UpdateServerInput,
 } from './types'
 
@@ -140,6 +142,7 @@ export const api = {
     get: (id: string) => http.get<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`),
     update: (id: string, input: EntitlementInput) => http.patch<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`, input),
     remove: (id: string) => http.delete(`/entitlements/${encodeURIComponent(id)}`),
+    validate: (rules: Rule[]) => http.post<{ problems: RuleProblem[] }>('/entitlements/validate', { rules }),
     putGrants: (id: string, grants: GrantInput[]) => http.put<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}/grants`, { grants }),
   },
 
