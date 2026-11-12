@@ -7,7 +7,7 @@ import { FormField, FormSection } from '../FormField'
 import { Callout } from '../Callout'
 import { api, errorMessage, type CreateServerResult, type ServerDTO, type UpdateServerInput } from '../../api'
 import { AuthFields, emptyAuthDraft, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
-import { slugPreview } from './credential'
+import { slugBase } from '../entitlements/selection'
 
 interface Draft {
   name: string
@@ -95,7 +95,7 @@ export function ServerDialog({
             <DialogTitle>{editing ? 'Edit server' : 'New server'}</DialogTitle>
             <DialogDescription>
               {editing
-                ? 'Rename or re-point the server. The slug and gateway URL never change.'
+                ? 'Rename or re-point the server. Its entitlement slugs and gateway URLs never change.'
                 : 'Register an upstream MCP server. Agents reach it through the gateway with one of your API keys.'}
             </DialogDescription>
           </DialogHeader>
@@ -105,10 +105,14 @@ export function ServerDialog({
                 label="Name"
                 required
                 hint={
-                  <>
-                    Slug <span className="font-mono text-foreground">{editing && server ? server.slug : slugPreview(draft.name)}</span>
-                    {editing ? ' is immutable.' : ' will be derived from the name (a–z, 0–9, up to 12 characters) and cannot be changed later.'}
-                  </>
+                  editing ? (
+                    'Renaming the server does not rename its entitlements.'
+                  ) : (
+                    <>
+                      A default entitlement offering everything, granted to admins, is created under the slug{' '}
+                      <span className="font-mono text-foreground">{slugBase(draft.name)}</span> (a number is added if it is taken).
+                    </>
+                  )
                 }
               >
                 <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Atlassian" autoFocus required />

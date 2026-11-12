@@ -9,7 +9,7 @@ import { CodeBlock } from '../../components/JsonBlock'
 import { JsonTree, SseList, parseSse, tryParseJson, unavailableFrom, type Json } from '../../components/PayloadViewer'
 import { CopyButton } from '../../components/CopyButton'
 import { FormField } from '../../components/FormField'
-import type { APIKeyDTO, E2EEventHandler, E2EResult, ServerDTO } from '../../api'
+import type { APIKeyDTO, E2EEventHandler, E2EResult, ExposureDTO } from '../../api'
 import { cn } from '../../lib'
 
 export const MUX = 'mux'
@@ -38,7 +38,7 @@ export function TargetFields({
   routeHint,
   keyId,
   onKeyChange,
-  servers,
+  exposures,
   keys,
 }: {
   route: string
@@ -46,7 +46,7 @@ export function TargetFields({
   routeHint: string
   keyId: string
   onKeyChange: (k: string) => void
-  servers: ServerDTO[]
+  exposures: ExposureDTO[]
   keys: APIKeyDTO[]
 }) {
   return (
@@ -57,11 +57,14 @@ export function TargetFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={MUX}>All servers (/mcp)</SelectItem>
-            {servers.map((s) => (
-              <SelectItem key={s.id} value={s.slug}>
-                <span className="font-mono text-xs">{s.slug}</span>
-                <span className="ml-2 text-muted-foreground">{s.name}</span>
+            <SelectItem value={MUX}>
+              <span className="font-mono text-xs">mux</span>
+              <span className="ml-2 text-muted-foreground">Everything you hold (/mcp)</span>
+            </SelectItem>
+            {exposures.map((x) => (
+              <SelectItem key={x.slug} value={x.slug}>
+                <span className="font-mono text-xs">{x.slug}</span>
+                <span className="ml-2 text-muted-foreground">{x.name}</span>
               </SelectItem>
             ))}
           </SelectContent>

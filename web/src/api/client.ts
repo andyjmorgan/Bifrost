@@ -118,10 +118,3 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message
   return String(e)
 }
-
-/** The `problems` array a 400 compile error carries, or undefined. */
-export function problemsOf(e: unknown): { rule: number; field?: string; message: string }[] | undefined {
-  if (!(e instanceof ApiError) || e.status !== 400) return undefined
-  const body = e.body as { problems?: unknown } | undefined
-  return Array.isArray(body?.problems) ? (body.problems as { rule: number; field?: string; message: string }[]) : undefined
-}

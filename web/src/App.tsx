@@ -5,15 +5,15 @@ import { AppLayout } from './components/AppLayout'
 import { DEFAULT_ROUTE, isAuthed, rememberReturnTo, subscribeAuth } from './auth'
 import { useTheme } from './theme'
 import { api, type MeDTO } from './api'
-import { MeContext, meValue } from './me'
+import { MeContext, meValue, useMe } from './me'
 import { LoginPage } from './pages/Login'
 import { AuthCallbackPage } from './pages/AuthCallback'
 import { ServersPage } from './pages/Servers'
 import { ServerDetailPage } from './pages/ServerDetail'
 import { ExplorerPage } from './pages/Explorer'
 import { ApiKeysPage } from './pages/ApiKeys'
-import { PoliciesPage } from './pages/Policies'
-import { PolicyEditorPage } from './pages/PolicyEditor'
+import { PortalPage } from './pages/Portal'
+import { EntitlementEditorPage } from './pages/EntitlementEditor'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 import { MembersPage } from './pages/Members'
@@ -66,6 +66,14 @@ function AppShell() {
   )
 }
 
+// Admin-only routes: wait for /me, then send members to their portal.
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { me, isAdmin } = useMe()
+  if (!me) return null
+  if (!isAdmin) return <Navigate to="/portal" replace />
+  return <>{children}</>
+}
+
 // "/" is the sign-in screen until there's a session, then the app.
 function Root() {
   const authed = useAuthed()
@@ -88,14 +96,14 @@ export function App() {
           }
         />
         <Route element={<AppShell />}>
-          <Route path="/servers" element={<ServersPage />} />
-          <Route path="/servers/:id" element={<ServerDetailPage />} />
+          <Route path="/portal" element={<PortalPage />} />
+          <Route path="/servers" element={<AdminOnly><ServersPage /></AdminOnly>} />
+          <Route path="/servers/:id" element={<AdminOnly><ServerDetailPage /></AdminOnly>} />
+          <Route path="/entitlements/:id" element={<AdminOnly><EntitlementEditorPage /></AdminOnly>} />
           <Route path="/explorer" element={<ExplorerPage />} />
-          <Route path="/policies" element={<PoliciesPage />} />
-          <Route path="/policies/:id" element={<PolicyEditorPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />
-          <Route path="/members" element={<MembersPage />} />
+          <Route path="/members" element={<AdminOnly><MembersPage /></AdminOnly>} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

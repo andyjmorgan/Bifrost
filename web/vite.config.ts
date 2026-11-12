@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 const backend = 'http://localhost:8080'
 
 // Everything the Go server owns is proxied in dev: the REST API, the MCP front door (mux and
-// per-slug), the OAuth callback and the well-known documents. Client routes stay with Vite.
+// per-entitlement slug), the OAuth callback and the well-known documents. Client routes stay with Vite.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
@@ -16,7 +16,7 @@ export default defineConfig({
       '/oauth': backend,
       '/.well-known': backend,
       '/healthz': backend,
-      '^/[a-z0-9]{1,12}/mcp': backend,
+      '^/[a-z0-9-]{1,24}/mcp': backend,
     },
   },
   build: {
@@ -36,7 +36,6 @@ export default defineConfig({
             '@radix-ui/react-slot',
           ],
           oidc: ['oidc-client-ts'],
-          codemirror: ['@codemirror/state', '@codemirror/view', '@codemirror/autocomplete', '@codemirror/language', '@codemirror/commands', '@lezer/highlight'],
         },
       },
     },

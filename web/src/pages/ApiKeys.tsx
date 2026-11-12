@@ -22,7 +22,7 @@ const SCOPE_HINTS: Record<string, string> = {
   'api:read': 'Read servers, keys and the audit trail.',
   'api:edit': 'Manage API keys.',
   'mcp:edit': 'Add, edit and remove MCP servers and their credentials.',
-  'mcp:execute': 'Call /mcp and /{slug}/mcp through the gateway.',
+  'mcp:execute': 'Call /mcp and /{entitlement}/mcp through the gateway.',
 }
 const DEFAULT_SCOPES = ['api:read', 'api:edit', 'mcp:execute', 'mcp:edit']
 

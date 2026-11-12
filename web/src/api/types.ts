@@ -102,18 +102,32 @@ export interface CredentialDTO {
   updatedAt: string
 }
 
+export type CeilingMode = 'approve' | 'open'
+
 export interface ServerDTO {
   id: string
-  slug: string
   name: string
   url: string
   description: string
   authKind: AuthKind
   enabled: boolean
+  /** A caller holding more than one of this server's entitlements gets none of them. */
+  exclusive: boolean
+  ceilingMode: CeilingMode
+  /** Capabilities awaiting approval. */
+  pending: number
   createdAt: string
   updatedAt: string
-  mcpUrl: string
   credential?: CredentialDTO
+  entitlements: EntitlementRefDTO[]
+}
+
+export interface EntitlementRefDTO {
+  id: string
+  slug: string
+  name: string
+  mcpUrl: string
+  grants: number
 }
 
 export interface AuthInput {
@@ -137,6 +151,8 @@ export interface UpdateServerInput {
   url?: string
   description?: string
   enabled?: boolean
+  exclusive?: boolean
+  ceilingMode?: CeilingMode
 }
 
 export interface CreateServerResult {
@@ -182,6 +198,7 @@ export interface APIKeyDTO {
   createdAt: string
   lastUsedAt?: string
   revokedAt?: string
+  createdBy?: string
 }
 
 export interface CreateAPIKeyInput {
@@ -422,93 +439,91 @@ export interface ReadResourceResult {
   _meta?: Record<string, unknown>
 }
 
-// Policies: ordered CEL rules that shape what a route exposes. A route is "mux" (the global /mcp)
-// or a server slug.
-export interface PolicyRule {
-  id: string
-  name: string
-  enabled?: boolean
-  when: string
-  then: Record<string, string>
+// Entitlements: a named, grantable view of one server. Its slug is the route (/{slug}/mcp) and the
+// mux prefix (slug__tool).
+
+export interface Selection {
+  all?: boolean
+  tools?: string[]
+  prompts?: string[]
+  /** URI patterns: exact, * within a segment, ** prefix. */
+  resources?: string[]
+  /** uriTemplate strings. */
+  templates?: string[]
 }
 
-export interface PolicyBindingRef {
-  route: string
-  serverId?: string
-  serverName?: string
+export type SubjectType = 'user' | 'role'
+
+export interface GrantDTO {
+  subjectType: SubjectType
+  subjectId: string
+  email?: string
+  name?: string
+  grantedAt: string
 }
 
-export interface PolicyDTO {
+export interface GrantInput {
+  subjectType: SubjectType
+  subjectId: string
+}
+
+export interface EntitlementDTO {
   id: string
+  serverId: string
+  serverName: string
+  slug: string
   name: string
   description: string
-  invert: boolean
-  rules: PolicyRule[]
+  mcpUrl: string
+  selection: Selection
+  /** Reserved for call-time rules; always [] for now. */
+  policies: unknown[]
+  generation: number
+  grants: GrantDTO[]
   createdAt: string
   updatedAt: string
-  bindings: PolicyBindingRef[]
 }
 
-export interface PolicyInput {
+/** slug only on create (omitted = derived from name); ignored on PATCH. */
+export interface EntitlementInput {
+  name: string
+  slug?: string
+  description: string
+  selection?: Selection
+}
+
+export type CapabilityKind = 'tool' | 'prompt' | 'resource' | 'template'
+
+export interface CapabilityDTO {
+  kind: CapabilityKind
+  name: string
+  fingerprint?: string
+  firstSeenAt: string
+  lastSeenAt: string
+  approvedAt?: string
+}
+
+export interface CapabilityInput {
+  approve: boolean
+  /** "kind:name"; omitted = all. */
+  names?: string[]
+}
+
+/** One slug the caller holds (the member portal). */
+export interface ExposureDTO {
+  slug: string
   name: string
   description: string
-  invert: boolean
-  rules: PolicyRule[]
-}
-
-export interface PolicyField {
-  name: string
-  kind: 'bool' | 'string'
-  doc: string
-}
-
-export interface PolicyProblem {
-  rule: number
-  field?: string
-  message: string
-}
-
-export interface ValidatePolicyResult {
-  problems: PolicyProblem[]
-}
-
-export interface PolicyHit {
-  policy: string
-  rule: string
-  set?: string[]
-  error?: string
-}
-
-/** The shaped tool definition as the client will see it. */
-export type Tool = MCPTool & { [key: string]: unknown }
-
-export interface PolicyPreviewTool {
-  server: string
-  upstream: string
-  name: string
-  visible: boolean
-  confirm: boolean
-  confirmMessage?: string
-  changed: string[]
-  hits: PolicyHit[]
-  tool: Tool
-}
-
-export interface PolicyPreviewInput {
-  policy: PolicyInput
-  route: string
-  extra?: boolean
-}
-
-export interface PolicyPreviewResult {
-  route: string
-  tools: PolicyPreviewTool[]
-  unavailable?: { server: string; error: string }[]
-}
-
-export interface RouteBindingsDTO {
-  route: string
-  serverId?: string
-  serverName?: string
-  policies: { id: string; name: string }[]
+  mcpUrl: string
+  serverId: string
+  serverName: string
+  serverUrl: string
+  enabled: boolean
+  selection: Selection
+  /** "user" and/or "role:member" / "role:admin". */
+  via: string[]
+  /** Set when an exclusive server is held twice. */
+  conflict?: string
+  /** "kind:name" this slug exposes (inside ceiling and selection). */
+  capabilities: string[]
 }

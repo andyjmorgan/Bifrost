@@ -9,13 +9,13 @@ import {
   DoorOpen,
   Github,
   KeySquare,
+  LayoutGrid,
   LogOut,
   Menu,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Server,
-  ShieldCheck,
   Sun,
   UserRound,
   Users,
@@ -43,20 +43,20 @@ export const REPO = 'https://github.com/andyjmorgan/Bifrost'
 export const DOCS = 'https://github.com/andyjmorgan/Bifrost#readme'
 
 // Sidebar groups. Each icon carries its own hue so the rail reads at a glance when collapsed.
-const navigation: { label?: string; items: { name: string; href: string; icon: typeof Server; color: string }[] }[] = [
+const navigation: { label?: string; items: { name: string; href: string; icon: typeof Server; color: string; admin?: boolean }[] }[] = [
   {
     label: 'Gateway',
     items: [
-      { name: 'Servers', href: '/servers', icon: Server, color: 'text-accent' },
+      { name: 'My servers', href: '/portal', icon: LayoutGrid, color: 'text-success' },
+      { name: 'Servers', href: '/servers', icon: Server, color: 'text-accent', admin: true },
       { name: 'Explorer', href: '/explorer', icon: Compass, color: 'text-plum' },
-      { name: 'Policies', href: '/policies', icon: ShieldCheck, color: 'text-success' },
     ],
   },
   {
     label: 'Access',
     items: [
       { name: 'API keys', href: '/api-keys', icon: KeySquare, color: 'text-info' },
-      { name: 'Members', href: '/members', icon: Users, color: 'text-plum' },
+      { name: 'Members', href: '/members', icon: Users, color: 'text-plum', admin: true },
     ],
   },
   { label: 'Observe', items: [{ name: 'Audit', href: '/audit', icon: Activity, color: 'text-warning' }] },
@@ -86,7 +86,7 @@ function useCollapsed() {
 }
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { me, refreshMe } = useMe()
+  const { me, isAdmin, refreshMe } = useMe()
   const [orgs, setOrgs] = useState<OrgRefDTO[]>([])
   const [leaving, setLeaving] = useState(false)
   const [leaveBusy, setLeaveBusy] = useState(false)
@@ -166,7 +166,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   {group.label}
                 </p>
               )}
-              {group.items.map((item) => (
+              {group.items.filter((item) => !item.admin || isAdmin).map((item) => (
                 <NavLink
                   key={item.href}
                   to={item.href}
@@ -295,7 +295,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <ConfirmDialog
           open={leaving}
           title={`Leave ${me?.orgName ?? 'this org'}?`}
-          description="You lose access to its servers, policies and audit trail, and your personal org becomes active again. Someone will need to invite you to come back."
+          description="You lose access to its servers, entitlements and audit trail, and your personal org becomes active again. Someone will need to invite you to come back."
           confirmLabel="Leave"
           busy={leaveBusy}
           error={leaveErr}

@@ -1,16 +1,6 @@
 import type { AuthKind, CredentialDTO, ServerDTO } from '../../api'
 import type { Tone } from '../StatusPill'
 
-/** Derive the slug exactly as the Go side does (lowercase a-z0-9, max 12; empty → "server"). */
-export function slugPreview(name: string): string {
-  let s = ''
-  for (const ch of name.toLowerCase()) {
-    if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) s += ch
-  }
-  if (!s) s = 'server'
-  return s.slice(0, 12)
-}
-
 export const AUTH_KINDS: { value: AuthKind; label: string; hint: string }[] = [
   { value: 'none', label: 'None', hint: 'The upstream accepts anonymous requests.' },
   { value: 'oauth', label: 'OAuth 2.1', hint: 'Discovery, client registration (CIMD or DCR) and consent are handled by the gateway.' },

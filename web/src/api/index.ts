@@ -29,20 +29,18 @@ import type {
   OAuthStartResult,
   PageDTO,
   PingResult,
-  PolicyDTO,
-  PolicyField,
-  PolicyInput,
-  PolicyPreviewInput,
-  PolicyPreviewResult,
-  PolicyRule,
-  RouteBindingsDTO,
-  ValidatePolicyResult,
   ServerDTO,
+  EntitlementDTO,
+  EntitlementInput,
+  GrantInput,
+  CapabilityDTO,
+  CapabilityInput,
+  ExposureDTO,
   UpdateServerInput,
 } from './types'
 
 export * from './types'
-export { ApiError, errorMessage, problemsOf } from './client'
+export { ApiError, errorMessage } from './client'
 
 function qs(params: Record<string, string | number | undefined>): string {
   const p = new URLSearchParams()
@@ -134,20 +132,20 @@ export const api = {
     trace: (id: string) => http.get<AuditTraceDTO>(`/audit/${encodeURIComponent(id)}/trace`),
   },
 
-  policies: {
-    list: () => http.get<PolicyDTO[]>('/policies'),
-    get: (id: string) => http.get<PolicyDTO>(`/policies/${encodeURIComponent(id)}`),
-    fields: () => http.get<PolicyField[]>('/policies/fields'),
-    create: (input: PolicyInput) => http.post<PolicyDTO>('/policies', input),
-    update: (id: string, input: PolicyInput) => http.patch<PolicyDTO>(`/policies/${encodeURIComponent(id)}`, input),
-    remove: (id: string) => http.delete(`/policies/${encodeURIComponent(id)}`),
-    validate: (rules: PolicyRule[]) => http.post<ValidatePolicyResult>('/policies/validate', { rules }),
-    preview: (input: PolicyPreviewInput) => http.post<PolicyPreviewResult>('/policies/preview', input),
+  exposures: () => http.get<ExposureDTO[]>('/exposures'),
+
+  entitlements: {
+    list: () => http.get<EntitlementDTO[]>('/entitlements'),
+    listForServer: (serverId: string) => http.get<EntitlementDTO[]>(`/servers/${encodeURIComponent(serverId)}/entitlements`),
+    create: (serverId: string, input: EntitlementInput) => http.post<EntitlementDTO>(`/servers/${encodeURIComponent(serverId)}/entitlements`, input),
+    get: (id: string) => http.get<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`),
+    update: (id: string, input: EntitlementInput) => http.patch<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`, input),
+    remove: (id: string) => http.delete(`/entitlements/${encodeURIComponent(id)}`),
+    putGrants: (id: string, grants: GrantInput[]) => http.put<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}/grants`, { grants }),
   },
 
-  bindings: {
-    list: () => http.get<RouteBindingsDTO[]>('/bindings'),
-    get: (route: string) => http.get<RouteBindingsDTO>(`/bindings/${encodeURIComponent(route)}`),
-    put: (route: string, policyIds: string[]) => http.put<RouteBindingsDTO>(`/bindings/${encodeURIComponent(route)}`, { policyIds }),
+  capabilities: {
+    list: (serverId: string) => http.get<CapabilityDTO[]>(`/servers/${encodeURIComponent(serverId)}/capabilities`),
+    set: (serverId: string, input: CapabilityInput) => http.post<CapabilityDTO[]>(`/servers/${encodeURIComponent(serverId)}/capabilities`, input),
   },
 }

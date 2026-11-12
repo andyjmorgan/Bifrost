@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -87,8 +86,6 @@ type ExposureDTO struct {
 	Conflict     string          `json:"conflict,omitempty"`
 	Capabilities []string        `json:"capabilities"` // "kind:name" inside the ceiling and the selection
 }
-
-var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?$`)
 
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
 	d := EntitlementDTO{ID: e.ID.String(), ServerID: e.ServerID.String(), ServerName: serverName, Slug: e.Slug, Name: e.Name, Description: e.Description,
@@ -191,7 +188,7 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Slug != "" {
 		e.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
-		if !slugRe.MatchString(e.Slug) || e.Slug == "mcp" {
+		if !slug.Valid(e.Slug) || e.Slug == "mcp" {
 			writeErr(w, http.StatusBadRequest, "slug must be 1-24 lowercase letters, digits or hyphens")
 			return
 		}

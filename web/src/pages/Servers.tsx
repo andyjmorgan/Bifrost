@@ -15,13 +15,12 @@ import { ServerDialog } from '../components/servers/ServerDialog'
 import { authKindBadge, credentialStatus } from '../components/servers/credential'
 import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../api'
 import { cn } from '../lib'
-import { useMe } from '../me'
+import { SlugChips } from '../components/entitlements/SlugChips'
 
-const COLS = 'minmax(0,1.6fr) minmax(0,1.6fr) 96px 150px 80px 120px'
+const COLS = 'minmax(0,1.5fr) minmax(0,1.5fr) 96px 150px 80px 120px'
 
 export function ServersPage() {
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
   const [params, setParams] = useSearchParams()
   const [servers, setServers] = useState<ServerDTO[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -124,13 +123,11 @@ export function ServersPage() {
       <PageHeader
         eyebrow="Gateway"
         title="Servers"
-        description="Upstream MCP servers behind the gateway. Each gets an immutable slug, its own front-door URL, and a stored credential."
+        description="Upstream MCP servers behind the gateway, each with a stored credential. Agents reach a server through its entitlements: named, grantable views under their own slug."
         actions={
-          isAdmin ? (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <Plus /> New server
-            </Button>
-          ) : undefined
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus /> New server
+          </Button>
         }
       />
 
@@ -146,7 +143,7 @@ export function ServersPage() {
         {servers.length > 0 && (
           <ListHead cols={COLS}>
             <span>Server</span>
-            <span>URL</span>
+            <span>Entitlements</span>
             <span>Auth</span>
             <span>Credential</span>
             <span>Enabled</span>
@@ -157,15 +154,9 @@ export function ServersPage() {
           <ListEmpty
             icon={Server}
             title={loaded ? 'No servers yet' : 'Loading…'}
-            hint={
-              loaded
-                ? isAdmin
-                  ? 'Register an upstream MCP server and the gateway will expose it to your agents.'
-                  : 'An admin of this org can register upstream MCP servers.'
-                : undefined
-            }
+            hint={loaded ? 'Register an upstream MCP server and the gateway will expose it to your agents.' : undefined}
             action={
-              loaded && isAdmin ? (
+              loaded ? (
                 <Button variant="secondary" onClick={() => setCreating(true)}>
                   <Plus /> New server
                 </Button>
@@ -180,12 +171,23 @@ export function ServersPage() {
                 <ListRow key={s.id} cols={COLS} onClick={() => navigate(`/servers/${s.id}`)} className={cn(!s.enabled && 'opacity-70')}>
                   <div className="flex min-w-0 items-center gap-3">
                     <IconTile icon={Server} tone={s.enabled ? 'accent' : 'muted'} />
-                    <Primary title={s.name} subtitle={s.slug} mono />
+                    <Primary
+                      title={
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate">{s.name}</span>
+                          {s.pending > 0 && (
+                            <StatusPill tone="warning" className="py-0.5">
+                              {s.pending} pending
+                            </StatusPill>
+                          )}
+                        </span>
+                      }
+                      subtitle={<span title={s.url}>{s.url}</span>}
+                      mono
+                    />
                   </div>
-                  <Cell label="URL">
-                    <span className="block truncate font-mono text-xs text-muted-foreground" title={s.url}>
-                      {s.url}
-                    </span>
+                  <Cell label="Entitlements">
+                    <SlugChips entitlements={s.entitlements ?? []} />
                   </Cell>
                   <Cell label="Auth">
                     <Badge mono variant={authKindBadge[s.authKind]}>
@@ -197,23 +199,19 @@ export function ServersPage() {
                   </Cell>
                   <Cell label="Enabled">
                     <span className="inline-flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                      <Switch checked={s.enabled} disabled={!isAdmin} onCheckedChange={() => toggleEnabled(s)} aria-label={`${s.name} enabled`} />
+                      <Switch checked={s.enabled} onCheckedChange={() => toggleEnabled(s)} aria-label={`${s.name} enabled`} />
                     </span>
                   </Cell>
                   <RowActions>
                     <Button variant="ghost" size="iconSm" aria-label="Ping" title="Ping" disabled={pinging === s.id} onClick={() => ping(s)}>
                       <Activity className={cn(pinging === s.id && 'animate-pulse')} />
                     </Button>
-                    {isAdmin && (
-                      <>
-                        <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => setEditing(s)}>
-                          <Pencil />
-                        </Button>
-                        <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(s)}>
-                          <Trash2 />
-                        </Button>
-                      </>
-                    )}
+                    <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => setEditing(s)}>
+                      <Pencil />
+                    </Button>
+                    <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(s)}>
+                      <Trash2 />
+                    </Button>
                   </RowActions>
                 </ListRow>
               )
@@ -236,7 +234,7 @@ export function ServersPage() {
       <ConfirmDialog
         open={!!deleting}
         title={`Delete ${deleting?.name ?? 'server'}?`}
-        description="The server, its credential and its gateway URL are removed. Agents using this slug will start failing."
+        description="The server, its credential and its entitlements are removed. Agents using those slugs will start failing."
         busy={deleteBusy}
         error={deleteErr}
         onCancel={() => {

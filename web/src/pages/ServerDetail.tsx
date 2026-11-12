@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, KeyRound, Pencil, RefreshCw, Telescope, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, KeyRound, ListTree, Pencil, Plus, RefreshCw, Telescope, Ticket, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Badge } from '../ui/components/badge'
 import { Switch } from '../ui/components/switch'
@@ -11,14 +11,19 @@ import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { BindingsCard } from '../components/policies/Bindings'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
+import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary, RowActions } from '../components/ListCard'
+import { IconTile } from '../components/IconTile'
+import { FormField } from '../components/FormField'
+import { CeilingCard } from '../components/entitlements/CeilingCard'
+import { NewEntitlementDialog } from '../components/entitlements/NewEntitlementDialog'
+import { selectionSummary } from '../components/entitlements/selection'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
-import { api, errorMessage, type CreateServerResult, type DiscoverResult, type PingResult, type ServerDTO } from '../api'
+import { api, errorMessage, type CapabilityDTO, type CeilingMode, type CreateServerResult, type DiscoverResult, type EntitlementDTO, type PingResult, type ServerDTO, type UpdateServerInput } from '../api'
 import { JsonTree, type Json } from '../components/PayloadViewer'
 import { absoluteTime, relativeTime } from '../lib'
-import { useMe } from '../me'
 
 function Time({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>
@@ -32,7 +37,6 @@ function Time({ value }: { value?: string | null }) {
 export function ServerDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
   const [params, setParams] = useSearchParams()
   const [server, setServer] = useState<ServerDTO>()
   const [error, setError] = useState<string>()
@@ -47,6 +51,11 @@ export function ServerDetailPage() {
   const [discovering, setDiscovering] = useState(false)
   const [discovery, setDiscovery] = useState<DiscoverResult>()
   const [reauthBusy, setReauthBusy] = useState(false)
+  const [entitlements, setEntitlements] = useState<EntitlementDTO[]>([])
+  const [entLoaded, setEntLoaded] = useState(false)
+  const [caps, setCaps] = useState<CapabilityDTO[]>([])
+  const [capsLoaded, setCapsLoaded] = useState(false)
+  const [creatingEnt, setCreatingEnt] = useState(false)
 
   const load = useCallback(
     () =>
@@ -60,9 +69,29 @@ export function ServerDetailPage() {
         .finally(() => setLoaded(true)),
     [id],
   )
+  const loadEntitlements = useCallback(
+    () =>
+      api.entitlements
+        .listForServer(id)
+        .then(setEntitlements)
+        .catch((e) => toast.error('Could not load entitlements', { description: errorMessage(e) }))
+        .finally(() => setEntLoaded(true)),
+    [id],
+  )
+  const loadCaps = useCallback(
+    () =>
+      api.capabilities
+        .list(id)
+        .then(setCaps)
+        .catch((e) => toast.error('Could not load the ceiling', { description: errorMessage(e) }))
+        .finally(() => setCapsLoaded(true)),
+    [id],
+  )
   useEffect(() => {
     void load()
-  }, [load])
+    void loadEntitlements()
+    void loadCaps()
+  }, [load, loadEntitlements, loadCaps])
 
   // Arriving back from the provider: ?oauth=ok|error&reason=… → toast, then strip the query.
   useEffect(() => {
@@ -76,6 +105,23 @@ export function ServerDetailPage() {
     next.delete('reason')
     setParams(next, { replace: true })
   }, [params, setParams])
+
+  const patch = async (input: UpdateServerInput, done: (s: ServerDTO) => string) => {
+    if (!server) return
+    try {
+      const updated = await api.servers.update(server.id, input)
+      setServer(updated)
+      toast.success(done(updated))
+    } catch (e) {
+      toast.error('Could not update server', { description: errorMessage(e) })
+    }
+  }
+
+  // Ping and discover talk to the upstream, which can grow the ceiling: refresh it afterwards.
+  const afterProbe = () => {
+    void loadCaps()
+    void load()
+  }
 
   const toggleEnabled = async () => {
     if (!server) return
@@ -98,6 +144,7 @@ export function ServerDetailPage() {
       setDiscovery({ ok: false, latencyMs: 0, error: errorMessage(e) })
     } finally {
       setDiscovering(false)
+      afterProbe()
     }
   }
 
@@ -111,6 +158,7 @@ export function ServerDetailPage() {
       setPing({ ok: false, latencyMs: 0, toolCount: 0, error: errorMessage(e) })
     } finally {
       setPinging(false)
+      afterProbe()
     }
   }
 
@@ -176,7 +224,7 @@ export function ServerDetailPage() {
         </Link>
       </Button>
       <PageHeader
-        eyebrow={server.slug}
+        eyebrow="Server"
         title={server.name}
         description={server.description || 'No description.'}
         actions={
@@ -187,16 +235,17 @@ export function ServerDetailPage() {
             <Button variant="secondary" onClick={doDiscover} disabled={discovering}>
               <Telescope /> {discovering ? 'Discovering…' : 'Discover'}
             </Button>
-            {isAdmin && (
-              <>
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  <Pencil /> Edit
-                </Button>
-                <Button variant="danger" onClick={() => setDeleting(true)}>
-                  <Trash2 /> Delete
-                </Button>
-              </>
-            )}
+            <Button variant="secondary" asChild>
+              <Link to={`/explorer${entitlements[0] ? `?route=${encodeURIComponent(entitlements[0].slug)}` : ''}`}>
+                <ListTree /> List tools
+              </Link>
+            </Button>
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              <Pencil /> Edit
+            </Button>
+            <Button variant="danger" onClick={() => setDeleting(true)}>
+              <Trash2 /> Delete
+            </Button>
           </>
         }
       />
@@ -214,18 +263,12 @@ export function ServerDetailPage() {
       <DefinitionList>
         <Definition label="Enabled">
           <div className="flex items-center gap-3">
-            <Switch checked={server.enabled} disabled={!isAdmin} onCheckedChange={toggleEnabled} aria-label="Enabled" />
+            <Switch checked={server.enabled} onCheckedChange={toggleEnabled} aria-label="Enabled" />
             <span className="text-xs text-muted-foreground">{server.enabled ? 'Reachable through the gateway' : 'Hidden from the mux and direct routes'}</span>
           </div>
         </Definition>
         <Definition label="Upstream" mono>
           <span className="break-all">{server.url}</span>
-        </Definition>
-        <Definition label="Gateway">
-          <div className="flex items-center gap-2">
-            <code className="min-w-0 break-all rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{server.mcpUrl}</code>
-            <CopyButton value={server.mcpUrl} label="Copy gateway URL" />
-          </div>
         </Definition>
         <Definition label="Credential">
           <div className="flex flex-wrap items-center gap-2">
@@ -234,12 +277,12 @@ export function ServerDetailPage() {
             </Badge>
             <StatusPill tone={status.tone}>{status.label}</StatusPill>
             <CredentialSummary cred={cred} />
-            {isAdmin && server.authKind !== 'none' && (
+            {server.authKind !== 'none' && (
               <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
                 <KeyRound /> Replace
               </Button>
             )}
-            {isAdmin && oauth && (
+            {oauth && (
               <Button variant="link" size="sm" onClick={reauthorize} disabled={reauthBusy}>
                 <RefreshCw /> {reauthBusy ? 'Starting…' : 'Re-authorize'}
               </Button>
@@ -248,7 +291,60 @@ export function ServerDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <BindingsCard route={server.slug} title="Policies" hint="No policies bound. Global policies still apply on /mcp." />
+      <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 sm:grid-cols-2">
+        <FormField label="Exclusive" hint="A caller holding more than one of this server's entitlements gets none of them and sees a conflict.">
+          <div className="flex h-10 items-center gap-3">
+            <Switch
+              checked={server.exclusive}
+              onCheckedChange={(v) => patch({ exclusive: v }, (u) => (u.exclusive ? 'One entitlement per user' : 'Entitlements combine'))}
+              aria-label="Exclusive"
+            />
+            <span className="text-sm">One entitlement per user</span>
+          </div>
+        </FormField>
+        <FormField label="Ceiling mode" hint="What happens when the server starts offering something new.">
+          <Select
+            value={server.ceilingMode}
+            onValueChange={(v) => patch({ ceilingMode: v as CeilingMode }, (u) => (u.ceilingMode === 'open' ? 'New capabilities are approved as seen' : 'New capabilities wait for approval'))}
+          >
+            <SelectTrigger aria-label="Ceiling mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="approve">Approve new capabilities</SelectItem>
+              <SelectItem value="open">Open: approve as seen</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormField>
+      </div>
+
+      <section className="space-y-3">
+        <SectionTitle title="Entitlements" hint="Named, grantable views of this server, each under its own slug." />
+        <EntitlementsCard
+          entitlements={entitlements}
+          loaded={entLoaded}
+          onOpen={(e) => navigate(`/entitlements/${e.id}`)}
+          onNew={() => setCreatingEnt(true)}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <SectionTitle title="Ceiling" hint="Everything the gateway has seen on this server. Entitlements only expose what is approved." />
+        <CeilingCard
+          server={server}
+          caps={caps}
+          loaded={capsLoaded}
+          onChange={(c) => {
+            setCaps(c)
+            void load()
+          }}
+          seedActions={
+            <Button variant="secondary" onClick={doPing} disabled={pinging}>
+              <Activity /> {pinging ? 'Pinging…' : 'Ping'}
+            </Button>
+          }
+        />
+      </section>
 
       <details className="group text-sm">
         <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground">
@@ -298,11 +394,21 @@ export function ServerDetailPage() {
           toast.success(`Saved ${updated.name}`)
         }}
       />
+      <NewEntitlementDialog
+        open={creatingEnt}
+        server={server}
+        onClose={() => setCreatingEnt(false)}
+        onCreated={(e) => {
+          setCreatingEnt(false)
+          toast.success(`Created ${e.slug}`)
+          navigate(`/entitlements/${e.id}`)
+        }}
+      />
       <CredentialDialog open={replacing} server={server} onClose={() => setReplacing(false)} onSaved={followAuthorize} />
       <ConfirmDialog
         open={deleting}
         title={`Delete ${server.name}?`}
-        description="The server, its credential and its gateway URL are removed. Agents using this slug will start failing."
+        description="The server, its credential and its entitlements are removed. Agents using those slugs will start failing."
         busy={deleteBusy}
         error={deleteErr}
         onCancel={() => {
@@ -312,6 +418,84 @@ export function ServerDetailPage() {
         onConfirm={remove}
       />
     </div>
+  )
+}
+
+function SectionTitle({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div>
+      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+    </div>
+  )
+}
+
+const ENT_COLS = 'minmax(0,1.3fr) minmax(0,1.6fr) 80px minmax(0,1fr) 56px'
+
+function EntitlementsCard({
+  entitlements,
+  loaded,
+  onOpen,
+  onNew,
+}: {
+  entitlements: EntitlementDTO[]
+  loaded: boolean
+  onOpen: (e: EntitlementDTO) => void
+  onNew: () => void
+}) {
+  return (
+    <ListCard>
+      <ListBar>
+        <span>
+          {entitlements.length} {entitlements.length === 1 ? 'entitlement' : 'entitlements'}
+        </span>
+        <Button variant="primary" size="sm" onClick={onNew}>
+          <Plus /> New entitlement
+        </Button>
+      </ListBar>
+      {entitlements.length === 0 ? (
+        <ListEmpty icon={Ticket} title={loaded ? 'No entitlements' : 'Loading…'} hint={loaded ? 'Without an entitlement nobody can reach this server.' : undefined} />
+      ) : (
+        <>
+          <ListHead cols={ENT_COLS}>
+            <span>Entitlement</span>
+            <span>MCP URL</span>
+            <span>Grants</span>
+            <span>Selection</span>
+            <span />
+          </ListHead>
+          <ListRows>
+            {entitlements.map((e) => (
+              <ListRow key={e.id} cols={ENT_COLS} onClick={() => onOpen(e)}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <IconTile icon={Ticket} tone={e.grants.length ? 'accent' : 'muted'} />
+                  <Primary title={e.name} subtitle={e.slug} mono />
+                </div>
+                <Cell label="MCP URL">
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span className="truncate font-mono text-xs text-muted-foreground" title={e.mcpUrl}>
+                      {e.mcpUrl}
+                    </span>
+                    <CopyButton value={e.mcpUrl} label="Copy MCP URL" />
+                  </span>
+                </Cell>
+                <Cell label="Grants">
+                  <span className="font-mono text-xs text-muted-foreground">{e.grants.length}</span>
+                </Cell>
+                <Cell label="Selection">
+                  <span className="text-xs">{selectionSummary(e.selection)}</span>
+                </Cell>
+                <RowActions>
+                  <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => onOpen(e)}>
+                    <Pencil />
+                  </Button>
+                </RowActions>
+              </ListRow>
+            ))}
+          </ListRows>
+        </>
+      )}
+    </ListCard>
   )
 }
 

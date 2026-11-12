@@ -79,8 +79,8 @@ export function JoinPage() {
                 <h1 className="text-3xl font-semibold tracking-tight">{preview.orgName}</h1>
                 <p className="text-sm text-muted-foreground">
                   {preview.member
-                    ? `You already belong to ${preview.orgName}. Switch to it to see its servers and policies.`
-                    : `Join ${preview.orgName} to share its MCP servers, policies and audit trail. Your personal org stays yours.`}
+                    ? `You already belong to ${preview.orgName}. Switch to it to see its servers and entitlements.`
+                    : `Join ${preview.orgName} to share its MCP servers, entitlements and audit trail. Your personal org stays yours.`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground">

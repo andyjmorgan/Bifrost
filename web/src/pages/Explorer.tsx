@@ -16,8 +16,9 @@ import { FormField } from '../components/FormField'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
-import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ServerDTO } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ExposureDTO } from '../api'
 import { cn } from '../lib'
+import { useMe } from '../me'
 import { Definition, JsonView, ListOutcome, MUX, RequestLink, StreamPanel, TargetFields, TextOrJson, UnavailableCallout, collect, type StreamEvent } from './explorer/shared'
 import { PromptsTab } from './explorer/PromptsTab'
 import { ResourcesTab } from './explorer/ResourcesTab'
@@ -40,7 +41,7 @@ export interface TabProps {
 }
 
 // The explorer drives the gateway through its own front door, exactly as an agent would: the
-// chosen API key authenticates, the route picks the mux or one server, and every exchange lands
+// chosen API key authenticates, the route picks the mux or one entitlement slug, and every exchange lands
 // in the audit trail with a request id we can link to. Route and key are shared across the
 // Tools, Prompts and Resources tabs; each tab keeps its own results while you switch.
 export function ExplorerPage() {
@@ -48,7 +49,7 @@ export function ExplorerPage() {
   const route = params.get('route') || MUX
   const tabParam = params.get('tab')
   const tab: TabKey = tabParam === 'prompts' || tabParam === 'resources' ? tabParam : 'tools'
-  const [servers, setServers] = useState<ServerDTO[]>([])
+  const [exposures, setExposures] = useState<ExposureDTO[]>([])
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
   const [keyId, setKeyId] = useState<string>(() => {
     try {
@@ -60,16 +61,25 @@ export function ExplorerPage() {
   const [loadError, setLoadError] = useState<string>()
 
   useEffect(() => {
-    Promise.all([api.servers.list(), api.apiKeys.list()])
-      .then(([s, k]) => {
-        setServers(s)
+    Promise.all([api.exposures(), api.apiKeys.list()])
+      .then(([x, k]) => {
+        setExposures(x)
         setKeys(k)
         setLoadError(undefined)
       })
       .catch((e) => setLoadError(errorMessage(e)))
   }, [])
 
-  const usableKeys = useMemo(() => keys.filter((k) => !k.revokedAt && k.scopes.includes('mcp:execute')), [keys])
+  const { userId } = useMe()
+  // Your own keys first: an admin sees every key in the org, and the Explorer
+  // should act as you unless you pick someone else's on purpose.
+  const usableKeys = useMemo(
+    () =>
+      keys
+        .filter((k) => !k.revokedAt && k.scopes.includes('mcp:execute'))
+        .sort((a, b) => Number(b.createdBy === userId) - Number(a.createdBy === userId)),
+    [keys, userId],
+  )
   useEffect(() => {
     if (usableKeys.length && !usableKeys.some((k) => k.id === keyId)) setKeyId(usableKeys[0].id)
   }, [usableKeys, keyId])
@@ -90,9 +100,10 @@ export function ExplorerPage() {
   const setRoute = (r: string) => setParam('route', r === MUX ? undefined : r)
   const setTab = (t: TabKey) => setParam('tab', t === 'tools' ? undefined : t)
 
-  const enabledServers = servers.filter((s) => s.enabled)
+  // Only slugs the caller can actually reach: enabled servers, no exclusivity conflict.
+  const routes = exposures.filter((x) => x.enabled && !x.conflict)
   const fields = (routeHint: string) => (
-    <TargetFields route={route} onRouteChange={setRoute} routeHint={routeHint} keyId={keyId} onKeyChange={setKeyId} servers={enabledServers} keys={usableKeys} />
+    <TargetFields route={route} onRouteChange={setRoute} routeHint={routeHint} keyId={keyId} onKeyChange={setKeyId} exposures={routes} keys={usableKeys} />
   )
   // Keying each tab by route resets its listing and selection when the route changes.
   const props: TabProps = { route, keyId, fields }
@@ -243,7 +254,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
           <ListRows>
             {visibleTools.map((t) => {
               const sep = route === MUX ? t.name.indexOf('__') : -1
-              const server = sep > 0 ? t.name.slice(0, sep) : undefined
+              const prefix = sep > 0 ? t.name.slice(0, sep) : undefined
               const name = sep > 0 ? t.name.slice(sep + 2) : t.name
               return (
                 <ListRow key={t.name} cols="minmax(0,1fr) auto" onClick={() => pick(t)} className="p-4">
@@ -252,7 +263,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
                     <Primary
                       title={
                         <span className="font-mono text-xs">
-                          {server && <span className="text-muted-foreground">{server}__</span>}
+                          {prefix && <span className="text-muted-foreground">{prefix}__</span>}
                           {name}
                         </span>
                       }

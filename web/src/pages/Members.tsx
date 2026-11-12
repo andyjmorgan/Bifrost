@@ -161,8 +161,8 @@ export function MembersPage() {
         title="Members"
         description={
           admin
-            ? 'Who shares this organisation’s servers, policies and audit trail. Invite people with a one-time link.'
-            : 'Who shares this organisation’s servers, policies and audit trail. Admins manage members and invites.'
+            ? 'Who shares this organisation’s servers, entitlements and audit trail. Invite people with a one-time link.'
+            : 'Who shares this organisation’s servers, entitlements and audit trail. Admins manage members and invites.'
         }
         actions={
           admin ? (
@@ -470,8 +470,8 @@ function RenameDialog({ open, current, onClose, onSaved }: { open: boolean; curr
 }
 
 const ROLE_HINTS: Record<OrgRole, string> = {
-  member: 'Can read servers, use the Explorer and audit trail, and manage their own API keys.',
-  admin: 'Everything a member can do, plus servers, policies, bindings, members and invites.',
+  member: 'Sees the servers granted to them, uses the Explorer, and manages their own API keys and audit trail.',
+  admin: 'Everything a member can do, plus servers, entitlements, grants, members and invites.',
 }
 
 function CreateInviteDialog({
