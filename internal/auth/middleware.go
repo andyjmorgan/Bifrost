@@ -137,13 +137,17 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 // creator has left the org is dead. A legacy key with no creator (the org
 // not yet claimed) acts as an admin.
 func (a *Authenticator) placeKey(ctx context.Context, c *Caller) (*Caller, error) {
-	if c.UserID == "" {
-		c.Role = RoleAdmin
-		return c, nil
-	}
 	orgID, err := uuid.Parse(c.OrgID)
 	if err != nil {
 		return nil, ErrBadKey
+	}
+	if o, err := a.Users.GetOrg(ctx, orgID); err == nil {
+		c.OrgName = o.Name
+		c.PersonalOrg = c.UserID != "" && o.PersonalFor == c.UserID
+	}
+	if c.UserID == "" {
+		c.Role = RoleAdmin
+		return c, nil
 	}
 	role, err := a.Users.MemberRole(ctx, orgID, c.UserID)
 	if errors.Is(err, store.ErrNotMember) {
@@ -153,10 +157,6 @@ func (a *Authenticator) placeKey(ctx context.Context, c *Caller) (*Caller, error
 		return nil, fmt.Errorf("auth: %w", err)
 	}
 	c.Role = Role(role)
-	if o, err := a.Users.GetOrg(ctx, orgID); err == nil {
-		c.OrgName = o.Name
-		c.PersonalOrg = o.PersonalFor == c.UserID
-	}
 	return c, nil
 }
 
