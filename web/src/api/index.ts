@@ -34,7 +34,6 @@ import type {
   EntitlementInput,
   GrantInput,
   CapabilityDTO,
-  CapabilityInput,
   ExposureDTO,
   UpdateServerInput,
 } from './types'
@@ -146,6 +145,5 @@ export const api = {
 
   capabilities: {
     list: (serverId: string) => http.get<CapabilityDTO[]>(`/servers/${encodeURIComponent(serverId)}/capabilities`),
-    set: (serverId: string, input: CapabilityInput) => http.post<CapabilityDTO[]>(`/servers/${encodeURIComponent(serverId)}/capabilities`, input),
   },
 }

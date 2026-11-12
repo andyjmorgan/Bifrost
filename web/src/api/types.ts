@@ -102,8 +102,6 @@ export interface CredentialDTO {
   updatedAt: string
 }
 
-export type CeilingMode = 'approve' | 'open'
-
 export interface ServerDTO {
   id: string
   name: string
@@ -113,9 +111,8 @@ export interface ServerDTO {
   enabled: boolean
   /** A caller holding more than one of this server's entitlements gets none of them. */
   exclusive: boolean
-  ceilingMode: CeilingMode
-  /** Capabilities awaiting approval. */
-  pending: number
+  /** Capabilities the gateway has seen on this server. */
+  seen: number
   createdAt: string
   updatedAt: string
   credential?: CredentialDTO
@@ -152,7 +149,6 @@ export interface UpdateServerInput {
   description?: string
   enabled?: boolean
   exclusive?: boolean
-  ceilingMode?: CeilingMode
 }
 
 export interface CreateServerResult {
@@ -442,8 +438,11 @@ export interface ReadResourceResult {
 // Entitlements: a named, grantable view of one server. Its slug is the route (/{slug}/mcp) and the
 // mux prefix (slug__tool).
 
-export interface Selection {
-  all?: boolean
+/**
+ * Allow lists keyed by kind. A key present means only what it names (an empty array is none of that
+ * kind); a key absent means everything of that kind. `{}` is everything the server offers.
+ */
+export type Selection = {
   tools?: string[]
   prompts?: string[]
   /** URI patterns: exact, * within a segment, ** prefix. */
@@ -500,13 +499,6 @@ export interface CapabilityDTO {
   fingerprint?: string
   firstSeenAt: string
   lastSeenAt: string
-  approvedAt?: string
-}
-
-export interface CapabilityInput {
-  approve: boolean
-  /** "kind:name"; omitted = all. */
-  names?: string[]
 }
 
 /** One slug the caller holds (the member portal). */
@@ -524,6 +516,6 @@ export interface ExposureDTO {
   via: string[]
   /** Set when an exclusive server is held twice. */
   conflict?: string
-  /** "kind:name" this slug exposes (inside ceiling and selection). */
+  /** "kind:name" this slug exposes (seen on the server and inside the selection). */
   capabilities: string[]
 }

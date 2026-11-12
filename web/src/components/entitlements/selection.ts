@@ -31,7 +31,7 @@ export function slugProblem(slug: string): string | undefined {
   return undefined
 }
 
-export const KINDS: { kind: CapabilityKind; key: keyof Omit<Selection, 'all'>; one: string; many: string; label: string }[] = [
+export const KINDS: { kind: CapabilityKind; key: keyof Selection; one: string; many: string; label: string }[] = [
   { kind: 'tool', key: 'tools', one: 'tool', many: 'tools', label: 'Tools' },
   { kind: 'prompt', key: 'prompts', one: 'prompt', many: 'prompts', label: 'Prompts' },
   { kind: 'resource', key: 'resources', one: 'resource', many: 'resources', label: 'Resources' },
@@ -43,10 +43,32 @@ function countPhrase(counts: number[]): string {
   return parts.length ? parts.join(', ') : 'Nothing'
 }
 
-/** "Everything", or "3 tools, 1 prompt". */
+/** One kind's part of a selection: "Everything" when its key is absent, "No tools", or "3 tools". */
+export function kindSummary(sel: Selection | undefined, k: (typeof KINDS)[number]): string {
+  const list = sel?.[k.key]
+  if (!list) return `All ${k.many}`
+  if (!list.length) return `No ${k.many}`
+  return `${list.length} ${list.length === 1 ? k.one : k.many}`
+}
+
+/**
+ * "Everything" (no key present), or the narrowed kinds: "2 tools, 1 prompt", "No tools". When only
+ * some kinds are narrowed the rest stay open, so it ends ", everything else".
+ */
 export function selectionSummary(sel?: Selection): string {
-  if (!sel || sel.all) return 'Everything'
-  return countPhrase(KINDS.map((k) => sel[k.key]?.length ?? 0))
+  const narrowed = KINDS.filter((k) => sel?.[k.key])
+  if (!narrowed.length) return 'Everything'
+  const parts = narrowed.map((k) => {
+    const n = sel![k.key]!.length
+    return n ? `${n} ${n === 1 ? k.one : k.many}` : `No ${k.many}`
+  })
+  if (narrowed.length < KINDS.length) parts.push('everything else')
+  return parts.join(', ')
+}
+
+/** The full per-kind breakdown, for a tooltip: "1 tool · All prompts · All resources · All templates". */
+export function selectionDetail(sel?: Selection): string {
+  return KINDS.map((k) => kindSummary(sel, k)).join(' · ')
 }
 
 /** Groups "kind:name" strings by kind. */

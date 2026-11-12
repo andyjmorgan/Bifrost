@@ -175,10 +175,10 @@ export function ServersPage() {
                       title={
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="truncate">{s.name}</span>
-                          {s.pending > 0 && (
-                            <StatusPill tone="warning" className="py-0.5">
-                              {s.pending} pending
-                            </StatusPill>
+                          {s.seen > 0 && (
+                            <span className="shrink-0 font-mono text-[11px] font-normal text-faint-foreground" title={`${s.seen} capabilities seen on this server`}>
+                              {s.seen} seen
+                            </span>
                           )}
                         </span>
                       }

@@ -13,12 +13,11 @@ import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
-import { KINDS, selectionSummary } from '../components/entitlements/selection'
+import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
 import {
   api,
   errorMessage,
   type CapabilityDTO,
-  type CapabilityKind,
   type EntitlementDTO,
   type GrantInput,
   type MemberDTO,
@@ -27,15 +26,16 @@ import {
 } from '../api'
 import { cn } from '../lib'
 
+type SelKey = keyof Selection
+
+/** Per kind: null is everything of that kind (key absent), an array is only what it names. */
+type DraftSelection = Record<SelKey, string[] | null>
+
 interface Draft {
   name: string
   description: string
-  all: boolean
-  tools: string[]
-  prompts: string[]
-  /** URI patterns, including exact URIs picked from the seen resources. */
-  resources: string[]
-  templates: string[]
+  /** Resource lists hold URI patterns, including exact URIs picked from the seen resources. */
+  sel: DraftSelection
   grants: GrantInput[]
 }
 
@@ -49,38 +49,40 @@ function toDraft(e: EntitlementDTO): Draft {
   return {
     name: e.name,
     description: e.description,
-    all: !!s.all,
-    tools: s.tools ?? [],
-    prompts: s.prompts ?? [],
-    resources: s.resources ?? [],
-    templates: s.templates ?? [],
+    sel: {
+      tools: s.tools ?? null,
+      prompts: s.prompts ?? null,
+      resources: s.resources ?? null,
+      templates: s.templates ?? null,
+    },
     grants: e.grants.map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
   }
 }
 
+/** Only the narrowed kinds become keys; an "Only selected" kind with nothing ticked is []. */
 function toSelection(d: Draft): Selection {
-  if (d.all) return { all: true }
-  return {
-    tools: d.tools,
-    prompts: d.prompts,
-    resources: d.resources.map((r) => r.trim()).filter(Boolean),
-    templates: d.templates,
+  const out: Selection = {}
+  for (const k of KINDS) {
+    const list = d.sel[k.key]
+    if (!list) continue
+    out[k.key] = k.key === 'resources' ? list.map((r) => r.trim()).filter(Boolean) : list
   }
+  return out
 }
 
 const grantKey = (g: GrantInput) => `${g.subjectType}:${g.subjectId}`
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n')
 
+function sameList(a: string[] | null, b: string[] | null, trim = false): boolean {
+  if (!a || !b) return a === b
+  return trim ? sameSet(a.filter((r) => r.trim()), b.filter((r) => r.trim())) : sameSet(a, b)
+}
+
 function isDirty(a: Draft, b: Draft): boolean {
   return (
     a.name !== b.name ||
     a.description !== b.description ||
-    a.all !== b.all ||
-    (!a.all &&
-      (!sameSet(a.tools, b.tools) ||
-        !sameSet(a.prompts, b.prompts) ||
-        !sameSet(a.resources.filter((r) => r.trim()), b.resources.filter((r) => r.trim())) ||
-        !sameSet(a.templates, b.templates))) ||
+    KINDS.some((k) => !sameList(a.sel[k.key], b.sel[k.key], k.key === 'resources')) ||
     !sameSet(a.grants.map(grantKey), b.grants.map(grantKey))
   )
 }
@@ -216,7 +218,7 @@ export function EntitlementEditorPage() {
         </FormField>
       </div>
 
-      <SelectionCard draft={draft} set={set} caps={caps} serverId={ent.serverId} />
+      <SelectionCard draft={draft} set={set} caps={caps} />
 
       <GrantsCard draft={draft} set={set} members={members} />
 
@@ -245,126 +247,127 @@ export function EntitlementEditorPage() {
 
 /* ---------- selection ---------- */
 
-type ListKey = 'tools' | 'prompts' | 'templates'
-
-function SelectionCard({ draft, set, caps, serverId }: { draft: Draft; set: (p: Partial<Draft>) => void; caps: CapabilityDTO[]; serverId: string }) {
-  const byKind = (k: CapabilityKind) => caps.filter((c) => c.kind === k)
-  const seenUris = byKind('resource').map((c) => c.name)
-  const patterns = draft.resources.filter((r) => !seenUris.includes(r))
-  const summary = selectionSummary(draft.all ? { all: true } : toSelection(draft))
-
-  const toggleIn = (key: ListKey | 'resources', name: string, on: boolean) => {
-    const cur = draft[key]
-    set({ [key]: on ? [...cur, name] : cur.filter((n) => n !== name) } as Partial<Draft>)
-  }
-  const setPatterns = (next: string[]) => set({ resources: [...draft.resources.filter((r) => seenUris.includes(r)), ...next] })
+function SelectionCard({ draft, set, caps }: { draft: Draft; set: (p: Partial<Draft>) => void; caps: CapabilityDTO[] }) {
+  const summary = selectionSummary(toSelection(draft))
+  const setKind = (key: SelKey, list: string[] | null) => set({ sel: { ...draft.sel, [key]: list } })
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold tracking-tight">Selection</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Decides both what is listed and what can be called. Only approved capabilities can be exposed.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Decides both what is listed and what can be called. Each kind is set on its own: everything the server offers, or only what is ticked.
+          </p>
         </div>
-        <div className="flex overflow-hidden rounded-lg border border-border" role="group" aria-label="Selection mode">
+        <span className="text-xs text-muted-foreground" title={selectionDetail(toSelection(draft))}>
+          {summary}
+        </span>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {KINDS.map((k) => (
+          <KindSection key={k.kind} kind={k} list={draft.sel[k.key]} caps={caps.filter((c) => c.kind === k.kind)} onChange={(l) => setKind(k.key, l)} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function KindSection({
+  kind: k,
+  list,
+  caps,
+  onChange,
+}: {
+  kind: (typeof KINDS)[number]
+  list: string[] | null
+  caps: CapabilityDTO[]
+  onChange: (list: string[] | null) => void
+}) {
+  const only = list !== null
+  const seen = caps.map((c) => c.name)
+  const resources = k.kind === 'resource'
+  // Resource entries not among the seen URIs are free-text patterns; for other kinds they are names
+  // the server no longer offers, shown so they can be cleared.
+  const others = (list ?? []).filter((n) => !seen.includes(n))
+  const count = (list ?? []).filter((n) => n.trim()).length
+  const toggle = (name: string, on: boolean) => onChange(on ? [...(list ?? []), name] : (list ?? []).filter((n) => n !== name))
+  const setPatterns = (next: string[]) => onChange([...(list ?? []).filter((r) => seen.includes(r)), ...next])
+
+  return (
+    <ListCard>
+      <ListBar>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">
+          {k.label}
+          {only && <span className="ml-1 font-mono normal-case tracking-normal">{count}</span>}
+        </span>
+        <div className="flex overflow-hidden rounded-lg border border-border" role="group" aria-label={`${k.label} selection`}>
           {(
             [
-              [true, 'Everything the server offers'],
-              [false, 'Only what is selected'],
+              [false, 'Everything'],
+              [true, 'Only selected'],
             ] as const
           ).map(([v, label]) => (
             <button
               key={label}
               type="button"
-              onClick={() => set({ all: v })}
-              aria-pressed={draft.all === v}
+              onClick={() => v !== only && onChange(v ? [] : null)}
+              aria-pressed={only === v}
               className={cn(
-                'h-9 cursor-pointer px-3 text-xs font-medium transition-colors',
-                draft.all === v ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated/60 hover:text-foreground',
+                'h-8 cursor-pointer px-3 text-xs font-medium transition-colors',
+                only === v ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated/60 hover:text-foreground',
               )}
             >
               {label}
             </button>
           ))}
         </div>
-      </div>
-
-      {draft.all ? (
-        <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
-          Everything approved on the server's{' '}
-          <Link to={`/servers/${serverId}`} className="text-foreground underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-            ceiling
-          </Link>{' '}
-          is exposed, including capabilities approved later.
-        </div>
+      </ListBar>
+      {!only ? (
+        <p className="px-5 py-4 text-xs text-muted-foreground">
+          Every {k.one} the server offers is exposed{seen.length ? ` (${seen.length} seen)` : ''}, including ones it adds later.
+        </p>
       ) : (
         <>
-          {summary === 'Nothing' && <Callout tone="warning">Nothing is selected: this entitlement exposes nothing.</Callout>}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {KINDS.map((k) => {
-              if (k.kind === 'resource') {
-                return (
-                  <ListCard key={k.kind}>
-                    <ListBar>
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">
-                        {k.label} <span className="ml-1 font-mono normal-case tracking-normal">{draft.resources.filter((r) => r.trim()).length}</span>
-                      </span>
-                      <Button variant="secondary" size="sm" onClick={() => setPatterns([...patterns, ''])}>
-                        <Plus /> Add pattern
-                      </Button>
-                    </ListBar>
-                    <CapabilityChecks
-                      items={byKind('resource')}
-                      selected={draft.resources}
-                      extra={[]}
-                      onToggle={(n, on) => toggleIn('resources', n, on)}
-                      empty={patterns.length ? undefined : 'No resources seen. Add a URI pattern to allow resources by address.'}
-                    />
-                    {patterns.length > 0 && (
-                      <div className="space-y-2 border-t border-border p-4">
-                        <p className="text-xs text-faint-foreground">Patterns: an exact URI, * within one path segment, ** for any suffix.</p>
-                        {patterns.map((p, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <Input
-                              value={p}
-                              onChange={(e) => setPatterns(patterns.map((x, j) => (j === i ? e.target.value : x)))}
-                              placeholder="file:///docs/**"
-                              className="h-9 font-mono text-xs"
-                              aria-label={`Resource pattern ${i + 1}`}
-                            />
-                            <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove pattern" onClick={() => setPatterns(patterns.filter((_, j) => j !== i))}>
-                              <X />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ListCard>
-                )
-              }
-              const key = k.key as ListKey
-              const seen = byKind(k.kind).map((c) => c.name)
-              return (
-                <ListCard key={k.kind}>
-                  <ListBar>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em]">
-                      {k.label} <span className="ml-1 font-mono normal-case tracking-normal">{draft[key].length}</span>
-                    </span>
-                  </ListBar>
-                  <CapabilityChecks
-                    items={byKind(k.kind)}
-                    selected={draft[key]}
-                    extra={draft[key].filter((n) => !seen.includes(n))}
-                    onToggle={(n, on) => toggleIn(key, n, on)}
-                    empty={`No ${k.many} seen on this server.`}
+          {count === 0 && (
+            <div className="border-b border-border px-5 py-3">
+              <Callout tone="warning">No {k.many} will be exposed.</Callout>
+            </div>
+          )}
+          <CapabilityChecks
+            items={caps}
+            selected={list}
+            extra={resources ? [] : others}
+            onToggle={toggle}
+            empty={resources ? (others.length ? undefined : 'No resources seen. Add a URI pattern to allow resources by address.') : `No ${k.many} seen on this server.`}
+          />
+          {resources && (
+            <div className="space-y-2 border-t border-border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-faint-foreground">Patterns: an exact URI, * within one path segment, ** for any suffix.</p>
+                <Button variant="secondary" size="sm" onClick={() => setPatterns([...others, ''])}>
+                  <Plus /> Add pattern
+                </Button>
+              </div>
+              {others.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    value={p}
+                    onChange={(e) => setPatterns(others.map((x, j) => (j === i ? e.target.value : x)))}
+                    placeholder="file:///docs/**"
+                    className="h-9 font-mono text-xs"
+                    aria-label={`Resource pattern ${i + 1}`}
                   />
-                </ListCard>
-              )
-            })}
-          </div>
+                  <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove pattern" onClick={() => setPatterns(others.filter((_, j) => j !== i))}>
+                    <X />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
-    </section>
+    </ListCard>
   )
 }
 
@@ -386,16 +389,13 @@ function CapabilityChecks({
   return (
     <ListRows>
       {items.map((c) => {
-        const approved = !!c.approvedAt
-        const checked = selected.includes(c.name)
         const id = `cap-${c.kind}-${c.name}`
         return (
-          <label key={c.name} htmlFor={id} className={cn('flex items-center gap-3 px-5 py-2.5', approved ? 'cursor-pointer hover:bg-elevated/45' : 'cursor-not-allowed opacity-55')}>
-            <Checkbox id={id} checked={checked} disabled={!approved && !checked} onCheckedChange={(v) => onToggle(c.name, v === true)} />
+          <label key={c.name} htmlFor={id} className="flex cursor-pointer items-center gap-3 px-5 py-2.5 hover:bg-elevated/45">
+            <Checkbox id={id} checked={selected.includes(c.name)} onCheckedChange={(v) => onToggle(c.name, v === true)} />
             <span className="min-w-0 flex-1 truncate font-mono text-xs" title={c.name}>
               {c.name}
             </span>
-            {!approved && <span className="shrink-0 text-[11px] text-muted-foreground">pending approval</span>}
           </label>
         )
       })}

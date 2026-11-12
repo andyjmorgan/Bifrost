@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, LayoutGrid, Ticket } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, LayoutGrid, Ticket } from 'lucide-react'
 import { Badge } from '../ui/components/badge'
 import { PageHeader } from '../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary } from '../components/ListCard'
@@ -106,7 +106,7 @@ export function PortalPage() {
                         <Cell label="Exposes">
                           <span className="inline-flex items-center gap-1 text-xs">
                             {expanded ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
-                            {x.selection.all ? 'Everything · ' : ''}
+                            {Object.keys(x.selection ?? {}).length === 0 ? 'Everything · ' : ''}
                             {capabilitySummary(x.capabilities)}
                           </span>
                         </Cell>
@@ -137,14 +137,73 @@ export function PortalPage() {
           </>
         )}
       </ListCard>
+
+      <GroupUrl items={items} />
     </div>
+  )
+}
+
+/** The gateway's public base, from any exposure's MCP URL: strip the trailing /<slug>/mcp. */
+function publicBase(x: ExposureDTO): string {
+  const suffix = `/${x.slug}/mcp`
+  return x.mcpUrl.endsWith(suffix) ? x.mcpUrl.slice(0, -suffix.length) : x.mcpUrl.replace(/\/[^/]+\/mcp\/?$/, '')
+}
+
+/** Tick several held slugs and get one /mcp?slugs=a,b URL that muxes only those. */
+function GroupUrl({ items }: { items: ExposureDTO[] }) {
+  const [picked, setPicked] = useState<string[]>([])
+  const usable = items.filter((x) => x.enabled && !x.conflict)
+  if (usable.length < 2) return null
+  const base = publicBase(usable[0])
+  const chosen = picked.filter((s) => usable.some((x) => x.slug === s))
+  const url = chosen.length ? `${base}/mcp?slugs=${chosen.join(',')}` : `${base}/mcp`
+  const toggle = (slug: string) => setPicked((p) => (p.includes(slug) ? p.filter((s) => s !== slug) : [...p, slug]))
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">Group URL</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Tick some of your servers to reach just those on one MCP URL. With nothing ticked, /mcp reaches all of them.
+        </p>
+      </div>
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Slugs in the group URL">
+          {usable.map((x) => {
+            const on = chosen.includes(x.slug)
+            return (
+              <button
+                key={x.slug}
+                type="button"
+                aria-pressed={on}
+                title={x.name}
+                onClick={() => toggle(x.slug)}
+                className={cn(
+                  'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-3 font-mono text-xs transition-colors',
+                  on ? 'border-accent/20 bg-accent/10 text-accent' : 'bg-transparent text-muted-foreground hover:bg-elevated hover:text-foreground',
+                )}
+              >
+                {on && <Check className="size-3.5" />}
+                {x.slug}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex items-center gap-1">
+          <code className="min-w-0 break-all rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground" data-testid="group-url">
+            {url}
+          </code>
+          <CopyButton value={url} label="Copy group URL" />
+        </div>
+      </div>
+    </section>
   )
 }
 
 function Exposes({ exposure }: { exposure: ExposureDTO }) {
   const g = groupCapabilities(exposure.capabilities)
   const groups = KINDS.filter((k) => g[k.kind].length)
-  if (!groups.length) return <p className="text-xs text-muted-foreground">Nothing approved is exposed yet.</p>
+  if (!groups.length) return <p className="text-xs text-muted-foreground">Nothing is exposed yet.</p>
   return (
     <div className="grid gap-4 rounded-xl border border-border bg-elevated/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
       {groups.map((k) => (

@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Server,
   Sun,
+  Ticket,
   UserRound,
   Users,
   X,
@@ -56,6 +57,7 @@ const navigation: { label?: string; items: { name: string; href: string; icon: t
     label: 'Access',
     items: [
       { name: 'API keys', href: '/api-keys', icon: KeySquare, color: 'text-info' },
+      { name: 'Entitlements', href: '/entitlements', icon: Ticket, color: 'text-accent', admin: true },
       { name: 'Members', href: '/members', icon: Users, color: 'text-plum', admin: true },
     ],
   },

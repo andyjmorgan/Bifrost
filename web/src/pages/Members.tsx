@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Link2, MailPlus, Pencil, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { Button } from '../ui/components/button'
@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FormField } from '../components/FormField'
 import { CopyButton } from '../components/CopyButton'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
-import { api, errorMessage, type InviteDTO, type MemberDTO, type OrgDTO, type OrgRole } from '../api'
+import { api, errorMessage, type EntitlementDTO, type InviteDTO, type MemberDTO, type OrgDTO, type OrgRole } from '../api'
 import { useMe } from '../me'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
@@ -36,6 +36,24 @@ function inviteStatus(inv: InviteDTO, nameOf: (id?: string) => string): InviteSt
 
 function RolePill({ role }: { role: OrgRole }) {
   return <StatusPill tone={role === 'admin' ? 'accent' : 'muted'}>{role === 'admin' ? 'Admin' : 'Member'}</StatusPill>
+}
+
+/** The entitlements a member holds directly, by name, each linking to its editor. */
+function HeldLine({ entitlements }: { entitlements: EntitlementDTO[] }) {
+  if (!entitlements.length) return <p className="mt-1 truncate text-xs text-faint-foreground">No direct entitlements</p>
+  return (
+    <p className="mt-1 truncate text-xs text-muted-foreground" title={entitlements.map((e) => `${e.name} (${e.slug})`).join(', ')}>
+      Holds{' '}
+      {entitlements.map((e, i) => (
+        <span key={e.id}>
+          {i > 0 && ', '}
+          <Link to={`/entitlements/${e.id}`} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
+            {e.name}
+          </Link>
+        </span>
+      ))}
+    </p>
+  )
 }
 
 function Time({ value }: { value?: string }) {
@@ -64,6 +82,9 @@ export function MembersPage() {
   const [revokeBusy, setRevokeBusy] = useState(false)
   const [revokeErr, setRevokeErr] = useState<string>()
   const [roleBusy, setRoleBusy] = useState<string>()
+  // Entitlements granted to each user directly (subjectType user), indexed by user id. Role grants
+  // follow from the role column.
+  const [held, setHeld] = useState<Map<string, EntitlementDTO[]>>(new Map())
 
   // The org's own view of the caller's role is the freshest; /me covers the first paint.
   const admin = org ? org.role === 'admin' : isAdmin
@@ -71,19 +92,36 @@ export function MembersPage() {
   const setTab = (k: TabKey) => setParams(k === 'members' ? {} : { tab: k }, { replace: true })
 
   const loadInvites = useCallback(() => api.org.invites.list().then(setInvites), [])
+  const loadHeld = useCallback(
+    () =>
+      api.entitlements
+        .list()
+        .then((list) => {
+          const byUser = new Map<string, EntitlementDTO[]>()
+          for (const e of list) {
+            for (const g of e.grants) {
+              if (g.subjectType !== 'user') continue
+              byUser.set(g.subjectId, [...(byUser.get(g.subjectId) ?? []), e])
+            }
+          }
+          setHeld(byUser)
+        })
+        .catch(() => setHeld(new Map())),
+    [],
+  )
   const load = useCallback(async () => {
     try {
       const o = await api.org.get()
       setOrg(o)
       setError(undefined)
-      if (o.role === 'admin') await loadInvites()
+      if (o.role === 'admin') await Promise.all([loadInvites(), loadHeld()])
       else setInvites([])
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setLoaded(true)
     }
-  }, [loadInvites])
+  }, [loadInvites, loadHeld])
   useEffect(() => {
     void load()
   }, [load])
@@ -225,16 +263,19 @@ export function MembersPage() {
                   <ListRow key={m.userId} cols={MEMBER_COLS}>
                     <div className="flex min-w-0 items-center gap-3">
                       <IconTile icon={UserRound} tone={m.self ? 'accent' : 'muted'} />
-                      <Primary
-                        title={
-                          <span className="inline-flex max-w-full items-center gap-2">
-                            <span className="truncate">{m.name || m.email || m.userId}</span>
-                            {m.self && <Badge>you</Badge>}
-                          </span>
-                        }
-                        subtitle={m.userId}
-                        mono
-                      />
+                      <div className="min-w-0">
+                        <Primary
+                          title={
+                            <span className="inline-flex max-w-full items-center gap-2">
+                              <span className="truncate">{m.name || m.email || m.userId}</span>
+                              {m.self && <Badge>you</Badge>}
+                            </span>
+                          }
+                          subtitle={m.userId}
+                          mono
+                        />
+                        {admin && <HeldLine entitlements={held.get(m.userId) ?? []} />}
+                      </div>
                     </div>
                     <Cell label="Email">
                       <span className="block truncate text-sm text-muted-foreground">{m.email || '—'}</span>

@@ -11,17 +11,16 @@ import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary, RowActions } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { FormField } from '../components/FormField'
-import { CeilingCard } from '../components/entitlements/CeilingCard'
+import { CatalogCard } from '../components/entitlements/CatalogCard'
 import { NewEntitlementDialog } from '../components/entitlements/NewEntitlementDialog'
 import { selectionSummary } from '../components/entitlements/selection'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
-import { api, errorMessage, type CapabilityDTO, type CeilingMode, type CreateServerResult, type DiscoverResult, type EntitlementDTO, type PingResult, type ServerDTO, type UpdateServerInput } from '../api'
+import { api, errorMessage, type CapabilityDTO, type CreateServerResult, type DiscoverResult, type EntitlementDTO, type PingResult, type ServerDTO, type UpdateServerInput } from '../api'
 import { JsonTree, type Json } from '../components/PayloadViewer'
 import { absoluteTime, relativeTime } from '../lib'
 
@@ -83,7 +82,7 @@ export function ServerDetailPage() {
       api.capabilities
         .list(id)
         .then(setCaps)
-        .catch((e) => toast.error('Could not load the ceiling', { description: errorMessage(e) }))
+        .catch((e) => toast.error('Could not load the catalog', { description: errorMessage(e) }))
         .finally(() => setCapsLoaded(true)),
     [id],
   )
@@ -117,7 +116,7 @@ export function ServerDetailPage() {
     }
   }
 
-  // Ping and discover talk to the upstream, which can grow the ceiling: refresh it afterwards.
+  // Ping and discover talk to the upstream, which can grow the catalog: refresh it afterwards.
   const afterProbe = () => {
     void loadCaps()
     void load()
@@ -291,7 +290,7 @@ export function ServerDetailPage() {
         </Definition>
       </DefinitionList>
 
-      <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 sm:grid-cols-2">
+      <div className="rounded-2xl border border-border bg-card p-5">
         <FormField label="Exclusive" hint="A caller holding more than one of this server's entitlements gets none of them and sees a conflict.">
           <div className="flex h-10 items-center gap-3">
             <Switch
@@ -301,20 +300,6 @@ export function ServerDetailPage() {
             />
             <span className="text-sm">One entitlement per user</span>
           </div>
-        </FormField>
-        <FormField label="Ceiling mode" hint="What happens when the server starts offering something new.">
-          <Select
-            value={server.ceilingMode}
-            onValueChange={(v) => patch({ ceilingMode: v as CeilingMode }, (u) => (u.ceilingMode === 'open' ? 'New capabilities are approved as seen' : 'New capabilities wait for approval'))}
-          >
-            <SelectTrigger aria-label="Ceiling mode">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="approve">Approve new capabilities</SelectItem>
-              <SelectItem value="open">Open: approve as seen</SelectItem>
-            </SelectContent>
-          </Select>
         </FormField>
       </div>
 
@@ -329,15 +314,10 @@ export function ServerDetailPage() {
       </section>
 
       <section className="space-y-3">
-        <SectionTitle title="Ceiling" hint="Everything the gateway has seen on this server. Entitlements only expose what is approved." />
-        <CeilingCard
-          server={server}
+        <SectionTitle title="Catalog" hint="What the gateway has seen on this server. Entitlements choose from it." />
+        <CatalogCard
           caps={caps}
           loaded={capsLoaded}
-          onChange={(c) => {
-            setCaps(c)
-            void load()
-          }}
           seedActions={
             <Button variant="secondary" onClick={doPing} disabled={pinging}>
               <Activity /> {pinging ? 'Pinging…' : 'Ping'}
