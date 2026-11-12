@@ -298,7 +298,7 @@ export function EntitlementEditorPage() {
 
       <SelectionCard draft={draft} set={set} caps={caps} />
 
-      <RulesCard rules={draft.rules} onChange={setRules} problems={problems} validating={validating} onValidate={(r) => void validate(r ?? draft.rules)} />
+      <RulesCard rules={draft.rules} onChange={setRules} problems={problems} validating={validating} onValidate={(r) => void validate(r ?? draft.rules)} slug={ent.slug} caps={caps} />
 
       <GrantsCard draft={draft} set={set} members={members} />
 

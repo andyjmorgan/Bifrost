@@ -5,9 +5,18 @@ import { Input } from '../../ui/components/input'
 import { Switch } from '../../ui/components/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/components/select'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../ListCard'
-import type { CapabilityKind, Rule } from '../../api'
+import type { CapabilityDTO, CapabilityKind, Rule } from '../../api'
+import { CelEditor } from './CelEditor'
 import { cn } from '../../lib'
 import { KINDS } from './selection'
+
+const PLACEHOLDER: Record<CapabilityKind | 'any', string> = {
+  tool: 'tool.name.startsWith("get_")',
+  prompt: 'prompt.name in ["summarise", "triage"]',
+  resource: 'resource.uri.startsWith("confluence://spaces/ENG/")',
+  template: 'template.uriTemplate.startsWith("confluence://")',
+  any: 'caller.role != "admin"',
+}
 
 /** Problems from POST /entitlements/validate, keyed by rule id so they survive a reorder. */
 export type RuleProblems = Record<string, string[]>
@@ -26,6 +35,8 @@ export function RulesCard({
   problems,
   onValidate,
   validating,
+  slug,
+  caps,
 }: {
   rules: Rule[]
   onChange: (rules: Rule[]) => void
@@ -33,6 +44,9 @@ export function RulesCard({
   /** Re-run validation against the given list (defaults to the current one). */
   onValidate: (rules?: Rule[]) => void
   validating: boolean
+  /** For completions: the entitlement's slug and the server's catalog. */
+  slug: string
+  caps: CapabilityDTO[]
 }) {
   const [dragFrom, setDragFrom] = useState<number>()
   const [dragOver, setDragOver] = useState<number>()
@@ -154,19 +168,14 @@ export function RulesCard({
                       </Button>
                     </span>
                   </div>
-                  <textarea
+                  <CelEditor
                     value={r.when}
-                    spellCheck={false}
-                    rows={Math.min(8, Math.max(2, r.when.split('\n').length))}
-                    onChange={(e) => update(i, { when: e.target.value })}
+                    onChange={(when) => update(i, { when })}
                     onBlur={() => onValidate()}
-                    placeholder='tool.name.startsWith("get_")'
-                    aria-label={`Rule ${i + 1} when`}
-                    aria-invalid={errs.length > 0}
-                    className={cn(
-                      'w-full resize-y rounded-lg border border-border bg-code p-3 font-mono text-xs leading-5 text-code-foreground outline-none placeholder:text-faint-foreground focus:border-accent focus:ring-[3px] focus:ring-accent/15',
-                      errs.length > 0 && 'ring-[3px] ring-danger/20',
-                    )}
+                    placeholder={PLACEHOLDER[r.kinds?.length === 1 ? r.kinds[0] : 'any']}
+                    completions={{ slug, caps, kinds: r.kinds }}
+                    invalid={errs.length > 0}
+                    ariaLabel={`Rule ${i + 1} when`}
                   />
                   {errs.map((m, k) => (
                     <p key={k} className="break-words font-mono text-xs text-danger">
