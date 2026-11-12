@@ -86,6 +86,9 @@ func (a *API) listAudit(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := store.AuditQuery{OrgID: c.OrgID, Slug: q.Get("slug"), Hop: store.Hop(q.Get("hop")), McpMethod: q.Get("method"),
 		ToolName: q.Get("tool"), Outcome: store.Outcome(q.Get("outcome")), RequestID: q.Get("requestId")}
+	if !c.IsAdmin() {
+		query.ActorUserID = c.UserID
+	}
 	query.Offset, _ = strconv.Atoi(q.Get("offset"))
 	query.Limit, _ = strconv.Atoi(q.Get("limit"))
 	if sid := q.Get("serverId"); sid != "" {
@@ -113,6 +116,9 @@ func (a *API) getAuditTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	root, spans, err := a.store.GetAuditTrace(r.Context(), c.OrgID, id)
+	if err == nil && !c.IsAdmin() && root != nil && root.ActorUserID != c.UserID {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -136,6 +142,9 @@ func (a *API) getAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e, p, err := a.store.GetAuditEvent(r.Context(), c.OrgID, id)
+	if err == nil && !c.IsAdmin() && e.ActorUserID != c.UserID {
+		err = store.ErrNotFound
+	}
 	if err != nil {
 		writeStoreErr(w, err)
 		return

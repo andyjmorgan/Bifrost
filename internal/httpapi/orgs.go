@@ -77,11 +77,15 @@ func (a *API) orgDTO(r *http.Request, c *auth.Caller) (*OrgDTO, error) {
 		return nil, err
 	}
 	out := &OrgDTO{ID: c.OrgID, Name: c.OrgName, Personal: c.PersonalOrg, Role: string(c.Role), Members: []MemberDTO{}, Orgs: []OrgRefDTO{}, InviteBase: a.publicBase + "/join/"}
+	// The member list is the admin's; a member sees only themselves.
 	members, err := a.store.ListMembers(r.Context(), orgID)
 	if err != nil {
 		return nil, err
 	}
 	for _, m := range members {
+		if !c.IsAdmin() && m.UserID != c.UserID {
+			continue
+		}
 		out.Members = append(out.Members, MemberDTO{UserID: m.UserID, Email: m.Email, Name: m.Name, Role: string(m.Role), JoinedAt: m.JoinedAt, Self: m.UserID == c.UserID})
 	}
 	if c.UserID != "" {

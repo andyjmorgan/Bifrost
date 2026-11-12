@@ -5,9 +5,10 @@ import "testing"
 func TestBase(t *testing.T) {
 	cases := map[string]string{
 		"Atlassian":                 "atlassian",
-		"My Super Long Server Name": "mysuperlongs",
+		"My Super Long Server Name": "my-super-long-server-nam",
 		"  ---  ":                   "server",
-		"Jira (prod) #2":            "jiraprod2",
+		"Jira (prod) #2":            "jira-prod-2",
+		"Confluence read":           "confluence-read",
 	}
 	for in, want := range cases {
 		if got := Base(in); got != want {
@@ -37,12 +38,12 @@ func TestCandidatesCollisions(t *testing.T) {
 		}
 	}
 	// A full-length base must overwrite its tail.
-	taken = map[string]bool{"mysuperlongs": true, "mysuperlong1": true}
-	Candidates("mysuperlongs", func(c string) bool {
+	taken = map[string]bool{"my-super-long-server-nam": true, "my-super-long-server-na1": true}
+	Candidates("my-super-long-server-nam", func(c string) bool {
 		if taken[c] {
 			return false
 		}
-		if c != "mysuperlong2" {
+		if c != "my-super-long-server-na2" {
 			t.Fatalf("got %q", c)
 		}
 		return true

@@ -1,7 +1,8 @@
-// Package slug derives the immutable per-owner identifier for a server.
+// Package slug derives the immutable per-org identifier of an entitlement,
+// the prefix clients see on its tool names.
 //
-// The slug is the server's name lowercased and reduced to [a-z0-9], cut to
-// MaxLen. When it collides with an existing slug the tail is overwritten
+// The slug is the name lowercased and reduced to [a-z0-9-] (runs of other
+// characters become one hyphen), cut to MaxLen. When it collides with an existing slug the tail is overwritten
 // with an incrementing counter: atlassian, atlassia1, ..., atlassia9,
 // atlassi10, atlassi11, and so on. Renaming the server never changes it.
 package slug
@@ -14,7 +15,7 @@ import (
 )
 
 // MaxLen is the fixed upper bound on slug length.
-const MaxLen = 12
+const MaxLen = 24
 
 // ErrExhausted is returned when no free slug can be found for a base.
 var ErrExhausted = errors.New("slug: no free slug for name")
@@ -23,20 +24,25 @@ var ErrExhausted = errors.New("slug: no free slug for name")
 // becomes "server".
 func Base(name string) string {
 	var b strings.Builder
+	dash := false
 	for _, r := range strings.ToLower(name) {
 		if r > unicode.MaxASCII {
 			continue
 		}
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			b.WriteRune(r)
+			dash = false
+		} else if b.Len() > 0 && !dash {
+			b.WriteByte('-')
+			dash = true
 		}
 	}
-	s := b.String()
+	s := strings.Trim(b.String(), "-")
 	if s == "" {
 		s = "server"
 	}
 	if len(s) > MaxLen {
-		s = s[:MaxLen]
+		s = strings.TrimRight(s[:MaxLen], "-")
 	}
 	return s
 }
@@ -54,7 +60,7 @@ func Candidates(base string, fn func(candidate string) bool) bool {
 			return false
 		}
 		keep := min(len(base), MaxLen-len(suffix))
-		if fn(base[:keep] + suffix) {
+		if fn(strings.TrimRight(base[:keep], "-") + suffix) {
 			return true
 		}
 		if n > 999_999 {

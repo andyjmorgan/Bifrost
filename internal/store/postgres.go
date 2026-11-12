@@ -29,11 +29,11 @@ func isUnique(err error) bool {
 
 // ---- servers -----------------------------------------------------------
 
-const serverCols = `id, org_id, slug, name, url, description, auth_kind, enabled, created_at, updated_at`
+const serverCols = `id, org_id, name, url, description, auth_kind, enabled, exclusive, ceiling_mode, ceiling_seeded, created_at, updated_at`
 
 func scanServer(row pgx.Row) (*Server, error) {
 	var s Server
-	err := row.Scan(&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.OrgID, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.Exclusive, &s.CeilingMode, &s.CeilingSeeded, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -43,36 +43,22 @@ func scanServer(row pgx.Row) (*Server, error) {
 	return &s, nil
 }
 
-// CreateServer inserts a server with the given slug; ErrConflict on a slug clash.
+// CreateServer inserts a server.
 func (p *Postgres) CreateServer(ctx context.Context, s *Server) error {
-	_, err := p.pool.Exec(ctx, `insert into servers (`+serverCols+`) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		s.ID, s.OrgID, s.Slug, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, s.CreatedAt, s.UpdatedAt)
-	if isUnique(err) {
-		return ErrConflict
+	if s.CeilingMode == "" {
+		s.CeilingMode = "approve"
 	}
+	_, err := p.pool.Exec(ctx, `insert into servers (id, org_id, name, url, description, auth_kind, enabled, exclusive, ceiling_mode, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		s.ID, s.OrgID, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, s.Exclusive, s.CeilingMode, s.CreatedAt, s.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil
 }
 
-// SlugTaken reports whether owner already uses slug.
-func (p *Postgres) SlugTaken(ctx context.Context, owner, slug string) (bool, error) {
-	var taken bool
-	if err := p.pool.QueryRow(ctx, `select exists(select 1 from servers where org_id=$1 and slug=$2)`, owner, slug).Scan(&taken); err != nil {
-		return false, fmt.Errorf("store: %w", err)
-	}
-	return taken, nil
-}
-
 // GetServer fetches by id within an owner.
 func (p *Postgres) GetServer(ctx context.Context, owner string, id uuid.UUID) (*Server, error) {
 	return scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where org_id=$1 and id=$2`, owner, id))
-}
-
-// GetServerBySlug fetches by slug within an owner.
-func (p *Postgres) GetServerBySlug(ctx context.Context, owner, slug string) (*Server, error) {
-	return scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where org_id=$1 and slug=$2`, owner, slug))
 }
 
 // ListServers returns an owner's servers, oldest first.
@@ -97,8 +83,8 @@ func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, er
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
-		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, exclusive=$8, ceiling_mode=$9, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
+		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind, s.Exclusive, s.CeilingMode).Scan(&s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -342,13 +328,13 @@ func (p *Postgres) RevokeAPIKey(ctx context.Context, owner string, id uuid.UUID)
 
 const auditCols = `id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, coalesce(api_key_prefix,''), server_id, coalesce(slug,''), route,
 http_method, path, coalesce(mcp_method,''), coalesce(tool_name,''), coalesce(jsonrpc_id,''), coalesce(protocol_version,''), status_code, outcome,
-request_bytes, response_bytes, duration_ms, request_id, coalesce(error_type,''), has_payload`
+request_bytes, response_bytes, duration_ms, request_id, coalesce(error_type,''), has_payload, coalesce(actor_user_id,'')`
 
 func scanAudit(row pgx.Row) (*AuditEvent, error) {
 	var e AuditEvent
 	err := row.Scan(&e.ID, &e.OrgID, &e.CreatedAt, &e.Hop, &e.ParentID, &e.ActorType, &e.ActorSubject, &e.APIKeyID, &e.APIKeyPrefix, &e.ServerID, &e.Slug, &e.Route,
 		&e.HTTPMethod, &e.Path, &e.McpMethod, &e.ToolName, &e.JSONRPCID, &e.ProtocolVersion, &e.StatusCode, &e.Outcome,
-		&e.RequestBytes, &e.ResponseBytes, &e.DurationMS, &e.RequestID, &e.ErrorType, &e.HasPayload)
+		&e.RequestBytes, &e.ResponseBytes, &e.DurationMS, &e.RequestID, &e.ErrorType, &e.HasPayload, &e.ActorUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -366,10 +352,10 @@ func (p *Postgres) InsertAuditEvent(ctx context.Context, e *AuditEvent, payload 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	_, err = tx.Exec(ctx, `insert into audit_events (id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, api_key_prefix, server_id, slug, route,
-http_method, path, mcp_method, tool_name, jsonrpc_id, protocol_version, status_code, outcome, request_bytes, response_bytes, duration_ms, request_id, error_type, has_payload)
-values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,''),$19,$20,$21,$22,$23,$24,nullif($25,''),$26)`,
+http_method, path, mcp_method, tool_name, jsonrpc_id, protocol_version, status_code, outcome, request_bytes, response_bytes, duration_ms, request_id, error_type, has_payload, actor_user_id)
+values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,''),$19,$20,$21,$22,$23,$24,nullif($25,''),$26,$27)`,
 		e.ID, e.OrgID, e.CreatedAt, e.Hop, e.ParentID, e.ActorType, e.ActorSubject, e.APIKeyID, e.APIKeyPrefix, e.ServerID, e.Slug, e.Route,
-		e.HTTPMethod, e.Path, e.McpMethod, e.ToolName, e.JSONRPCID, e.ProtocolVersion, e.StatusCode, e.Outcome, e.RequestBytes, e.ResponseBytes, e.DurationMS, e.RequestID, e.ErrorType, payload != nil)
+		e.HTTPMethod, e.Path, e.McpMethod, e.ToolName, e.JSONRPCID, e.ProtocolVersion, e.StatusCode, e.Outcome, e.RequestBytes, e.ResponseBytes, e.DurationMS, e.RequestID, e.ErrorType, payload != nil, e.ActorUserID)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -415,6 +401,9 @@ func (p *Postgres) ListAuditEvents(ctx context.Context, q AuditQuery) (*Page[*Au
 	}
 	if q.RequestID != "" {
 		add("request_id=$%d", q.RequestID)
+	}
+	if q.ActorUserID != "" {
+		add("actor_user_id=$%d", q.ActorUserID)
 	}
 	w := strings.Join(where, " and ")
 	var total int

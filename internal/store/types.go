@@ -3,6 +3,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -40,16 +41,29 @@ const (
 
 // Server is a registered downstream MCP server.
 type Server struct {
-	ID          uuid.UUID
-	OrgID       string
-	Slug        string
-	Name        string
-	URL         string
-	Description string
-	AuthKind    AuthKind
-	Enabled     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	OrgID         string
+	Name          string
+	URL           string
+	Description   string
+	AuthKind      AuthKind
+	Enabled       bool
+	Exclusive     bool   // at most one entitlement per user on this server
+	CeilingMode   string // "approve": new capabilities wait; "open": approved as seen
+	CeilingSeeded bool   // the first observation has approved what was there
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+
+	// Exposure fields: set only when the server was reached through an
+	// entitlement (the gateway's view). A server is never addressed by a
+	// slug of its own; the slug belongs to the entitlement.
+	Slug            string
+	EntitlementID   uuid.UUID
+	EntitlementName string
+	Selection       Selection
+	Policies        json.RawMessage
+	Generation      int
+	Approved        map[string]bool // ceiling: "kind:name" rows approved
 }
 
 // Credential is the non-secret view of a server's credential plus the
@@ -146,6 +160,7 @@ type AuditEvent struct {
 	ParentID        *uuid.UUID
 	ActorType       string
 	ActorSubject    string
+	ActorUserID     string // the user the actor acted as (a key's creator); "" for system
 	APIKeyID        *uuid.UUID
 	APIKeyPrefix    string
 	ServerID        *uuid.UUID
@@ -178,16 +193,17 @@ type AuditPayload struct {
 
 // AuditQuery filters a listing.
 type AuditQuery struct {
-	OrgID     string
-	Offset    int
-	Limit     int
-	ServerID  *uuid.UUID
-	Slug      string
-	Hop       Hop
-	McpMethod string
-	ToolName  string
-	Outcome   Outcome
-	RequestID string
+	OrgID       string
+	Offset      int
+	Limit       int
+	ServerID    *uuid.UUID
+	Slug        string
+	Hop         Hop
+	McpMethod   string
+	ToolName    string
+	Outcome     Outcome
+	RequestID   string
+	ActorUserID string // members see only their own events
 }
 
 // Page is a bounded listing.

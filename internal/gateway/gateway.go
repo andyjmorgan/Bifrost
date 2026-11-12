@@ -23,7 +23,6 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
-	"github.com/andyjmorgan/Bifrost/internal/policy"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
 )
@@ -37,12 +36,12 @@ const Separator = "__"
 // Store is the slice of persistence the gateway reads.
 type Store interface {
 	ListServers(ctx context.Context, owner string) ([]*store.Server, error)
-	GetServerBySlug(ctx context.Context, owner, slug string) (*store.Server, error)
-	ListServersWithCache(ctx context.Context, owner string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
-	GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
+	GetExposureBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
+	ListExposuresWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
+	GetExposureBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
+	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
-	ListBindings(ctx context.Context, owner string) ([]store.Binding, error)
 }
 
 // Gateway serves the two MCP routes.
@@ -59,8 +58,6 @@ type Gateway struct {
 	// one fetch per replica per cold key; writes are idempotent and guarded
 	// by the server's updated_at, so no cross-process lock is needed.
 	flights singleflight.Group
-	// policies compiles each bound policy once per version.
-	policies policy.Cache
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -99,7 +96,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			// Resolve early so the inbound audit event carries the server even
 			// when the request fails before reaching a method handler.
 			caller := auth.CallerFrom(r.Context())
-			srv, err := g.store.GetServerBySlug(r.Context(), caller.OrgID, strings.ToLower(chi.URLParam(r, "slug")))
+			srv, err := g.store.GetExposureBySlug(r.Context(), caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(chi.URLParam(r, "slug")))
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -135,7 +132,6 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/call params"}
 				}
 				sess := req.GetSession().(*mcp.ServerSession)
-				ctx = withSession(ctx, sess)
 				if tok, ok := p.Meta["progressToken"]; ok && tok != nil {
 					ctx = withProgress(ctx, func(done, total float64, msg string) {
 						_ = sess.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: tok, Progress: done, Total: total, Message: msg})
@@ -173,7 +169,7 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 
 func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
 	if route == "direct" {
-		entries, err := g.catalog(ctx, caller, route, slug, false, nil)
+		entries, err := g.catalog(ctx, caller, route, slug, false)
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +232,7 @@ func refreshToolDef() *mcp.Tool {
 // and templates concurrently) and a per-server summary. Definitions come
 // from the list methods afterwards.
 func (g *Gateway) refreshServices(ctx context.Context, caller *auth.Caller, route string) (mcp.Result, error) {
-	entries, err := g.catalog(ctx, caller, route, "", true, nil)
+	entries, err := g.catalog(ctx, caller, route, "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +310,7 @@ func (g *Gateway) refreshServices(ctx context.Context, caller *auth.Caller, rout
 // muxTools lists tools across all enabled servers. With force, cached
 // entries are ignored and every server is asked afresh.
 func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
-	entries, err := g.catalog(ctx, caller, route, "", force, nil)
+	entries, err := g.catalog(ctx, caller, route, "", force)
 	if err != nil {
 		return nil, err
 	}
@@ -462,6 +458,9 @@ func (g *Gateway) RefreshServer(ctx context.Context, srv *store.Server) ([]*mcp.
 		}
 	}
 	tools, _, err := g.fetchTools(ctx, srv, hint, true, nil)
+	if err == nil {
+		g.observeTools(ctx, srv, tools)
+	}
 	return tools, err
 }
 
@@ -520,45 +519,26 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 	}
 	// Slugs are lowercase by construction; models are not always.
 	slug = strings.ToLower(slug)
-	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, cache.NSInit, cache.NSTools)
+	srv, cached, err := g.exposure(ctx, caller, slug, cache.NSInit, cache.NSTools)
 	if err != nil {
-		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
+		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
 	}
 	if !srv.Enabled {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
 	}
-	b, err := g.loadPolicies(ctx, caller.OrgID)
-	if err != nil {
-		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "policies: " + err.Error()}
+	// The same cut that decides the listing decides the call: a tool outside
+	// the ceiling or the selection does not exist on this slug. That needs
+	// the tool list, so a cold cache costs one listing here.
+	tools, ok := decodeTools(cached[cache.NSTools])
+	if !ok {
+		if tools, _, err = g.fetchTools(ctx, srv, initHint(cached), false, nil); err != nil {
+			return nil, upstreamError(srv, err)
+		}
+		g.observeTools(ctx, srv, tools)
 	}
-	if len(b.forRoute(route, srv.ID)) > 0 {
-		// Policies decide whether the tool exists on this route, whether it
-		// needs confirming, and which upstream name it maps to. They need the
-		// tool list, so a cold cache costs one listing here.
-		tools, ok := decodeTools(cached[cache.NSTools])
-		if !ok {
-			if tools, _, err = g.fetchTools(ctx, srv, initHint(cached), false, nil); err != nil {
-				return nil, upstreamError(srv, err)
-			}
-		}
-		var in cache.Init
-		if raw := cached[cache.NSInit]; raw != nil {
-			_ = json.Unmarshal(raw, &in)
-		}
-		d := findDecision(shape(ctx, b, route, srv, in, tools), name)
-		if d == nil || !d.Visible {
-			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
-		}
-		if d.Confirm {
-			if res, err := g.confirm(ctx, p, d, srv); err != nil || res != nil {
-				return res, err
-			}
-		}
-		name = d.Upstream
-	} else if tools, ok := decodeTools(cached[cache.NSTools]); ok {
-		// Tool names are passed through verbatim, except that a case-only mismatch
-		// against the cached list is corrected (upstreams are case-sensitive).
-		name = canonicalToolName(tools, name)
+	name = canonicalToolName(cutTools(srv, tools), name)
+	if !allows(srv, store.KindTool, name) {
+		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
 	}
 	audit.SetTarget(ctx, srv.ID, srv.Slug)
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))

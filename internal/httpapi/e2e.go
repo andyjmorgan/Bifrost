@@ -60,7 +60,7 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			if err := a.store.CacheInvalidateOwner(r.Context(), c.OrgID); err != nil {
 				a.log.Warn("e2e: cache invalidate", "err", err)
 			}
-		} else if s, err := a.store.GetServerBySlug(r.Context(), c.OrgID, route); err == nil {
+		} else if s, err := a.store.GetExposureBySlug(r.Context(), c.OrgID, c.UserID, string(c.Role), route); err == nil {
 			if err := a.store.CacheInvalidateServer(r.Context(), s.ID); err != nil {
 				a.log.Warn("e2e: cache invalidate", "slug", route, "err", err)
 			}

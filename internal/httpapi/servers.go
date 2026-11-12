@@ -26,7 +26,16 @@ func (a *API) withCredential(ctx context.Context, s *store.Server) ServerDTO {
 	if err != nil {
 		c = nil
 	}
-	return serverDTO(a.publicBase, s, c)
+	ents, _ := a.store.ListEntitlements(ctx, s.OrgID, &s.ID)
+	pending := 0
+	if caps, err := a.store.ListCapabilities(ctx, s.OrgID, s.ID); err == nil {
+		for _, cp := range caps {
+			if cp.ApprovedAt == nil {
+				pending++
+			}
+		}
+	}
+	return serverDTO(a.publicBase, s, c, ents, pending)
 }
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
@@ -101,23 +110,29 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	s := &store.Server{ID: uuid.New(), OrgID: caller.OrgID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true, CreatedAt: now, UpdatedAt: now}
 
-	// Slug: derive from the name, bump the tail until the insert succeeds.
+	if err := a.store.CreateServer(r.Context(), s); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	// A server is only reachable through an entitlement, so every new server
+	// gets a default one, everything it offers, held by the org's admins.
+	// The slug derives from the name; the tail is bumped until it is free.
+	ent := &store.Entitlement{ID: uuid.New(), OrgID: s.OrgID, ServerID: s.ID, Name: in.Name, Description: "Everything the server offers", Selection: store.Selection{All: true}}
 	var created bool
-	ok := slug.Candidates(slug.Base(in.Name), func(c string) bool {
-		s.Slug = c
-		err := a.store.CreateServer(r.Context(), s)
+	slug.Candidates(slug.Base(in.Name), func(c string) bool {
+		ent.Slug = c
+		err := a.store.CreateEntitlement(r.Context(), ent)
 		if errors.Is(err, store.ErrConflict) {
 			return false
 		}
 		created = err == nil
 		if err != nil {
-			a.log.Error("create server", "err", err)
+			a.log.Error("create default entitlement", "err", err)
 		}
 		return true
 	})
-	if !ok || !created {
-		writeErr(w, http.StatusInternalServerError, "could not allocate a slug")
-		return
+	if created {
+		_ = a.store.SetGrants(r.Context(), s.OrgID, ent.ID, []store.Grant{{SubjectType: "role", SubjectID: "admin"}}, caller.UserID)
 	}
 	authorizeURL, err := a.applyAuth(r.Context(), s, in.Auth)
 	if err != nil {
@@ -191,7 +206,7 @@ func (a *API) warmTools(ctx context.Context, owner string, id uuid.UUID) {
 		return
 	}
 	if _, err := a.gw.RefreshServer(ctx, s); err != nil {
-		a.log.Warn("tools refresh after change failed", "slug", s.Slug, "err", err)
+		a.log.Warn("tools refresh after change failed", "server", s.Name, "err", err)
 	}
 }
 
@@ -254,7 +269,7 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Name != nil && strings.TrimSpace(*in.Name) != "" {
-		s.Name = strings.TrimSpace(*in.Name) // the slug is immutable by design
+		s.Name = strings.TrimSpace(*in.Name)
 	}
 	if in.URL != nil {
 		if err := validURL(*in.URL); err != nil {
@@ -265,6 +280,16 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Description != nil {
 		s.Description = *in.Description
+	}
+	if in.Exclusive != nil {
+		s.Exclusive = *in.Exclusive
+	}
+	if in.CeilingMode != nil {
+		if *in.CeilingMode != "approve" && *in.CeilingMode != "open" {
+			writeErr(w, http.StatusBadRequest, "ceilingMode must be approve or open")
+			return
+		}
+		s.CeilingMode = *in.CeilingMode
 	}
 	if in.Enabled != nil {
 		s.Enabled = *in.Enabled

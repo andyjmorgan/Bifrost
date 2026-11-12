@@ -9,17 +9,28 @@ import (
 
 // ServerDTO is a server with its credential summary (never the secret).
 type ServerDTO struct {
-	ID          string         `json:"id"`
-	Slug        string         `json:"slug"`
-	Name        string         `json:"name"`
-	URL         string         `json:"url"`
-	Description string         `json:"description"`
-	AuthKind    store.AuthKind `json:"authKind"`
-	Enabled     bool           `json:"enabled"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	MCPURL      string         `json:"mcpUrl"`
-	Credential  *CredentialDTO `json:"credential,omitempty"`
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	URL          string              `json:"url"`
+	Description  string              `json:"description"`
+	AuthKind     store.AuthKind      `json:"authKind"`
+	Enabled      bool                `json:"enabled"`
+	Exclusive    bool                `json:"exclusive"`
+	CeilingMode  string              `json:"ceilingMode"` // "approve" | "open"
+	Pending      int                 `json:"pending"`     // capabilities waiting for approval
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
+	Credential   *CredentialDTO      `json:"credential,omitempty"`
+	Entitlements []EntitlementRefDTO `json:"entitlements"`
+}
+
+// EntitlementRefDTO names one slug on a server.
+type EntitlementRefDTO struct {
+	ID     string `json:"id"`
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	MCPURL string `json:"mcpUrl"`
+	Grants int    `json:"grants"`
 }
 
 // CredentialDTO is the non-secret view of a credential.
@@ -65,6 +76,8 @@ type UpdateServerInput struct {
 	URL         *string `json:"url,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
+	Exclusive   *bool   `json:"exclusive,omitempty"`
+	CeilingMode *string `json:"ceilingMode,omitempty"`
 }
 
 // CreateServerResult adds the consent URL when OAuth needs the browser.
@@ -225,14 +238,17 @@ type ConfigDTO struct {
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
-func serverDTO(base string, s *store.Server, c *store.Credential) ServerDTO {
+func serverDTO(base string, s *store.Server, c *store.Credential, ents []*store.Entitlement, pending int) ServerDTO {
 	d := ServerDTO{
-		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description,
-		AuthKind: s.AuthKind, Enabled: s.Enabled, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
-		MCPURL: base + "/" + s.Slug + "/mcp",
+		ID: s.ID.String(), Name: s.Name, URL: s.URL, Description: s.Description,
+		AuthKind: s.AuthKind, Enabled: s.Enabled, Exclusive: s.Exclusive, CeilingMode: s.CeilingMode, Pending: pending,
+		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Entitlements: []EntitlementRefDTO{},
 	}
 	if c != nil {
 		d.Credential = credentialDTO(c)
+	}
+	for _, e := range ents {
+		d.Entitlements = append(d.Entitlements, EntitlementRefDTO{ID: e.ID.String(), Slug: e.Slug, Name: e.Name, MCPURL: base + "/" + e.Slug + "/mcp", Grants: len(e.Grants)})
 	}
 	return d
 }

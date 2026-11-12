@@ -355,6 +355,8 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 				e.OrgID = caller.OrgID
 				e.ActorType = string(caller.Type)
 				e.ActorSubject = caller.Subject
+				e.ActorUserID = caller.UserID
+				e.ActorUserID = caller.UserID
 				e.APIKeyID = caller.APIKeyID
 				e.APIKeyPrefix = caller.APIKeyPrefix
 			}
@@ -431,6 +433,7 @@ func (r *Recorder) RecordSkipped(ctx context.Context, srv *store.Server, route, 
 	if caller := auth.CallerFrom(ctx); caller != nil {
 		e.ActorType = string(caller.Type)
 		e.ActorSubject = caller.Subject
+		e.ActorUserID = caller.UserID
 		e.APIKeyID = caller.APIKeyID
 		e.APIKeyPrefix = caller.APIKeyPrefix
 	}
@@ -482,6 +485,7 @@ func (t *auditTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		e.OrgID = caller.OrgID
 		e.ActorType = string(caller.Type)
 		e.ActorSubject = caller.Subject
+		e.ActorUserID = caller.UserID
 		e.APIKeyID = caller.APIKeyID
 		e.APIKeyPrefix = caller.APIKeyPrefix
 	}

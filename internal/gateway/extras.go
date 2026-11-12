@@ -73,6 +73,7 @@ func (g *Gateway) fetchList(ctx context.Context, srv *store.Server, ns, protocol
 				return nil, err
 			}
 		}
+		g.observeRaw(fctx, srv, ns, raw)
 		if g.toolsTTL > 0 {
 			id := srv.ID
 			switch err := g.store.CacheSet(fctx, ns, id.String(), &id, srv.UpdatedAt, raw, g.toolsTTL); {
@@ -176,8 +177,9 @@ func fetchTemplates(sess *upstream.Session) (json.RawMessage, error) {
 func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug, ns string, force bool, fetch func(*upstream.Session) (json.RawMessage, error)) ([]listing, error) {
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
+	var conflicts map[uuid.UUID]error
 	if route == "direct" {
-		srv, bundle, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, ns, cache.NSInit)
+		srv, bundle, err := g.exposure(ctx, caller, slug, ns, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -185,7 +187,7 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 		cached = map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		servers, cached, err = g.store.ListServersWithCache(ctx, caller.OrgID, ns, cache.NSInit)
+		servers, cached, conflicts, err = g.exposures(ctx, caller, ns, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 		}
@@ -197,6 +199,13 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 	)
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
+			continue
+		}
+		if c, ok := conflicts[srv.ID]; ok {
+			audit.AddIssue(ctx, srv.Slug+": "+c.Error())
+			mu.Lock()
+			out = append(out, listing{srv: srv, err: c})
+			mu.Unlock()
 			continue
 		}
 		wg.Add(1)
@@ -215,6 +224,9 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 				l.raw = bundle[ns]
 			default:
 				l.raw, l.err = g.fetchList(ctx, srv, ns, l.init.ProtocolVersion, force, fetch)
+			}
+			if l.err == nil {
+				l.raw = cutRaw(srv, ns, l.raw)
 			}
 			if l.err != nil {
 				g.log.Warn("listing: server unavailable", "slug", srv.Slug, "ns", ns, "err", l.err)
@@ -295,7 +307,10 @@ func (g *Gateway) getPrompt(ctx context.Context, caller *auth.Caller, route, slu
 	}
 	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug))
 	if err != nil {
-		return nil, err
+		return nil, &jsonrpc.Error{Code: -32602, Message: "unknown prompt " + p.Name}
+	}
+	if !allows(srv, store.KindPrompt, name) {
+		return nil, &jsonrpc.Error{Code: -32602, Message: "unknown prompt " + p.Name}
 	}
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
 	if err != nil {
@@ -381,7 +396,10 @@ func (g *Gateway) readResource(ctx context.Context, caller *auth.Caller, route, 
 	}
 	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug))
 	if err != nil {
-		return nil, err
+		return nil, &jsonrpc.Error{Code: -32002, Message: "resource not found: " + p.URI}
+	}
+	if !allowsURI(srv, p.URI) {
+		return nil, &jsonrpc.Error{Code: -32002, Message: "resource not found: " + p.URI}
 	}
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
 	if err != nil {
@@ -449,7 +467,7 @@ func (g *Gateway) resourceOwner(ctx context.Context, caller *auth.Caller, uri st
 // ---- helpers ----------------------------------------------------------------
 
 func (g *Gateway) serverFor(ctx context.Context, caller *auth.Caller, slug string) (*store.Server, store.CacheBundle, error) {
-	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, cache.NSInit)
+	srv, cached, err := g.exposure(ctx, caller, slug, cache.NSInit)
 	if err != nil {
 		return nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}
