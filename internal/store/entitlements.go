@@ -301,40 +301,49 @@ func (p *Postgres) GetExposureBySlug(ctx context.Context, org, userID, role, slu
 // ---- ceiling ------------------------------------------------------------------
 
 // ObserveCapabilities records what a server offered: new rows for anything
-// unseen, last_seen bumped on the rest. On a server not yet seeded (or in
-// open mode) new capabilities are approved at once; otherwise they wait.
-// Returns the names that are now approved.
-func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error {
+// unseen, last_seen bumped on the rest. The first time a kind is seen on a
+// server (its tools, then later perhaps its prompts) the whole batch is
+// approved, as is everything on a server in open mode; after that a new
+// capability of that kind waits for an admin.
+// It reports whether new rows were approved.
+func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) (bool, error) {
 	if len(names) == 0 {
-		return nil
+		return false, nil
 	}
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("store: %w", err)
+		return false, fmt.Errorf("store: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var mode string
 	var seeded bool
 	if err := tx.QueryRow(ctx, `select ceiling_mode, ceiling_seeded from servers where id=$1 for update`, serverID).Scan(&mode, &seeded); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
+			return false, ErrNotFound
 		}
-		return fmt.Errorf("store: %w", err)
+		return false, fmt.Errorf("store: %w", err)
 	}
-	auto := mode == "open" || !seeded
+	var seenKind bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from server_capabilities where server_id=$1 and kind=$2)`, serverID, kind).Scan(&seenKind); err != nil {
+		return false, fmt.Errorf("store: %w", err)
+	}
+	auto := mode == "open" || !seeded || !seenKind
 	for name, fp := range names {
 		if _, err := tx.Exec(ctx, `insert into server_capabilities (server_id, kind, name, fingerprint, approved_at)
 			values ($1,$2,$3,$4, case when $5 then now() end)
 			on conflict (server_id, kind, name) do update set last_seen_at=now(), fingerprint=excluded.fingerprint`, serverID, kind, name, fp, auto); err != nil {
-			return fmt.Errorf("store: %w", err)
+			return false, fmt.Errorf("store: %w", err)
 		}
 	}
 	if !seeded {
 		if _, err := tx.Exec(ctx, `update servers set ceiling_seeded=true where id=$1`, serverID); err != nil {
-			return fmt.Errorf("store: %w", err)
+			return false, fmt.Errorf("store: %w", err)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("store: %w", err)
+	}
+	return auto, nil
 }
 
 // ListCapabilities returns a server's ceiling rows, pending first.

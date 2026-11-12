@@ -94,13 +94,14 @@ func (g *Gateway) observe(ctx context.Context, srv *store.Server, kind string, n
 	// The ceiling is bookkeeping; a failure must not fail the listing.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), g.conn.Timeout())
 	defer cancel()
-	if err := g.store.ObserveCapabilities(wctx, srv.ID, kind, names); err != nil {
+	approved, err := g.store.ObserveCapabilities(wctx, srv.ID, kind, names)
+	if err != nil {
 		g.log.Warn("ceiling: observe failed", "server", srv.Name, "kind", kind, "err", err)
 		return
 	}
-	// A first observation approves everything it saw; reflect that on this
-	// request's view so a freshly added server lists its tools at once.
-	if !srv.CeilingSeeded || srv.CeilingMode == "open" {
+	// A first observation of a kind approves everything it saw; reflect that
+	// on this request's view so a freshly added server lists at once.
+	if approved {
 		if srv.Approved == nil {
 			srv.Approved = map[string]bool{}
 		}
