@@ -226,7 +226,12 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 				l.raw, l.err = g.fetchList(ctx, srv, ns, l.init.ProtocolVersion, force, fetch)
 			}
 			if l.err == nil {
-				l.raw = cutRaw(srv, ns, l.raw)
+				cut := g.cutterFor(ctx, srv, l.init)
+				if cut.broken != nil {
+					l.err = fmt.Errorf("rules do not compile: %w", cut.broken)
+				} else {
+					l.raw = cut.raw(ns, l.raw)
+				}
 			}
 			if l.err != nil {
 				g.log.Warn("listing: server unavailable", "slug", srv.Slug, "ns", ns, "err", l.err)
@@ -305,11 +310,11 @@ func (g *Gateway) getPrompt(ctx context.Context, caller *auth.Caller, route, slu
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("prompt name must be <slug>%s<prompt>", Separator)}
 		}
 	}
-	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug))
+	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug), cache.NSPrompts)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: -32602, Message: "unknown prompt " + p.Name}
 	}
-	if !allows(srv, store.KindPrompt, name) {
+	if !g.cutterFor(ctx, srv, initOf(cached)).allows(store.KindPrompt, name, defOf(cache.NSPrompts, cached[cache.NSPrompts], name)) {
 		return nil, &jsonrpc.Error{Code: -32602, Message: "unknown prompt " + p.Name}
 	}
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
@@ -394,11 +399,11 @@ func (g *Gateway) readResource(ctx context.Context, caller *auth.Caller, route, 
 		}
 		slug = owner
 	}
-	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug))
+	srv, cached, err := g.serverFor(ctx, caller, strings.ToLower(slug), cache.NSResources)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: -32002, Message: "resource not found: " + p.URI}
 	}
-	if !allowsURI(srv, p.URI) {
+	if !g.cutterFor(ctx, srv, initOf(cached)).allowsURI(p.URI, defOf(cache.NSResources, cached[cache.NSResources], p.URI)) {
 		return nil, &jsonrpc.Error{Code: -32002, Message: "resource not found: " + p.URI}
 	}
 	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
@@ -466,8 +471,8 @@ func (g *Gateway) resourceOwner(ctx context.Context, caller *auth.Caller, uri st
 
 // ---- helpers ----------------------------------------------------------------
 
-func (g *Gateway) serverFor(ctx context.Context, caller *auth.Caller, slug string) (*store.Server, store.CacheBundle, error) {
-	srv, cached, err := g.exposure(ctx, caller, slug, cache.NSInit)
+func (g *Gateway) serverFor(ctx context.Context, caller *auth.Caller, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
+	srv, cached, err := g.exposure(ctx, caller, slug, append([]string{cache.NSInit}, ns...)...)
 	if err != nil {
 		return nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}
@@ -501,4 +506,12 @@ func tagged(in mcp.Meta, slug string) mcp.Meta {
 	}
 	out[MetaKeyServer] = slug
 	return out
+}
+
+func initOf(b store.CacheBundle) cache.Init {
+	var in cache.Init
+	if raw := b[cache.NSInit]; raw != nil {
+		_ = json.Unmarshal(raw, &in)
+	}
+	return in
 }

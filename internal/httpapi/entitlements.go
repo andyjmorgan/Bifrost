@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/andyjmorgan/Bifrost/internal/auth"
+	"github.com/andyjmorgan/Bifrost/internal/rules"
 	"github.com/andyjmorgan/Bifrost/internal/slug"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -29,7 +30,7 @@ type EntitlementDTO struct {
 	Description string          `json:"description"`
 	MCPURL      string          `json:"mcpUrl"`
 	Selection   store.Selection `json:"selection"`
-	Policies    json.RawMessage `json:"policies"`
+	Rules       []rules.Rule    `json:"rules"`
 	Generation  int             `json:"generation"`
 	Grants      []GrantDTO      `json:"grants"`
 	CreatedAt   time.Time       `json:"createdAt"`
@@ -46,22 +47,30 @@ type GrantDTO struct {
 }
 
 // EntitlementInput creates or updates an entitlement. Slug is only read on
-// create; when empty one is derived from the name.
+// create; when empty one is derived from the name. Rules nil leaves them.
 type EntitlementInput struct {
 	Name        string           `json:"name"`
 	Slug        string           `json:"slug"`
 	Description string           `json:"description"`
 	Selection   *store.Selection `json:"selection"`
-	Policies    json.RawMessage  `json:"policies"`
+	Rules       *[]rules.Rule    `json:"rules"`
 }
 
-// CapabilityDTO is one thing a server has been seen to offer.
+// RulesProblems is the 400 body when rules do not compile.
+type RulesProblems struct {
+	Error    string         `json:"error"`
+	Problems rules.Problems `json:"problems"`
+}
+
+// CapabilityDTO is one thing a server has been seen to offer, with the
+// definition as last sent (a tool, prompt, resource or template object).
 type CapabilityDTO struct {
-	Kind        string    `json:"kind"`
-	Name        string    `json:"name"`
-	Fingerprint string    `json:"fingerprint,omitempty"`
-	FirstSeenAt time.Time `json:"firstSeenAt"`
-	LastSeenAt  time.Time `json:"lastSeenAt"`
+	Kind        string          `json:"kind"`
+	Name        string          `json:"name"`
+	Fingerprint string          `json:"fingerprint,omitempty"`
+	Definition  json.RawMessage `json:"definition,omitempty"`
+	FirstSeenAt time.Time       `json:"firstSeenAt"`
+	LastSeenAt  time.Time       `json:"lastSeenAt"`
 }
 
 // ExposureDTO is one slug the caller holds: what the member portal shows.
@@ -77,14 +86,15 @@ type ExposureDTO struct {
 	Selection    store.Selection `json:"selection"`
 	Via          []string        `json:"via"` // "user" or "role:member"
 	Conflict     string          `json:"conflict,omitempty"`
-	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and inside the selection
+	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and in the allow lists (rules not applied here)
+	Rules        int             `json:"rules"`        // advanced rules on the entitlement
 }
 
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
 	d := EntitlementDTO{ID: e.ID.String(), ServerID: e.ServerID.String(), ServerName: serverName, Slug: e.Slug, Name: e.Name, Description: e.Description,
-		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Policies: e.Policies, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
-	if len(d.Policies) == 0 {
-		d.Policies = json.RawMessage("[]")
+		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Rules: []rules.Rule{}, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	if rs, err := rules.Parse(e.Policies); err == nil && rs != nil {
+		d.Rules = rs
 	}
 	members := map[string]*store.Member{}
 	if ms, err := a.store.ListMembers(r.Context(), uuid.MustParse(e.OrgID)); err == nil {
@@ -175,9 +185,16 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	e := &store.Entitlement{ID: uuid.New(), OrgID: c.OrgID, ServerID: s.ID, Name: in.Name, Description: in.Description, Selection: store.Selection{}, Policies: in.Policies}
+	e := &store.Entitlement{ID: uuid.New(), OrgID: c.OrgID, ServerID: s.ID, Name: in.Name, Description: in.Description, Selection: store.Selection{}}
 	if in.Selection != nil {
 		e.Selection = *in.Selection
+	}
+	if in.Rules != nil {
+		if _, probs := rules.Compile(*in.Rules); probs != nil {
+			writeJSON(w, http.StatusBadRequest, RulesProblems{Error: "rules do not compile", Problems: probs})
+			return
+		}
+		e.Policies, _ = json.Marshal(*in.Rules)
 	}
 	if in.Slug != "" {
 		e.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
@@ -237,14 +254,34 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
-	if in.Policies != nil {
-		e.Policies = in.Policies
+	if in.Rules != nil {
+		if _, probs := rules.Compile(*in.Rules); probs != nil {
+			writeJSON(w, http.StatusBadRequest, RulesProblems{Error: "rules do not compile", Problems: probs})
+			return
+		}
+		e.Policies, _ = json.Marshal(*in.Rules)
 	}
 	if err := a.store.UpdateEntitlement(r.Context(), e); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, a.entitlementDTO(r, e, a.serverNames(r, c.OrgID)[e.ServerID]))
+}
+
+// validateRules compiles a rule list without saving it.
+func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Rules []rules.Rule `json:"rules"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_, probs := rules.Compile(in.Rules)
+	if probs == nil {
+		probs = rules.Problems{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"problems": probs})
 }
 
 func (a *API) deleteEntitlement(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +345,7 @@ func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]CapabilityDTO, 0, len(caps))
 	for _, cp := range caps {
-		out = append(out, CapabilityDTO{Kind: cp.Kind, Name: cp.Name, Fingerprint: cp.Fingerprint, FirstSeenAt: cp.FirstSeenAt, LastSeenAt: cp.LastSeenAt})
+		out = append(out, CapabilityDTO{Kind: cp.Kind, Name: cp.Name, Fingerprint: cp.Fingerprint, Definition: cp.Definition, FirstSeenAt: cp.FirstSeenAt, LastSeenAt: cp.LastSeenAt})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -335,6 +372,9 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 			Enabled: s.Enabled, Selection: s.Selection, Via: []string{}, Capabilities: []string{}}
 		if e, err := a.store.GetEntitlement(r.Context(), c.OrgID, s.EntitlementID); err == nil {
 			d.Description = e.Description
+			if rs, err := rules.Parse(e.Policies); err == nil {
+				d.Rules = len(rs)
+			}
 			for _, g := range e.Grants {
 				if g.SubjectType == "user" && g.SubjectID == c.UserID {
 					d.Via = append(d.Via, "user")

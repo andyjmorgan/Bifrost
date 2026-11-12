@@ -14,8 +14,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/rules"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
@@ -116,29 +118,30 @@ func (g *Gateway) exposure(ctx context.Context, caller *auth.Caller, slug string
 // entitlement editor. Called only after an upstream fetch, never on a cache
 // hit. Bookkeeping: a failure must not fail the listing.
 func (g *Gateway) observeTools(ctx context.Context, srv *store.Server, tools []*mcp.Tool) {
-	names := make(map[string]string, len(tools))
+	items := make(map[string]store.Seen, len(tools))
 	for _, t := range tools {
-		names[t.Name] = fingerprint(t.Description, t.InputSchema)
+		def, _ := json.Marshal(t)
+		items[t.Name] = store.Seen{Fingerprint: fingerprint(t.Description, t.InputSchema), Definition: def}
 	}
-	g.observe(ctx, srv, store.KindTool, names)
+	g.observe(ctx, srv, store.KindTool, items)
 }
 
 func (g *Gateway) observeRaw(ctx context.Context, srv *store.Server, ns string, raw json.RawMessage) {
-	kind, keys := kindOf(ns), namesOf(ns, raw)
-	names := make(map[string]string, len(keys))
-	for _, k := range keys {
-		names[k] = ""
+	kind := kindOf(ns)
+	items := map[string]store.Seen{}
+	for name, def := range itemsOf(ns, raw) {
+		items[name] = store.Seen{Fingerprint: fingerprint("", def), Definition: def}
 	}
-	g.observe(ctx, srv, kind, names)
+	g.observe(ctx, srv, kind, items)
 }
 
-func (g *Gateway) observe(ctx context.Context, srv *store.Server, kind string, names map[string]string) {
-	if len(names) == 0 {
+func (g *Gateway) observe(ctx context.Context, srv *store.Server, kind string, items map[string]store.Seen) {
+	if len(items) == 0 {
 		return
 	}
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), g.conn.Timeout())
 	defer cancel()
-	if err := g.store.ObserveCapabilities(wctx, srv.ID, kind, names); err != nil {
+	if err := g.store.ObserveCapabilities(wctx, srv.ID, kind, items); err != nil {
 		g.log.Warn("catalog: observe failed", "server", srv.Name, "kind", kind, "err", err)
 	}
 }
@@ -161,35 +164,221 @@ func kindOf(ns string) string {
 	return store.KindTool
 }
 
-// namesOf extracts the identity of each item in a cached list: name for
-// prompts, uri for resources, uriTemplate for templates.
-func namesOf(ns string, raw json.RawMessage) []string {
-	var items []map[string]json.RawMessage
+// identityKey is the field that identifies an item of a namespace: name
+// for prompts, uri for resources, uriTemplate for templates.
+func identityKey(ns string) string {
+	switch ns {
+	case cache.NSResources:
+		return "uri"
+	case cache.NSTemplates:
+		return "uriTemplate"
+	}
+	return "name"
+}
+
+// itemsOf maps each item of a cached list to its raw definition by identity.
+func itemsOf(ns string, raw json.RawMessage) map[string]json.RawMessage {
+	var items []json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {
 		return nil
 	}
-	key := "name"
-	switch ns {
-	case cache.NSResources:
-		key = "uri"
-	case cache.NSTemplates:
-		key = "uriTemplate"
-	}
-	out := make([]string, 0, len(items))
+	key := identityKey(ns)
+	out := make(map[string]json.RawMessage, len(items))
 	for _, it := range items {
+		var m map[string]json.RawMessage
 		var s string
-		if json.Unmarshal(it[key], &s) == nil && s != "" {
-			out = append(out, s)
+		if json.Unmarshal(it, &m) == nil && json.Unmarshal(m[key], &s) == nil && s != "" {
+			out[s] = it
 		}
 	}
 	return out
 }
 
-// ---- the cut --------------------------------------------------------------------
+// ---- rules ----------------------------------------------------------------------
 
-// allows reports whether an exposure exposes one capability: an allow list
-// for its kind that names it, or no allow list for its kind at all.
-func allows(srv *store.Server, kind, name string) bool {
+type clientKey struct{}
+
+// withClient records the inbound session's initialize params so rules can
+// see the client's name and capabilities.
+func withClient(ctx context.Context, ip *mcp.InitializeParams) context.Context {
+	if ip == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, clientKey{}, ip)
+}
+
+func clientMap(ctx context.Context) map[string]any {
+	ip, _ := ctx.Value(clientKey{}).(*mcp.InitializeParams)
+	out := map[string]any{"name": "", "version": "", "protocolVersion": "", "capabilities": map[string]any{"elicitation": false, "sampling": false, "roots": false}}
+	if ip == nil {
+		return out
+	}
+	out["protocolVersion"] = ip.ProtocolVersion
+	if ip.ClientInfo != nil {
+		out["name"], out["version"] = ip.ClientInfo.Name, ip.ClientInfo.Version
+	}
+	if c := ip.Capabilities; c != nil {
+		out["capabilities"] = map[string]any{"elicitation": c.Elicitation != nil, "sampling": c.Sampling != nil, "roots": c.Roots.ListChanged || c.RootsV2 != nil}
+	}
+	return out
+}
+
+func callerMap(c *auth.Caller) map[string]any {
+	if c == nil {
+		return map[string]any{}
+	}
+	return map[string]any{"userId": c.UserID, "email": c.Email, "name": c.Name, "role": string(c.Role), "type": string(c.Type), "keyName": func() string {
+		if c.Type == auth.ActorAPIKey {
+			return c.Subject
+		}
+		return ""
+	}()}
+}
+
+func serverMap(srv *store.Server, in cache.Init) map[string]any {
+	return map[string]any{"slug": srv.Slug, "name": srv.Name, "description": srv.Description, "url": srv.URL, "instructions": in.Instructions, "protocolVersion": in.ProtocolVersion}
+}
+
+type compiledRules struct {
+	key string
+	c   *rules.Compiled
+	err error
+}
+
+// rulesFor compiles an exposure's rules once per generation.
+func (g *Gateway) rulesFor(srv *store.Server) (*rules.Compiled, error) {
+	key := srv.EntitlementID.String() + "@" + fmt.Sprint(srv.Generation)
+	if v, ok := g.rules.Load(srv.EntitlementID); ok {
+		if cr := v.(compiledRules); cr.key == key {
+			return cr.c, cr.err
+		}
+	}
+	rs, err := rules.Parse(srv.Policies)
+	var c *rules.Compiled
+	if err == nil {
+		var probs rules.Problems
+		if c, probs = rules.Compile(rs); probs != nil {
+			err = probs
+		}
+	}
+	g.rules.Store(srv.EntitlementID, compiledRules{key: key, c: c, err: err})
+	return c, err
+}
+
+// cutter decides, for one exposure in one request, what is exposed: the
+// allow lists first, then the rules in order. Rules that do not compile
+// fail the exposure closed: nothing is exposed and the listing reports it.
+type cutter struct {
+	ctx    context.Context
+	srv    *store.Server
+	rules  *rules.Compiled
+	broken error
+	server map[string]any
+	caller map[string]any
+	client map[string]any
+	route  string
+}
+
+func (g *Gateway) cutterFor(ctx context.Context, srv *store.Server, in cache.Init) *cutter {
+	c := &cutter{ctx: ctx, srv: srv, route: routeFrom(ctx), server: serverMap(srv, in), caller: callerMap(auth.CallerFrom(ctx)), client: clientMap(ctx)}
+	c.rules, c.broken = g.rulesFor(srv)
+	if c.broken != nil {
+		audit.AddIssue(ctx, srv.Slug+": rules do not compile: "+c.broken.Error())
+	}
+	return c
+}
+
+func routeFrom(ctx context.Context) string {
+	if r, ok := ctx.Value(routeKey{}).(string); ok {
+		return r
+	}
+	return ""
+}
+
+// allows decides one capability: in the allow list (or no list), then the
+// rules, last match winning.
+func (c *cutter) allows(kind, name string, def any) bool {
+	if c.broken != nil {
+		return false
+	}
+	base := inList(c.srv, kind, name)
+	if c.rules.Empty() {
+		return base
+	}
+	ok, _ := c.rules.Decide(c.ctx, base, rules.Subject{Kind: kind, Name: name, Def: def, Server: c.server, Caller: c.caller, Client: c.client, Route: c.route})
+	return ok
+}
+
+// allowsURI decides a resource read: an allowed resource, or an allowed
+// template whose literal prefix matches.
+func (c *cutter) allowsURI(uri string, def any) bool {
+	if c.allows(store.KindResource, uri, def) {
+		return true
+	}
+	tpls, ok := c.srv.Selection[store.SelTemplates]
+	if !ok {
+		return c.broken == nil
+	}
+	for _, tpl := range tpls {
+		prefix := tpl
+		if i := strings.IndexByte(prefix, '{'); i >= 0 {
+			prefix = prefix[:i]
+		}
+		if prefix != "" && strings.HasPrefix(uri, prefix) && c.allows(store.KindTemplate, tpl, map[string]any{"uriTemplate": tpl}) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *cutter) tools(tools []*mcp.Tool) []*mcp.Tool {
+	out := make([]*mcp.Tool, 0, len(tools))
+	for _, t := range tools {
+		if c.allows(store.KindTool, t.Name, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// raw filters a cached JSON list by the exposure.
+func (c *cutter) raw(ns string, raw json.RawMessage) json.RawMessage {
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return json.RawMessage("[]")
+	}
+	kind, key := kindOf(ns), identityKey(ns)
+	out := make([]json.RawMessage, 0, len(items))
+	for _, it := range items {
+		var m map[string]any
+		if json.Unmarshal(it, &m) != nil {
+			continue
+		}
+		s, _ := m[key].(string)
+		if c.allows(kind, s, m) {
+			out = append(out, it)
+		}
+	}
+	b, _ := json.Marshal(out)
+	return b
+}
+
+// defOf finds an item's definition in a cached list, or a stub.
+func defOf(ns string, raw json.RawMessage, name string) any {
+	if it, ok := itemsOf(ns, raw)[name]; ok {
+		var m map[string]any
+		if json.Unmarshal(it, &m) == nil {
+			return m
+		}
+	}
+	return map[string]any{identityKey(ns): name}
+}
+
+// ---- the allow lists ----------------------------------------------------------
+
+// inList reports whether the entitlement's allow list for a kind names the
+// capability, or there is no list for that kind.
+func inList(srv *store.Server, kind, name string) bool {
 	list, ok := srv.Selection[store.SelectionKey(kind)]
 	if !ok {
 		return true
@@ -198,65 +387,6 @@ func allows(srv *store.Server, kind, name string) bool {
 		return matchesAny(list, name)
 	}
 	return contains(list, name)
-}
-
-// allowsURI reports whether a resource read is inside the exposure: an
-// allowed resource, or an allowed template whose literal prefix matches.
-func allowsURI(srv *store.Server, uri string) bool {
-	if allows(srv, store.KindResource, uri) {
-		return true
-	}
-	tpls, ok := srv.Selection[store.SelTemplates]
-	if !ok {
-		// Every template is allowed; any of the server's templates may match.
-		return true
-	}
-	for _, tpl := range tpls {
-		prefix := tpl
-		if i := strings.IndexByte(prefix, '{'); i >= 0 {
-			prefix = prefix[:i]
-		}
-		if prefix != "" && strings.HasPrefix(uri, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-func cutTools(srv *store.Server, tools []*mcp.Tool) []*mcp.Tool {
-	out := make([]*mcp.Tool, 0, len(tools))
-	for _, t := range tools {
-		if allows(srv, store.KindTool, t.Name) {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// cutRaw filters a cached JSON list by the exposure.
-func cutRaw(srv *store.Server, ns string, raw json.RawMessage) json.RawMessage {
-	var items []json.RawMessage
-	if json.Unmarshal(raw, &items) != nil {
-		return json.RawMessage("[]")
-	}
-	kind := kindOf(ns)
-	key := "name"
-	switch ns {
-	case cache.NSResources:
-		key = "uri"
-	case cache.NSTemplates:
-		key = "uriTemplate"
-	}
-	out := make([]json.RawMessage, 0, len(items))
-	for _, it := range items {
-		var m map[string]json.RawMessage
-		var s string
-		if json.Unmarshal(it, &m) == nil && json.Unmarshal(m[key], &s) == nil && allows(srv, kind, s) {
-			out = append(out, it)
-		}
-	}
-	b, _ := json.Marshal(out)
-	return b
 }
 
 func contains(xs []string, x string) bool {

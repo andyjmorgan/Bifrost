@@ -79,8 +79,15 @@ type Capability struct {
 	Kind        string
 	Name        string
 	Fingerprint string
+	Definition  json.RawMessage // the item as the server last sent it
 	FirstSeenAt time.Time
 	LastSeenAt  time.Time
+}
+
+// Seen is one observed item: its fingerprint and definition.
+type Seen struct {
+	Fingerprint string
+	Definition  json.RawMessage
 }
 
 const entCols = `id, org_id, server_id, slug, name, description, selection, policies, generation, created_at, updated_at`
@@ -324,14 +331,19 @@ func (p *Postgres) GetExposureBySlug(ctx context.Context, org, userID, role, slu
 // ---- catalog (what a server has been seen to offer) ----------------------------
 
 // ObserveCapabilities records what a server offered: new rows for anything
-// unseen, last_seen and fingerprint refreshed on the rest.
-func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error {
-	if len(names) == 0 {
+// unseen, last_seen, fingerprint and definition refreshed on the rest.
+func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, items map[string]Seen) error {
+	if len(items) == 0 {
 		return nil
 	}
-	for name, fp := range names {
-		if _, err := p.pool.Exec(ctx, `insert into server_capabilities (server_id, kind, name, fingerprint) values ($1,$2,$3,$4)
-			on conflict (server_id, kind, name) do update set last_seen_at=now(), fingerprint=excluded.fingerprint`, serverID, kind, name, fp); err != nil {
+	for name, it := range items {
+		def := it.Definition
+		if len(def) == 0 {
+			def = nil
+		}
+		if _, err := p.pool.Exec(ctx, `insert into server_capabilities (server_id, kind, name, fingerprint, definition) values ($1,$2,$3,$4,$5)
+			on conflict (server_id, kind, name) do update set last_seen_at=now(), fingerprint=excluded.fingerprint, definition=coalesce(excluded.definition, server_capabilities.definition)`,
+			serverID, kind, name, it.Fingerprint, def); err != nil {
 			return fmt.Errorf("store: %w", err)
 		}
 	}
@@ -340,7 +352,7 @@ func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, 
 
 // ListCapabilities returns what a server has been seen to offer, by kind and name.
 func (p *Postgres) ListCapabilities(ctx context.Context, org string, serverID uuid.UUID) ([]*Capability, error) {
-	rows, err := p.pool.Query(ctx, `select sc.server_id, sc.kind, sc.name, sc.fingerprint, sc.first_seen_at, sc.last_seen_at
+	rows, err := p.pool.Query(ctx, `select sc.server_id, sc.kind, sc.name, sc.fingerprint, sc.definition, sc.first_seen_at, sc.last_seen_at
 		from server_capabilities sc join servers s on s.id = sc.server_id where s.org_id=$1 and sc.server_id=$2
 		order by sc.kind, sc.name`, org, serverID)
 	if err != nil {
@@ -350,7 +362,7 @@ func (p *Postgres) ListCapabilities(ctx context.Context, org string, serverID uu
 	out := []*Capability{}
 	for rows.Next() {
 		var c Capability
-		if err := rows.Scan(&c.ServerID, &c.Kind, &c.Name, &c.Fingerprint, &c.FirstSeenAt, &c.LastSeenAt); err != nil {
+		if err := rows.Scan(&c.ServerID, &c.Kind, &c.Name, &c.Fingerprint, &c.Definition, &c.FirstSeenAt, &c.LastSeenAt); err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		out = append(out, &c)

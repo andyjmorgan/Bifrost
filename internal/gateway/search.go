@@ -163,7 +163,12 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 				if !hit {
 					g.observeTools(ctx, srv, e.tools)
 				}
-				e.tools = cutTools(srv, e.tools)
+				cut := g.cutterFor(ctx, srv, e.init)
+				if cut.broken != nil {
+					e.err = fmt.Errorf("rules do not compile: %w", cut.broken)
+				} else {
+					e.tools = cut.tools(e.tools)
+				}
 			}
 			if e.err != nil {
 				errType := "upstream"

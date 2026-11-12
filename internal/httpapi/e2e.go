@@ -32,21 +32,35 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	keyID, err := uuid.Parse(in.APIKeyID)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "apiKeyId is required")
-		return
-	}
-	if !c.IsAdmin() {
-		if k, err := a.store.GetAPIKey(r.Context(), c.OrgID, keyID); err != nil || k.CreatedBy != c.UserID {
-			writeErr(w, http.StatusNotFound, "api key not found")
+	// The call goes through the front door as the caller themselves (their
+	// own bearer token, forwarded) unless a key is named, in which case it
+	// goes as that key: an admin can see what a key sees.
+	headers := map[string]string{}
+	if in.APIKeyID == "" {
+		if h := r.Header.Get("Authorization"); h != "" {
+			headers["Authorization"] = h
+		}
+		if h := r.Header.Get("X-Dev-User"); h != "" {
+			headers["X-Dev-User"] = h
+		}
+	} else {
+		keyID, err := uuid.Parse(in.APIKeyID)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "apiKeyId must be a uuid")
 			return
 		}
-	}
-	secret, err := a.keys.Reveal(r.Context(), c.OrgID, keyID)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "api key not usable: "+err.Error())
-		return
+		if !c.IsAdmin() {
+			if k, err := a.store.GetAPIKey(r.Context(), c.OrgID, keyID); err != nil || k.CreatedBy != c.UserID {
+				writeErr(w, http.StatusNotFound, "api key not found")
+				return
+			}
+		}
+		secret, err := a.keys.Reveal(r.Context(), c.OrgID, keyID)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "api key not usable: "+err.Error())
+			return
+		}
+		headers["Authorization"] = "Bearer " + secret
 	}
 	endpoint := a.selfBase + "/mcp"
 	if route != "mux" {
@@ -99,7 +113,8 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	hc := &http.Client{Transport: &headerRT{base: http.DefaultTransport, headers: map[string]string{"Authorization": "Bearer " + secret, "X-Request-Id": reqID}}, Timeout: 60 * time.Second}
+	headers["X-Request-Id"] = reqID
+	hc := &http.Client{Transport: &headerRT{base: http.DefaultTransport, headers: headers}, Timeout: 60 * time.Second}
 	client := mcp.NewClient(&mcp.Implementation{Name: "bifrost-ui", Version: a.cfgDTO.Version}, &mcp.ClientOptions{
 		ProgressNotificationHandler: func(_ context.Context, n *mcp.ProgressNotificationClientRequest) {
 			emit("progress", map[string]any{"progress": n.Params.Progress, "total": n.Params.Total, "message": n.Params.Message})

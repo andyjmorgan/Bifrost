@@ -39,7 +39,7 @@ type Store interface {
 	GetExposureBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
 	ListExposuresWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
 	GetExposureBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
-	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error
+	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, items map[string]store.Seen) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
 }
@@ -58,6 +58,8 @@ type Gateway struct {
 	// one fetch per replica per cold key; writes are idempotent and guarded
 	// by the server's updated_at, so no cross-process lock is needed.
 	flights singleflight.Group
+	// rules caches each entitlement's compiled rules by generation.
+	rules sync.Map
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -120,6 +122,9 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 			caller := auth.CallerFrom(ctx)
 			if caller == nil {
 				return nil, &jsonrpc.Error{Code: -32001, Message: "unauthenticated"}
+			}
+			if sess, ok := req.GetSession().(*mcp.ServerSession); ok {
+				ctx = withClient(ctx, sess.InitializeParams())
 			}
 			switch method {
 			case "tools/list":
@@ -539,8 +544,14 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 		}
 		g.observeTools(ctx, srv, tools)
 	}
-	name = canonicalToolName(cutTools(srv, tools), name)
-	if !allows(srv, store.KindTool, name) {
+	var in cache.Init
+	if raw := cached[cache.NSInit]; raw != nil {
+		_ = json.Unmarshal(raw, &in)
+	}
+	cut := g.cutterFor(ctx, srv, in)
+	allowed := cut.tools(tools)
+	name = canonicalToolName(allowed, name)
+	if !containsTool(allowed, name) {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
 	}
 	audit.SetTarget(ctx, srv.ID, srv.Slug)
@@ -585,4 +596,13 @@ func upstreamError(srv *store.Server, err error) error {
 		code = -32012
 	}
 	return &jsonrpc.Error{Code: code, Message: fmt.Sprintf("upstream %s: %v", srv.Slug, err)}
+}
+
+func containsTool(tools []*mcp.Tool, name string) bool {
+	for _, t := range tools {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
 }
