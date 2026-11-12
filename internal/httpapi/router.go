@@ -142,7 +142,6 @@ func (a *API) Router() http.Handler {
 			r.Put("/servers/{id}/credential", a.putCredential)
 			r.Post("/servers/{id}/oauth/start", a.oauthStart)
 			r.Post("/servers/{id}/entitlements", a.createEntitlement)
-			r.Post("/servers/{id}/capabilities", a.setCapabilities)
 			r.Patch("/entitlements/{id}", a.updateEntitlement)
 			r.Delete("/entitlements/{id}", a.deleteEntitlement)
 			r.Put("/entitlements/{id}/grants", a.putGrants)

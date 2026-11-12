@@ -54,7 +54,8 @@ type Grant struct {
 	GrantedAt   time.Time
 }
 
-// Capability is one row of a server's ceiling.
+// Capability is one thing a server has been seen to offer: governance data
+// for the server page and the entitlement editor, never a filter.
 type Capability struct {
 	ServerID    uuid.UUID
 	Kind        string
@@ -62,7 +63,6 @@ type Capability struct {
 	Fingerprint string
 	FirstSeenAt time.Time
 	LastSeenAt  time.Time
-	ApprovedAt  *time.Time
 }
 
 const entCols = `id, org_id, server_id, slug, name, description, selection, policies, generation, created_at, updated_at`
@@ -231,8 +231,7 @@ func (p *Postgres) SetGrants(ctx context.Context, org string, id uuid.UUID, gran
 // and the server's live cache. The gateway only ever reaches a server
 // through one of these. A system caller (no user) holds nothing.
 const exposureSQL = `select s.id, s.org_id, e.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.created_at, s.updated_at,
-s.exclusive, s.ceiling_mode, s.ceiling_seeded, e.id, e.name, e.selection, e.policies, e.generation,
-coalesce((select jsonb_agg(sc.kind || ':' || sc.name) from server_capabilities sc where sc.server_id = s.id and sc.approved_at is not null), '[]'::jsonb),
+s.exclusive, e.id, e.name, e.selection, e.policies, e.generation,
 coalesce(jsonb_object_agg(c.ns, c.value) filter (where c.ns is not null), '{}'::jsonb)
 from entitlements e
 join servers s on s.id = e.server_id
@@ -244,9 +243,9 @@ and exists (select 1 from entitlement_grants g where g.entitlement_id = e.id
 
 func scanExposure(row pgx.Row) (*Server, CacheBundle, error) {
 	var s Server
-	var sel, approved, raw []byte
+	var sel, raw []byte
 	err := row.Scan(&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt,
-		&s.Exclusive, &s.CeilingMode, &s.CeilingSeeded, &s.EntitlementID, &s.EntitlementName, &sel, &s.Policies, &s.Generation, &approved, &raw)
+		&s.Exclusive, &s.EntitlementID, &s.EntitlementName, &sel, &s.Policies, &s.Generation, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -254,12 +253,6 @@ func scanExposure(row pgx.Row) (*Server, CacheBundle, error) {
 		return nil, nil, fmt.Errorf("store: %w", err)
 	}
 	_ = json.Unmarshal(sel, &s.Selection)
-	var names []string
-	_ = json.Unmarshal(approved, &names)
-	s.Approved = map[string]bool{}
-	for _, n := range names {
-		s.Approved[n] = true
-	}
 	b := CacheBundle{}
 	_ = json.Unmarshal(raw, &b)
 	return &s, b, nil
@@ -298,59 +291,28 @@ func (p *Postgres) GetExposureBySlug(ctx context.Context, org, userID, role, slu
 	return s, err
 }
 
-// ---- ceiling ------------------------------------------------------------------
+// ---- catalog (what a server has been seen to offer) ----------------------------
 
 // ObserveCapabilities records what a server offered: new rows for anything
-// unseen, last_seen bumped on the rest. The first time a kind is seen on a
-// server (its tools, then later perhaps its prompts) the whole batch is
-// approved, as is everything on a server in open mode; after that a new
-// capability of that kind waits for an admin.
-// It reports whether new rows were approved.
-func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) (bool, error) {
+// unseen, last_seen and fingerprint refreshed on the rest.
+func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error {
 	if len(names) == 0 {
-		return false, nil
+		return nil
 	}
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return false, fmt.Errorf("store: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	var mode string
-	var seeded bool
-	if err := tx.QueryRow(ctx, `select ceiling_mode, ceiling_seeded from servers where id=$1 for update`, serverID).Scan(&mode, &seeded); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, ErrNotFound
-		}
-		return false, fmt.Errorf("store: %w", err)
-	}
-	var seenKind bool
-	if err := tx.QueryRow(ctx, `select exists(select 1 from server_capabilities where server_id=$1 and kind=$2)`, serverID, kind).Scan(&seenKind); err != nil {
-		return false, fmt.Errorf("store: %w", err)
-	}
-	auto := mode == "open" || !seeded || !seenKind
 	for name, fp := range names {
-		if _, err := tx.Exec(ctx, `insert into server_capabilities (server_id, kind, name, fingerprint, approved_at)
-			values ($1,$2,$3,$4, case when $5 then now() end)
-			on conflict (server_id, kind, name) do update set last_seen_at=now(), fingerprint=excluded.fingerprint`, serverID, kind, name, fp, auto); err != nil {
-			return false, fmt.Errorf("store: %w", err)
+		if _, err := p.pool.Exec(ctx, `insert into server_capabilities (server_id, kind, name, fingerprint) values ($1,$2,$3,$4)
+			on conflict (server_id, kind, name) do update set last_seen_at=now(), fingerprint=excluded.fingerprint`, serverID, kind, name, fp); err != nil {
+			return fmt.Errorf("store: %w", err)
 		}
 	}
-	if !seeded {
-		if _, err := tx.Exec(ctx, `update servers set ceiling_seeded=true where id=$1`, serverID); err != nil {
-			return false, fmt.Errorf("store: %w", err)
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("store: %w", err)
-	}
-	return auto, nil
+	return nil
 }
 
-// ListCapabilities returns a server's ceiling rows, pending first.
+// ListCapabilities returns what a server has been seen to offer, by kind and name.
 func (p *Postgres) ListCapabilities(ctx context.Context, org string, serverID uuid.UUID) ([]*Capability, error) {
-	rows, err := p.pool.Query(ctx, `select sc.server_id, sc.kind, sc.name, sc.fingerprint, sc.first_seen_at, sc.last_seen_at, sc.approved_at
+	rows, err := p.pool.Query(ctx, `select sc.server_id, sc.kind, sc.name, sc.fingerprint, sc.first_seen_at, sc.last_seen_at
 		from server_capabilities sc join servers s on s.id = sc.server_id where s.org_id=$1 and sc.server_id=$2
-		order by (sc.approved_at is null) desc, sc.kind, sc.name`, org, serverID)
+		order by sc.kind, sc.name`, org, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -358,34 +320,10 @@ func (p *Postgres) ListCapabilities(ctx context.Context, org string, serverID uu
 	out := []*Capability{}
 	for rows.Next() {
 		var c Capability
-		if err := rows.Scan(&c.ServerID, &c.Kind, &c.Name, &c.Fingerprint, &c.FirstSeenAt, &c.LastSeenAt, &c.ApprovedAt); err != nil {
+		if err := rows.Scan(&c.ServerID, &c.Kind, &c.Name, &c.Fingerprint, &c.FirstSeenAt, &c.LastSeenAt); err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		out = append(out, &c)
 	}
 	return out, rows.Err()
-}
-
-// SetCapabilityApproval approves or revokes rows (all when names is nil).
-func (p *Postgres) SetCapabilityApproval(ctx context.Context, org string, serverID uuid.UUID, names []string, approve bool) error {
-	var exists bool
-	if err := p.pool.QueryRow(ctx, `select exists(select 1 from servers where org_id=$1 and id=$2)`, org, serverID).Scan(&exists); err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	if !exists {
-		return ErrNotFound
-	}
-	q := `update server_capabilities set approved_at = case when $2 then coalesce(approved_at, now()) end where server_id=$1`
-	args := []any{serverID, approve}
-	if names != nil {
-		q += ` and (kind || ':' || name) = any($3)`
-		args = append(args, names)
-	}
-	if _, err := p.pool.Exec(ctx, q, args...); err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	if _, err := p.pool.Exec(ctx, `update servers set updated_at=now() where id=$1`, serverID); err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	return nil
 }

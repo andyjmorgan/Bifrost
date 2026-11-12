@@ -55,20 +55,13 @@ type EntitlementInput struct {
 	Policies    json.RawMessage  `json:"policies"`
 }
 
-// CapabilityDTO is one row of a server's ceiling.
+// CapabilityDTO is one thing a server has been seen to offer.
 type CapabilityDTO struct {
-	Kind        string     `json:"kind"`
-	Name        string     `json:"name"`
-	Fingerprint string     `json:"fingerprint,omitempty"`
-	FirstSeenAt time.Time  `json:"firstSeenAt"`
-	LastSeenAt  time.Time  `json:"lastSeenAt"`
-	ApprovedAt  *time.Time `json:"approvedAt,omitempty"`
-}
-
-// CapabilityInput approves or revokes ceiling rows; nil Names means all.
-type CapabilityInput struct {
-	Approve bool     `json:"approve"`
-	Names   []string `json:"names"` // "kind:name"
+	Kind        string    `json:"kind"`
+	Name        string    `json:"name"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	FirstSeenAt time.Time `json:"firstSeenAt"`
+	LastSeenAt  time.Time `json:"lastSeenAt"`
 }
 
 // ExposureDTO is one slug the caller holds: what the member portal shows.
@@ -84,7 +77,7 @@ type ExposureDTO struct {
 	Selection    store.Selection `json:"selection"`
 	Via          []string        `json:"via"` // "user" or "role:member"
 	Conflict     string          `json:"conflict,omitempty"`
-	Capabilities []string        `json:"capabilities"` // "kind:name" inside the ceiling and the selection
+	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and inside the selection
 }
 
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
@@ -300,8 +293,9 @@ func (a *API) putGrants(w http.ResponseWriter, r *http.Request) {
 	a.getEntitlement(w, r)
 }
 
-// ---- ceiling ------------------------------------------------------------------
+// ---- catalog --------------------------------------------------------------------
 
+// listCapabilities returns what a server has been seen to offer.
 func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 	s, ok := a.loadServer(w, r)
 	if !ok {
@@ -314,26 +308,9 @@ func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]CapabilityDTO, 0, len(caps))
 	for _, cp := range caps {
-		out = append(out, CapabilityDTO{Kind: cp.Kind, Name: cp.Name, Fingerprint: cp.Fingerprint, FirstSeenAt: cp.FirstSeenAt, LastSeenAt: cp.LastSeenAt, ApprovedAt: cp.ApprovedAt})
+		out = append(out, CapabilityDTO{Kind: cp.Kind, Name: cp.Name, Fingerprint: cp.Fingerprint, FirstSeenAt: cp.FirstSeenAt, LastSeenAt: cp.LastSeenAt})
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-func (a *API) setCapabilities(w http.ResponseWriter, r *http.Request) {
-	s, ok := a.loadServer(w, r)
-	if !ok {
-		return
-	}
-	var in CapabilityInput
-	if err := decode(r, &in); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := a.store.SetCapabilityApproval(r.Context(), s.OrgID, s.ID, in.Names, in.Approve); err != nil {
-		writeStoreErr(w, err)
-		return
-	}
-	a.listCapabilities(w, r)
 }
 
 // ---- the member portal ----------------------------------------------------------
@@ -370,10 +347,11 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 		if slugs := count[s.ID]; len(slugs) > 1 {
 			d.Conflict = "entitlements conflict: " + strings.Join(slugs, ", ") + " on an exclusive server"
 		}
-		for k := range s.Approved {
-			kind, name, _ := strings.Cut(k, ":")
-			if allowsKind(s, kind, name) {
-				d.Capabilities = append(d.Capabilities, k)
+		if caps, err := a.store.ListCapabilities(r.Context(), c.OrgID, s.ID); err == nil {
+			for _, cp := range caps {
+				if allowsKind(s, cp.Kind, cp.Name) {
+					d.Capabilities = append(d.Capabilities, cp.Kind+":"+cp.Name)
+				}
 			}
 		}
 		out = append(out, d)

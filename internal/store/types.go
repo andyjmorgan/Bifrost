@@ -41,18 +41,16 @@ const (
 
 // Server is a registered downstream MCP server.
 type Server struct {
-	ID            uuid.UUID
-	OrgID         string
-	Name          string
-	URL           string
-	Description   string
-	AuthKind      AuthKind
-	Enabled       bool
-	Exclusive     bool   // at most one entitlement per user on this server
-	CeilingMode   string // "approve": new capabilities wait; "open": approved as seen
-	CeilingSeeded bool   // the first observation has approved what was there
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID          uuid.UUID
+	OrgID       string
+	Name        string
+	URL         string
+	Description string
+	AuthKind    AuthKind
+	Enabled     bool
+	Exclusive   bool // at most one entitlement per user on this server
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 
 	// Exposure fields: set only when the server was reached through an
 	// entitlement (the gateway's view). A server is never addressed by a
@@ -63,7 +61,6 @@ type Server struct {
 	Selection       Selection
 	Policies        json.RawMessage
 	Generation      int
-	Approved        map[string]bool // ceiling: "kind:name" rows approved
 }
 
 // Credential is the non-secret view of a server's credential plus the

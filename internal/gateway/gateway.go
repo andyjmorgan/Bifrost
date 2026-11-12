@@ -39,7 +39,7 @@ type Store interface {
 	GetExposureBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
 	ListExposuresWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
 	GetExposureBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
-	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) (bool, error)
+	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, names map[string]string) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
 }

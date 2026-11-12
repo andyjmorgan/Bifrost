@@ -29,11 +29,11 @@ func isUnique(err error) bool {
 
 // ---- servers -----------------------------------------------------------
 
-const serverCols = `id, org_id, name, url, description, auth_kind, enabled, exclusive, ceiling_mode, ceiling_seeded, created_at, updated_at`
+const serverCols = `id, org_id, name, url, description, auth_kind, enabled, exclusive, created_at, updated_at`
 
 func scanServer(row pgx.Row) (*Server, error) {
 	var s Server
-	err := row.Scan(&s.ID, &s.OrgID, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.Exclusive, &s.CeilingMode, &s.CeilingSeeded, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.OrgID, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.Exclusive, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -45,11 +45,8 @@ func scanServer(row pgx.Row) (*Server, error) {
 
 // CreateServer inserts a server.
 func (p *Postgres) CreateServer(ctx context.Context, s *Server) error {
-	if s.CeilingMode == "" {
-		s.CeilingMode = "approve"
-	}
-	_, err := p.pool.Exec(ctx, `insert into servers (id, org_id, name, url, description, auth_kind, enabled, exclusive, ceiling_mode, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		s.ID, s.OrgID, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, s.Exclusive, s.CeilingMode, s.CreatedAt, s.UpdatedAt)
+	_, err := p.pool.Exec(ctx, `insert into servers (id, org_id, name, url, description, auth_kind, enabled, exclusive, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		s.ID, s.OrgID, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, s.Exclusive, s.CreatedAt, s.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -83,8 +80,8 @@ func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, er
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, exclusive=$8, ceiling_mode=$9, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
-		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind, s.Exclusive, s.CeilingMode).Scan(&s.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, exclusive=$8, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
+		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind, s.Exclusive).Scan(&s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}

@@ -27,15 +27,11 @@ func (a *API) withCredential(ctx context.Context, s *store.Server) ServerDTO {
 		c = nil
 	}
 	ents, _ := a.store.ListEntitlements(ctx, s.OrgID, &s.ID)
-	pending := 0
+	seen := 0
 	if caps, err := a.store.ListCapabilities(ctx, s.OrgID, s.ID); err == nil {
-		for _, cp := range caps {
-			if cp.ApprovedAt == nil {
-				pending++
-			}
-		}
+		seen = len(caps)
 	}
-	return serverDTO(a.publicBase, s, c, ents, pending)
+	return serverDTO(a.publicBase, s, c, ents, seen)
 }
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
@@ -283,13 +279,6 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Exclusive != nil {
 		s.Exclusive = *in.Exclusive
-	}
-	if in.CeilingMode != nil {
-		if *in.CeilingMode != "approve" && *in.CeilingMode != "open" {
-			writeErr(w, http.StatusBadRequest, "ceilingMode must be approve or open")
-			return
-		}
-		s.CeilingMode = *in.CeilingMode
 	}
 	if in.Enabled != nil {
 		s.Enabled = *in.Enabled

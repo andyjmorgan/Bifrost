@@ -16,8 +16,7 @@ type ServerDTO struct {
 	AuthKind     store.AuthKind      `json:"authKind"`
 	Enabled      bool                `json:"enabled"`
 	Exclusive    bool                `json:"exclusive"`
-	CeilingMode  string              `json:"ceilingMode"` // "approve" | "open"
-	Pending      int                 `json:"pending"`     // capabilities waiting for approval
+	Seen         int                 `json:"seen"` // capabilities the gateway has seen on it
 	CreatedAt    time.Time           `json:"createdAt"`
 	UpdatedAt    time.Time           `json:"updatedAt"`
 	Credential   *CredentialDTO      `json:"credential,omitempty"`
@@ -77,7 +76,6 @@ type UpdateServerInput struct {
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
 	Exclusive   *bool   `json:"exclusive,omitempty"`
-	CeilingMode *string `json:"ceilingMode,omitempty"`
 }
 
 // CreateServerResult adds the consent URL when OAuth needs the browser.
@@ -238,10 +236,10 @@ type ConfigDTO struct {
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
-func serverDTO(base string, s *store.Server, c *store.Credential, ents []*store.Entitlement, pending int) ServerDTO {
+func serverDTO(base string, s *store.Server, c *store.Credential, ents []*store.Entitlement, seen int) ServerDTO {
 	d := ServerDTO{
 		ID: s.ID.String(), Name: s.Name, URL: s.URL, Description: s.Description,
-		AuthKind: s.AuthKind, Enabled: s.Enabled, Exclusive: s.Exclusive, CeilingMode: s.CeilingMode, Pending: pending,
+		AuthKind: s.AuthKind, Enabled: s.Enabled, Exclusive: s.Exclusive, Seen: seen,
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Entitlements: []EntitlementRefDTO{},
 	}
 	if c != nil {

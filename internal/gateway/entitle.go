@@ -18,11 +18,11 @@ import (
 )
 
 // Entitlements are the gateway's only way to a server. A caller holds some
-// entitlements; each is one slug on one server, cut to the server's
-// ceiling (what an admin has approved) and the entitlement's selection.
-// The same cut decides what is listed and what may be called, so a
-// capability that is not listed is also not callable, and a refused call
-// looks exactly like a call to something that does not exist.
+// entitlements; each is one slug on one server, cut to the entitlement's
+// selection. The same cut decides what is listed and what may be called, so
+// a capability that is not listed is also not callable, and a refused call
+// looks exactly like a call to something that does not exist. What a server
+// has been seen to offer is recorded as governance data, never as a filter.
 
 // exposures lists the entitlements the caller holds with the live cache of
 // the given namespaces. On a server marked exclusive a caller holding more
@@ -66,10 +66,11 @@ func (g *Gateway) exposure(ctx context.Context, caller *auth.Caller, slug string
 	return srv, bundle, nil
 }
 
-// ---- ceiling ------------------------------------------------------------------
+// ---- catalog --------------------------------------------------------------------
 
-// observe records what a server offered so the ceiling can show pending
-// capabilities. Called only after an upstream fetch, never on a cache hit.
+// observe records what a server offered, for the server page and the
+// entitlement editor. Called only after an upstream fetch, never on a cache
+// hit. Bookkeeping: a failure must not fail the listing.
 func (g *Gateway) observeTools(ctx context.Context, srv *store.Server, tools []*mcp.Tool) {
 	names := make(map[string]string, len(tools))
 	for _, t := range tools {
@@ -91,24 +92,10 @@ func (g *Gateway) observe(ctx context.Context, srv *store.Server, kind string, n
 	if len(names) == 0 {
 		return
 	}
-	// The ceiling is bookkeeping; a failure must not fail the listing.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), g.conn.Timeout())
 	defer cancel()
-	approved, err := g.store.ObserveCapabilities(wctx, srv.ID, kind, names)
-	if err != nil {
-		g.log.Warn("ceiling: observe failed", "server", srv.Name, "kind", kind, "err", err)
-		return
-	}
-	// A first observation of a kind approves everything it saw; reflect that
-	// on this request's view so a freshly added server lists at once.
-	if approved {
-		if srv.Approved == nil {
-			srv.Approved = map[string]bool{}
-		}
-		for n := range names {
-			srv.Approved[kind+":"+n] = true
-		}
-		srv.CeilingSeeded = true
+	if err := g.store.ObserveCapabilities(wctx, srv.ID, kind, names); err != nil {
+		g.log.Warn("catalog: observe failed", "server", srv.Name, "kind", kind, "err", err)
 	}
 }
 
@@ -157,11 +144,8 @@ func namesOf(ns string, raw json.RawMessage) []string {
 // ---- the cut --------------------------------------------------------------------
 
 // allows reports whether an exposure exposes one capability: inside the
-// ceiling and inside the entitlement's selection.
+// entitlement's selection.
 func allows(srv *store.Server, kind, name string) bool {
-	if !srv.Approved[kind+":"+name] {
-		return false
-	}
 	sel := srv.Selection
 	if sel.All {
 		return true
@@ -179,18 +163,14 @@ func allows(srv *store.Server, kind, name string) bool {
 	return false
 }
 
-// allowsURI reports whether a resource read is inside the exposure: an
-// approved, selected resource, or an approved, selected template whose
-// literal prefix matches.
+// allowsURI reports whether a resource read is inside the exposure: a
+// selected resource pattern, or a selected template whose literal prefix
+// matches. With selection.all everything the server serves is in.
 func allowsURI(srv *store.Server, uri string) bool {
-	if allows(srv, store.KindResource, uri) {
+	if srv.Selection.All || allows(srv, store.KindResource, uri) {
 		return true
 	}
-	for k := range srv.Approved {
-		tpl, ok := strings.CutPrefix(k, store.KindTemplate+":")
-		if !ok || !allows(srv, store.KindTemplate, tpl) {
-			continue
-		}
+	for _, tpl := range srv.Selection.Templates {
 		prefix := tpl
 		if i := strings.IndexByte(prefix, '{'); i >= 0 {
 			prefix = prefix[:i]
