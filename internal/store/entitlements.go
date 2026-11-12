@@ -19,15 +19,33 @@ const (
 	KindTemplate = "template"
 )
 
-// Selection is what an entitlement exposes of its server, inside the
-// ceiling. All means everything; otherwise the named capabilities. Resource
-// entries are URI patterns (glob with * and **), templates are URI templates.
-type Selection struct {
-	All       bool     `json:"all,omitempty"`
-	Tools     []string `json:"tools,omitempty"`
-	Prompts   []string `json:"prompts,omitempty"`
-	Resources []string `json:"resources,omitempty"`
-	Templates []string `json:"templates,omitempty"`
+// Selection is the entitlement's allow lists, keyed by kind: "tools",
+// "prompts", "resources" (URI patterns: * within a segment, ** as a
+// prefix) and "templates". A key present means only what it names; a key
+// absent means everything of that kind. Advanced rules run after these.
+type Selection map[string][]string
+
+// Allow list keys.
+const (
+	SelTools     = "tools"
+	SelPrompts   = "prompts"
+	SelResources = "resources"
+	SelTemplates = "templates"
+)
+
+// Key maps a capability kind to its allow-list key.
+func SelectionKey(kind string) string {
+	switch kind {
+	case KindTool:
+		return SelTools
+	case KindPrompt:
+		return SelPrompts
+	case KindResource:
+		return SelResources
+	case KindTemplate:
+		return SelTemplates
+	}
+	return ""
 }
 
 // Entitlement is a named, grantable view of one server under its own slug.
@@ -78,6 +96,9 @@ func scanEntitlement(row pgx.Row) (*Entitlement, error) {
 		return nil, fmt.Errorf("store: %w", err)
 	}
 	_ = json.Unmarshal(sel, &e.Selection)
+	if e.Selection == nil {
+		e.Selection = Selection{}
+	}
 	if len(e.Policies) == 0 {
 		e.Policies = json.RawMessage("[]")
 	}
@@ -86,6 +107,9 @@ func scanEntitlement(row pgx.Row) (*Entitlement, error) {
 
 // CreateEntitlement inserts; ErrConflict when the slug is taken in the org.
 func (p *Postgres) CreateEntitlement(ctx context.Context, e *Entitlement) error {
+	if e.Selection == nil {
+		e.Selection = Selection{}
+	}
 	sel, _ := json.Marshal(e.Selection)
 	if len(e.Policies) == 0 {
 		e.Policies = json.RawMessage("[]")
@@ -105,6 +129,9 @@ func (p *Postgres) CreateEntitlement(ctx context.Context, e *Entitlement) error 
 // UpdateEntitlement writes name, description, selection and policies (not
 // the slug) and bumps the generation.
 func (p *Postgres) UpdateEntitlement(ctx context.Context, e *Entitlement) error {
+	if e.Selection == nil {
+		e.Selection = Selection{}
+	}
 	sel, _ := json.Marshal(e.Selection)
 	if len(e.Policies) == 0 {
 		e.Policies = json.RawMessage("[]")
@@ -253,6 +280,9 @@ func scanExposure(row pgx.Row) (*Server, CacheBundle, error) {
 		return nil, nil, fmt.Errorf("store: %w", err)
 	}
 	_ = json.Unmarshal(sel, &s.Selection)
+	if s.Selection == nil {
+		s.Selection = Selection{}
+	}
 	b := CacheBundle{}
 	_ = json.Unmarshal(raw, &b)
 	return &s, b, nil

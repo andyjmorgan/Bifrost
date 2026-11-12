@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/andyjmorgan/Bifrost/internal/auth"
@@ -24,13 +26,46 @@ import (
 // looks exactly like a call to something that does not exist. What a server
 // has been seen to offer is recorded as governance data, never as a filter.
 
+type slugsKey struct{}
+
+// withSlugs records a ?slugs=a,b,c narrowing of the mux route.
+func withSlugs(ctx context.Context, raw string) context.Context {
+	var out []string
+	for _, s := range strings.Split(raw, ",") {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, slugsKey{}, out)
+}
+
 // exposures lists the entitlements the caller holds with the live cache of
-// the given namespaces. On a server marked exclusive a caller holding more
-// than one entitlement gets none of them; those come back as conflicts.
+// the given namespaces, narrowed to ?slugs= when the mux was called with
+// it; a slug named there that the caller does not hold is an error rather
+// than a silent gap, so a configuration mistake shows. On a server marked
+// exclusive a caller holding more than one entitlement gets none of them;
+// those come back as conflicts.
 func (g *Gateway) exposures(ctx context.Context, caller *auth.Caller, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, map[uuid.UUID]error, error) {
 	servers, cached, err := g.store.ListExposuresWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), ns...)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if want, ok := ctx.Value(slugsKey{}).([]string); ok {
+		held := map[string]*store.Server{}
+		for _, s := range servers {
+			held[s.Slug] = s
+		}
+		servers = servers[:0:0]
+		for _, w := range want {
+			s, ok := held[w]
+			if !ok {
+				return nil, nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown slug " + w}
+			}
+			servers = append(servers, s)
+		}
 	}
 	bySrv := map[uuid.UUID][]string{}
 	for _, s := range servers {
@@ -45,6 +80,15 @@ func (g *Gateway) exposures(ctx context.Context, caller *auth.Caller, ns ...stri
 		}
 	}
 	return servers, cached, conflicts, nil
+}
+
+// rpcErr passes a JSON-RPC error through and wraps anything else as internal.
+func rpcErr(err error) error {
+	var je *jsonrpc.Error
+	if errors.As(err, &je) {
+		return je
+	}
+	return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 }
 
 // exposure resolves one slug the caller holds.
@@ -143,34 +187,31 @@ func namesOf(ns string, raw json.RawMessage) []string {
 
 // ---- the cut --------------------------------------------------------------------
 
-// allows reports whether an exposure exposes one capability: inside the
-// entitlement's selection.
+// allows reports whether an exposure exposes one capability: an allow list
+// for its kind that names it, or no allow list for its kind at all.
 func allows(srv *store.Server, kind, name string) bool {
-	sel := srv.Selection
-	if sel.All {
+	list, ok := srv.Selection[store.SelectionKey(kind)]
+	if !ok {
 		return true
 	}
-	switch kind {
-	case store.KindTool:
-		return contains(sel.Tools, name)
-	case store.KindPrompt:
-		return contains(sel.Prompts, name)
-	case store.KindResource:
-		return matchesAny(sel.Resources, name)
-	case store.KindTemplate:
-		return contains(sel.Templates, name)
+	if kind == store.KindResource {
+		return matchesAny(list, name)
 	}
-	return false
+	return contains(list, name)
 }
 
-// allowsURI reports whether a resource read is inside the exposure: a
-// selected resource pattern, or a selected template whose literal prefix
-// matches. With selection.all everything the server serves is in.
+// allowsURI reports whether a resource read is inside the exposure: an
+// allowed resource, or an allowed template whose literal prefix matches.
 func allowsURI(srv *store.Server, uri string) bool {
-	if srv.Selection.All || allows(srv, store.KindResource, uri) {
+	if allows(srv, store.KindResource, uri) {
 		return true
 	}
-	for _, tpl := range srv.Selection.Templates {
+	tpls, ok := srv.Selection[store.SelTemplates]
+	if !ok {
+		// Every template is allowed; any of the server's templates may match.
+		return true
+	}
+	for _, tpl := range tpls {
 		prefix := tpl
 		if i := strings.IndexByte(prefix, '{'); i >= 0 {
 			prefix = prefix[:i]

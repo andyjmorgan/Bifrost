@@ -107,6 +107,9 @@ func (g *Gateway) handler(route string) http.Handler {
 		if r.URL.Query().Get("search") == "true" {
 			ctx = withSearchMode(ctx)
 		}
+		if route == "mux" {
+			ctx = withSlugs(ctx, r.URL.Query().Get("slugs"))
+		}
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -189,7 +189,7 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 		var err error
 		servers, cached, conflicts, err = g.exposures(ctx, caller, ns, cache.NSInit)
 		if err != nil {
-			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
+			return nil, rpcErr(err)
 		}
 	}
 	var (

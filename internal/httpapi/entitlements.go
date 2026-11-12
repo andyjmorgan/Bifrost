@@ -175,7 +175,7 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	e := &store.Entitlement{ID: uuid.New(), OrgID: c.OrgID, ServerID: s.ID, Name: in.Name, Description: in.Description, Selection: store.Selection{All: true}, Policies: in.Policies}
+	e := &store.Entitlement{ID: uuid.New(), OrgID: c.OrgID, ServerID: s.ID, Name: in.Name, Description: in.Description, Selection: store.Selection{}, Policies: in.Policies}
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
@@ -359,29 +359,17 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// allowsKind mirrors the gateway's cut for the portal listing.
+// allowsKind mirrors the gateway's cut for the portal listing (resources
+// by exact pattern match only; the gateway also matches globs).
 func allowsKind(s *store.Server, kind, name string) bool {
-	sel := s.Selection
-	if sel.All {
+	list, ok := s.Selection[store.SelectionKey(kind)]
+	if !ok {
 		return true
 	}
-	in := func(xs []string) bool {
-		for _, x := range xs {
-			if x == name {
-				return true
-			}
+	for _, x := range list {
+		if x == name {
+			return true
 		}
-		return false
-	}
-	switch kind {
-	case store.KindTool:
-		return in(sel.Tools)
-	case store.KindPrompt:
-		return in(sel.Prompts)
-	case store.KindResource:
-		return in(sel.Resources)
-	case store.KindTemplate:
-		return in(sel.Templates)
 	}
 	return false
 }

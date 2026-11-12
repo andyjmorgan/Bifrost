@@ -113,7 +113,7 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 	// A server is only reachable through an entitlement, so every new server
 	// gets a default one, everything it offers, held by the org's admins.
 	// The slug derives from the name; the tail is bumped until it is free.
-	ent := &store.Entitlement{ID: uuid.New(), OrgID: s.OrgID, ServerID: s.ID, Name: in.Name, Description: "Everything the server offers", Selection: store.Selection{All: true}}
+	ent := &store.Entitlement{ID: uuid.New(), OrgID: s.OrgID, ServerID: s.ID, Name: in.Name, Description: "Everything the server offers", Selection: store.Selection{}}
 	var created bool
 	slug.Candidates(slug.Base(in.Name), func(c string) bool {
 		ent.Slug = c

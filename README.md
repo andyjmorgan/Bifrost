@@ -14,7 +14,7 @@ agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth
 ## What it does
 
 - **Front door** on the Model Context Protocol, 2026-07-28 only. `/mcp` multiplexes every entitlement the caller holds (tool names are `slug__tool`); `/{slug}/mcp` is one entitlement, unprefixed. Downstream it speaks whatever version each server negotiates, from 2024-11-05 up.
-- **Entitlements** are the only way to a server. Each is a named view of one server under its own slug, cut to the server's ceiling (what an admin has approved) and the entitlement's selection of tools, prompts, resources and templates. The same cut decides what is listed and what can be called, so a refused call looks like a call to something that does not exist. A server can carry several entitlements (`atlassian` and `confluence-read` on one credential) and can be marked exclusive, in which case a caller holding two of its entitlements gets neither. Grants give a user or a role an entitlement; a caller holds the union.
+- **Entitlements** are the only way to a server. Each is a named view of one server under its own slug with allow lists for tools, prompts, resources and templates. The same lists decide what is listed and what can be called, so a refused call looks like a call to something that does not exist. A server can carry several entitlements (`atlassian` and `confluence-read` on one credential) and can be marked exclusive, in which case a caller holding two of its entitlements gets neither. Grants give a user or a role an entitlement; a caller holds the union on `/mcp`, narrowed with `?slugs=`.
 - **Credential registry** with three kinds: OAuth 2.1 (discovery from `WWW-Authenticate`, protected-resource and authorization-server metadata, client registration by Client ID Metadata Document first and Dynamic Client Registration as fallback, PKCE, refresh), HTTP Basic, and a static header such as `X-Api-Key` or `Authorization: Bearer`. Secrets are sealed with AES-256-GCM in Postgres.
 - **Credential middleware**: an `http.RoundTripper` chain on the upstream client adds the credential, refreshes OAuth tokens near expiry or on a 401, and marks a credential broken only when the token endpoint definitively rejects it. A background worker refreshes tokens that will expire before its next pass.
 - **Search mode**: append `?search=true` and the front door offers four small tools instead of every upstream tool: `tool_search` (BM25 over names, descriptions and schemas, with the connected servers described up front), `list_tools`, `get_tool_definition`, `execute_tool`, plus `refresh_services`. An agent's context stops scaling with the number of servers behind the gateway. The gateway's own tools declare an `outputSchema` and return the same JSON as `structuredContent` and as the text block, as the spec asks.
@@ -84,9 +84,9 @@ curl -X POST $BASE/api/v1/servers -H "Authorization: Bearer $KEY" -H 'Content-Ty
 
 A new server gets a default entitlement, everything it offers, held by the org's admins, under a slug derived from the name (lowercase `a-z0-9-`, 24 characters, collisions bump the tail). Slugs never change. For `auth.kind: oauth` the response carries an `authorizeUrl` to open in a browser; the gateway handles the callback. Write descriptions as capabilities, because search mode shows them to the model.
 
-## Entitlements and the ceiling
+## Entitlements
 
-The first time the gateway lists a server it records every capability it saw and approves it; after that a new tool, prompt or resource waits in the ceiling until an admin approves it (`ceilingMode: "approve"`), or is approved as seen (`"open"`). An entitlement selects inside the ceiling:
+An entitlement is a named view of one server under its own slug, with allow lists per kind and grants. A list present means only what it names; a list absent means everything of that kind. Resource entries are URI patterns (`*` within a segment, `**` as a prefix). The same lists decide what is listed and what can be called.
 
 ```sh
 curl -X POST $BASE/api/v1/servers/$ID/entitlements -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{
@@ -96,10 +96,9 @@ curl -X POST $BASE/api/v1/servers/$ID/entitlements -H "Authorization: Bearer $KE
 curl -X PUT $BASE/api/v1/entitlements/$EID/grants -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{
   "grants": [{"subjectType": "role", "subjectId": "member"}, {"subjectType": "user", "subjectId": "<keycloak subject>"}]
 }'
-curl -X POST $BASE/api/v1/servers/$ID/capabilities -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{"approve": true}'
 ```
 
-`selection.all` exposes everything approved. Resource entries are URI patterns (`*` within a segment, `**` as a prefix). Rules are subtractive: nothing in an entitlement can expose what the ceiling has not approved or what the credential cannot do. Call-time argument conditions and context conditions are the next layer and share the same engine; `policies` on the entitlement is reserved for them.
+`/mcp` is the union of every entitlement the caller holds; `/mcp?slugs=a,b` narrows it to named slugs, and a slug the caller does not hold is an error. A server marked exclusive refuses a caller holding two of its entitlements. What a server has been seen to offer is recorded under `/servers/{id}/capabilities` as governance data for the editor and the server page; it never filters. Advanced CEL rules will run after the allow lists, in order, and may enable or disable; `policies` on the entitlement is reserved for them.
 
 ## Design notes
 
