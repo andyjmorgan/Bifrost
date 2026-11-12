@@ -44,7 +44,7 @@ func (r Rule) enabled() bool { return r.Enabled == nil || *r.Enabled }
 // Policy is the stored object. Invert hides every tool before the rules run.
 type Policy struct {
 	ID          uuid.UUID `json:"id"`
-	OwnerID     string    `json:"-"`
+	OrgID       string    `json:"-"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Invert      bool      `json:"invert"`

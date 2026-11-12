@@ -1,13 +1,12 @@
-import { useOutletContext } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import { DefinitionList, Definition } from '../components/DefinitionList'
 import { Badge } from '../ui/components/badge'
 import { getConfig } from '../auth'
-import type { MeDTO } from '../api'
+import { useMe } from '../me'
 
 /** Identity only; anything manageable lives under its own nav entry. */
 export function ProfilePage() {
-  const { me } = useOutletContext<{ me: MeDTO | null }>()
+  const { me } = useMe()
   const cfg = getConfig()
   return (
     <div className="space-y-6">
@@ -18,9 +17,20 @@ export function ProfilePage() {
         <Definition label="Subject" mono>
           {me?.subject || '—'}
         </Definition>
-        <Definition label="Owner" mono>
-          {me?.ownerId || '—'}
+        <Definition label="User ID" mono>
+          {me?.userId || '—'}
         </Definition>
+        <Definition label="Organisation">
+          {me ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{me.orgName}</span>
+              <Badge variant={me.personalOrg ? 'muted' : 'info'}>{me.personalOrg ? 'personal' : 'shared'}</Badge>
+            </span>
+          ) : (
+            '—'
+          )}
+        </Definition>
+        <Definition label="Role">{me?.role ? <Badge variant={me.role === 'admin' ? 'accent' : 'muted'}>{me.role}</Badge> : '—'}</Definition>
         <Definition label="Session type">{me?.type || '—'}</Definition>
         <Definition label="Scopes">
           <div className="flex flex-wrap gap-1">

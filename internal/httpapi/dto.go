@@ -108,6 +108,7 @@ type APIKeyDTO struct {
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
 	RevokedAt  *time.Time `json:"revokedAt,omitempty"`
+	CreatedBy  string     `json:"createdBy,omitempty"`
 }
 
 // CreateAPIKeyInput is the body of POST /api-keys.
@@ -199,14 +200,18 @@ type E2EResult struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-// MeDTO describes the caller.
+// MeDTO describes the caller and their standing in the active org.
 type MeDTO struct {
-	OwnerID string   `json:"ownerId"`
-	Subject string   `json:"subject"`
-	Type    string   `json:"type"`
-	Email   string   `json:"email,omitempty"`
-	Name    string   `json:"name,omitempty"`
-	Scopes  []string `json:"scopes"`
+	UserID      string   `json:"userId"`
+	OrgID       string   `json:"orgId"`
+	OrgName     string   `json:"orgName"`
+	PersonalOrg bool     `json:"personalOrg"`
+	Role        string   `json:"role"`
+	Subject     string   `json:"subject"`
+	Type        string   `json:"type"`
+	Email       string   `json:"email,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Scopes      []string `json:"scopes"`
 }
 
 // ConfigDTO is what the SPA needs before login.
@@ -246,7 +251,7 @@ func credentialDTO(c *store.Credential) *CredentialDTO {
 }
 
 func keyDTO(k *store.APIKey) APIKeyDTO {
-	return APIKeyDTO{ID: k.ID.String(), Name: k.Name, Prefix: k.Prefix, Scopes: k.Scopes, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt}
+	return APIKeyDTO{ID: k.ID.String(), Name: k.Name, Prefix: k.Prefix, Scopes: k.Scopes, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt, CreatedBy: k.CreatedBy}
 }
 
 func auditDTO(e *store.AuditEvent) AuditEventDTO {

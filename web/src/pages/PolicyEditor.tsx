@@ -16,6 +16,7 @@ import { MUX, PolicyPreview } from '../components/policies/Preview'
 import { CelEditor, type CelCompletionData } from '../components/policies/CelEditor'
 import { ApiError, api, errorMessage, problemsOf, type PolicyDTO, type PolicyField, type PolicyInput, type PolicyProblem, type PolicyRule, type ServerDTO } from '../api'
 import { cn } from '../lib'
+import { useMe } from '../me'
 
 // Served by GET /policies/fields; this copy only fills in if that call fails.
 const FALLBACK_FIELDS: PolicyField[] = [
@@ -101,6 +102,7 @@ export function PolicyEditorPage() {
 
 function PolicyEditor({ id }: { id: string }) {
   const navigate = useNavigate()
+  const { isAdmin } = useMe()
   const isNew = id === 'new'
   const [policy, setPolicy] = useState<PolicyDTO>()
   const [loaded, setLoaded] = useState(isNew)
@@ -272,11 +274,15 @@ function PolicyEditor({ id }: { id: string }) {
         title={isNew ? 'New policy' : policy?.name || 'Policy'}
         description="Rules run top to bottom. A matching rule applies its assignments before the next rule sees the tool."
         actions={
-          <Button variant="primary" onClick={save} disabled={saving}>
-            <Save /> {saving ? 'Saving…' : isNew ? 'Create policy' : 'Save'}
-          </Button>
+          isAdmin ? (
+            <Button variant="primary" onClick={save} disabled={saving}>
+              <Save /> {saving ? 'Saving…' : isNew ? 'Create policy' : 'Save'}
+            </Button>
+          ) : undefined
         }
       />
+
+      {!isAdmin && <Callout tone="info">Read-only. Only admins of this org can change policies; edits here are not saved.</Callout>}
 
       {saveError && <Callout tone="danger">{saveError}</Callout>}
 
@@ -337,9 +343,11 @@ function PolicyEditor({ id }: { id: string }) {
               </Badge>
             )}
           </span>
-          <Button variant="secondary" size="sm" onClick={addRule}>
-            <Plus /> Add rule
-          </Button>
+          {isAdmin && (
+            <Button variant="secondary" size="sm" onClick={addRule}>
+              <Plus /> Add rule
+            </Button>
+          )}
         </ListBar>
         {index.general.length > 0 && (
           <div className="border-b border-border p-5">
@@ -358,9 +366,11 @@ function PolicyEditor({ id }: { id: string }) {
             title="No rules yet"
             hint={invert ? 'Starting hidden with no rules hides every tool.' : 'A policy with no rules changes nothing.'}
             action={
-              <Button variant="secondary" onClick={addRule}>
-                <Plus /> Add rule
-              </Button>
+              isAdmin ? (
+                <Button variant="secondary" onClick={addRule}>
+                  <Plus /> Add rule
+                </Button>
+              ) : undefined
             }
           />
         ) : (

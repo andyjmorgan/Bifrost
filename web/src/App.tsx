@@ -1,10 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AppLayout } from './components/AppLayout'
-import { DEFAULT_ROUTE, isAuthed, subscribeAuth } from './auth'
+import { DEFAULT_ROUTE, isAuthed, rememberReturnTo, subscribeAuth } from './auth'
 import { useTheme } from './theme'
 import { api, type MeDTO } from './api'
+import { MeContext, meValue } from './me'
 import { LoginPage } from './pages/Login'
 import { AuthCallbackPage } from './pages/AuthCallback'
 import { ServersPage } from './pages/Servers'
@@ -15,25 +16,53 @@ import { PoliciesPage } from './pages/Policies'
 import { PolicyEditorPage } from './pages/PolicyEditor'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
+import { MembersPage } from './pages/Members'
+import { JoinPage } from './pages/Join'
 
 function useAuthed(): boolean {
   return useSyncExternalStore(subscribeAuth, isAuthed, () => false)
 }
 
-// The signed-in shell: gated, loads the caller, and renders the app chrome around the active route.
-// An unauthenticated visit bounces to the sign-in screen remembering where it was headed.
-function AppShell() {
-  const [me, setMe] = useState<MeDTO | null>(null)
+// Gate: an unauthenticated visit bounces to the sign-in screen remembering where it was headed,
+// both in router state and in sessionStorage (so /join/<token> survives the IdP round-trip).
+function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
   const authed = useAuthed()
+  if (!authed) {
+    const from = location.pathname + location.search
+    rememberReturnTo(from)
+    return <Navigate to="/" replace state={{ from }} />
+  }
+  return <>{children}</>
+}
+
+// The signed-in shell: loads the caller and renders the app chrome around the active route.
+function AppShell() {
+  const [me, setMe] = useState<MeDTO | null>(null)
+  const authed = useAuthed()
+  const refreshMe = useCallback(
+    () =>
+      api
+        .me()
+        .then((m) => {
+          setMe(m)
+          return m
+        })
+        .catch(() => null),
+    [],
+  )
   useEffect(() => {
-    if (authed) api.me().then(setMe).catch(() => {})
-  }, [authed])
-  if (!authed) return <Navigate to="/" replace state={{ from: location.pathname + location.search }} />
+    if (authed) void refreshMe()
+  }, [authed, refreshMe])
+  const value = useMemo(() => meValue(me, refreshMe), [me, refreshMe])
   return (
-    <AppLayout me={me}>
-      <Outlet context={{ me }} />
-    </AppLayout>
+    <RequireAuth>
+      <MeContext.Provider value={value}>
+        <AppLayout>
+          <Outlet />
+        </AppLayout>
+      </MeContext.Provider>
+    </RequireAuth>
   )
 }
 
@@ -50,6 +79,14 @@ export function App() {
       <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route
+          path="/join/:token"
+          element={
+            <RequireAuth>
+              <JoinPage />
+            </RequireAuth>
+          }
+        />
         <Route element={<AppShell />}>
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:id" element={<ServerDetailPage />} />
@@ -58,6 +95,7 @@ export function App() {
           <Route path="/policies/:id" element={<PolicyEditorPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/members" element={<MembersPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

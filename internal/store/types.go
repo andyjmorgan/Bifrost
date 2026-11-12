@@ -41,7 +41,7 @@ const (
 // Server is a registered downstream MCP server.
 type Server struct {
 	ID          uuid.UUID
-	OwnerID     string
+	OrgID       string
 	Slug        string
 	Name        string
 	URL         string
@@ -93,7 +93,7 @@ type Secret struct {
 // OAuthState is a pending authorization-code round trip.
 type OAuthState struct {
 	State        string
-	OwnerID      string
+	OrgID        string
 	ServerID     uuid.UUID
 	CodeVerifier string
 	ReturnTo     string
@@ -104,7 +104,7 @@ type OAuthState struct {
 // sealed so the owner can drive end-to-end tests through the front door.
 type APIKey struct {
 	ID         uuid.UUID
-	OwnerID    string
+	OrgID      string
 	Name       string
 	Prefix     string
 	SecretHash []byte
@@ -113,6 +113,7 @@ type APIKey struct {
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
+	CreatedBy  string // user id the key acts as; "" on legacy keys until the org is claimed
 }
 
 // Hop says which side of the gateway an audit event describes.
@@ -139,7 +140,7 @@ const (
 // AuditEvent is one HTTP exchange, inbound or upstream.
 type AuditEvent struct {
 	ID              uuid.UUID
-	OwnerID         string
+	OrgID           string
 	CreatedAt       time.Time
 	Hop             Hop
 	ParentID        *uuid.UUID
@@ -177,7 +178,7 @@ type AuditPayload struct {
 
 // AuditQuery filters a listing.
 type AuditQuery struct {
-	OwnerID   string
+	OrgID     string
 	Offset    int
 	Limit     int
 	ServerID  *uuid.UUID

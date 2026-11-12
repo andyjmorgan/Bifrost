@@ -78,7 +78,7 @@ func (o *OIDC) Verify(ctx context.Context, raw string, extraAudiences ...string)
 		subject = c.PreferredUsername
 	}
 	return &Caller{
-		OwnerID: tok.Subject, Subject: subject, Type: ActorOIDC,
+		UserID: tok.Subject, Subject: subject, Type: ActorOIDC,
 		Scopes: strings.Fields(c.Scope), Email: c.Email, Name: c.Name,
 	}, nil
 }

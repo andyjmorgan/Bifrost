@@ -21,6 +21,10 @@ import type {
   ListResourceTemplatesResult,
   ReadResourceResult,
   MeDTO,
+  InviteDTO,
+  InvitePreviewDTO,
+  OrgDTO,
+  OrgRole,
   OAuthStartInput,
   OAuthStartResult,
   PageDTO,
@@ -77,6 +81,23 @@ async function e2eStream<T>(path: string, input: E2EInput, onEvent?: E2EEventHan
 
 export const api = {
   me: () => http.get<MeDTO>('/me'),
+
+  org: {
+    get: () => http.get<OrgDTO>('/org'),
+    rename: (name: string) => http.patch<OrgDTO>('/org', { name }),
+    join: (token: string) => http.post<OrgDTO>('/org/join', { token }),
+    leave: () => http.post<OrgDTO>('/org/leave'),
+    switch: (orgId: string) => http.post<OrgDTO>('/org/switch', { orgId }),
+    setRole: (userId: string, role: OrgRole) => http.patch<OrgDTO>(`/org/members/${encodeURIComponent(userId)}`, { role }),
+    /** OrgDTO, or undefined (204) when an admin removed themselves and is now in their personal org. */
+    removeMember: (userId: string) => http.delete<OrgDTO | undefined>(`/org/members/${encodeURIComponent(userId)}`),
+    invites: {
+      list: () => http.get<InviteDTO[]>('/org/invites'),
+      create: (role: OrgRole = 'member') => http.post<InviteDTO>('/org/invites', { role }),
+      revoke: (id: string) => http.delete(`/org/invites/${encodeURIComponent(id)}`),
+      preview: (token: string) => http.get<InvitePreviewDTO>(`/org/invites/${encodeURIComponent(token)}`),
+    },
+  },
 
   servers: {
     list: () => http.get<ServerDTO[]>('/servers'),

@@ -352,7 +352,7 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 				e.StatusCode = http.StatusOK
 			}
 			if caller != nil {
-				e.OwnerID = caller.OwnerID
+				e.OrgID = caller.OrgID
 				e.ActorType = string(caller.Type)
 				e.ActorSubject = caller.Subject
 				e.APIKeyID = caller.APIKeyID
@@ -376,10 +376,10 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 					e.ErrorType = "jsonrpc_error"
 				}
 			}
-			if e.OwnerID == "" {
+			if e.OrgID == "" {
 				// Unauthenticated hits have no tenant; keep them under a sentinel so
 				// denied attempts remain visible to operators.
-				e.OwnerID = "-"
+				e.OrgID = "-"
 			}
 			var payload *store.AuditPayload
 			if withPayload {
@@ -424,7 +424,7 @@ func (r *Recorder) RecordSkipped(ctx context.Context, srv *store.Server, route, 
 		CreatedAt: time.Now(), Hop: store.HopUpstream, ParentID: inboundID(ctx), Route: route,
 		HTTPMethod: http.MethodPost, Path: srv.URL, McpMethod: method, StatusCode: 0,
 		Outcome: store.OutcomeError, ErrorType: errType, RequestID: RequestID(ctx),
-		ActorType: string(auth.ActorSystem), Slug: srv.Slug, OwnerID: srv.OwnerID,
+		ActorType: string(auth.ActorSystem), Slug: srv.Slug, OrgID: srv.OrgID,
 	}
 	id := srv.ID
 	e.ServerID = &id
@@ -472,14 +472,14 @@ func (t *auditTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		CreatedAt: start, Hop: store.HopUpstream, ParentID: inboundID(ctx), Route: target.Route,
 		HTTPMethod: req.Method, Path: req.URL.String(), McpMethod: info.Method, ToolName: info.ToolName,
 		JSONRPCID: info.ID, ProtocolVersion: info.ProtocolVersion, RequestBytes: int64(len(reqBody)),
-		RequestID: RequestID(ctx), ActorType: string(auth.ActorSystem), Slug: target.Slug, OwnerID: "-",
+		RequestID: RequestID(ctx), ActorType: string(auth.ActorSystem), Slug: target.Slug, OrgID: "-",
 	}
 	if target.ServerID != uuid.Nil {
 		id := target.ServerID
 		e.ServerID = &id
 	}
 	if caller != nil {
-		e.OwnerID = caller.OwnerID
+		e.OrgID = caller.OrgID
 		e.ActorType = string(caller.Type)
 		e.ActorSubject = caller.Subject
 		e.APIKeyID = caller.APIKeyID

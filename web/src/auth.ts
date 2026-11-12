@@ -78,6 +78,19 @@ export function isAuthed(): boolean {
   return !!current && !current.expired
 }
 
+/**
+ * Remember where an unauthenticated visitor was headed (e.g. /join/<token>) so the sign-in
+ * round-trip lands back there even if the router state is lost on a reload of "/".
+ */
+export function rememberReturnTo(path: string): void {
+  if (!path.startsWith('/') || path.startsWith('/auth') || path === '/') return
+  try {
+    sessionStorage.setItem(RETURN_TO_KEY, path)
+  } catch {
+    // storage unavailable: the router state still carries it for this navigation
+  }
+}
+
 /** Begin the redirect to the IdP. `idpHint` is a Keycloak identity-provider alias. */
 export function login(returnTo?: string, idpHint?: string): void {
   if (!mgr) {

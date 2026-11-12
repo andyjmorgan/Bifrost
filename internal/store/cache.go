@@ -71,7 +71,7 @@ func (p *Postgres) CacheDelete(ctx context.Context, ns, key string) error {
 
 // CacheInvalidateOwner drops every cached entry for all of an owner's servers.
 func (p *Postgres) CacheInvalidateOwner(ctx context.Context, owner string) error {
-	if _, err := p.pool.Exec(ctx, `delete from cache where server_id in (select id from servers where owner_id=$1)`, owner); err != nil {
+	if _, err := p.pool.Exec(ctx, `delete from cache where server_id in (select id from servers where org_id=$1)`, owner); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil
@@ -98,7 +98,7 @@ func (p *Postgres) CacheInvalidateServer(ctx context.Context, serverID uuid.UUID
 // CacheBundle is a server's live cache entries keyed by namespace.
 type CacheBundle map[string]json.RawMessage
 
-const serverWithCacheSQL = `select s.id, s.owner_id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.created_at, s.updated_at,
+const serverWithCacheSQL = `select s.id, s.org_id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.created_at, s.updated_at,
 coalesce(jsonb_object_agg(c.ns, c.value) filter (where c.ns is not null), '{}'::jsonb)
 from servers s
 left join cache c on c.server_id = s.id and c.ns = any($2) and c.expires_at > now()
@@ -107,7 +107,7 @@ left join cache c on c.server_id = s.id and c.ns = any($2) and c.expires_at > no
 func scanServerWithCache(row pgx.Row) (*Server, CacheBundle, error) {
 	var s Server
 	var raw []byte
-	err := row.Scan(&s.ID, &s.OwnerID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt, &raw)
+	err := row.Scan(&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -122,7 +122,7 @@ func scanServerWithCache(row pgx.Row) (*Server, CacheBundle, error) {
 // ListServersWithCache returns an owner's servers (oldest first) and, per
 // server, its live cache entries in the given namespaces, from one query.
 func (p *Postgres) ListServersWithCache(ctx context.Context, owner string, ns ...string) ([]*Server, map[uuid.UUID]CacheBundle, error) {
-	rows, err := p.pool.Query(ctx, serverWithCacheSQL+`where s.owner_id=$1 group by s.id order by s.created_at`, owner, ns)
+	rows, err := p.pool.Query(ctx, serverWithCacheSQL+`where s.org_id=$1 group by s.id order by s.created_at`, owner, ns)
 	if err != nil {
 		return nil, nil, fmt.Errorf("store: %w", err)
 	}
@@ -144,5 +144,5 @@ func (p *Postgres) ListServersWithCache(ctx context.Context, owner string, ns ..
 // live cache entries in the given namespaces. One indexed join, no second
 // round trip on the hot path.
 func (p *Postgres) GetServerBySlugWithCache(ctx context.Context, owner, slug string, ns ...string) (*Server, CacheBundle, error) {
-	return scanServerWithCache(p.pool.QueryRow(ctx, serverWithCacheSQL+`where s.owner_id=$1 and s.slug=$3 group by s.id`, owner, ns, slug))
+	return scanServerWithCache(p.pool.QueryRow(ctx, serverWithCacheSQL+`where s.org_id=$1 and s.slug=$3 group by s.id`, owner, ns, slug))
 }

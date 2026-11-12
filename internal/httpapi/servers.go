@@ -31,7 +31,7 @@ func (a *API) withCredential(ctx context.Context, s *store.Server) ServerDTO {
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
 	caller := auth.CallerFrom(r.Context())
-	servers, err := a.store.ListServers(r.Context(), caller.OwnerID)
+	servers, err := a.store.ListServers(r.Context(), caller.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -58,7 +58,7 @@ func (a *API) loadServer(w http.ResponseWriter, r *http.Request) (*store.Server,
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return nil, false
 	}
-	s, err := a.store.GetServer(r.Context(), caller.OwnerID, id)
+	s, err := a.store.GetServer(r.Context(), caller.OrgID, id)
 	if err != nil {
 		writeStoreErr(w, err)
 		return nil, false
@@ -99,7 +99,7 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	s := &store.Server{ID: uuid.New(), OwnerID: caller.OwnerID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true, CreatedAt: now, UpdatedAt: now}
+	s := &store.Server{ID: uuid.New(), OrgID: caller.OrgID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true, CreatedAt: now, UpdatedAt: now}
 
 	// Slug: derive from the name, bump the tail until the insert succeeds.
 	var created bool
@@ -174,7 +174,7 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (str
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
-	a.warmTools(ctx, s.OwnerID, s.ID)
+	a.warmTools(ctx, s.OrgID, s.ID)
 	return "", nil
 }
 
@@ -237,7 +237,7 @@ func (a *API) startOAuth(ctx context.Context, s *store.Server, scopeOverride []s
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
-	if err := a.store.PutOAuthState(ctx, &store.OAuthState{State: state, OwnerID: s.OwnerID, ServerID: s.ID, CodeVerifier: pkce.Verifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(15 * time.Minute)}); err != nil {
+	if err := a.store.PutOAuthState(ctx, &store.OAuthState{State: state, OrgID: s.OrgID, ServerID: s.ID, CodeVerifier: pkce.Verifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(15 * time.Minute)}); err != nil {
 		return "", err
 	}
 	return a.oauth.AuthorizeURL(d, reg, scopes, state, pkce), nil
@@ -276,7 +276,7 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	// Refetch with the new configuration rather than dropping the row: a
 	// delete would send every concurrent caller upstream at once, and a
 	// failed refetch should not take a working catalogue down with it.
-	a.warmTools(r.Context(), s.OwnerID, s.ID)
+	a.warmTools(r.Context(), s.OrgID, s.ID)
 	writeJSON(w, http.StatusOK, a.withCredential(r.Context(), s))
 }
 
@@ -285,7 +285,7 @@ func (a *API) deleteServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.store.DeleteServer(r.Context(), s.OwnerID, s.ID); err != nil {
+	if err := a.store.DeleteServer(r.Context(), s.OrgID, s.ID); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -412,7 +412,7 @@ func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		redirect("error", err.Error())
 		return
 	}
-	a.warmTools(r.Context(), st.OwnerID, st.ServerID)
+	a.warmTools(r.Context(), st.OrgID, st.ServerID)
 	redirect("ok", "")
 }
 

@@ -18,6 +18,7 @@ import { authKindBadge, authKindLabel, credentialStatus } from '../components/se
 import { api, errorMessage, type CreateServerResult, type DiscoverResult, type PingResult, type ServerDTO } from '../api'
 import { JsonTree, type Json } from '../components/PayloadViewer'
 import { absoluteTime, relativeTime } from '../lib'
+import { useMe } from '../me'
 
 function Time({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>
@@ -31,6 +32,7 @@ function Time({ value }: { value?: string | null }) {
 export function ServerDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const { isAdmin } = useMe()
   const [params, setParams] = useSearchParams()
   const [server, setServer] = useState<ServerDTO>()
   const [error, setError] = useState<string>()
@@ -185,12 +187,16 @@ export function ServerDetailPage() {
             <Button variant="secondary" onClick={doDiscover} disabled={discovering}>
               <Telescope /> {discovering ? 'Discovering…' : 'Discover'}
             </Button>
-            <Button variant="secondary" onClick={() => setEditing(true)}>
-              <Pencil /> Edit
-            </Button>
-            <Button variant="danger" onClick={() => setDeleting(true)}>
-              <Trash2 /> Delete
-            </Button>
+            {isAdmin && (
+              <>
+                <Button variant="secondary" onClick={() => setEditing(true)}>
+                  <Pencil /> Edit
+                </Button>
+                <Button variant="danger" onClick={() => setDeleting(true)}>
+                  <Trash2 /> Delete
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -208,7 +214,7 @@ export function ServerDetailPage() {
       <DefinitionList>
         <Definition label="Enabled">
           <div className="flex items-center gap-3">
-            <Switch checked={server.enabled} onCheckedChange={toggleEnabled} aria-label="Enabled" />
+            <Switch checked={server.enabled} disabled={!isAdmin} onCheckedChange={toggleEnabled} aria-label="Enabled" />
             <span className="text-xs text-muted-foreground">{server.enabled ? 'Reachable through the gateway' : 'Hidden from the mux and direct routes'}</span>
           </div>
         </Definition>
@@ -228,12 +234,12 @@ export function ServerDetailPage() {
             </Badge>
             <StatusPill tone={status.tone}>{status.label}</StatusPill>
             <CredentialSummary cred={cred} />
-            {server.authKind !== 'none' && (
+            {isAdmin && server.authKind !== 'none' && (
               <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
                 <KeyRound /> Replace
               </Button>
             )}
-            {oauth && (
+            {isAdmin && oauth && (
               <Button variant="link" size="sm" onClick={reauthorize} disabled={reauthBusy}>
                 <RefreshCw /> {reauthBusy ? 'Starting…' : 'Re-authorize'}
               </Button>

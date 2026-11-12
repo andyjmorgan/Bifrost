@@ -34,7 +34,11 @@ var AllScopes = []string{ScopeAPIRead, ScopeAPIEdit, ScopeMCPExecute, ScopeMCPEd
 
 // Caller is the authenticated principal for a request.
 type Caller struct {
-	OwnerID      string // Keycloak subject; the tenant key for every record
+	OrgID        string // the active org; the tenant key for every record
+	OrgName      string
+	PersonalOrg  bool   // the active org is the caller's own personal org
+	UserID       string // Keycloak subject the caller acts as (a key acts as its creator)
+	Role         Role   // standing in the active org
 	Subject      string // human-readable: email or key name
 	Type         ActorType
 	Scopes       []string
@@ -42,6 +46,21 @@ type Caller struct {
 	APIKeyPrefix string
 	Email        string
 	Name         string
+}
+
+// Role is a member's standing in an org.
+type Role string
+
+// Roles.
+const (
+	RoleAdmin  Role = "admin"
+	RoleMember Role = "member"
+)
+
+// IsAdmin reports whether the caller administers the active org. System
+// callers (background workers) are unrestricted.
+func (c *Caller) IsAdmin() bool {
+	return c != nil && (c.Role == RoleAdmin || c.Type == ActorSystem)
 }
 
 // Has reports whether the caller holds scope. OIDC and dev callers hold all.

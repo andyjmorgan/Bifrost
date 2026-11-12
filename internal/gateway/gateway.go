@@ -99,7 +99,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			// Resolve early so the inbound audit event carries the server even
 			// when the request fails before reaching a method handler.
 			caller := auth.CallerFrom(r.Context())
-			srv, err := g.store.GetServerBySlug(r.Context(), caller.OwnerID, strings.ToLower(chi.URLParam(r, "slug")))
+			srv, err := g.store.GetServerBySlug(r.Context(), caller.OrgID, strings.ToLower(chi.URLParam(r, "slug")))
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -520,14 +520,14 @@ func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug
 	}
 	// Slugs are lowercase by construction; models are not always.
 	slug = strings.ToLower(slug)
-	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSInit, cache.NSTools)
+	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, cache.NSInit, cache.NSTools)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}
 	if !srv.Enabled {
 		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
 	}
-	b, err := g.loadPolicies(ctx, caller.OwnerID)
+	b, err := g.loadPolicies(ctx, caller.OrgID)
 	if err != nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "policies: " + err.Error()}
 	}

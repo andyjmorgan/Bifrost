@@ -183,7 +183,7 @@ func (a *API) loadPolicy(w http.ResponseWriter, r *http.Request) (*policy.Policy
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return nil, false
 	}
-	p, err := a.store.GetPolicy(r.Context(), caller.OwnerID, id)
+	p, err := a.store.GetPolicy(r.Context(), caller.OrgID, id)
 	if err != nil {
 		writeStoreErr(w, err)
 		return nil, false
@@ -195,12 +195,12 @@ func (a *API) loadPolicy(w http.ResponseWriter, r *http.Request) (*policy.Policy
 
 func (a *API) listPolicies(w http.ResponseWriter, r *http.Request) {
 	caller := auth.CallerFrom(r.Context())
-	ps, err := a.store.ListPolicies(r.Context(), caller.OwnerID)
+	ps, err := a.store.ListPolicies(r.Context(), caller.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	_, refs, err := a.routeBindings(r, caller.OwnerID)
+	_, refs, err := a.routeBindings(r, caller.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -217,7 +217,7 @@ func (a *API) getPolicy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, refs, err := a.routeBindings(r, p.OwnerID)
+	_, refs, err := a.routeBindings(r, p.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -236,7 +236,7 @@ func (a *API) createPolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	p := &policy.Policy{OwnerID: caller.OwnerID}
+	p := &policy.Policy{OrgID: caller.OrgID}
 	if err := in.apply(p); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -286,7 +286,7 @@ func (a *API) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	_, refs, err := a.routeBindings(r, p.OwnerID)
+	_, refs, err := a.routeBindings(r, p.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -299,7 +299,7 @@ func (a *API) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.store.DeletePolicy(r.Context(), p.OwnerID, p.ID); err != nil {
+	if err := a.store.DeletePolicy(r.Context(), p.OrgID, p.ID); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -340,7 +340,7 @@ func (a *API) previewPolicy(w http.ResponseWriter, r *http.Request) {
 	if route == "" {
 		route = "mux"
 	}
-	p := &policy.Policy{OwnerID: caller.OwnerID, Name: in.Policy.Name}
+	p := &policy.Policy{OrgID: caller.OrgID, Name: in.Policy.Name}
 	if p.Name == "" {
 		p.Name = "preview"
 	}
@@ -388,7 +388,7 @@ func (a *API) previewPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) listBindings(w http.ResponseWriter, r *http.Request) {
 	caller := auth.CallerFrom(r.Context())
-	routes, _, err := a.routeBindings(r, caller.OwnerID)
+	routes, _, err := a.routeBindings(r, caller.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -403,7 +403,7 @@ func (a *API) resolveRoute(w http.ResponseWriter, r *http.Request) (route string
 	if route == "mux" {
 		return route, nil, true
 	}
-	s, err := a.store.GetServerBySlug(r.Context(), caller.OwnerID, route)
+	s, err := a.store.GetServerBySlug(r.Context(), caller.OrgID, route)
 	if err != nil {
 		writeStoreErr(w, err)
 		return "", nil, false
@@ -417,7 +417,7 @@ func (a *API) getBindings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	routes, _, err := a.routeBindings(r, caller.OwnerID)
+	routes, _, err := a.routeBindings(r, caller.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -462,7 +462,7 @@ func (a *API) putBindings(w http.ResponseWriter, r *http.Request) {
 		id := srv.ID
 		serverID = &id
 	}
-	if err := a.store.SetBindings(r.Context(), caller.OwnerID, serverID, ids); err != nil {
+	if err := a.store.SetBindings(r.Context(), caller.OrgID, serverID, ids); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusBadRequest, "unknown policy id")
 			return

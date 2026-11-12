@@ -83,14 +83,14 @@ type catalogEntry struct {
 func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug string, force bool, policies *bound) ([]catalogEntry, error) {
 	if policies == nil {
 		var err error
-		if policies, err = g.loadPolicies(ctx, caller.OwnerID); err != nil {
+		if policies, err = g.loadPolicies(ctx, caller.OrgID); err != nil {
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "policies: " + err.Error()}
 		}
 	}
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
 	if route == "direct" {
-		srv, bundle, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSTools, cache.NSInit)
+		srv, bundle, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, cache.NSTools, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -98,7 +98,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		cached = map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		servers, cached, err = g.store.ListServersWithCache(ctx, caller.OwnerID, cache.NSTools, cache.NSInit)
+		servers, cached, err = g.store.ListServersWithCache(ctx, caller.OrgID, cache.NSTools, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 		}

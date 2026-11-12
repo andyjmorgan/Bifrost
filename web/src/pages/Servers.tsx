@@ -15,11 +15,13 @@ import { ServerDialog } from '../components/servers/ServerDialog'
 import { authKindBadge, credentialStatus } from '../components/servers/credential'
 import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../api'
 import { cn } from '../lib'
+import { useMe } from '../me'
 
 const COLS = 'minmax(0,1.6fr) minmax(0,1.6fr) 96px 150px 80px 120px'
 
 export function ServersPage() {
   const navigate = useNavigate()
+  const { isAdmin } = useMe()
   const [params, setParams] = useSearchParams()
   const [servers, setServers] = useState<ServerDTO[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -124,9 +126,11 @@ export function ServersPage() {
         title="Servers"
         description="Upstream MCP servers behind the gateway. Each gets an immutable slug, its own front-door URL, and a stored credential."
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus /> New server
-          </Button>
+          isAdmin ? (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <Plus /> New server
+            </Button>
+          ) : undefined
         }
       />
 
@@ -153,9 +157,15 @@ export function ServersPage() {
           <ListEmpty
             icon={Server}
             title={loaded ? 'No servers yet' : 'Loading…'}
-            hint={loaded ? 'Register an upstream MCP server and the gateway will expose it to your agents.' : undefined}
+            hint={
+              loaded
+                ? isAdmin
+                  ? 'Register an upstream MCP server and the gateway will expose it to your agents.'
+                  : 'An admin of this org can register upstream MCP servers.'
+                : undefined
+            }
             action={
-              loaded ? (
+              loaded && isAdmin ? (
                 <Button variant="secondary" onClick={() => setCreating(true)}>
                   <Plus /> New server
                 </Button>
@@ -187,19 +197,23 @@ export function ServersPage() {
                   </Cell>
                   <Cell label="Enabled">
                     <span className="inline-flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                      <Switch checked={s.enabled} onCheckedChange={() => toggleEnabled(s)} aria-label={`${s.name} enabled`} />
+                      <Switch checked={s.enabled} disabled={!isAdmin} onCheckedChange={() => toggleEnabled(s)} aria-label={`${s.name} enabled`} />
                     </span>
                   </Cell>
                   <RowActions>
                     <Button variant="ghost" size="iconSm" aria-label="Ping" title="Ping" disabled={pinging === s.id} onClick={() => ping(s)}>
                       <Activity className={cn(pinging === s.id && 'animate-pulse')} />
                     </Button>
-                    <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => setEditing(s)}>
-                      <Pencil />
-                    </Button>
-                    <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(s)}>
-                      <Trash2 />
-                    </Button>
+                    {isAdmin && (
+                      <>
+                        <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => setEditing(s)}>
+                          <Pencil />
+                        </Button>
+                        <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(s)}>
+                          <Trash2 />
+                        </Button>
+                      </>
+                    )}
                   </RowActions>
                 </ListRow>
               )

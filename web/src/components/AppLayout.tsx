@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Activity,
+  ArrowLeftRight,
   BookOpen,
+  Building2,
   Compass,
+  DoorOpen,
   Github,
   KeySquare,
   LogOut,
@@ -15,6 +18,7 @@ import {
   ShieldCheck,
   Sun,
   UserRound,
+  Users,
   X,
 } from 'lucide-react'
 import { Logo } from './Logo'
@@ -30,7 +34,10 @@ import {
 import { cn, initials } from '../lib'
 import { logout } from '../auth'
 import { toggleTheme, useTheme } from '../theme'
-import type { MeDTO } from '../api'
+import { toast } from 'sonner'
+import { api, errorMessage, type OrgRefDTO } from '../api'
+import { useMe } from '../me'
+import { ConfirmDialog } from './ConfirmDialog'
 
 export const REPO = 'https://github.com/andyjmorgan/Bifrost'
 export const DOCS = 'https://github.com/andyjmorgan/Bifrost#readme'
@@ -45,7 +52,13 @@ const navigation: { label?: string; items: { name: string; href: string; icon: t
       { name: 'Policies', href: '/policies', icon: ShieldCheck, color: 'text-success' },
     ],
   },
-  { label: 'Access', items: [{ name: 'API keys', href: '/api-keys', icon: KeySquare, color: 'text-info' }] },
+  {
+    label: 'Access',
+    items: [
+      { name: 'API keys', href: '/api-keys', icon: KeySquare, color: 'text-info' },
+      { name: 'Members', href: '/members', icon: Users, color: 'text-plum' },
+    ],
+  },
   { label: 'Observe', items: [{ name: 'Audit', href: '/audit', icon: Activity, color: 'text-warning' }] },
 ]
 
@@ -72,12 +85,57 @@ function useCollapsed() {
   return [collapsed, toggle] as const
 }
 
-export function AppLayout({ me, children }: { me: MeDTO | null; children: ReactNode }) {
+export function AppLayout({ children }: { children: ReactNode }) {
+  const { me, refreshMe } = useMe()
+  const [orgs, setOrgs] = useState<OrgRefDTO[]>([])
+  const [leaving, setLeaving] = useState(false)
+  const [leaveBusy, setLeaveBusy] = useState(false)
+  const [leaveErr, setLeaveErr] = useState<string>()
+
+  // The caller's other orgs for the switcher; refetched whenever the active org changes.
+  const orgId = me?.orgId
+  useEffect(() => {
+    if (!orgId) return
+    api.org
+      .get()
+      .then((o) => setOrgs(o.orgs ?? []))
+      .catch(() => setOrgs([]))
+  }, [orgId])
+
   const [open, setOpen] = useState(false)
   // Collapsed applies from md up, where the sidebar is a rail of icons; the mobile drawer is always full.
   const [collapsed, toggleCollapsed] = useCollapsed()
   const theme = useTheme()
   const navigate = useNavigate()
+
+  const switchTo = async (org: OrgRefDTO) => {
+    try {
+      await api.org.switch(org.id)
+      await refreshMe()
+      toast.success(`Switched to ${org.name}`)
+      navigate('/servers')
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  const leave = async () => {
+    setLeaveBusy(true)
+    setLeaveErr(undefined)
+    try {
+      const personal = await api.org.leave()
+      await refreshMe()
+      setLeaving(false)
+      toast.success(`Left ${me?.orgName ?? 'the org'}. You're back in ${personal.name}.`)
+      navigate('/servers')
+    } catch (e) {
+      setLeaveErr(errorMessage(e))
+    } finally {
+      setLeaveBusy(false)
+    }
+  }
+
+  const otherOrgs = orgs.filter((o) => !o.active)
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
@@ -156,6 +214,12 @@ export function AppLayout({ me, children }: { me: MeDTO | null; children: ReactN
           <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" onClick={() => setOpen(true)}>
             <Menu className="size-5" />
           </Button>
+          {me?.orgName && (
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" title="Active organisation">
+              <Building2 className="size-3.5 shrink-0" />
+              <span className="truncate font-medium">{me.orgName}</span>
+            </div>
+          )}
           <div className="flex-1" />
           <Button variant="ghost" size="icon" onClick={() => toggleTheme()} aria-label="Toggle theme" title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
             {theme === 'dark' ? <Sun /> : <Moon />}
@@ -171,6 +235,39 @@ export function AppLayout({ me, children }: { me: MeDTO | null; children: ReactN
                 <p className="truncate text-sm font-medium">{me?.name ?? me?.email ?? me?.subject ?? 'Signed in'}</p>
                 {me?.email && <p className="mt-1 truncate text-xs text-muted-foreground">{me.email}</p>}
               </DropdownMenuLabel>
+              {me?.orgName && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Organisation</p>
+                    <p className="mt-1 flex items-center gap-2 text-sm">
+                      <span className="truncate font-medium">{me.orgName}</span>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{me.role}</span>
+                    </p>
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem onSelect={() => navigate('/members')}>
+                    <Users /> Members
+                  </DropdownMenuItem>
+                  {orgs.length > 1 &&
+                    otherOrgs.map((o) => (
+                      <DropdownMenuItem key={o.id} onSelect={() => void switchTo(o)}>
+                        <ArrowLeftRight />
+                        <span className="min-w-0 flex-1 truncate">Switch to {o.name}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{o.personal ? 'personal' : o.role}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  {!me.personalOrg && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setLeaveErr(undefined)
+                        setLeaving(true)
+                      }}
+                    >
+                      <DoorOpen /> Leave org
+                    </DropdownMenuItem>
+                  )}
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => navigate('/profile')}>
                 <UserRound /> Profile
@@ -195,6 +292,16 @@ export function AppLayout({ me, children }: { me: MeDTO | null; children: ReactN
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6 lg:p-8">{children}</div>
         </main>
+        <ConfirmDialog
+          open={leaving}
+          title={`Leave ${me?.orgName ?? 'this org'}?`}
+          description="You lose access to its servers, policies and audit trail, and your personal org becomes active again. Someone will need to invite you to come back."
+          confirmLabel="Leave"
+          busy={leaveBusy}
+          error={leaveErr}
+          onCancel={() => setLeaving(false)}
+          onConfirm={leave}
+        />
       </div>
     </div>
   )

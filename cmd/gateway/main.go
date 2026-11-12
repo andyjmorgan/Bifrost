@@ -60,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 	keys := auth.NewKeys(st, sealer)
-	authn := &auth.Authenticator{Keys: keys, DevOwner: cfg.DevOwner, PublicBase: cfg.PublicBaseURL, MCPScope: cfg.OIDCScope, Issuer: cfg.OIDCIssuer, OwnerID: cfg.OwnerID}
+	authn := &auth.Authenticator{Keys: keys, Users: st, DevOwner: cfg.DevOwner, PublicBase: cfg.PublicBaseURL, MCPScope: cfg.OIDCScope, Issuer: cfg.OIDCIssuer, LegacyOwner: cfg.LegacyOwner, AdminEmail: cfg.AdminEmail}
 	if cfg.DevMode() {
 		log.Warn("DEV MODE: front-door auth disabled; every request runs as owner " + cfg.DevOwner)
 	} else {
@@ -124,7 +124,7 @@ func createKey(ctx context.Context, cfg config.Config, log *slog.Logger, args []
 	fs := flag.NewFlagSet("create-key", flag.ExitOnError)
 	name := fs.String("name", "", "key name")
 	scopes := fs.String("scopes", strings.Join(auth.AllScopes, ","), "comma-separated scopes")
-	owner := fs.String("owner", cfg.OwnerID, "owner id the key belongs to")
+	owner := fs.String("org", "", "org id the key belongs to (uuid)")
 	_ = fs.Parse(args)
 	if *name == "" {
 		fs.Usage()
@@ -141,11 +141,11 @@ func createKey(ctx context.Context, cfg config.Config, log *slog.Logger, args []
 		log.Error("crypto", "err", err)
 		os.Exit(1)
 	}
-	rec, secret, err := auth.NewKeys(store.NewPostgres(pool), sealer).Create(ctx, *owner, *name, strings.Split(*scopes, ","))
+	rec, secret, err := auth.NewKeys(store.NewPostgres(pool), sealer).Create(ctx, *owner, "", *name, strings.Split(*scopes, ","))
 	if err != nil {
 		log.Error("create key", "err", err)
 		os.Exit(1)
 	}
-	log.Info("api key created", "id", rec.ID, "prefix", rec.Prefix, "owner", rec.OwnerID, "scopes", rec.Scopes)
+	log.Info("api key created", "id", rec.ID, "prefix", rec.Prefix, "owner", rec.OrgID, "scopes", rec.Scopes)
 	fmt.Println(secret)
 }

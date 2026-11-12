@@ -18,13 +18,70 @@ export interface ConfigDTO {
   apiKeyScopes: string[]
 }
 
+export type OrgRole = 'admin' | 'member'
+
 export interface MeDTO {
-  ownerId: string
+  userId: string
+  orgId: string
+  orgName: string
+  /** The active org is the caller's own personal org. */
+  personalOrg: boolean
+  role: OrgRole
   subject: string
+  /** 'oidc' | 'apikey' | 'dev' */
   type: string
   email?: string
   name?: string
   scopes: string[]
+}
+
+export interface OrgRefDTO {
+  id: string
+  name: string
+  role: OrgRole
+  personal: boolean
+  active: boolean
+}
+
+export interface MemberDTO {
+  userId: string
+  email: string
+  name: string
+  role: OrgRole
+  joinedAt: string
+  self: boolean
+}
+
+export interface OrgDTO {
+  id: string
+  name: string
+  personal: boolean
+  role: OrgRole
+  members: MemberDTO[]
+  /** Every org the caller belongs to, personal first. */
+  orgs: OrgRefDTO[]
+  /** e.g. "https://bifrost.donkeywork.dev/join/" */
+  inviteBase: string
+}
+
+export interface InviteDTO {
+  id: string
+  role: OrgRole
+  /** user id */
+  createdBy: string
+  createdAt: string
+  expiresAt: string
+  usedAt?: string
+  usedBy?: string
+  /** Only on the create response; shown once, then gone. */
+  url?: string
+}
+
+export interface InvitePreviewDTO {
+  orgName: string
+  role: OrgRole
+  expiresAt: string
+  member: boolean
 }
 
 export interface CredentialDTO {

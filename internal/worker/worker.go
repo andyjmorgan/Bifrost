@@ -16,7 +16,7 @@ import (
 // Store is the slice of persistence the worker uses.
 type Store interface {
 	ExpiringOAuthCredentials(ctx context.Context, before time.Time) ([]*store.Credential, error)
-	ServerOwner(ctx context.Context, id uuid.UUID) (*store.Server, error)
+	ServerOrg(ctx context.Context, id uuid.UUID) (*store.Server, error)
 	PurgeAuditBefore(ctx context.Context, t time.Time) (int64, error)
 	PurgeExpiredOAuthStates(ctx context.Context) error
 	PurgeExpiredCache(ctx context.Context) (int64, error)
@@ -75,7 +75,7 @@ func (w *Worker) refreshTokens(ctx context.Context) {
 		return
 	}
 	for _, c := range creds {
-		srv, err := w.store.ServerOwner(ctx, c.ServerID)
+		srv, err := w.store.ServerOrg(ctx, c.ServerID)
 		if err != nil {
 			continue
 		}

@@ -108,8 +108,30 @@ func (a *API) Router() http.Handler {
 			r.Get("/bindings", a.listBindings)
 			r.Get("/bindings/{route:[A-Za-z0-9]{1,12}}", a.getBindings)
 		})
+		// Org membership. Reads for any member; changes for admins; join,
+		// switch and leave for the human themselves.
 		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeMCPEdit))
+			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead))
+			r.Get("/org", a.getOrg)
+			r.Get("/org/invites/{token}", a.previewInvite)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(a.authn.RequireAPI(auth.ScopeAPIEdit))
+			r.Post("/org/join", a.joinOrg)
+			r.Post("/org/leave", a.leaveOrg)
+			r.Post("/org/switch", a.switchOrg)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(a.authn.RequireAPI(auth.ScopeAPIEdit), auth.RequireAdmin)
+			r.Patch("/org", a.renameOrg)
+			r.Get("/org/invites", a.listInvites)
+			r.Post("/org/invites", a.createInvite)
+			r.Delete("/org/invites/{id}", a.deleteInvite)
+			r.Patch("/org/members/{userId}", a.setMemberRole)
+			r.Delete("/org/members/{userId}", a.removeMember)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(a.authn.RequireAPI(auth.ScopeMCPEdit), auth.RequireAdmin)
 			r.Post("/servers", a.createServer)
 			r.Patch("/servers/{id}", a.updateServer)
 			r.Delete("/servers/{id}", a.deleteServer)

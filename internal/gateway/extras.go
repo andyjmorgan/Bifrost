@@ -177,7 +177,7 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
 	if route == "direct" {
-		srv, bundle, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, ns, cache.NSInit)
+		srv, bundle, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, ns, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -185,7 +185,7 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 		cached = map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		servers, cached, err = g.store.ListServersWithCache(ctx, caller.OwnerID, ns, cache.NSInit)
+		servers, cached, err = g.store.ListServersWithCache(ctx, caller.OrgID, ns, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 		}
@@ -449,7 +449,7 @@ func (g *Gateway) resourceOwner(ctx context.Context, caller *auth.Caller, uri st
 // ---- helpers ----------------------------------------------------------------
 
 func (g *Gateway) serverFor(ctx context.Context, caller *auth.Caller, slug string) (*store.Server, store.CacheBundle, error) {
-	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OwnerID, slug, cache.NSInit)
+	srv, cached, err := g.store.GetServerBySlugWithCache(ctx, caller.OrgID, slug, cache.NSInit)
 	if err != nil {
 		return nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown server " + slug}
 	}

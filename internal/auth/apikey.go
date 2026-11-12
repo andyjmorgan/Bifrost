@@ -44,8 +44,9 @@ func Hash(secret string) []byte {
 	return sum[:]
 }
 
-// Create mints a key for owner. The plaintext is returned exactly once.
-func (k *Keys) Create(ctx context.Context, owner, name string, scopes []string) (*store.APIKey, string, error) {
+// Create mints a key in org that acts as createdBy. The plaintext is
+// returned exactly once.
+func (k *Keys) Create(ctx context.Context, org, createdBy, name string, scopes []string) (*store.APIKey, string, error) {
 	for _, s := range scopes {
 		if !containsString(AllScopes, s) {
 			return nil, "", fmt.Errorf("auth: unknown scope %q", s)
@@ -65,7 +66,7 @@ func (k *Keys) Create(ctx context.Context, owner, name string, scopes []string) 
 		return nil, "", err
 	}
 	rec := &store.APIKey{
-		ID: id, OwnerID: owner, Name: name, Prefix: secret[:len(KeyPrefix)+8],
+		ID: id, OrgID: org, CreatedBy: createdBy, Name: name, Prefix: secret[:len(KeyPrefix)+8],
 		SecretHash: Hash(secret), SecretBlob: blob, Scopes: scopes, CreatedAt: time.Now(),
 	}
 	if err := k.store.CreateAPIKey(ctx, rec); err != nil {
@@ -88,7 +89,7 @@ func (k *Keys) Verify(ctx context.Context, secret string) (*Caller, error) {
 	}
 	id := rec.ID
 	return &Caller{
-		OwnerID: rec.OwnerID, Subject: rec.Name, Type: ActorAPIKey, Scopes: rec.Scopes,
+		OrgID: rec.OrgID, UserID: rec.CreatedBy, Subject: rec.Name, Type: ActorAPIKey, Scopes: rec.Scopes,
 		APIKeyID: &id, APIKeyPrefix: rec.Prefix,
 	}, nil
 }

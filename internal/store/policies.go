@@ -13,12 +13,12 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/policy"
 )
 
-const policyCols = `id, owner_id, name, description, invert, rules, created_at, updated_at`
+const policyCols = `id, org_id, name, description, invert, rules, created_at, updated_at`
 
 func scanPolicy(row pgx.Row) (*policy.Policy, error) {
 	var p policy.Policy
 	var rules []byte
-	if err := row.Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Invert, &rules, &p.CreatedAt, &p.UpdatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.Description, &p.Invert, &rules, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(rules, &p.Rules); err != nil {
@@ -32,7 +32,7 @@ func scanPolicy(row pgx.Row) (*policy.Policy, error) {
 
 // ListPolicies returns an owner's policies by name.
 func (p *Postgres) ListPolicies(ctx context.Context, owner string) ([]*policy.Policy, error) {
-	rows, err := p.pool.Query(ctx, `select `+policyCols+` from policies where owner_id=$1 order by lower(name)`, owner)
+	rows, err := p.pool.Query(ctx, `select `+policyCols+` from policies where org_id=$1 order by lower(name)`, owner)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -53,7 +53,7 @@ func (p *Postgres) ListPolicies(ctx context.Context, owner string) ([]*policy.Po
 
 // GetPolicy fetches one policy or ErrNotFound.
 func (p *Postgres) GetPolicy(ctx context.Context, owner string, id uuid.UUID) (*policy.Policy, error) {
-	pol, err := scanPolicy(p.pool.QueryRow(ctx, `select `+policyCols+` from policies where owner_id=$1 and id=$2`, owner, id))
+	pol, err := scanPolicy(p.pool.QueryRow(ctx, `select `+policyCols+` from policies where org_id=$1 and id=$2`, owner, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -73,8 +73,8 @@ func (p *Postgres) CreatePolicy(ctx context.Context, pol *policy.Policy) error {
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	err = p.pool.QueryRow(ctx, `insert into policies (id, owner_id, name, description, invert, rules) values ($1,$2,$3,$4,$5,$6) returning created_at, updated_at`,
-		pol.ID, pol.OwnerID, pol.Name, pol.Description, pol.Invert, rules).Scan(&pol.CreatedAt, &pol.UpdatedAt)
+	err = p.pool.QueryRow(ctx, `insert into policies (id, org_id, name, description, invert, rules) values ($1,$2,$3,$4,$5,$6) returning created_at, updated_at`,
+		pol.ID, pol.OrgID, pol.Name, pol.Description, pol.Invert, rules).Scan(&pol.CreatedAt, &pol.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -91,8 +91,8 @@ func (p *Postgres) UpdatePolicy(ctx context.Context, pol *policy.Policy) error {
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
-	err = p.pool.QueryRow(ctx, `update policies set name=$3, description=$4, invert=$5, rules=$6, updated_at=now() where owner_id=$1 and id=$2 returning updated_at`,
-		pol.OwnerID, pol.ID, pol.Name, pol.Description, pol.Invert, rules).Scan(&pol.UpdatedAt)
+	err = p.pool.QueryRow(ctx, `update policies set name=$3, description=$4, invert=$5, rules=$6, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
+		pol.OrgID, pol.ID, pol.Name, pol.Description, pol.Invert, rules).Scan(&pol.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -107,7 +107,7 @@ func (p *Postgres) UpdatePolicy(ctx context.Context, pol *policy.Policy) error {
 
 // DeletePolicy removes a policy and, by cascade, its bindings.
 func (p *Postgres) DeletePolicy(ctx context.Context, owner string, id uuid.UUID) error {
-	tag, err := p.pool.Exec(ctx, `delete from policies where owner_id=$1 and id=$2`, owner, id)
+	tag, err := p.pool.Exec(ctx, `delete from policies where org_id=$1 and id=$2`, owner, id)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -130,7 +130,7 @@ type Binding struct {
 func (p *Postgres) ListBindings(ctx context.Context, owner string) ([]Binding, error) {
 	rows, err := p.pool.Query(ctx, `select b.server_id, b.position, `+prefixed(policyCols, "p.")+`
 from policy_bindings b join policies p on p.id=b.policy_id
-where b.owner_id=$1 order by b.server_id nulls first, b.position, lower(p.name)`, owner)
+where b.org_id=$1 order by b.server_id nulls first, b.position, lower(p.name)`, owner)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -140,7 +140,7 @@ where b.owner_id=$1 order by b.server_id nulls first, b.position, lower(p.name)`
 		var b Binding
 		var pol policy.Policy
 		var rules []byte
-		if err := rows.Scan(&b.ServerID, &b.Position, &pol.ID, &pol.OwnerID, &pol.Name, &pol.Description, &pol.Invert, &rules, &pol.CreatedAt, &pol.UpdatedAt); err != nil {
+		if err := rows.Scan(&b.ServerID, &b.Position, &pol.ID, &pol.OrgID, &pol.Name, &pol.Description, &pol.Invert, &rules, &pol.CreatedAt, &pol.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		if err := json.Unmarshal(rules, &pol.Rules); err != nil {
@@ -162,7 +162,7 @@ func (p *Postgres) SetBindings(ctx context.Context, owner string, serverID *uuid
 	defer func() { _ = tx.Rollback(ctx) }()
 	if len(policyIDs) > 0 {
 		var n int
-		if err := tx.QueryRow(ctx, `select count(*) from policies where owner_id=$1 and id = any($2)`, owner, policyIDs).Scan(&n); err != nil {
+		if err := tx.QueryRow(ctx, `select count(*) from policies where org_id=$1 and id = any($2)`, owner, policyIDs).Scan(&n); err != nil {
 			return fmt.Errorf("store: %w", err)
 		}
 		if n != len(uniqueIDs(policyIDs)) {
@@ -170,15 +170,15 @@ func (p *Postgres) SetBindings(ctx context.Context, owner string, serverID *uuid
 		}
 	}
 	if serverID == nil {
-		_, err = tx.Exec(ctx, `delete from policy_bindings where owner_id=$1 and server_id is null`, owner)
+		_, err = tx.Exec(ctx, `delete from policy_bindings where org_id=$1 and server_id is null`, owner)
 	} else {
-		_, err = tx.Exec(ctx, `delete from policy_bindings where owner_id=$1 and server_id=$2`, owner, *serverID)
+		_, err = tx.Exec(ctx, `delete from policy_bindings where org_id=$1 and server_id=$2`, owner, *serverID)
 	}
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	for i, id := range uniqueIDs(policyIDs) {
-		if _, err := tx.Exec(ctx, `insert into policy_bindings (owner_id, server_id, policy_id, position) values ($1,$2,$3,$4)`, owner, serverID, id, i); err != nil {
+		if _, err := tx.Exec(ctx, `insert into policy_bindings (org_id, server_id, policy_id, position) values ($1,$2,$3,$4)`, owner, serverID, id, i); err != nil {
 			return fmt.Errorf("store: %w", err)
 		}
 	}

@@ -12,11 +12,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { BindingsCard } from '../components/policies/Bindings'
 import { api, errorMessage, type PolicyBindingRef, type PolicyDTO } from '../api'
 import { absoluteTime, relativeTime } from '../lib'
+import { useMe } from '../me'
 
 const COLS = 'minmax(0,1.6fr) 90px minmax(0,1.2fr) 130px 56px'
 
 export function PoliciesPage() {
   const navigate = useNavigate()
+  const { isAdmin } = useMe()
   const [policies, setPolicies] = useState<PolicyDTO[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string>()
@@ -65,9 +67,11 @@ export function PoliciesPage() {
         title="Policies"
         description="Ordered CEL rules that hide, rename or gate tools. Bind them to the global route or to a server."
         actions={
-          <Button variant="primary" onClick={newPolicy}>
-            <Plus /> New policy
-          </Button>
+          isAdmin ? (
+            <Button variant="primary" onClick={newPolicy}>
+              <Plus /> New policy
+            </Button>
+          ) : undefined
         }
       />
 
@@ -96,7 +100,7 @@ export function PoliciesPage() {
             title={loaded ? 'No policies yet' : 'Loading…'}
             hint={loaded ? 'Create one to hide destructive tools or ask for confirmation before a call.' : undefined}
             action={
-              loaded ? (
+              loaded && isAdmin ? (
                 <Button variant="secondary" onClick={newPolicy}>
                   <Plus /> New policy
                 </Button>
@@ -131,9 +135,11 @@ export function PoliciesPage() {
                   </span>
                 </Cell>
                 <RowActions>
-                  <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(p)}>
-                    <Trash2 />
-                  </Button>
+                  {isAdmin && (
+                    <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Delete" title="Delete" onClick={() => setDeleting(p)}>
+                      <Trash2 />
+                    </Button>
+                  )}
                 </RowActions>
               </ListRow>
             ))}

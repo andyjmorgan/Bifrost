@@ -206,14 +206,14 @@ func (g *Gateway) Preview(ctx context.Context, caller *auth.Caller, route string
 	}
 	b := &bound{byServer: map[uuid.UUID][]*policy.Compiled{}}
 	if extra {
-		if b, err = g.loadPolicies(ctx, caller.OwnerID); err != nil {
+		if b, err = g.loadPolicies(ctx, caller.OrgID); err != nil {
 			return nil, err
 		}
 	}
 	kind, slug := "mux", ""
 	if route != "mux" {
 		kind, slug = "direct", strings.ToLower(route)
-		srv, err := g.store.GetServerBySlug(ctx, caller.OwnerID, slug)
+		srv, err := g.store.GetServerBySlug(ctx, caller.OrgID, slug)
 		if err != nil {
 			return nil, err
 		}

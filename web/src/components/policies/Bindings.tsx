@@ -9,6 +9,7 @@ import { FormField } from '../FormField'
 import { Callout } from '../Callout'
 import { IconTile } from '../IconTile'
 import { api, errorMessage, type PolicyDTO, type RouteBindingsDTO } from '../../api'
+import { useMe } from '../../me'
 
 type Ref = { id: string; name: string }
 
@@ -162,6 +163,7 @@ export function BindingsDialog({
 
 /** A compact card: the ordered policies bound to a route, with an Edit action. */
 export function BindingsCard({ route, title, hint, onChanged }: { route: string; title: string; hint?: string; onChanged?: () => void }) {
+  const { isAdmin } = useMe()
   const [bindings, setBindings] = useState<RouteBindingsDTO>()
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState(false)
@@ -203,9 +205,11 @@ export function BindingsCard({ route, title, hint, onChanged }: { route: string;
             ))}
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => setEditing(true)} disabled={!bindings}>
-          <Pencil /> Edit
-        </Button>
+        {isAdmin && (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)} disabled={!bindings}>
+            <Pencil /> Edit
+          </Button>
+        )}
       </div>
       {error && (
         <Callout tone="danger" className="mt-4">

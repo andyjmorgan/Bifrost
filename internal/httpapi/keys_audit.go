@@ -17,7 +17,7 @@ func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	if c.Type != auth.ActorAPIKey {
 		scopes = auth.AllScopes
 	}
-	writeJSON(w, http.StatusOK, MeDTO{OwnerID: c.OwnerID, Subject: c.Subject, Type: string(c.Type), Email: c.Email, Name: c.Name, Scopes: scopes})
+	writeJSON(w, http.StatusOK, MeDTO{UserID: c.UserID, OrgID: c.OrgID, OrgName: c.OrgName, PersonalOrg: c.PersonalOrg, Role: string(c.Role), Subject: c.Subject, Type: string(c.Type), Email: c.Email, Name: c.Name, Scopes: scopes})
 }
 
 func (a *API) config(w http.ResponseWriter, _ *http.Request) {
@@ -26,13 +26,16 @@ func (a *API) config(w http.ResponseWriter, _ *http.Request) {
 
 func (a *API) listKeys(w http.ResponseWriter, r *http.Request) {
 	c := auth.CallerFrom(r.Context())
-	keys, err := a.store.ListAPIKeys(r.Context(), c.OwnerID)
+	keys, err := a.store.ListAPIKeys(r.Context(), c.OrgID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
 	out := make([]APIKeyDTO, 0, len(keys))
 	for _, k := range keys {
+		if !c.IsAdmin() && k.CreatedBy != c.UserID {
+			continue
+		}
 		out = append(out, keyDTO(k))
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -49,7 +52,7 @@ func (a *API) createKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	rec, secret, err := a.keys.Create(r.Context(), c.OwnerID, in.Name, in.Scopes)
+	rec, secret, err := a.keys.Create(r.Context(), c.OrgID, c.UserID, in.Name, in.Scopes)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -64,7 +67,14 @@ func (a *API) revokeKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return
 	}
-	if err := a.store.RevokeAPIKey(r.Context(), c.OwnerID, id); err != nil {
+	if !c.IsAdmin() {
+		k, err := a.store.GetAPIKey(r.Context(), c.OrgID, id)
+		if err != nil || k.CreatedBy != c.UserID {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+	}
+	if err := a.store.RevokeAPIKey(r.Context(), c.OrgID, id); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -74,7 +84,7 @@ func (a *API) revokeKey(w http.ResponseWriter, r *http.Request) {
 func (a *API) listAudit(w http.ResponseWriter, r *http.Request) {
 	c := auth.CallerFrom(r.Context())
 	q := r.URL.Query()
-	query := store.AuditQuery{OwnerID: c.OwnerID, Slug: q.Get("slug"), Hop: store.Hop(q.Get("hop")), McpMethod: q.Get("method"),
+	query := store.AuditQuery{OrgID: c.OrgID, Slug: q.Get("slug"), Hop: store.Hop(q.Get("hop")), McpMethod: q.Get("method"),
 		ToolName: q.Get("tool"), Outcome: store.Outcome(q.Get("outcome")), RequestID: q.Get("requestId")}
 	query.Offset, _ = strconv.Atoi(q.Get("offset"))
 	query.Limit, _ = strconv.Atoi(q.Get("limit"))
@@ -102,7 +112,7 @@ func (a *API) getAuditTrace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return
 	}
-	root, spans, err := a.store.GetAuditTrace(r.Context(), c.OwnerID, id)
+	root, spans, err := a.store.GetAuditTrace(r.Context(), c.OrgID, id)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -125,7 +135,7 @@ func (a *API) getAudit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return
 	}
-	e, p, err := a.store.GetAuditEvent(r.Context(), c.OwnerID, id)
+	e, p, err := a.store.GetAuditEvent(r.Context(), c.OrgID, id)
 	if err != nil {
 		writeStoreErr(w, err)
 		return

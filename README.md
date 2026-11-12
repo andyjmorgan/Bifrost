@@ -20,7 +20,8 @@ agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth
 - **Cache in Postgres**, not Redis: each server's tools and initialize result live in a TTL table, swept by pg_cron and the worker, hidden at read time by a row-level-security policy. Concurrent misses for one server share a single upstream fetch per process, no connection is held while the upstream is in flight, and a write only lands if the server has not been edited since the fetch started. Edits and credential changes refetch and overwrite the row instead of deleting it; disabling a server or a credential going pending or broken clears it. Ping, the Explorer and `refresh_services` bypass and rewrite the cache.
 - **Audit everything**: inbound and upstream hops with full JSON-RPC bodies, auth headers redacted, 30-day retention. The UI shows each exchange with JSON and SSE viewers, and each request as a trace: a flame chart of every upstream connection under the inbound span.
 - **Progress**: fan-outs report MCP progress notifications per server stage when the client sends a progress token.
-- **Web UI** for servers, an Explorer that lists and calls tools through the real front door as you, API keys, and the audit log. Sign-in is OIDC with PKCE.
+- **Orgs**: every user gets a personal org at first sign-in and is its admin. An admin mints an invite (a magic link, single use, seven days); a signed-in user who opens it joins that org and it becomes their active org, their personal org staying behind until they leave. Admins manage servers, policies, members and invites; members read servers, use the Explorer and hold their own API keys. A key acts as the user who created it, inherits their role, and dies when they leave the org.
+- **Web UI** for servers, an Explorer that lists and calls tools through the real front door as you, API keys, members and invites, and the audit log. Sign-in is OIDC with PKCE.
 
 ## Routes
 
@@ -60,14 +61,15 @@ Postgres needs pg_cron for the cache sweep in production; without it the worker'
 | `MCPGW_OIDC_ISSUER` | unset = dev mode | OIDC issuer for the UI and MCP bearer tokens |
 | `MCPGW_OIDC_WEB_CLIENT_ID` | `mcp-gateway-web` | SPA client id |
 | `MCPGW_OIDC_REQUIRED_ROLE` | `mcp-gateway-operator` | realm role required to sign in |
-| `MCPGW_OWNER_ID` | `owner` | single-tenant owner every OIDC login maps to |
+| `MCPGW_OWNER_ID` | `owner` | the pre-org owner id whose records were migrated into the first org |
+| `MCPGW_ADMIN_EMAIL` | unset | the human who claims that migrated org as their personal org at first sign-in |
 | `MCPGW_TOOLS_CACHE_TTL` | `5m` | tools and initialize cache lifetime; `0` disables |
 | `MCPGW_REFRESH_INTERVAL` | `4h` | worker cadence |
 | `MCPGW_REFRESH_LEEWAY` | `10m` | refresh tokens expiring within this window (capped at half the token lifetime) |
 | `MCPGW_AUDIT_RETENTION` | `720h` | |
 | `MCPGW_UPSTREAM_TIMEOUT` | `60s` | |
 
-Dev mode (no `MCPGW_OIDC_ISSUER`) treats every request as the owner, so the UI and API work without a login.
+Dev mode (no `MCPGW_OIDC_ISSUER`) treats every request as the user `dev`, admin of its own org, so the UI and API work without a login. An `X-Dev-User: <name>` header makes the request come from another local user, which is enough to exercise invites, joining and leaving.
 
 ## Registering servers
 
@@ -107,7 +109,7 @@ curl -X PUT $BASE/api/v1/bindings/telegram -H "Authorization: Bearer $KEY" -d '{
 
 - Connections are opened per call. There is no session cache yet; the init cache removes the discovery probe and the tools cache removes most listing traffic, which covers the common case.
 - The front door accepts only 2026-07-28. Clients on older SDKs are rejected with a clear error.
-- Single tenant by design. Multi-tenancy would mean removing the owner mapping and scoping the cache and audit by owner, both of which are already keyed that way.
+- Tenancy is the org. Every record is keyed by org id; a user's active org is a column on the user, so switching orgs is a write, not a session. A user belongs to at most a handful of orgs, so no org switcher state lives in the token.
 - No Redis, no message bus, no distributed locks. Postgres does the cache and the queue-shaped work; in-process goroutines do the async writes and collapse duplicate refills. Ten replicas facing a cold key cost ten upstream listings, not one per request, and the conditional write makes the duplicates harmless.
 
 ## Layout
