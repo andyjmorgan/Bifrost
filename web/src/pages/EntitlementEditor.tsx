@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, Check, Plus, Save, Trash2, UserRound, X } from 'lucide-react'
@@ -15,11 +15,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
 import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
 import { RulesCard, type RuleProblems } from '../components/entitlements/RulesCard'
+import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import {
   api,
   ApiError,
   errorMessage,
   type CapabilityDTO,
+  type CapabilityKind,
   type EntitlementDTO,
   type GrantInput,
   type MemberDTO,
@@ -296,11 +298,17 @@ export function EntitlementEditorPage() {
         </FormField>
       </div>
 
-      <SelectionCard draft={draft} set={set} caps={caps} />
-
-      <RulesCard rules={draft.rules} onChange={setRules} problems={problems} validating={validating} onValidate={(r) => void validate(r ?? draft.rules)} slug={ent.slug} caps={caps} />
-
       <GrantsCard draft={draft} set={set} members={members} />
+
+      <EditorTabs
+        draft={draft}
+        set={set}
+        caps={caps}
+        rules={
+          <RulesCard rules={draft.rules} onChange={setRules} problems={problems} validating={validating} onValidate={(r) => void validate(r ?? draft.rules)} slug={ent.slug} caps={caps} />
+        }
+        problems={Object.keys(problems).length}
+      />
 
       <div className="flex items-center justify-end gap-3">
         {hasProblems ? (
@@ -331,28 +339,43 @@ export function EntitlementEditorPage() {
 
 /* ---------- selection ---------- */
 
-function SelectionCard({ draft, set, caps }: { draft: Draft; set: (p: Partial<Draft>) => void; caps: CapabilityDTO[] }) {
-  const summary = selectionSummary(toSelection(draft))
+type EditorTab = CapabilityKind | 'rules'
+
+/** One tab per kind, then the rules last. Only the active panel is rendered. */
+function EditorTabs({ draft, set, caps, rules, problems }: { draft: Draft; set: (p: Partial<Draft>) => void; caps: CapabilityDTO[]; rules: ReactNode; problems: number }) {
+  const [tab, setTab] = useState<EditorTab>('tool')
   const setKind = (key: SelKey, list: string[] | null) => set({ sel: { ...draft.sel, [key]: list } })
+  const tabs: Tab<EditorTab>[] = [
+    ...KINDS.map((k) => {
+      const list = draft.sel[k.key]
+      const seen = caps.filter((c) => c.kind === k.kind).length
+      return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
+    }),
+    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: problems > 0 ? <span className="size-1.5 rounded-full bg-danger" aria-label={`${problems} problems`} /> : undefined },
+  ]
+  const kind = KINDS.find((k) => k.kind === tab)
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold tracking-tight">Selection</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Decides both what is listed and what can be called. Each kind is set on its own: everything the server offers, or only what is ticked.
+            Decides both what is listed and what can be called. Each kind is set on its own, then the rules run over the result.
           </p>
         </div>
         <span className="text-xs text-muted-foreground" title={selectionDetail(toSelection(draft))}>
-          {summary}
+          {selectionSummary(toSelection(draft))}
         </span>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {KINDS.map((k) => (
-          <KindSection key={k.kind} kind={k} list={draft.sel[k.key]} caps={caps.filter((c) => c.kind === k.kind)} onChange={(l) => setKind(k.key, l)} />
-        ))}
-      </div>
+      <Tabs tabs={tabs} value={tab} onChange={setTab} label="Selection and rules" />
+      {kind ? (
+        <TabPanel tabKey={kind.kind}>
+          <KindSection kind={kind} list={draft.sel[kind.key]} caps={caps.filter((c) => c.kind === kind.kind)} onChange={(l) => setKind(kind.key, l)} />
+        </TabPanel>
+      ) : (
+        <TabPanel tabKey="rules">{rules}</TabPanel>
+      )}
     </section>
   )
 }

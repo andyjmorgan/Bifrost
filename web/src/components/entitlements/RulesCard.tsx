@@ -71,12 +71,9 @@ export function RulesCard({
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">Rules</h2>
-          <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">
-            Allow lists first, then these rules top to bottom: each enabled rule that matches sets the outcome, and the last match wins.
-          </p>
-        </div>
+        <p className="max-w-2xl text-xs text-muted-foreground">
+          Allow lists first, then these rules top to bottom: each enabled rule that matches sets the outcome, and the last match wins.
+        </p>
         <Button variant="secondary" size="sm" onClick={() => add()}>
           <Plus /> Add rule
         </Button>
