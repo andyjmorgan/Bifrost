@@ -1,0 +1,294 @@
+[
+ {
+  "name": "a call-rule timeout shorter than the server's delay cuts the call off: the client is told the reply was lost, and the server sees the cancel",
+  "exclude": [
+   {
+    "harness": "engine",
+    "reason": "the timeout is applied to a live upstream call that is slower than it; the engine harness has no connection to cut off, and only records the timeout it decided"
+   }
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "timeout": "duration('150ms')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "mock": {
+     "delayMs": 1500
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "slow answer"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.timeout",
+      "equals": "150ms"
+     },
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.error.code",
+      "equals": -32014
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "slow answer"
+      ]
+     },
+     {
+      "path": "upstream.cancelled",
+      "equals": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "the same timeout cuts off a server that answers on a stream",
+  "exclude": [
+   {
+    "harness": "engine",
+    "reason": "the timeout is applied to a live upstream call that is slower than it; the engine harness has no connection to cut off, and only records the timeout it decided"
+   }
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "timeout": "duration('150ms')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "mock": {
+     "delayMs": 1500,
+     "stream": true
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "slow answer"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.timeout",
+      "equals": "150ms"
+     },
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.error.code",
+      "equals": -32014
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "slow answer"
+      ]
+     },
+     {
+      "path": "upstream.cancelled",
+      "equals": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "a timeout the server beats changes nothing: the result arrives and nothing is cancelled",
+  "exclude": [
+   {
+    "harness": "engine",
+    "reason": "the timeout is applied to a live upstream call that is slower than it; the engine harness has no connection to cut off, and only records the timeout it decided"
+   }
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "timeout": "duration('5s')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "mock": {
+     "delayMs": 120
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "slow answer"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.timeout",
+      "equals": "5s"
+     },
+     {
+      "path": "client",
+      "refused": false
+     },
+     {
+      "path": "client.result.content[0].text",
+      "equals": "slow answer"
+     },
+     {
+      "path": "upstream.cancelled",
+      "equals": 0
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "a server that fails before replying: the client gets the lost-reply error, never the transport's own error text or the server's address",
+  "exclude": [
+   {
+    "harness": "engine",
+    "reason": "the failure is an HTTP error from a live upstream; the engine harness has no connection that can fail"
+   }
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "mock": {
+     "status": 502,
+     "body": "bad gateway body"
+    },
+    "expect": [
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.error.code",
+      "equals": -32014
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "bad gateway body",
+       "127.0.0.1",
+       "http://",
+       "502"
+      ]
+     },
+     {
+      "path": "reply.issues",
+      "hasText": [
+       "upstream reply lost"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

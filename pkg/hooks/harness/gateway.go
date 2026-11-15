@@ -681,8 +681,14 @@ func (g *Gateway) forward(ctx context.Context, st *stream, req hooks.Request, ms
 
 	events, err := g.send(ctx, be, fwd, upToken)
 	if err != nil {
-		fail("upstream request failed: " + err.Error())
-		return
+		// The call failed before any reply: a timeout, a refused
+		// connection, an HTTP error. It is handed to the engine as a
+		// stream that fails at once, so the client gets the engine's one
+		// answer for a lost reply and the cause goes to the record. The
+		// transport's own error text names the upstream's address and must
+		// not reach the client.
+		cause := err
+		events = func(yield func(upEvent, error) bool) { yield(upEvent{}, cause) }
 	}
 	for ev, err := range g.ad.replies(ctx, b, events) {
 		switch {

@@ -126,6 +126,7 @@ A check needs something to check:
 - `notEquals`, `notMatches` and `lacksText` fail when the path is missing. On a missing value they would pass whatever happened, including an error that returned no result
 - to assert that a value is absent, use `"exists": false`
 - `set` and `len` need a present value of the right kind
+- a `[*]` path that collects nothing needs the list it collects from to be present. `tools[*].name` equal to `[]` holds for an empty listing and fails for an error with no listing
 
 The loader refuses a key the format does not define, on a case, a server, a step, a check or a mock script. A misspelt key would otherwise be ignored and leave a case that tests nothing. Catalogs, arguments, replies and rules are data and may hold any key.
 

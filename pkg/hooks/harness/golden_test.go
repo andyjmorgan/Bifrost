@@ -775,6 +775,11 @@ func (p *goldenRun) attempt(ctx context.Context, i int, st hooks.Step, via Clien
 			}
 			if fwd < len(all) {
 				ups = append(ups, observedForward(all[fwd].srv, all[fwd].rec, r.Outcome.Forward))
+				// The engine's decision on the client's _meta is checked
+				// against what the upstream received, on every forward.
+				if why := checkForwardedMeta(generic(r.Meta), all[fwd].rec, r.Outcome.Forward); why != "" {
+					fails = append(fails, why)
+				}
 			}
 			fwd++
 		}
@@ -858,9 +863,22 @@ func (p *goldenRun) attempt(ctx context.Context, i int, st hooks.Step, via Clien
 		out["request"] = map[string]any{"headers": rounds[0].Headers, "meta": rounds[0].Meta}
 	}
 	if p.server == "mock" {
-		now := 0
-		for _, s := range p.servers {
-			now += s.up.Cancelled()
+		count := func() (n int) {
+			for _, s := range p.servers {
+				n += s.up.Cancelled()
+			}
+			return n
+		}
+		now := count()
+		// The server learns of a cancel after the client has its answer. A
+		// step that checks the count gives it a moment to arrive.
+		watches := false
+		for _, ex := range st.Expect {
+			watches = watches || ex.Path == "upstream.cancelled"
+		}
+		for wait := 0; watches && now == cancelled && wait < 50; wait++ {
+			time.Sleep(10 * time.Millisecond)
+			now = count()
 		}
 		reqs := make([]any, 0, len(ups))
 		for _, u := range ups {
@@ -1079,6 +1097,36 @@ func observedForward(s goldenServer, rec Recorded, engine *hooks.Forward) (f map
 		f["timeout"] = engine.Timeout
 	}
 	return f
+}
+
+// checkForwardedMeta compares the engine's decision on the client's _meta
+// with what the upstream was sent. The decision alone (forwardMeta true or
+// false) is the engine's intention; this is the proof that it was carried
+// out. With the decision off, nothing of the client's may arrive. With it
+// on, every key of the client's must arrive, unchanged. The protocol's own
+// keys and the progress token are the gateway's and are left out of both.
+func checkForwardedMeta(client any, rec Recorded, engine *hooks.Forward) string {
+	own := func(v any) map[string]any {
+		out := map[string]any{}
+		m, _ := v.(map[string]any)
+		for k, x := range m {
+			if strings.HasPrefix(k, "io.modelcontextprotocol/") || k == "progressToken" {
+				continue
+			}
+			out[k] = x
+		}
+		return out
+	}
+	got := own(rec.Exact()["_meta"])
+	want := map[string]any{}
+	decided := engine.Connect != nil && engine.Connect.ForwardMeta
+	if decided {
+		want = own(client)
+	}
+	if exactJSON(got) != exactJSON(want) {
+		return fmt.Sprintf("the engine decided forwardMeta=%v for %s, but the upstream received _meta %s, want %s", decided, rec.Method, clip(exactJSON(got)), clip(exactJSON(want)))
+	}
+	return ""
 }
 
 // crossCheckConnect compares the server/connect decision with what the

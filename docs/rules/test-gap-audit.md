@@ -165,11 +165,21 @@ Added November 15, 2026, by the engine's author, after the audit. Uncommitted wh
 | A read-result rule that fails to evaluate (`resources.go:996`) | The rule failure is a deny before that line; covered by GA-37. Line 996 itself stays a defensive branch with no test |
 | The 36 cases | Moved to `testdata/scenarios/97-gap-audit.json`, now 37 cases, in the main set with exclusions |
 
+Second pass, later on November 15, 2026:
+
+| Finding | Status |
+| --- | --- |
+| The thin grid | Covered. `testdata/scenarios/98-grid.json` holds 154 cases: for each of 22 hooks (all but the deferred `skills/filter`), a rule that reads `route`, a flag and the entitlement, each as a pair where it fires and where it does not, and a rule in audit mode. Every hook now runs on the mux, with a second server whose same-named items must stay untouched. All pass on the engine and on every client; no engine defect was found |
+| `forwardMeta` is the engine's record, not the wire's | Fixed. On every forward in the golden set, the runner compares the engine's decision with the `_meta` the mock upstream received. Breaking the engine either way (never forward, always forward) fails the tool, prompt and read cases |
+| `timeout` is the engine's record | Covered on the mock in `testdata/e2e/mock-timeout.json`: a timeout shorter than the server's delay cuts the call off and the server sees the cancel; a timeout the server beats changes nothing |
+| An upstream that fails before replying (found while writing the timeout cases) | Fixed in the test gateway. It sent the client `-32603` with the transport's own error text, which names the upstream's address. It now hands the failure to the engine, so the client gets the one lost-reply answer (`-32014`) and the cause goes to the record |
+| Wildcard checks (raised by Codex) | Fixed. A `[*]` path that collects nothing needs the list it collects from to be present, and an empty collection now compares as `[]` |
+| Soak | The soak gained two operations: a streamed reply through progress and result rules, and a confirmation that is asked and never answered |
+
 Not done:
 
-- `outcome.forward.connect.forwardMeta` and `timeout` are still the engine's record, not the wire's
+- against the reference servers, `outcome.forward` is still the engine's record: only the mock upstream shows what was received
 - error-code-only checks (CX-55, "errors crash") are not sharpened
-- the thin grid is wider but not full: `route`, `flags` and `entitlement` are still read in few hooks, and audit mode is still absent from most
 - the 30 engine-only cases and the steps no SDK can make are unchanged
 - `planSkill` does not skip rules that read `flags` or `route` (skills are deferred)
 - dead code is not removed

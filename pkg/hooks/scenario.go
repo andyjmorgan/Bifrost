@@ -757,6 +757,13 @@ func substitute(raw json.RawMessage, outputs []any) (json.RawMessage, error) {
 	return json.RawMessage(out), ferr
 }
 
+func first(vals []any) any {
+	if len(vals) == 0 {
+		return nil
+	}
+	return vals[0]
+}
+
 // lookup resolves a path against generic JSON, returning every match.
 func lookup(v any, path string) []any {
 	cur := []any{v}
@@ -847,16 +854,28 @@ func (ex Expect) check(out any, extra map[string]any) string {
 	collected := strings.Contains(ex.Path, "[*]")
 	var v any
 	if collected {
+		if vals == nil {
+			vals = []any{} // nothing collected is the empty list, not null
+		}
 		v = vals
 	} else if len(vals) > 0 {
 		v = vals[0]
 	}
 	exists := len(vals) > 0
-	if collected {
-		exists = len(vals) > 0
-	}
 	if ex.Exists != nil && *ex.Exists != exists {
 		return fmt.Sprintf("%s: exists=%v, want %v (value %s)", ex.Path, exists, *ex.Exists, short(v))
+	}
+	if collected && len(vals) == 0 && (ex.hasEquals || ex.hasSet || ex.Len != nil || ex.NotContains != nil) {
+		// A [*] path that collects nothing looks the same whether its list
+		// is empty or was never there. They are not the same: an error with
+		// no result must not satisfy "the listing holds none of these". So
+		// the list the path collects from has to be present.
+		src := ex.Path[:strings.Index(ex.Path, "[*]")]
+		from := lookup(root, src)
+		if _, isList := first(from).([]any); !isList {
+			return fmt.Sprintf("%s collects from %s, which is missing or not a list; an empty result needs a present, empty list", ex.Path, src)
+		}
+		exists = true // a present list with nothing to collect is a value: []
 	}
 	if ex.hasEquals && !jsonEqual(normJSON(v), normJSON(ex.Equals)) {
 		return fmt.Sprintf("%s = %s, want %s", ex.Path, short(v), short(ex.Equals))

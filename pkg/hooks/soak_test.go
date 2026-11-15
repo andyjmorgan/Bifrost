@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,7 +103,7 @@ func TestSoak(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), dur)
 	defer cancel()
-	var opCounts [7]atomic.Int64
+	var opCounts [9]atomic.Int64
 	workers := runtime.GOMAXPROCS(0)
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
@@ -138,7 +139,7 @@ func TestSoak(t *testing.T) {
 						if g, loaded := golden.LoadOrStore(role, b); loaded && string(g.([]byte)) != string(b) {
 							fail("listing bytes changed for role " + role)
 						}
-					case op < 70: // a real call
+					case op < 58: // a real call
 						opCounts[1].Add(1)
 						c := calls[rng.Intn(len(calls))]
 						r.Route = "direct"
@@ -147,6 +148,12 @@ func TestSoak(t *testing.T) {
 						if out.Forward == nil && out.Result == nil && out.Error == nil {
 							fail("empty call outcome for " + c.Tool)
 						}
+					case op < 68: // a streamed reply with progress, through progress and result rules
+						opCounts[7].Add(1)
+						soakStream(ctx, e, fail)
+					case op < 70: // a confirmation that is asked and never answered
+						opCounts[8].Add(1)
+						soakAbandonedAsk(ctx, e, fail)
 					case op < 80: // elicitation round trip
 						opCounts[2].Add(1)
 						soakElicit(ctx, e, fail)
@@ -183,6 +190,14 @@ func TestSoak(t *testing.T) {
 		}(w)
 	}
 
+	// pending counts the confirmations waiting in the store. Abandoned ones
+	// must leave when they expire, so this levels off and does not climb.
+	pending := func() int {
+		if m, ok := e.states().(*MemoryStates); ok {
+			return m.Len()
+		}
+		return -1
+	}
 	// Monitor: live heap after GC and goroutines, every minute.
 	type sample struct {
 		heap uint64
@@ -204,7 +219,7 @@ monitor:
 			runtime.ReadMemStats(&ms)
 			cur := ops.Load()
 			counts := map[string]int64{}
-			for i, n := range []string{"list", "call", "elicit", "fallback", "refresh", "search", "suite"} {
+			for i, n := range []string{"list", "call", "elicit", "fallback", "refresh", "search", "suite", "stream", "abandoned"} {
 				counts[n] = opCounts[i].Load()
 			}
 			samples = append(samples, sample{heap: ms.HeapAlloc, gor: runtime.NumGoroutine()})
@@ -212,7 +227,7 @@ monitor:
 			prepCache.Range(func(_, _ any) bool { prepN++; return true })
 			logLine(map[string]any{"event": "tick", "elapsed": time.Since(start).Round(time.Second).String(), "ops": cur, "opsPerSec": float64(cur-lastOps) / 60,
 				"failures": fails.Load(), "heapMiB": float64(ms.HeapAlloc) / (1 << 20), "goroutines": runtime.NumGoroutine(), "numGC": ms.NumGC,
-				"pauseTotalMs": float64(ms.PauseTotalNs) / 1e6, "prepCache": prepN, "byOp": counts})
+				"pauseTotalMs": float64(ms.PauseTotalNs) / 1e6, "prepCache": prepN, "pendingConfirmations": pending(), "byOp": counts})
 			lastOps = cur
 		}
 	}
@@ -325,5 +340,97 @@ func soakFallback(ctx context.Context, e *Engine, fail func(string)) {
 		if ctx.Err() == nil {
 			fail("fallback: ambiguous URI not reported")
 		}
+	}
+}
+
+var soakStreamSet = func() *Set {
+	set, probs := Compile([]Rule{
+		{Hook: "tools/progress", When: "progress.message.contains('/srv')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/progress", When: "progress.message.startsWith('step')", Then: map[string]string{"message": "'working: ' + progress.message"}},
+		{Hook: "tools/result", When: "has(result.structuredContent) && result.structuredContent != null", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['internal'])"}},
+	})
+	if probs != nil {
+		panic(probs)
+	}
+	return set
+}()
+
+// soakStream forwards a call and runs its streamed reply through the
+// engine: progress that is relayed, reworded and dropped, a notification
+// nobody defined, then the result. Every third stream ends with no result.
+func soakStream(ctx context.Context, e *Engine, fail func(string)) {
+	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: soakStreamSet,
+		Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
+	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}}
+	p := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}
+	first := e.CallTool(ctx, r, p)
+	if first.Forward == nil {
+		if ctx.Err() == nil {
+			fail(fmt.Sprintf("stream: the call was not forwarded: %+v", first.Error))
+		}
+		return
+	}
+	lose := soakStreamSeq.Add(1)%3 == 0
+	upstream := func(yield func(UpstreamEvent, error) bool) {
+		for _, m := range []string{"step 1", "reading /srv/secret", "step 2"} {
+			b, _ := json.Marshal(map[string]any{"progressToken": "gw", "progress": 1, "message": m})
+			if !yield(UpstreamEvent{Method: ProgressMethod, Params: b}, nil) {
+				return
+			}
+		}
+		if !yield(UpstreamEvent{Method: "notifications/nobody/defined", Params: json.RawMessage(`{"x":1}`)}, nil) {
+			return
+		}
+		if lose {
+			return
+		}
+		yield(UpstreamEvent{Result: json.RawMessage(`{"content":[{"type":"text","text":"done"}],"structuredContent":{"keep":1,"internal":2}}`)}, nil)
+	}
+	var progress []string
+	var final *Outcome
+	for ev, err := range e.ToolReplyStream(ctx, r, first.Call, p, upstream) {
+		if err != nil {
+			fail("stream: " + err.Error())
+			return
+		}
+		if ev.Final != nil {
+			final = ev.Final
+			break
+		}
+		var m struct{ Message string }
+		_ = json.Unmarshal(ev.Params, &m)
+		progress = append(progress, m.Message)
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	if got := strings.Join(progress, "|"); got != "working: step 1|working: step 2" {
+		fail("stream: progress relayed as " + got)
+	}
+	switch {
+	case final == nil:
+		fail("stream: no final outcome")
+	case lose:
+		if final.Error == nil || final.Error.Code != CodeUpstreamLost {
+			fail(fmt.Sprintf("stream: a lost reply ended as %+v", final.Error))
+		}
+	default:
+		b, _ := json.Marshal(final.Result)
+		if final.Error != nil || !strings.Contains(string(b), `"keep":1`) || strings.Contains(string(b), "internal") {
+			fail(fmt.Sprintf("stream: result %s error %+v", b, final.Error))
+		}
+	}
+}
+
+var soakStreamSeq atomic.Int64
+
+// soakAbandonedAsk asks for a confirmation and never answers it. The store
+// must drop the entry when it expires: the heap check finds it if not.
+func soakAbandonedAsk(ctx context.Context, e *Engine, fail func(string)) {
+	s := &Server{Slug: "a", Generation: "1", Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
+	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}}
+	first := e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"id":1}`)})
+	if _, ok := first.Result.(InputRequired); !ok && ctx.Err() == nil {
+		fail(fmt.Sprintf("abandoned ask: no input_required: %+v", first.Error))
 	}
 }

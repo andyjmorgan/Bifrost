@@ -177,6 +177,15 @@ func TestGapAuditRunnerChecksNeedSomethingToCheck(t *testing.T) {
 		{"refused: a client that only failed is not a refusal", `{"path":"client","refused":true}`, clientFailed, false},
 		{"refused: a normal result", `{"path":"client","refused":true}`, fine, false},
 		{"not refused: a normal result", `{"path":"client","refused":false}`, fine, true},
+		{"[*] equals [] on a missing list", `{"path":"client.result.tools[*].name","equals":[]}`, errorOnly, false},
+		{"[*] equals [] on a present, empty list", `{"path":"client.result.tools[*].name","equals":[]}`, `{"client":{"result":{"tools":[]}}}`, true},
+		{"[*] equals [] on a list with elements", `{"path":"client.result.tools[*].name","equals":[]}`, `{"client":{"result":{"tools":[{"name":"t"}]}}}`, false},
+		{"[*] len 0 on a missing list", `{"path":"client.result.tools[*].name","len":0}`, errorOnly, false},
+		{"[*] len 0 on a present, empty list", `{"path":"client.result.tools[*].name","len":0}`, `{"client":{"result":{"tools":[]}}}`, true},
+		{"[*] notContains on a missing list", `{"path":"client.result.tools[*].name","notContains":"secret"}`, errorOnly, false},
+		{"[*] notContains on a present, empty list", `{"path":"client.result.tools[*].name","notContains":"secret"}`, `{"client":{"result":{"tools":[]}}}`, true},
+		{"[*] set [] on a missing list", `{"path":"client.result.tools[*].name","set":[]}`, errorOnly, false},
+		{"[*] set [] on a present, empty list", `{"path":"client.result.tools[*].name","set":[]}`, `{"client":{"result":{"tools":[]}}}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var ex Expect
