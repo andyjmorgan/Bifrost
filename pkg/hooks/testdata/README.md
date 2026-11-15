@@ -119,7 +119,15 @@ Operators:
 | `set` | a list has exactly these elements, in any order |
 | `has` | a list holds an element with every field given: `{"path": "hits", "has": {"hook": "tools/call", "effect": "deny"}}` |
 | `hasText`, `lacksText` | the value's JSON holds, or does not hold, each text |
-| `refused` | on the path `client`: the request was refused (an error, or a result with `isError: true`) |
+| `refused` | on the path `client`: the request was refused (a JSON-RPC error with a code, or a result with `isError: true`). A client that only failed, with no error code from the gateway, was not refused |
+
+A check needs something to check:
+
+- `notEquals`, `notMatches` and `lacksText` fail when the path is missing. On a missing value they would pass whatever happened, including an error that returned no result
+- to assert that a value is absent, use `"exists": false`
+- `set` and `len` need a present value of the right kind
+
+The loader refuses a key the format does not define, on a case, a server, a step, a check or a mock script. A misspelt key would otherwise be ignored and leave a case that tests nothing. Catalogs, arguments, replies and rules are data and may hold any key.
 
 Expected values may use `${client.name}` (the name the client declares), `${client.harness}` and `${server.language}`.
 

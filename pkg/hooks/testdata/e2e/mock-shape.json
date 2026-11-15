@@ -11,7 +11,7 @@
 {"name": "to accept text for a number, write two rules: convert, then clamp",
  "servers": [{"slug": "a", "rules": [{"hook": "tools/call", "when": "has(args.limit) && type(args.limit) == string", "then": {"args.limit": "int(args.limit)"}}, {"hook": "tools/call", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "expect": [{"path": "client.result.isError", "notEquals": true}, {"path": "outcome.forward.params.arguments", "equals": {"limit": 50}}]},
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "expect": [{"path": "client", "refused": false}, {"path": "outcome.forward.params.arguments", "equals": {"limit": 50}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "250"}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 250}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 7}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 7}}]},
@@ -30,7 +30,7 @@
 {"name": "the guarded text rewrite changes text blocks and passes an image through whole",
  "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "true", "then": {"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "report", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "Datadog says hi. Datadog again."}, {"type": "image", "data": "aGVsbG8=", "mimeType": "image/png"}, {"type": "text", "text": "no change"}]}, "expect": [{"path": "client.result.isError", "notEquals": true}, {"path": "client.result.content", "len": 3}, {"path": "client.result.content[0].text", "equals": "Bits says hi. Bits again."}, {"path": "client.result.content[1].type", "equals": "image"}, {"path": "client.result.content[1].data", "equals": "aGVsbG8="}, {"path": "client.result.content[1].mimeType", "equals": "image/png"}, {"path": "client.result.content[2].text", "equals": "no change"}]}
+  {"op": "tools/call", "params": {"name": "report", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "Datadog says hi. Datadog again."}, {"type": "image", "data": "aGVsbG8=", "mimeType": "image/png"}, {"type": "text", "text": "no change"}]}, "expect": [{"path": "client", "refused": false}, {"path": "client.result.content", "len": 3}, {"path": "client.result.content[0].text", "equals": "Bits says hi. Bits again."}, {"path": "client.result.content[1].type", "equals": "image"}, {"path": "client.result.content[1].data", "equals": "aGVsbG8="}, {"path": "client.result.content[1].mimeType", "equals": "image/png"}, {"path": "client.result.content[2].text", "equals": "no change"}]}
  ]},
 {"name": "the unguarded text rewrite errors on an image and the result is refused, not leaked",
  "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "true", "then": {"content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, 'secret', 'xxx')})"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
@@ -45,6 +45,6 @@
 {"name": "a task handle the server returns unasked is refused and never reaches the client",
  "servers": [{"slug": "a", "catalog": {"tools": [{"name": "t", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "t", "arguments": {}}, "upstream": {"resultType": "task", "taskId": "task-123", "status": "working", "createdAt": "2026-11-15T00:00:00Z", "lastUpdatedAt": "2026-11-15T00:00:00Z", "ttlMs": 60000, "pollIntervalMs": 1000}, "expect": [{"path": "client", "refused": true}, {"path": "client.result.resultType", "notEquals": "task"}, {"path": "client", "lacksText": ["task-123"]}]}
+  {"op": "tools/call", "params": {"name": "t", "arguments": {}}, "upstream": {"resultType": "task", "taskId": "task-123", "status": "working", "createdAt": "2026-11-15T00:00:00Z", "lastUpdatedAt": "2026-11-15T00:00:00Z", "ttlMs": 60000, "pollIntervalMs": 1000}, "expect": [{"path": "client", "refused": true}, {"path": "client.result.task", "exists": false}, {"path": "client", "lacksText": ["task-123"]}]}
  ]}
 ]

@@ -442,6 +442,11 @@ func (g *Gateway) overrides(r *http.Request) overrides {
 	var o overrides
 	q := r.URL.Query()
 	for _, name := range hooks.Flags {
+		// A client may set only the flags meant for clients. The others,
+		// such as cli, are the gateway's to set; here only a test can.
+		if !hooks.ClientMaySet(name) && !g.TestHooks {
+			continue
+		}
 		if q.Get(name) == "true" {
 			if o.flags == nil {
 				o.flags = map[string]bool{}

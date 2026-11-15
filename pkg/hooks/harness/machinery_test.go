@@ -2,8 +2,10 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -357,3 +359,32 @@ func read(t testing.TB, cs *mcp.ClientSession, uri string) (*mcp.ReadResourceRes
 var clamp = rule("tools/call", "has(args.limit) && args.limit > 100", "args.limit", "100")
 
 const rewriteText = "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"
+
+// A client may set the search flag on its own request. It may not set the
+// cli flag: that one says how the request arrived, the gateway sets it, and
+// rules rely on it. A client that appends ?cli=true gets nothing for it.
+func TestClientCannotSetTheCLIFlag(t *testing.T) {
+	u := NewUpstream(t, V2026)
+	u.Tool(`{"name":"t","inputSchema":{"type":"object"}}`, Static(Reply{Result: Text("done")}))
+	g := NewGateway(t)
+	g.AddServer(t, "a", u,
+		hooks.Rule{Hook: "tools/call", When: "flags.cli", Then: map[string]string{"decision": "'deny'", "reason": "'cli flag seen'"}})
+	call := RawRequest{Method: "tools/call", Params: map[string]any{"name": "t", "arguments": map[string]any{}}}
+	text := func(rep *RawReply) string {
+		b, _ := json.Marshal(rep.Messages())
+		return string(b)
+	}
+
+	if got := text(Raw(t, g.Direct("a")+"?cli=true", call)); strings.Contains(got, "cli flag seen") || !strings.Contains(got, "done") {
+		t.Fatalf("a client set flags.cli from its query string: %s", got)
+	}
+	// The search flag is a client's to set, on the same request path.
+	if got := text(Raw(t, g.Direct("a")+"?search=true", RawRequest{Method: "tools/list"})); !strings.Contains(got, "tool_search") {
+		t.Fatalf("the search flag, which a client may set, was not applied: %s", got)
+	}
+	// The gateway's own side can set cli; in this rig that is the test switch.
+	g.TestHooks = true
+	if got := text(Raw(t, g.Direct("a")+"?cli=true", call)); !strings.Contains(got, "cli flag seen") {
+		t.Fatalf("the gateway's own cli flag did not reach the rules: %s", got)
+	}
+}

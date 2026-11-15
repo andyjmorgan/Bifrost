@@ -1,5 +1,8 @@
 # Review handover: rules engine, round 3
 
+> Out of date since November 15, 2026, for how the tests are laid out. The matrix package (`pkg/hooks/harness/matrix/`) and the parity bridge (`pkg/hooks/harness/parity_test.go`) no longer exist. Every client-facing case is JSON under `pkg/hooks/testdata/`, run by `TestGolden` in `pkg/hooks/harness/golden_test.go`. See `pkg/hooks/testdata/README.md`, `codex-v3-review-response.md` and `test-gap-audit.md`. The engine decisions described here still stand.
+
+
 You reviewed this engine twice, at v1 and v2. Since your v2 review it has changed a lot in one day: about 1,500 lines of engine code, new entry points, and one reversal of a rule you argued for. Claude wrote the changes and the tests, and copies of Claude built the test rig, so the work has had no independent review. That is your job here. Treat nothing as proven because a test passes.
 
 Start in `/home/localuser/source/bifrost`, branch `rules-hooks`. Your v2 review was against `ed82ea4`. The work to review is everything after it:

@@ -249,6 +249,14 @@ func (r Request) server(slug string) *Server {
 }
 
 func (r Request) clientCan(capability string) bool {
+	if capability == "elicitation" && r.Flags[FlagCLI] {
+		// A request from the command line client did not come in through
+		// MCP: there is no client to show a question to, whatever the
+		// request's client map says. So nothing can be asked: a rule that
+		// wants confirmation refuses, a server is not told elicitation is
+		// available, and a server's own question is refused.
+		return false
+	}
 	caps, _ := r.Client["capabilities"].(map[string]any)
 	v, ok := caps[capability]
 	if !ok || v == nil {
@@ -331,7 +339,13 @@ type CallContext struct {
 	Item      map[string]any // the exposed item's fields (prompts and resources)
 	// Bare marks a resource the server does not list: rules may read its
 	// `uri` and nothing else, on the reply side as on the request side.
-	Bare    bool
+	Bare bool
+	// resolve gives rules this call's item: its fields as the client sees
+	// them, after every modify rule, and `upstream` as the server sent it.
+	// It is built once, on the request side, and every reply hook reads the
+	// same one, so an item cannot mean one thing in tools/call and another
+	// in tools/result.
+	resolve func(name string) (any, bool)
 	Args    map[string]any // exactly what was sent upstream
 	Hash    string
 	State   *State
@@ -574,7 +588,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	if timeout > 0 {
 		o.Forward.Timeout = timeout.String()
 	}
-	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Args: upArgs, Hash: hash, State: st, Answers: answers}
+	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Args: upArgs, Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 

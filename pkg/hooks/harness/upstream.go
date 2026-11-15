@@ -498,7 +498,7 @@ func (u *Upstream) write(w http.ResponseWriter, r *http.Request, rec Recorded, r
 	w.WriteHeader(http.StatusOK)
 	fl, _ := w.(http.Flusher)
 	send := func(b []byte) bool {
-		if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+		if err := writeSSEData(w, b); err != nil {
 			u.cancelled.Add(1)
 			return false
 		}
@@ -580,4 +580,18 @@ func (u *Upstream) envelope(rec Recorded, rep Reply) []byte {
 	}
 	b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": res})
 	return b
+}
+
+// writeSSEData writes one server-sent event. Each line of the data gets its
+// own "data:" prefix, as the format requires: a scripted result that spans
+// several lines would otherwise end the event at its first line break, and
+// the reader would see a broken message and then nothing.
+func writeSSEData(w io.Writer, b []byte) error {
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
+			return err
+		}
+	}
+	_, err := io.WriteString(w, "\n")
+	return err
 }

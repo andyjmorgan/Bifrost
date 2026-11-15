@@ -123,7 +123,7 @@
   {"op": "resources/read", "rawBody": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":7}}", "expect": [{"path": "wire.status", "equals": 200}, {"path": "wire.messages", "len": 1}]},
   {"op": "prompts/get", "rawBody": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"prompts/get\",\"params\":{\"name\":\"x\",\"arguments\":{\"a\":1}}}", "expect": [{"path": "wire.status", "equals": 200}, {"path": "wire.messages", "len": 1}]},
   {"op": "tools/list", "rawBody": "{\"jsonrpc\":\"2.0\",\"id\":{\"a\":1},\"method\":\"tools/list\"}", "expect": [{"path": "wire.status", "equals": 200}, {"path": "wire.messages", "len": 1}]},
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 5}}, "upstream": {"content": [{"type": "text", "text": "ok"}]}, "expect": [{"path": "client.result.content[0].text", "equals": "ok"}, {"path": "client.result.isError", "notEquals": true}]}
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 5}}, "upstream": {"content": [{"type": "text", "text": "ok"}]}, "expect": [{"path": "client.result.content[0].text", "equals": "ok"}, {"path": "client", "refused": false}]}
  ]},
 {"name": "wire progress order: progress frames precede the result on the request's own SSE stream, under the client's token", "only": {"harness": "raw", "reason": "It reads the SSE frames themselves, their order and the progress token on each; an SDK hands its caller the events and the result, not the frames."}, "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"},
  "servers": [{"slug": "ref", "rules": []}],

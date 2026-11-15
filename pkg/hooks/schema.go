@@ -38,7 +38,7 @@ type HookSchema struct {
 // FlagDocs describes each flag. Every name in Flags has an entry.
 var FlagDocs = map[string]string{
 	FlagSearch: "The request is in search mode: the gateway offers its search tools in place of the full listing. Set with ?search=true, on either route.",
-	FlagCLI:    "The request comes from the command line client, through the gateway's API. The gateway sets it; the request does not come in through MCP, but the call sent upstream is the same.",
+	FlagCLI:    "The request comes from the command line client, through the gateway's API. The gateway sets it, and a client cannot: the request does not come in through MCP, but the call sent upstream is the same. Such a request cannot be asked for confirmation.",
 }
 
 // flagsSchema is the `flags` variable: a struct with one bool per flag.

@@ -23,7 +23,7 @@ This hook has no item, so there is no `upstream` variable.
 | `tools` | bool | `true` | Expose tools |
 | `prompts` | bool | `true` | Expose prompts |
 | `resources` | bool | `true` | Expose resources, templates, skills and directory reads |
-| `tasks` | bool | `false` | Reserved. The gateway does not support the `io.modelcontextprotocol/tasks` extension yet, so this switch stays off whatever a rule sets, and a task handle a server returns is refused |
+| `tasks` | bool | `false` | Reserved. The gateway does not support the `io.modelcontextprotocol/tasks` extension yet, so this switch stays off whatever a rule sets, and a task handle a server returns is refused, for a tool call, a prompt or a read |
 | `instructions` | bool | `true` | Show the server's instructions in discover, mux excerpts and `get_server_instructions` |
 | `serverInfo` | bool | `false` | On the direct route, show the upstream's name and version in discover instead of the gateway's |
 | `searchRoster` | bool | `true` | Use the server's title, description and instructions, after [server/modify](server-modify.md), when search mode ranks tools |

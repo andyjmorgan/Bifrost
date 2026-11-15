@@ -23,9 +23,14 @@ import (
 // with a token in its query. So names are filtered too. A field name is
 // shown only when it looks like a field name; any other is withheld and
 // counted. A type or method name that does not look like one is replaced by
-// its length. A URI target loses its query and fragment. What is left is
-// meant to be safe for a general log, but it is still text a server chose:
-// treat it as low-sensitivity, not as public.
+// its length. A URI target loses its query and fragment.
+//
+// That filtering is a mitigation, not a guarantee. A customer's name can
+// look like a field name, and a URI's path can carry one. Records omit
+// payload values and filter some names; names and URI targets can still
+// contain sensitive customer data. Send them to the access-controlled
+// diagnostic destination used for customer data. For a general-purpose
+// destination, omit or hash the names and targets first.
 
 // Unknown kinds.
 const (

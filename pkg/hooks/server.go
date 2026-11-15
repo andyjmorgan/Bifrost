@@ -366,26 +366,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	if !ok {
 		return errOutcome(-32603, "upstream result is not a JSON object")
 	}
-	exposed := prepare(upstreamTool(s, tr.Upstream))
-	var item *preparedTool
-	for _, t := range s.Catalog.Tools {
-		if t.Name == tr.Upstream {
-			item = exposed
-		}
-	}
-	if item == nil {
-		item = exposed
-	}
-	itemResolve := func(name string) (any, bool) {
-		if name == "upstream" {
-			return exposed.derived, true
-		}
-		if toolFieldSet[name] {
-			return exposed.derived[name], true
-		}
-		return nil, false
-	}
-	_ = item
+	itemResolve := replyResolve(call)
 	var seen unknowns
 	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
 	if rt, _ := result["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {

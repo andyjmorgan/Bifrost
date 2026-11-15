@@ -97,6 +97,7 @@ func (t *uriTemplate) denies(uri string) bool {
 type resView struct {
 	visibleRes   map[string]map[string]any // normalized URI -> exposed resource
 	listedRes    map[string]bool           // normalized URI is in the upstream listing
+	originalRes  map[string]map[string]any // normalized URI -> the resource as the upstream sent it
 	okTemplates  []*uriTemplate
 	badTemplates []*uriTemplate // denied, failed modify or collided
 	deniedRoots  []string
@@ -106,13 +107,14 @@ type resView struct {
 }
 
 func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resView {
-	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}}
+	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}, originalRes: map[string]map[string]any{}}
 	c := r.context(s)
 	var hits []Hit
 	v.skills, v.deniedRoots, hits = e.skillView(ctx, r, s)
 	v.hits = append(v.hits, hits...)
 	for _, x := range s.Catalog.Resources {
 		v.listedRes[normalizeURI(x.URI)] = true
+		v.originalRes[normalizeURI(x.URI)] = toMap(x)
 	}
 	ls, issues, hits := s.Rules.listItems(ctx, KindResource, "resources/filter", "resources/modify", "uri", resourceItems(s.Catalog.Resources), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)

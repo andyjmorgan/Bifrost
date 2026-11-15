@@ -234,7 +234,8 @@ type Expect struct {
 	Exists      *bool  `json:"exists,omitempty"`
 	Len         *int   `json:"len,omitempty"`
 	Matches     string `json:"matches,omitempty"` // regexp on the string form
-	// NotEquals is the negation of equals; a missing value passes.
+	// NotEquals is the negation of equals. Like every negative check it
+	// needs a present value; use exists: false to assert absence.
 	NotEquals any `json:"notEquals,omitempty"`
 	// NotMatches is the negation of matches.
 	NotMatches string `json:"notMatches,omitempty"`
@@ -328,6 +329,9 @@ func LoadScenarios(path string) ([]*Scenario, error) {
 
 // ParseScenarios parses scenario JSON in any of the accepted shapes.
 func ParseScenarios(b []byte) ([]*Scenario, error) {
+	if err := checkScenarioKeys(b); err != nil {
+		return nil, err
+	}
 	t := strings.TrimSpace(string(b))
 	if strings.HasPrefix(t, "[") {
 		var out []*Scenario
@@ -914,15 +918,29 @@ func (ex Expect) checkMore(v any, exists bool) string {
 		b, _ := json.Marshal(v)
 		return string(b)
 	}
-	if ex.hasNotEquals && exists && jsonEqual(normJSON(v), normJSON(ex.NotEquals)) {
-		return fmt.Sprintf("%s = %s, want anything else", ex.Path, short(v))
+	// A negative check needs something to check. On a missing value it
+	// would pass whatever happened, including an error that returned no
+	// result at all. Use "exists": false to assert absence.
+	missing := func(op string) string {
+		return fmt.Sprintf("%s is missing; %s needs a present value (use \"exists\": false to assert absence)", ex.Path, op)
+	}
+	if ex.hasNotEquals {
+		if !exists {
+			return missing("notEquals")
+		}
+		if jsonEqual(normJSON(v), normJSON(ex.NotEquals)) {
+			return fmt.Sprintf("%s = %s, want anything else", ex.Path, short(v))
+		}
 	}
 	if ex.NotMatches != "" {
 		re, err := regexp.Compile(ex.NotMatches)
 		if err != nil {
 			return "bad notMatches regexp: " + err.Error()
 		}
-		if exists && re.MatchString(text()) {
+		if !exists {
+			return missing("notMatches")
+		}
+		if re.MatchString(text()) {
 			return fmt.Sprintf("%s = %s, want no match of /%s/", ex.Path, short(v), ex.NotMatches)
 		}
 	}
@@ -946,6 +964,11 @@ func (ex Expect) checkMore(v any, exists bool) string {
 		l, ok := v.([]any)
 		if !ok && exists {
 			return fmt.Sprintf("%s = %s is not a list; set needs one", ex.Path, short(v))
+		}
+		if !ok {
+			// A missing value is not an empty list. Without this, "set": []
+			// would pass against an error that returned no listing at all.
+			return fmt.Sprintf("%s is missing; set needs a list, and an empty one must be present", ex.Path)
 		}
 		canon := func(items []any) []string {
 			out := make([]string, 0, len(items))
@@ -979,13 +1002,24 @@ func (ex Expect) checkMore(v any, exists bool) string {
 		}
 	}
 	for _, part := range ex.LacksText {
-		if exists && strings.Contains(text(), part) {
+		if !exists {
+			return missing("lacksText")
+		}
+		if strings.Contains(text(), part) {
 			return fmt.Sprintf("%s = %s, want it not to hold the text %q", ex.Path, short(v), part)
 		}
 	}
 	if ex.Refused != nil {
+		// Refused means the gateway or the server said no: a JSON-RPC error
+		// with a code, or a tool result marked as an error. A client that
+		// merely failed, with no code, has not been refused; counting it
+		// would let a crashed or timed-out client pass a refusal check.
 		m, _ := v.(map[string]any)
-		_, failed := m["error"]
+		failed := false
+		if em, ok := m["error"].(map[string]any); ok {
+			code := fmt.Sprint(em["code"])
+			failed = code != "" && code != "0" && code != "<nil>"
+		}
 		res, _ := m["result"].(map[string]any)
 		isErr, _ := res["isError"].(bool)
 		if got := failed || isErr; got != *ex.Refused {
@@ -1215,17 +1249,16 @@ func (e *Engine) runStep(ctx context.Context, r Request, st Step, params json.Ra
 		sr.Outcome = errOutcome(CodeInvalidParams, "scenario params: "+err.Error())
 		return sr
 	}
-	// The upstream's events for a forwarded request: progress when the
-	// client asked for it and the server's switch allows it, the other
+	// The upstream's events for a forwarded request: progress, the other
 	// notifications, then the response, unless the script withholds it.
 	events := func(call *CallContext) iter.Seq2[UpstreamEvent, error] {
 		return func(yield func(UpstreamEvent, error) bool) {
-			relay := st.Progress
-			if relay && call != nil && call.Server != nil {
-				sw, _ := e.Config(ctx, r, call.Server)
-				relay = sw["progress"]
-			}
-			if relay {
+			// A gateway hands the engine only the progress sent under a
+			// token it issued, and it issues one only when the client
+			// asked for progress. Whether those events are then relayed is
+			// the engine's decision, from the server's progress switch:
+			// this runner must not make that decision for it.
+			if st.Progress {
 				for _, p := range st.Mock.Progress {
 					m := map[string]any{"progressToken": "scenario", "progress": p.Progress}
 					if p.Total != 0 {

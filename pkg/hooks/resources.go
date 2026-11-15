@@ -170,7 +170,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		fp.Meta = forwardMeta(p.Meta)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: "prompts/get", Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Args: toAnyMap(upArgs), Hash: hash, State: st, Answers: answers}
+	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Args: toAnyMap(upArgs), Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 
@@ -203,7 +203,9 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 	}
 	var seen unknowns
 	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
-	if rt, _ := m["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {
+	if rt, _ := m["resultType"].(string); rt == "task" {
+		return refuseTask(e, ctx, &seen, o, s.Slug, call.Target, m)
+	} else if rt != "" && rt != "complete" && rt != "input_required" {
 		seen.add(UnknownResultType, rt, s.Slug, call.Target, "passed", m)
 	}
 	inputUnknowns(&seen, s.Slug, call.Target, m)
@@ -225,8 +227,7 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		it := &item{kind: KindPrompt, view: NewView(call.Item), args: newArgState(call.Item)}
-		out, hits, err := e.inputHook(ctx, r, s, "prompts/input", call.Exposed, it.resolve, call.Args, rawRequests(m))
+		out, hits, err := e.inputHook(ctx, r, s, "prompts/input", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -509,6 +510,7 @@ func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Serve
 		res = known
 	}
 	it := &item{kind: KindResource, id: uri, view: NewView(res), label: uri, bare: !listed}
+	resolve := itemResolver(it, v.originalRes[normalizeURI(uri)])
 	content := map[string]any{"uri": uri}
 	if mime != "" {
 		content["mimeType"] = mime
@@ -521,7 +523,7 @@ func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Serve
 	vars["args"] = map[string]any{"uri": uri}
 	vars["result"] = resultVar(map[string]any{"contents": []any{content}})
 	vars[muxVar] = muxContext(r.route(), s.Slug, v.owned())
-	o := s.Rules.run(ctx, "resources/result", uri, it.resolve, vars, func(key string, val any) error {
+	o := s.Rules.run(ctx, "resources/result", uri, resolve, vars, func(key string, val any) error {
 		if key == "text" && !isText {
 			return nil // binary content keeps its bytes
 		}
@@ -846,10 +848,11 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return o
 	}
 	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[normalizeURI(up)]}
+	resolve := itemResolver(it, v.originalRes[normalizeURI(up)])
 	vars := r.context(s).vars()
 	vars["args"] = args
 	vars["input"] = answers
-	co := s.Rules.run(ctx, "resources/read", up, it.resolve, vars, func(string, any) error { return nil })
+	co := s.Rules.run(ctx, "resources/read", up, resolve, vars, func(string, any) error { return nil })
 	o.Hits = append(o.Hits, co.hits...)
 	if expired(ctx) {
 		return budgetOutcome(o)
@@ -880,7 +883,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return budgetOutcome(o)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: method, Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Args: args, Hash: hash, State: st, Answers: answers}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Args: args, Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 
@@ -904,7 +907,9 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 	}
 	var seen unknowns
 	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
-	if rt, _ := m["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {
+	if rt, _ := m["resultType"].(string); rt == "task" {
+		return refuseTask(e, ctx, &seen, o, s.Slug, up, m)
+	} else if rt != "" && rt != "complete" && rt != "input_required" {
 		seen.add(UnknownResultType, rt, s.Slug, up, "passed", m)
 	}
 	inputUnknowns(&seen, s.Slug, up, m)
@@ -915,8 +920,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		it := &item{kind: KindResource, id: up, view: NewView(call.Item), label: up, bare: call.Bare}
-		out, hits, err := e.inputHook(ctx, r, s, "resources/input", up, it.resolve, call.Args, rawRequests(m))
+		out, hits, err := e.inputHook(ctx, r, s, "resources/input", up, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -1025,4 +1029,16 @@ func toAnyMap(m map[string]string) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+// refuseTask refuses a task handle returned for a prompt or a read. Tasks
+// are an extension the gateway does not support and never declares
+// upstream. A handle passed on would have its result fetched later, past
+// every result rule and size limit, so it is refused for every kind of
+// request, as it is for a tool call.
+func refuseTask(e *Engine, ctx context.Context, seen *unknowns, o Outcome, slug, target string, reply map[string]any) Outcome {
+	seen.add(UnknownResultType, "task", slug, target, "refused", reply)
+	o.Issues = append(o.Issues, slug+": "+target+" returned a task handle; tasks are not supported, so it was refused")
+	o.Error = &RPCError{Code: CodeInvalidParams, Message: "The server started a background task, which this gateway does not support."}
+	return e.finishOutcome(ctx, o)
 }

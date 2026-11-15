@@ -77,7 +77,7 @@ func (e *Engine) ToolReplyStream(parent context.Context, r Request, call *CallCo
 	}
 	return e.replyStream(parent, r, call, replyKind{
 		op: "tools/call reply", ref: toolCallRef(p), hook: "tools/progress",
-		resolve: func() func(string) (any, bool) { return toolReplyResolve(call) },
+		resolve: func() func(string) (any, bool) { return replyResolve(call) },
 		final:   func(raw json.RawMessage) Outcome { return e.UpstreamToolReply(parent, r, call, p, raw) },
 	}, upstream)
 }
@@ -90,11 +90,8 @@ func (e *Engine) PromptReplyStream(parent context.Context, r Request, call *Call
 	}
 	return e.replyStream(parent, r, call, replyKind{
 		op: "prompts/get reply", ref: promptCallRef(p), hook: "prompts/progress",
-		resolve: func() func(string) (any, bool) {
-			it := &item{kind: KindPrompt, view: NewView(call.Item), args: newArgState(call.Item)}
-			return it.resolve
-		},
-		final: func(raw json.RawMessage) Outcome { return e.UpstreamPromptReply(parent, r, call, p, raw) },
+		resolve: func() func(string) (any, bool) { return replyResolve(call) },
+		final:   func(raw json.RawMessage) Outcome { return e.UpstreamPromptReply(parent, r, call, p, raw) },
 	}, upstream)
 }
 
@@ -106,11 +103,8 @@ func (e *Engine) ReadReplyStream(parent context.Context, r Request, call *CallCo
 	}
 	return e.replyStream(parent, r, call, replyKind{
 		op: "resources/read reply", ref: readCallRef("resources/read", p), hook: "resources/progress",
-		resolve: func() func(string) (any, bool) {
-			it := &item{kind: KindResource, id: call.Target, view: NewView(call.Item), label: call.Target, bare: call.Bare}
-			return it.resolve
-		},
-		final: func(raw json.RawMessage) Outcome { return e.UpstreamReadReply(parent, r, call, p, raw) },
+		resolve: func() func(string) (any, bool) { return replyResolve(call) },
+		final:   func(raw json.RawMessage) Outcome { return e.UpstreamReadReply(parent, r, call, p, raw) },
 	}, upstream)
 }
 
@@ -126,6 +120,10 @@ type replyKind struct {
 func (e *Engine) replyStream(parent context.Context, r Request, call *CallContext, k replyKind, upstream iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error] {
 	return func(yield func(ReplyEvent, error) bool) {
 		ns := &notifications{e: e, r: r, call: call, kind: k, parent: parent}
+		// Whatever was seen is handed to the callback once, however the
+		// stream ends: a final response, the client leaving, or a panic in
+		// the consumer's own loop, which passes through here on its way out.
+		defer ns.flush()
 		// The consumer's loop body runs inside yield. A panic there is the
 		// consumer's, and must pass through untouched; a panic anywhere else
 		// is the engine's, and becomes a refusal.
@@ -171,9 +169,6 @@ func (e *Engine) replyStream(parent context.Context, r Request, call *CallContex
 			ns.finish(fault)
 			emit(ReplyEvent{Final: fault}, nil)
 		}
-		// When the client left early, or the response had already gone, there
-		// is no outcome left to carry what was seen. The callback still gets it.
-		ns.flush()
 	}
 }
 
@@ -403,18 +398,48 @@ func (n *notifications) issues() []string {
 	return out
 }
 
-// toolReplyResolve gives rules the tool's fields on the reply side, as the
-// result hook sees them.
-func toolReplyResolve(call *CallContext) func(string) (any, bool) {
-	exposed := prepare(upstreamTool(call.Server, call.Transform.Upstream))
+// replyResolve gives a reply hook the item of its call: the same fields and
+// the same `upstream` that the request-side hook read. A call context made
+// without one, by an older caller, falls back to the upstream item alone.
+func replyResolve(call *CallContext) func(string) (any, bool) {
+	if call.resolve != nil {
+		return call.resolve
+	}
+	switch {
+	case call.Transform != nil:
+		up := prepare(upstreamTool(call.Server, call.Transform.Upstream))
+		return func(name string) (any, bool) {
+			if name == "upstream" {
+				return up.derived, true
+			}
+			if toolFieldSet[name] {
+				return up.derived[name], true
+			}
+			return nil, false
+		}
+	case call.Method == "prompts/get":
+		it := &item{kind: KindPrompt, view: NewView(call.Item), args: newArgState(call.Item)}
+		return it.resolve
+	}
+	it := &item{kind: KindResource, id: call.Target, view: NewView(call.Item), label: call.Target, bare: call.Bare}
+	return it.resolve
+}
+
+// itemResolver gives rules an item's current fields and, as `upstream`, the
+// item exactly as the server sent it. Without it, a view built from the
+// exposed item would report the exposed values as the upstream ones, and a
+// rule written against the server's original name or title would miss after
+// any modify rule changed it.
+func itemResolver(it *item, original map[string]any) func(string) (any, bool) {
+	if it.bare || original == nil {
+		return it.resolve
+	}
+	up := derived(it.kind, original)
 	return func(name string) (any, bool) {
 		if name == "upstream" {
-			return exposed.derived, true
+			return up, true
 		}
-		if toolFieldSet[name] {
-			return exposed.derived[name], true
-		}
-		return nil, false
+		return it.resolve(name)
 	}
 }
 

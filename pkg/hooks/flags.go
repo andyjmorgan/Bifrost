@@ -33,6 +33,24 @@ const (
 // existing rules do not mention it, so they are unaffected.
 var Flags = []string{FlagSearch, FlagCLI}
 
+// ClientFlags are the flags a client may set on its own request, for
+// example in the query string. A gateway must not take any other flag from
+// the client: it sets those itself, from how the request arrived, so that a
+// rule can rely on them. The cli flag is the model case: the gateway sets
+// it for calls that come in through its API, and an MCP client that sends
+// ?cli=true must not get it.
+var ClientFlags = []string{FlagSearch}
+
+// ClientMaySet reports whether a client is allowed to set a flag itself.
+func ClientMaySet(name string) bool {
+	for _, f := range ClientFlags {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}
+
 // flagVars is the `flags` variable: every known flag, true or false. Names
 // the engine does not know are left out, so a rule can never read them.
 func flagVars(set map[string]bool) map[string]bool {

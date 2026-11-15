@@ -1,0 +1,2872 @@
+[
+ {
+  "name": "GA-01 tools/result reads the exposed tool: a rule on the renamed name fires",
+  "ids": [
+   "GA-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'echo'",
+      "then": {
+       "name": "'say'",
+       "description": "'Says it'"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "name == 'say'",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'matched the exposed name'}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "description": "Echoes",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "say",
+     "arguments": {}
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "raw"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "echo"
+     },
+     {
+      "path": "client.result.content[0].text",
+      "equals": "matched the exposed name"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-02 tools/result reads the exposed tool: description is the modified one",
+  "ids": [
+   "GA-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "description": "'Exposed text'"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "content": "[{'type': 'text', 'text': description}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "description": "Upstream text",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "raw"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "client.result.content[0].text",
+      "equals": "Exposed text"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-03 tools/progress reads the exposed tool: a rule on the renamed name fires",
+  "ids": [
+   "GA-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'echo'",
+      "then": {
+       "name": "'say'"
+      }
+     },
+     {
+      "hook": "tools/progress",
+      "when": "name == 'say'",
+      "then": {
+       "message": "'working'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "say",
+     "arguments": {}
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "total": 2,
+       "message": "internal step"
+      }
+     ]
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "done"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "working"
+      ]
+     },
+     {
+      "path": "client.result.content[0].text",
+      "equals": "done"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-04 tools/input reads the exposed tool: a rule on the renamed name rewords the question",
+  "ids": [
+   "GA-04"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'create'",
+      "then": {
+       "name": "'new_issue'"
+      }
+     },
+     {
+      "hook": "tools/input",
+      "when": "name == 'new_issue'",
+      "then": {
+       "message": "'Reworded'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "create",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply is input_required; an SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "new_issue",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "p": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which project?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "reply.result.inputRequests.p.params.message",
+      "equals": "Reworded"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-05 audit mode: an audit rule whose then fails to evaluate changes nothing",
+  "ids": [
+   "GA-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "mode": "audit",
+      "when": "true",
+      "then": {
+       "args.n": "args.n / 0"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "n": 3
+     }
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "ran"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.n",
+      "equals": 3
+     },
+     {
+      "path": "client.result.content[0].text",
+      "equals": "ran"
+     },
+     {
+      "path": "hits",
+      "has": {
+       "hook": "tools/call",
+       "mode": "audit",
+       "effect": "would error"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-06 audit mode on resources/filter: an audit deny neither hides the resource nor refuses the read",
+  "ids": [
+   "GA-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "mode": "audit",
+      "when": "uri == 'docs://secret'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://secret",
+       "name": "secret"
+      },
+      {
+       "uri": "docs://open",
+       "name": "open"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "client.result.resources[*].uri",
+      "set": [
+       "docs://open",
+       "docs://secret"
+      ]
+     },
+     {
+      "path": "hits",
+      "has": {
+       "hook": "resources/filter",
+       "mode": "audit",
+       "effect": "would deny"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://secret"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://secret",
+       "text": "body"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://secret"
+     },
+     {
+      "path": "client.result.contents[0].text",
+      "equals": "body"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-07 audit mode on server/config: an audit rule that switches tools off leaves them on",
+  "ids": [
+   "GA-07"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server/config",
+      "mode": "audit",
+      "when": "true",
+      "then": {
+       "tools": "false"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "equals": [
+       "t"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-08 audit mode on prompts/get: an audit elicit does not ask",
+  "ids": [
+   "GA-08"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/get",
+      "mode": "audit",
+      "when": "true",
+      "then": {
+       "result": "elicit('go', 'Continue?')"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "greet"
+    },
+    "upstream": {
+     "messages": [
+      {
+       "role": "user",
+       "content": {
+        "type": "text",
+        "text": "hi"
+       }
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "greet"
+     },
+     {
+      "path": "client.result.messages[0].content.text",
+      "equals": "hi"
+     },
+     {
+      "path": "hits",
+      "has": {
+       "hook": "prompts/get",
+       "mode": "audit",
+       "effect": "would elicit"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-09 an upstream answer for a question the upstream never asked is refused",
+  "ids": [
+   "GA-09"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "create",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply is input_required; an SDK answers it through its own handler and never hands the requestState to its caller."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "create",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "project": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which project?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand, with an extra input response; an SDK builds inputResponses itself."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "create",
+     "arguments": {},
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "project": {
+       "action": "accept",
+       "content": {
+        "p": "OPS"
+       }
+      },
+      "approved": {
+       "action": "accept",
+       "content": {
+        "ok": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client.error.message",
+      "contains": "no pending input request \"approved\""
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-10 a server asks for input on a request with no caller identity: refused, never relayed",
+  "ids": [
+   "GA-10"
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "create",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "project": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which project?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.result.inputRequests",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "Which project?"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-11 the size cap applies to a prompts/get reply",
+  "ids": [
+   "GA-11"
+  ],
+  "limits": {
+   "maxResponseBytes": 4096
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "greet"
+    },
+    "upstream": {
+     "messages": [
+      {
+       "role": "user",
+       "content": {
+        "type": "text",
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+       }
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "client.error.code",
+      "equals": -32013
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-12 the size cap applies to a resources/read reply",
+  "ids": [
+   "GA-12"
+  ],
+  "limits": {
+   "maxResponseBytes": 4096
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "client.error.code",
+      "equals": -32013
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-13 a task handle in a prompts/get reply is refused, as it is for tools/call",
+  "ids": [
+   "GA-13"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "greet"
+    },
+    "upstream": {
+     "resultType": "task",
+     "task": {
+      "taskId": "task-123",
+      "status": "working"
+     }
+    },
+    "expect": [
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "task-123"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-14 a task handle in a resources/read reply is refused, as it is for tools/call",
+  "ids": [
+   "GA-14"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "upstream": {
+     "resultType": "task",
+     "task": {
+      "taskId": "task-123",
+      "status": "working"
+     }
+    },
+    "expect": [
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "task-123"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-15 prompts/progress and resources/progress: a deny drops the event and the reply still completes",
+  "ids": [
+   "GA-15"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/progress",
+      "when": "progress.message.contains('/srv')",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/progress",
+      "when": "progress.message.contains('/srv')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "greet"
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "message": "loading /srv/x"
+      },
+      {
+       "progress": 2,
+       "message": "done"
+      }
+     ]
+    },
+    "upstream": {
+     "messages": [
+      {
+       "role": "user",
+       "content": {
+        "type": "text",
+        "text": "hi"
+       }
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "done"
+      ]
+     },
+     {
+      "path": "client.result.messages[0].content.text",
+      "equals": "hi"
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python SDK sends no progress token with prompts/get, so the server sends no progress events and the client receives none; the progress this step expects to be relayed never exists."
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "message": "reading /srv/a"
+      },
+      {
+       "progress": 2,
+       "message": "done"
+      }
+     ]
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "body"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "done"
+      ]
+     },
+     {
+      "path": "client.result.contents[0].text",
+      "equals": "body"
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python SDK sends no progress token with resources/read, so the server sends no progress events and the client receives none; the progress this step expects to be relayed never exists."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-16 a progress event larger than the size cap is dropped, not relayed",
+  "ids": [
+   "GA-16"
+  ],
+  "limits": {
+   "maxResponseBytes": 4096
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "message": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      {
+       "progress": 2,
+       "message": "small"
+      }
+     ]
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "done"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "small"
+      ]
+     },
+     {
+      "path": "client.result.content[0].text",
+      "equals": "done"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-17 prompts/modify: a rename to the empty string hides the prompt and is reported",
+  "ids": [
+   "GA-17"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "name == 'greet'",
+      "then": {
+       "name": "''"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      },
+      {
+       "name": "other"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "client.result.prompts[*].name",
+      "equals": [
+       "other"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": ""
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-18 tools/modify: a rename to the empty string hides the tool and is reported",
+  "ids": [
+   "GA-18"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name == 't'",
+      "then": {
+       "name": "''"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "u",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "equals": [
+       "u"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-19 tools/modify: adding a parameter whose name is already taken hides the tool, not the old parameter",
+  "ids": [
+   "GA-19"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.q.add": "{'type': 'string'}"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-20 route is readable in tools/filter: a tool hidden on the mux is listed and callable on the direct route only",
+  "ids": [
+   "GA-20"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "route == 'mux' && name == 'admin'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "admin",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "contains": "a__t"
+     },
+     {
+      "path": "client.result.tools[*].name",
+      "notContains": "a__admin"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "a__admin",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-21 flags.search is readable in tools/filter: search mode cannot find, describe or execute a tool the rule hides",
+  "ids": [
+   "GA-21"
+  ],
+  "route": "mux",
+  "flags": {
+   "search": true
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "flags.search && name == 'zebra_admin'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "zebra_admin",
+       "description": "zebra quartz",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "zebra_read",
+       "description": "zebra quartz",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tool_search",
+    "params": {
+     "query": "zebra quartz"
+    },
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "equals": [
+       "a__zebra_read"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "get_tool_definition",
+    "params": {
+     "names": [
+      "a__zebra_admin"
+     ]
+    },
+    "expect": [
+     {
+      "path": "client.result.tools",
+      "len": 0
+     },
+     {
+      "path": "client.result.unknown",
+      "equals": [
+       "a__zebra_admin"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "execute_tool",
+    "params": {
+     "name": "a__zebra_admin",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-22 flags.cli: a rule that asks for confirmation refuses a call from the command line client",
+  "ids": [
+   "GA-22"
+  ],
+  "flags": {
+   "cli": true
+  },
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "name": "bifrost-cli",
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Delete?')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "delete",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client.result.inputRequests",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ],
+    "exclude": [
+     {
+      "harness": [
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This case states the client's own name and version, and the engine binds its checks to that identity. The Python and TypeScript drivers cannot declare a client identity of the case's choosing, so the request would arrive as a different client than the one the case describes."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-23 a pin that reads a flag is refused when the rule is saved, like one that reads the caller",
+  "ids": [
+   "GA-23"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.mode.pin": "flags.cli ? 'cli' : 'mcp'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "mode": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": true
+     },
+     {
+      "path": "client.result.tools",
+      "len": 0
+     }
+    ]
+   }
+  ],
+  "exclude": [
+   {
+    "harness": "typescript-sdk",
+    "reason": "With the entitlement broken, discovery advertises no tools capability and the TypeScript SDK then never sends tools/list."
+   }
+  ]
+ },
+ {
+  "name": "GA-24 entitlement is readable: a filter on the entitlement slug hides a tool",
+  "ids": [
+   "GA-24"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "entitlement": {
+     "id": "e1",
+     "slug": "a",
+     "name": "Readers"
+    },
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "entitlement.name == 'Readers' && name == 'write'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "read",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "write",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "equals": [
+       "read"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-25 resources/modify on the mux: the modified title is listed under the prefixed URI and a read reaches the server unprefixed",
+  "ids": [
+   "GA-25"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/modify",
+      "when": "uri == 'docs://a'",
+      "then": {
+       "title": "'Doc A'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "client.result.resources[0].uri",
+      "equals": "a+docs://a"
+     },
+     {
+      "path": "client.result.resources[0].title",
+      "equals": "Doc A"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "a+docs://a"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "body"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://a"
+     },
+     {
+      "path": "client.result.contents[0].uri",
+      "equals": "a+docs://a"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-26 a template with unbalanced braces is listed unsupported and its deny covers its literal prefix",
+  "ids": [
+   "GA-26"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "true",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///secret/{name",
+       "name": "broken"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "client.result.resourceTemplates",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secret/x"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-27 prompts/progress and prompts/input read the exposed prompt after a rename",
+  "ids": [
+   "GA-27"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "name == 'greet'",
+      "then": {
+       "name": "'hello'"
+      }
+     },
+     {
+      "hook": "prompts/progress",
+      "when": "name == 'hello'",
+      "then": {
+       "message": "'working'"
+      }
+     },
+     {
+      "hook": "prompts/input",
+      "when": "name == 'hello'",
+      "then": {
+       "message": "'Reworded'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "hello"
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "message": "internal"
+      }
+     ]
+    },
+    "upstream": {
+     "messages": [
+      {
+       "role": "user",
+       "content": {
+        "type": "text",
+        "text": "hi"
+       }
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "greet"
+     },
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "working"
+      ]
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python SDK takes a progress callback on tool calls only; its prompts/get carries no progress token."
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply is input_required; an SDK answers it itself and never shows the intermediate reply."
+     }
+    ],
+    "op": "prompts/get",
+    "params": {
+     "name": "hello"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "p": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "reply.result.inputRequests.p.params.message",
+      "equals": "Reworded"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-28 resources/result reads the exposed resource: a title set by resources/modify",
+  "ids": [
+   "GA-28"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/modify",
+      "when": "uri == 'docs://a'",
+      "then": {
+       "title": "'Public'"
+      }
+     },
+     {
+      "hook": "resources/result",
+      "when": "title == 'Public'",
+      "then": {
+       "text": "'shaped'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a",
+       "title": "Internal"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "raw"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "client.result.contents[0].text",
+      "equals": "shaped"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-29 server/connect meta forwards the client's _meta on prompts/get and resources/read too",
+  "ids": [
+   "GA-29"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "meta": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python driver's prompts/get does not pass a request _meta on."
+     }
+    ],
+    "op": "prompts/get",
+    "params": {
+     "name": "greet",
+     "_meta": {
+      "trace": "abc"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params._meta.trace",
+      "equals": "abc"
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python driver's resources/read does not pass a request _meta on."
+     }
+    ],
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a",
+     "_meta": {
+      "trace": "abc"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params._meta.trace",
+      "equals": "abc"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-30 without server/connect meta, a prompts/get and a resources/read never forward the client's _meta",
+  "ids": [
+   "GA-30"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "greet",
+     "_meta": {
+      "trace": "abc"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "greet"
+     },
+     {
+      "path": "outcome.forward.params._meta",
+      "exists": false
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python driver's prompts/get and resources/read do not pass a request _meta on, so the step's premise never reaches the gateway."
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a",
+     "_meta": {
+      "trace": "abc"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://a"
+     },
+     {
+      "path": "outcome.forward.params._meta",
+      "exists": false
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "python-sdk",
+      "reason": "The Python driver's prompts/get and resources/read do not pass a request _meta on, so the step's premise never reaches the gateway."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-31 the _meta allowlist applies to prompts, resources and templates, not only tools",
+  "ids": [
+   "GA-31"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "metaAllow": [
+     "keep"
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p",
+       "_meta": {
+        "keep": 1,
+        "ui": {
+         "resourceUri": "ui://x"
+        }
+       }
+      }
+     ],
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a",
+       "_meta": {
+        "keep": 1,
+        "vendor/internal": "x"
+       }
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "docs://t/{id}",
+       "name": "t",
+       "_meta": {
+        "keep": 1,
+        "vendor/internal": "x"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "client.result.prompts[0]._meta",
+      "equals": {
+       "keep": 1
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "client.result.resources[0]._meta",
+      "equals": {
+       "keep": 1
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "client.result.resourceTemplates[0]._meta",
+      "equals": {
+       "keep": 1
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-32 meta on a prompt: a filter reads it, and a modify that sets a key to null removes it",
+  "ids": [
+   "GA-32"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/filter",
+      "when": "has(meta.hidden) && meta.hidden == true",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "meta.secret": "null"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p",
+       "_meta": {
+        "secret": "s",
+        "keep": 1
+       }
+      },
+      {
+       "name": "q",
+       "_meta": {
+        "hidden": true
+       }
+      },
+      {
+       "name": "r"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "client.result.prompts[*].name",
+      "equals": [
+       "p",
+       "r"
+      ]
+     },
+     {
+      "path": "client.result.prompts[0]._meta",
+      "equals": {
+       "keep": 1
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-33 a confirmation rule without a has(input.x) guard: the retry is refused with a clear error, not looped",
+  "ids": [
+   "GA-33"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "result": "elicit('ok', 'Sure?')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply is input_required; an SDK answers it itself."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "A continuation written by hand."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {},
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "hasText": [
+       "already answered"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-34 prompts on the mux: prompts/get and prompts/input rules read the unprefixed exposed name",
+  "ids": [
+   "GA-34"
+  ],
+  "route": "mux",
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/get",
+      "when": "name == 'secret'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "prompts/input",
+      "when": "name == 'greet'",
+      "then": {
+       "message": "'Reworded'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "greet"
+      },
+      {
+       "name": "secret"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "a__secret"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply is input_required; an SDK answers it itself."
+     }
+    ],
+    "op": "prompts/get",
+    "params": {
+     "name": "a__greet"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "p": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "greet"
+     },
+     {
+      "path": "reply.result.inputRequests.p.params.message",
+      "equals": "Reworded"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-35 resources/input on a URI the server does not list: a rule that reads name refuses, it is not skipped",
+  "ids": [
+   "GA-35"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/input",
+      "when": "name == 'other'",
+      "then": {
+       "message": "'x'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://listed",
+       "name": "listed"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://unlisted"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "p": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "S1"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://unlisted"
+     },
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.result",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-36 rename, hidden pin, result shaping and progress together on the mux",
+  "ids": [
+   "GA-36"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'search_issues'",
+      "then": {
+       "name": "'find'",
+       "params.q.name": "'query'",
+       "params.tenant.hide": "true",
+       "params.tenant.pin": "'acme'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "args.query == 'blocked'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['secret'])"
+      }
+     },
+     {
+      "hook": "tools/progress",
+      "when": "true",
+      "then": {
+       "message": "'step ' + string(progress.progress)"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_issues",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         },
+         "tenant": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "q",
+         "tenant"
+        ]
+       }
+      }
+     ]
+    }
+   },
+   {
+    "slug": "b",
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_issues",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "client.result.tools[*].name",
+      "contains": "a__find"
+     },
+     {
+      "path": "client.result.tools[name=a__find].inputSchema.properties",
+      "keys": [
+       "query"
+      ]
+     },
+     {
+      "path": "client.result.tools[*].name",
+      "contains": "b__search_issues"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "a__find",
+     "arguments": {
+      "query": "bug"
+     }
+    },
+    "progress": true,
+    "mock": {
+     "progress": [
+      {
+       "progress": 1,
+       "total": 2,
+       "message": "db-7"
+      }
+     ]
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "resource_link",
+       "uri": "issues://1",
+       "name": "1"
+      }
+     ],
+     "structuredContent": {
+      "ok": 1,
+      "secret": "s"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "a"
+     },
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "search_issues"
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "bug",
+       "tenant": "acme"
+      }
+     },
+     {
+      "path": "progress[*].message",
+      "equals": [
+       "step 1"
+      ]
+     },
+     {
+      "path": "client.result.structuredContent",
+      "equals": {
+       "ok": 1
+      }
+     },
+     {
+      "path": "client.result.content[0].uri",
+      "equals": "a+issues://1"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "a__find",
+     "arguments": {
+      "query": "blocked"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "refused": true
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "b__search_issues",
+     "arguments": {
+      "q": "blocked"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "b"
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "blocked"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "GA-37 a resources/result rule that fails to evaluate refuses the read; the content is not passed on unchecked",
+  "ids": [
+   "GA-37"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "result.text.contains(args.missing)",
+      "then": {
+       "text": "'x'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "secret body"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "client",
+      "refused": true
+     },
+     {
+      "path": "client.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "client",
+      "lacksText": [
+       "secret body"
+      ]
+     },
+     {
+      "path": "hits[*].effect",
+      "equals": [
+       "error"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

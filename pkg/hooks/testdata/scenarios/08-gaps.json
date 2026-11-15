@@ -36,7 +36,7 @@
    {"path":"outcome.result.skill.resources[0].digest","matches":"^sha256:[0-9a-f]{64}$"},
    {"path":"outcome.hits[*].item","notContains":"skill://s/secret.md"}]}]},
 {"name":"ADV-39 audit rules never become enforcement, even when they fail","ids":["ADV-39","RH-EVAL-07"],
- "servers":[{"slug":"a","limits":{},"rules":[
+ "servers":[{"slug":"a","rules":[
    {"mode":"audit","hook":"tools/call","when":"args.missing.deep == 1","then":{"decision":"'deny'"}},
    {"mode":"audit","hook":"tools/call","when":"true","then":{"args.x":"1"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],

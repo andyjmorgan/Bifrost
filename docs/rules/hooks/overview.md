@@ -175,12 +175,14 @@ A request reaches the gateway by one route, `direct` or `mux`, and can also carr
 | Flag | Type | True when |
 | --- | --- | --- |
 | `flags.search` | bool | The request is in search mode, set with `?search=true`. The gateway offers its search tools in place of the full listing |
-| `flags.cli` | bool | The request comes from the command line client, through the gateway's API. The request does not come in through MCP, but the call the gateway sends upstream is the same |
+| `flags.cli` | bool | The request comes from the command line client, through the gateway's API. The gateway sets this flag; a client cannot. The request does not come in through MCP, but the call the gateway sends upstream is the same |
 
 - Read a flag by name, as `flags.search`. Every flag is always present, and is `false` when the request did not set it, so no `has()` guard is needed.
 - A name that is not a flag is refused when the rule is saved. `flags.serach` does not compile, and neither does `'search' in flags`.
 - New flags are added to this list over time. A rule that does not mention a flag is not affected by it.
-- A flag is something the client says about its own request. Use it to tailor behaviour. A rule that relaxes a deny because a flag is set is trusting the caller.
+- `flags.search` is something the client says about its own request. Use it to tailor behaviour. A rule that relaxes a deny because `flags.search` is set is trusting the caller.
+- `flags.cli` says how the request arrived, and the gateway sets it. An MCP client that sends `?cli=true` does not get it, so a rule can rely on it.
+- A `flags.cli` request has no client to show a question to. A rule that asks for confirmation refuses such a request, the server is not told that elicitation is available, and a question the server asks is refused.
 
 ```
 route == 'mux' && flags.search && !flags.cli
