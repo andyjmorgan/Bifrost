@@ -1,0 +1,4191 @@
+[
+ {
+  "name": "RH-RSC-01/04/05 resource filter hides and refuses; modify changes title; read deny is a JSON-RPC error",
+  "ids": [
+   "RH-RSC-01",
+   "RH-RSC-04",
+   "RH-RSC-05"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri == 'file:///README.md'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/modify",
+      "when": "uri.startsWith('confluence://ENG/')",
+      "then": {
+       "title": "'ENG wiki: ' + title"
+      }
+     },
+     {
+      "hook": "resources/read",
+      "when": "uri.startsWith('confluence://ENG/')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'ENG pages are read-only through search.'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "notContains": "file:///README.md"
+     },
+     {
+      "path": "outcome.result.resources[0].title",
+      "equals": "ENG wiki: Home"
+     },
+     {
+      "path": "outcome.result.resources[0].uri",
+      "equals": "confluence://ENG/home"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///README.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///README.md"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://ENG/home"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.message",
+      "equals": "ENG pages are read-only through search."
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-RSC-06 a template allows a URI under a denied skill folder: any deny wins; RH-SKL-05 same through the broad template",
+  "ids": [
+   "RH-RSC-06",
+   "RH-SKL-05",
+   "RH-SKL-01"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets/references/timeseries.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://notebooks/references/advanced-analysis.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "skill://notebooks/references/advanced-analysis.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ADV-10 encoded and dotted paths cannot slip past a denied folder",
+  "ids": [
+   "ADV-10"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://notebooks/../widgets/references/timeseries.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets/%72eferences/timeseries.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets//references/timeseries.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "SKILL://widgets/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-RSC-07 a URI no listing or template covers is unknown",
+  "ids": [
+   "RH-RSC-07"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "https://example.com/x"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: https://example.com/x"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-RSC-08 a directory read drops hidden children; ADV-12 entries outside the parent are dropped",
+  "ids": [
+   "RH-RSC-08",
+   "ADV-12"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/filter",
+      "when": "uri.endsWith('advanced-analysis.md')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "skill://notebooks"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "SKILL.md"
+      },
+      {
+       "uri": "skill://notebooks/references",
+       "name": "references",
+       "mimeType": "inode/directory"
+      },
+      {
+       "uri": "skill://notebooks/references/advanced-analysis.md",
+       "name": "x"
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "name": "escape"
+      },
+      {
+       "uri": "file:///etc/passwd",
+       "name": "escape2"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.resources[*].uri",
+      "equals": [
+       "skill://notebooks/SKILL.md",
+       "skill://notebooks/references"
+      ]
+     },
+     {
+      "path": "reply.issues",
+      "len": 2
+     }
+    ]
+   },
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "skill://widgets"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-RSC-09 opt-in resources/result rewrites text; RH-RSC-10 reads are never cached (each read forwards)",
+  "ids": [
+   "RH-RSC-09",
+   "RH-RSC-10"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://ENG/home"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "confluence://ENG/home",
+       "text": "See Confluence."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "confluence://ENG/home"
+     },
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "See the wiki."
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://ENG/home"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.method",
+      "equals": "resources/read"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ADV-11 a read result for a different, forbidden URI is dropped",
+  "ids": [
+   "ADV-11"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "text": "ok"
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "text": "smuggled"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[*].uri",
+      "equals": [
+       "skill://notebooks/SKILL.md"
+      ]
+     },
+     {
+      "path": "reply.issues[0]",
+      "contains": "skill://widgets/SKILL.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-SKL-01/02/06/12 deny a skill by name: folder, nested skill and listings",
+  "ids": [
+   "RH-SKL-01",
+   "RH-SKL-02",
+   "RH-SKL-06",
+   "RH-SKL-12"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://acme/billing/refunds/SKILL.md",
+       "skill://acme/support/refunds/SKILL.md",
+       "skill://notebooks/SKILL.md",
+       "skill://reports/daily/SKILL.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://widgets/charts/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://widgets/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "notContains": "skill://widgets/references/timeseries.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets/charts/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-SKL-03/04 name and description shortcuts; a uri rule denies one of two same-named skills",
+  "ids": [
+   "RH-SKL-03",
+   "RH-SKL-04"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'refunds' && uri.startsWith('skill://acme/support/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "skills/filter",
+      "when": "description == 'Dynamic.'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://acme/billing/refunds/SKILL.md",
+       "skill://notebooks/SKILL.md",
+       "skill://widgets/SKILL.md",
+       "skill://widgets/charts/SKILL.md"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-SKL-07/08 a rewrite recomputes digest and size and copies frontmatter into the entry",
+  "ids": [
+   "RH-SKL-07",
+   "RH-SKL-08"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(regex.replace(result.text, 'Confluence', 'the wiki'), 'Build Datadog notebooks.', 'Build notebooks.')"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[1].digest",
+      "equals": "sha256:920ae8b1e1471ced57358f7b6f55c2fe3e9ef799e50973eac15cea0c98509786"
+     },
+     {
+      "path": "outcome.result.skill.resources[1].size",
+      "equals": 46
+     },
+     {
+      "path": "outcome.result.skill.frontmatter.description",
+      "equals": "Build notebooks."
+     },
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:f5c07aded3a28f964397fce626de3da2f5fa35c2feedd851f1f422b2e2b70359"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://notebooks/references/advanced-analysis.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "skill://notebooks/references/advanced-analysis.md",
+       "text": "# Advanced analysis\nUse Confluence for context.\n",
+       "mimeType": "text/markdown"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "# Advanced analysis\nUse the wiki for context.\n"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-SKL-09 / ADV-31 a rewrite that changes the name is rejected and nothing is partly applied",
+  "ids": [
+   "RH-SKL-09",
+   "ADV-31"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(regex.replace(result.text, 'name: notebooks', 'name: evil'), 'Confluence', 'X')"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.frontmatter.name",
+      "equals": "notebooks"
+     },
+     {
+      "path": "outcome.result.skill.resources[1].digest",
+      "equals": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1"
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "change the skill name"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ADV-47 a rewrite rule that depends on the request is not applied to skills (digests would never match)",
+  "ids": [
+   "ADV-47"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "result.text + string(now)"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9"
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "depend on the request"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-SKL-10 denying one file inside a skill is allowed and leaves the manifest alone",
+  "ids": [
+   "RH-SKL-10"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri.endsWith('advanced-analysis.md')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources",
+      "len": 2
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-01/02/05/11 mux: prefixed listings and skills, digests unchanged",
+  "ids": [
+   "RH-MUX-01",
+   "RH-MUX-02",
+   "RH-MUX-05",
+   "RH-SKL-11"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "contains": "docs+file:///README.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates[*].uriTemplate",
+      "equals": [
+       "docs+confluence://{space}/{page}",
+       "docs+skill://{+path}"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "docs+skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.uri",
+      "equals": "docs+skill://notebooks/SKILL.md"
+     },
+     {
+      "path": "outcome.result.skill.resources[*].uri",
+      "equals": [
+       "docs+skill://notebooks/SKILL.md",
+       "docs+skill://notebooks/references/advanced-analysis.md"
+      ]
+     },
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-03/04 reads strip the prefix; contents get it back",
+  "ids": [
+   "RH-MUX-03",
+   "RH-MUX-04"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs+file:///README.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///README.md",
+       "text": "hi"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///README.md"
+     },
+     {
+      "path": "reply.result.contents[0].uri",
+      "equals": "docs+file:///README.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-07 URIs are unchanged on 1:1",
+  "ids": [
+   "RH-MUX-07"
+  ],
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "contains": "file:///README.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///README.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///README.md",
+       "text": "hi"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].uri",
+      "equals": "file:///README.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-08 a prefix naming an unheld slug is refused before any upstream call; ADV-02 narrowed routes isolate",
+  "ids": [
+   "RH-MUX-08",
+   "ADV-02"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "eng",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///secret",
+       "name": "s"
+      }
+     ],
+     "tools": [
+      {
+       "name": "export",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "other+file:///README.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "slugs": [
+     "docs"
+    ],
+    "params": {
+     "uri": "eng+file:///secret"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "slugs": [
+     "docs"
+    ],
+    "params": {
+     "uri": "file:///secret"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "slugs": [
+     "docs"
+    ],
+    "params": {
+     "name": "eng__export"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32004
+     }
+    ]
+   },
+   {
+    "op": "get_server_instructions",
+    "slugs": [
+     "docs"
+    ],
+    "params": {
+     "slug": "eng"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-09/10/11/13/14 fallback resolution: unique, ambiguous, unknown, filtered",
+  "ids": [
+   "RH-MUX-09",
+   "RH-MUX-10",
+   "RH-MUX-11",
+   "RH-MUX-13",
+   "RH-MUX-14"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "eng",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "ops",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "true",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///README.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "docs"
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///README.md"
+     }
+    ]
+   },
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.uri",
+      "equals": "docs+skill://notebooks/SKILL.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///runbook"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "eng"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///nowhere"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///nowhere"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-10 an ambiguous URI lists the candidates in the message and data",
+  "ids": [
+   "RH-MUX-10"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "eng",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "ops",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///runbook"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.error.message",
+      "equals": "Ambiguous URI file:///runbook: matches eng+file:///runbook, ops+file:///runbook. Retry with one of these."
+     },
+     {
+      "path": "outcome.error.data.candidates",
+      "equals": [
+       "eng+file:///runbook",
+       "ops+file:///runbook"
+      ]
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-MUX-12 a template match counts only when it is the only match",
+  "ids": [
+   "RH-MUX-12"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "any"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "b",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///exact",
+       "name": "e"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "c",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "any"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///exact"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "b"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///other"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.data.candidates",
+      "equals": [
+       "a+file:///other",
+       "c+file:///other"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ADV-07 fallback refuses to pick while an eligible server is unavailable",
+  "ids": [
+   "ADV-07"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "eng",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///runbook",
+       "name": "rb"
+      }
+     ]
+    },
+    "unavailable": true
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///runbook"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.message",
+      "contains": "eng unavailable"
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ADV-13 native schemes containing + split at the first + only",
+  "ids": [
+   "ADV-13",
+   "RH-MUX-06"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "git",
+    "generation": "1",
+    "rules": [],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "git+ssh://host/repo",
+       "name": "r"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[0].uri",
+      "equals": "git+git+ssh://host/repo"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "git+git+ssh://host/repo"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "git+ssh://host/repo"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "git+ssh://host/repo"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "slugUris rewrites only this upstream's URIs in text, on the mux only",
+  "ids": [
+   "RH-RSC-09"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "generation": "1",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "slugUris(result.text)"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Build Datadog notebooks."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:c64d4cfea89f9e0b7e60bedc71b9395c3696437600dc67f754d401155a7f32d9",
+         "size": 200
+        },
+        {
+         "uri": "skill://notebooks/references/advanced-analysis.md",
+         "digest": "sha256:e9161522e32d9cc6bca1d98a341a2d412bd69d3bdf03d4098561bcc370c3b9d1",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Build Datadog notebooks.\n---\n\n# Notebooks\nRead references/advanced-analysis.md. Widgets live in skill://widgets/SKILL.md and skill://widgets/references/timeseries.md.\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://notebooks/references/advanced-analysis.md": {
+         "text": "# Advanced analysis\nUse Confluence for context.\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      },
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "Widget catalog."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/SKILL.md",
+         "digest": "sha256:073997eb00ad656fe9d2014849e0b850e73659ae98633d594a5f4ea031bf6869",
+         "size": 62
+        },
+        {
+         "uri": "skill://widgets/references/timeseries.md",
+         "digest": "sha256:d396b7b5a5f442f59a43ede1ba06989cf48545b7f984791ebd933e9ae5130625",
+         "size": 13
+        },
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "Charts."
+       },
+       "resources": [
+        {
+         "uri": "skill://widgets/charts/SKILL.md",
+         "digest": "sha256:82ad0e697ce8dce15bd651449ab7f8c031e9ed95f024cd937c6e5224380e705f",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/billing/refunds/SKILL.md",
+         "digest": "sha256:ae08daf155972c816a864c456d6d7133ff4a23b41358768f823fc9780df3c96c",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": [
+        {
+         "uri": "skill://acme/support/refunds/SKILL.md",
+         "digest": "sha256:ce7dbd43db1c630004e6d1376df6bc3c0aaf463c8d45338f184f3cbdbf15ddd9",
+         "size": 52
+        }
+       ]
+      },
+      {
+       "uri": "skill://reports/daily/SKILL.md",
+       "frontmatter": {
+        "name": "daily",
+        "description": "Dynamic."
+       },
+       "resources": "dynamic"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "name": "notebooks-skill"
+      },
+      {
+       "uri": "skill://widgets/references/timeseries.md",
+       "name": "timeseries"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      },
+      {
+       "uri": "confluence://ENG/home",
+       "name": "eng-home",
+       "title": "Home"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skill-file"
+      },
+      {
+       "uriTemplate": "confluence://{space}/{page}",
+       "name": "page",
+       "description": "A page"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs+file:///README.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///README.md",
+       "text": "See skill://widgets/SKILL.md, confluence://ENG/home and https://example.com/x."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "See docs+skill://widgets/SKILL.md, docs+confluence://ENG/home and https://example.com/x."
+     }
+    ]
+   }
+  ]
+ }
+]

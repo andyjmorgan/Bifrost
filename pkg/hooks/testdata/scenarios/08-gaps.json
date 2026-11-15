@@ -1,0 +1,43 @@
+[
+{"name":"RH-SRV-10 the progress switch is a server/config value","ids":["RH-SRV-10"],
+ "servers":[{"slug":"a","rules":[{"hook":"server/config","when":"caller.type == 'key'","then":{"progress":"false"}}],"catalog":{}}],
+ "steps":[
+  {"op":"config","caller":{"type":"user"},"expect":[{"path":"outcome.result.progress","equals":true}]},
+  {"op":"config","caller":{"type":"key"},"expect":[{"path":"outcome.result.progress","equals":false},{"path":"outcome.result.tools","equals":true}]}]},
+{"name":"ADV-03 a revoked grant cannot be resumed with valid state","ids":["ADV-03"],"route":"mux","caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
+ "servers":[{"slug":"docs","generation":"1","rules":[{"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Delete?')"}}],"catalog":{"tools":[{"name":"delete_page","inputSchema":{"type":"object"}}]}},
+            {"slug":"other","catalog":{}}],
+ "steps":[
+  {"op":"tools/call","params":{"name":"docs__delete_page"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
+  {"op":"tools/call","slugs":["other"],"params":{"name":"docs__delete_page","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.code","equals":-32004},{"path":"outcome.forward","exists":false}]}]},
+{"name":"ADV-22 state cannot move between methods or targets; a changed policy generation invalidates it","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
+ "servers":[{"slug":"a","generation":"1","rules":[
+   {"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}},
+   {"hook":"resources/read","when":"!has(input.ok)","then":{"result":"elicit('ok','Read?')"}}],
+  "catalog":{"tools":[{"name":"t1","inputSchema":{"type":"object"}},{"name":"t2","inputSchema":{"type":"object"}}],"resources":[{"uri":"file:///r","name":"r"}]}}],
+ "steps":[
+  {"op":"tools/call","params":{"name":"t1"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
+  {"op":"tools/call","params":{"name":"t2","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]},
+  {"op":"resources/read","params":{"uri":"file:///r","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]}]},
+{"name":"ADV-22 a policy change between prompt and retry invalidates the state","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
+ "servers":[{"slug":"a","generation":"2","rules":[{"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
+ "secret":"fixed",
+ "steps":[{"op":"tools/call","params":{"name":"t","requestState":"eyJjIjoiMSIsIm0iOiJ0b29scy9jYWxsIiwidSI6InUxIiwiZSI6ImEiLCJ0IjoidCIsImgiOiIiLCJnIjoiMSIsIngiOjk5OTk5OTk5OTl9.x","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
+{"name":"ADV-30 the rewrite pipeline never touches a file the caller cannot read","ids":["ADV-30"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"resources/filter","when":"uri.endsWith('secret.md')","then":{"decision":"'deny'"}},
+   {"hook":"resources/result","when":"true","then":{"text":"result.text + ' (reviewed)'"}}],
+  "catalog":{"skills":[{"uri":"skill://s/SKILL.md","frontmatter":{"name":"s","description":"d"},
+    "resources":[{"uri":"skill://s/SKILL.md","digest":"sha256:aa","size":30},{"uri":"skill://s/secret.md","digest":"sha256:bb","size":6}],
+    "files":{"skill://s/SKILL.md":{"text":"---\nname: s\ndescription: d\n---\n"},"skill://s/secret.md":{"text":"secret"}}}]}}],
+ "steps":[{"op":"skills/get","params":{"uri":"skill://s/SKILL.md"},"expect":[
+   {"path":"outcome.result.skill.resources[1].digest","equals":"sha256:bb"},
+   {"path":"outcome.result.skill.resources[0].digest","matches":"^sha256:[0-9a-f]{64}$"},
+   {"path":"outcome.hits[*].item","notContains":"skill://s/secret.md"}]}]},
+{"name":"ADV-39 audit rules never become enforcement, even when they fail","ids":["ADV-39","RH-EVAL-07"],
+ "servers":[{"slug":"a","limits":{},"rules":[
+   {"mode":"audit","hook":"tools/call","when":"args.missing.deep == 1","then":{"decision":"'deny'"}},
+   {"mode":"audit","hook":"tools/call","when":"true","then":{"args.x":"1"}}],
+  "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/call","params":{"name":"t","arguments":{"y":2}},"expect":[{"path":"outcome.forward.params.arguments","equals":{"y":2}},{"path":"outcome.hits[*].effect","equals":["would error","would set"]}]}]}
+]

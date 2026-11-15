@@ -1,0 +1,4761 @@
+[
+ {
+  "name": "CX-01 adjacent large integer cannot satisfy enum",
+  "ids": [
+   "CX-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.id.enum": "[9007199254740992]"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": 9007199254740993
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-02 adjacent large integer cannot exceed maximum",
+  "ids": [
+   "CX-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.id.maximum": "9007199254740992"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": 9007199254740993
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-03 adjacent large integer cannot fall below minimum",
+  "ids": [
+   "CX-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.id.minimum": "9007199254740993"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": 9007199254740992
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-04 nested large integer cannot satisfy object enum",
+  "ids": [
+   "CX-04"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.id.enum": "[{'id': 9007199254740992}]"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": {
+       "id": 9007199254740993
+      }
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-05 visible pin is present in effective arguments before call rules",
+  "ids": [
+   "CX-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "tenant": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.tenant.pin": "'restricted'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.tenant) && args.tenant == 'restricted'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'restricted tenant'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "restricted tenant"
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-06 gateway added parameter default participates in call decisions",
+  "ids": [
+   "CX-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.confirm.add": "{'type':'boolean'}"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.confirm.default": "false"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.confirm) && args.confirm == false",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'confirmation required'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-07 hidden gateway added parameter cannot be supplied or forwarded",
+  "ids": [
+   "CX-07"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.internal.add": "{'type':'string'}"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.internal.hide": "true"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "internal": "injected"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-08 editing one property preserves an untouched false schema",
+  "ids": [
+   "CX-08"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         },
+         "forbidden": false
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.q.description": "'query'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.forbidden",
+      "equals": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-09 result hook sees arguments actually forwarded after a call patch",
+  "ids": [
+   "CX-09"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "args.n": "args.n + 1"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "{'sent': args.n}"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.n",
+      "equals": 2
+     },
+     {
+      "path": "reply.result.structuredContent.sent",
+      "equals": 2
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "n": 1
+     }
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": []
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-10 input hook sees arguments actually forwarded after a call patch",
+  "ids": [
+   "CX-10"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "args.n": "args.n + 1"
+      }
+     },
+     {
+      "hook": "tools/input",
+      "when": "true",
+      "then": {
+       "message": "string(args.n)"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.n",
+      "equals": 2
+     },
+     {
+      "path": "reply.result.inputRequests.q.params.message",
+      "equals": "2"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "n": 1
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     },
+     "requestState": "UP"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-11 prompt input hook gets reversed and patched upstream arguments",
+  "ids": [
+   "CX-11"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p",
+       "arguments": [
+        {
+         "name": "topic"
+        }
+       ]
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "arguments.topic.name": "'subject'"
+      }
+     },
+     {
+      "hook": "prompts/get",
+      "when": "true",
+      "then": {
+       "args.subject": "args.subject + '!'"
+      }
+     },
+     {
+      "hook": "prompts/input",
+      "when": "true",
+      "then": {
+       "message": "args.topic"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "topic": "policy!"
+      }
+     },
+     {
+      "path": "reply.result.inputRequests.q.params.message",
+      "equals": "policy!"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "p",
+     "arguments": {
+      "subject": "policy"
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     },
+     "requestState": "UP"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-12 resource hidden by modify evaluation error is also unreadable",
+  "ids": [
+   "CX-12"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/modify",
+      "when": "true",
+      "then": {
+       "description": "caller.missing"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "outcome.issues",
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-13 template hidden by modify evaluation error is also unreadable",
+  "ids": [
+   "CX-13"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "files"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "templates/modify",
+      "when": "true",
+      "then": {
+       "description": "caller.missing"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "outcome.issues",
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-14 resource identity collision hidden in list stays unreadable",
+  "ids": [
+   "CX-14"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc",
+       "title": "first"
+      },
+      {
+       "uri": "file:///doc",
+       "name": "doc",
+       "title": "second"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "outcome.issues",
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-15 denied template does not leak a resource as a fallback candidate",
+  "ids": [
+   "CX-15"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "blocked"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "true",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   },
+   {
+    "slug": "b",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "b"
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "problems.b",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    }
+   }
+  ],
+  "route": "mux"
+ },
+ {
+  "name": "CX-16 template-only resource denial does not create false fallback ambiguity",
+  "ids": [
+   "CX-16"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "files"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri == 'file:///doc'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   },
+   {
+    "slug": "b",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{path}",
+       "name": "files"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "b"
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "problems.b",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    }
+   }
+  ],
+  "route": "mux"
+ },
+ {
+  "name": "CX-17 resource template matching respects interior literal segments",
+  "ids": [
+   "CX-17"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///teams/{team}/public/{file}",
+       "name": "public"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///teams/blue/private/key"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-18 simple template expansion cannot consume raw slash segments",
+  "ids": [
+   "CX-18"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///public/{file}",
+       "name": "public"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public/deep/key"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-19 encoded slash stays opaque (decision A01): the URI is forwarded unchanged, not decoded into the denied folder",
+  "ids": [
+   "CX-19"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri.startsWith('file:///private/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///private%2Fsecret"
+     }
+    ],
+    "params": {
+     "uri": "file:///private%2Fsecret"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-20 directory children obey resource filters even when marked directories",
+  "ids": [
+   "CX-20"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri == 'file:///public/hidden'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "expect": [
+     {
+      "path": "reply.result.resources",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "resources": [
+      {
+       "uri": "file:///public/hidden",
+       "name": "hidden",
+       "mimeType": "inode/directory"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-21 directory children obey denied templates even when marked directories",
+  "ids": [
+   "CX-21"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      },
+      {
+       "uriTemplate": "file:///public/private{+rest}",
+       "name": "private"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "name == 'private'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "expect": [
+     {
+      "path": "reply.result.resources",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "resources": [
+      {
+       "uri": "file:///public/private",
+       "name": "private",
+       "mimeType": "inode/directory"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-22 noncanonical directory child is not presented as readable",
+  "ids": [
+   "CX-22"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "expect": [
+     {
+      "path": "reply.result.resources",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "resources": [
+      {
+       "uri": "file:///public/%61",
+       "name": "alias"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-23 noncanonical substituted read content is refused",
+  "ids": [
+   "CX-23"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public/a"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "file:///public/%62",
+       "text": "secret alias"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-24 clock dependent skill rewrite is skipped during reads as well as listings",
+  "ids": [
+   "CX-24"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "result.text + string(now)"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "---\nname: widget\ndescription: original\n---\nBody\n"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "text": "---\nname: widget\ndescription: original\n---\nBody\n"
+      }
+     ]
+    }
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-25 caller dependent skill rewrite is skipped during reads as well as listings",
+  "ids": [
+   "CX-25"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "result.text + caller.userId"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "---\nname: widget\ndescription: original\n---\nBody\n"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "text": "---\nname: widget\ndescription: original\n---\nBody\n"
+      }
+     ]
+    }
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-26 rejected skill name rewrite also preserves SKILL.md read bytes",
+  "ids": [
+   "CX-26"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(regex.replace(result.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.frontmatter.name",
+      "equals": "widget"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "---\nname: widget\ndescription: original\n---\nBody\n"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "text": "---\nname: widget\ndescription: original\n---\nBody\n"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-27 skill transaction rollback covers earlier supporting file reads",
+  "ids": [
+   "CX-27"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/guide.txt",
+         "digest": "sha256:962f85a27854336f3286ad54b49321f62525043b5f3508b2ecc887fdd6e7550e",
+         "size": 8
+        },
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/guide.txt": {
+         "text": "ORIGINAL",
+         "mimeType": "text/plain"
+        },
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(regex.replace(result.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:962f85a27854336f3286ad54b49321f62525043b5f3508b2ecc887fdd6e7550e"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "ORIGINAL"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/guide.txt"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/guide.txt",
+       "text": "ORIGINAL"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-28 empty text file rewrite updates its advertised digest and size",
+  "ids": [
+   "CX-28"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        },
+        {
+         "uri": "skill://widget/guide.txt",
+         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+         "size": 0
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://widget/guide.txt": {
+         "text": "",
+         "mimeType": "text/plain"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "uri.endsWith('guide.txt')",
+      "then": {
+       "text": "'filled'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[1].digest",
+      "equals": "sha256:8a2f8bcb5572a89ae969186af0e03c56c87c22be98cb81e0c79ef69c80319670"
+     },
+     {
+      "path": "outcome.result.skill.resources[1].size",
+      "equals": 6
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "filled"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/guide.txt"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/guide.txt",
+       "text": ""
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-29 nested SKILL.md rewrite does not replace enclosing skill frontmatter",
+  "ids": [
+   "CX-29"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        },
+        {
+         "uri": "skill://widget/child/SKILL.md",
+         "digest": "sha256:aaaea5433ba0cf3625acf89604042be82f3ff215fda77a805f630f82e28d73c5",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        },
+        "skill://widget/child/SKILL.md": {
+         "text": "---\nname: child\ndescription: original\n---\nChild\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(result.text, 'original', 'updated')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.frontmatter.name",
+      "equals": "widget"
+     },
+     {
+      "path": "outcome.result.skill.frontmatter.description",
+      "equals": "updated"
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-30 dynamic skills are never rewritten (decision F21): entry and file both stay unchanged",
+  "ids": [
+   "CX-30"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": "dynamic",
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(result.text, 'original', 'updated')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.frontmatter.description",
+      "equals": "original"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "---\nname: widget\ndescription: original\n---\nBody\n"
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "text": "---\nname: widget\ndescription: original\n---\nBody\n"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-31 rewritten SKILL.md must retain required description frontmatter",
+  "ids": [
+   "CX-31"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "\"---\\nname: widget\\n---\\nBody\\n\""
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "expect": [
+     {
+      "path": "outcome.result.skill.frontmatter.description",
+      "equals": "original"
+     },
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "skill://widget/SKILL.md"
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-32 raw resource read cache hints become private gateway policy",
+  "ids": [
+   "CX-32"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     },
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 123
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "cacheScope": "public",
+     "ttlMs": 99999,
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "text": "data"
+      }
+     ]
+    }
+   }
+  ],
+  "limits": {
+   "ttlMs": 123
+  }
+ },
+ {
+  "name": "CX-33 directory read cache hints become private gateway policy",
+  "ids": [
+   "CX-33"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "expect": [
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     },
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 123
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///public"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "cacheScope": "public",
+     "ttlMs": 99999,
+     "resources": []
+    }
+   }
+  ],
+  "limits": {
+   "ttlMs": 123
+  }
+ },
+ {
+  "name": "CX-34 upstream tool list size cap",
+  "ids": [
+   "CX-34"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32013
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "limits": {
+   "maxResponseBytes": 512
+  }
+ },
+ {
+  "name": "CX-35 shaped tool list size cap",
+  "ids": [
+   "CX-35"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "description": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32013
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "limits": {
+   "maxResponseBytes": 512
+  }
+ },
+ {
+  "name": "CX-36 upstream resource list size cap",
+  "ids": [
+   "CX-36"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc",
+       "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32013
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "limits": {
+   "maxResponseBytes": 512
+  }
+ },
+ {
+  "name": "CX-37 upstream skill list size cap",
+  "ids": [
+   "CX-37"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32013
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "limits": {
+   "maxResponseBytes": 512
+  }
+ },
+ {
+  "name": "CX-38 input message shaping cannot bypass final response size cap",
+  "ids": [
+   "CX-38"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/input",
+      "when": "true",
+      "then": {
+       "message": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.error.code",
+      "equals": -32013
+     },
+     {
+      "path": "reply.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     },
+     "requestState": "UP"
+    }
+   }
+  ],
+  "limits": {
+   "maxResponseBytes": 1024
+  }
+ },
+ {
+  "name": "CX-39 search definitions preserve case-sensitive tool identity",
+  "ids": [
+   "CX-39"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "Read",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "upper"
+      },
+      {
+       "name": "read",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "lower"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "get_tool_definition",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "upper"
+     },
+     {
+      "path": "outcome.result.tools[1].description",
+      "equals": "lower"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "names": [
+      "a__Read",
+      "a__read"
+     ]
+    }
+   }
+  ],
+  "route": "search"
+ },
+ {
+  "name": "CX-40 direct search results use names executable on that direct route",
+  "ids": [
+   "CX-40"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "lookup",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "lookup"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tool_search",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "lookup"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "query": "lookup"
+    }
+   },
+   {
+    "op": "execute_tool",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "lookup"
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "${steps.0.outcome.result.tools[0].name}",
+     "arguments": {}
+    }
+   }
+  ],
+  "route": "direct"
+ },
+ {
+  "name": "CX-41 listing order is URI within each slug (decision F35, byte-consistent caching)",
+  "ids": [
+   "CX-41"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "name": "zebra",
+       "uri": "file:///a"
+      },
+      {
+       "name": "alpha",
+       "uri": "file:///z"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].name",
+      "equals": [
+       "zebra",
+       "alpha"
+      ]
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-42 listing order is URI within each slug (decision F35, byte-consistent caching)",
+  "ids": [
+   "CX-42"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "name": "zebra",
+       "uriTemplate": "a://{x}"
+      },
+      {
+       "name": "alpha",
+       "uriTemplate": "z://{x}"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates[*].name",
+      "equals": [
+       "zebra",
+       "alpha"
+      ]
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-43 listing order is URI within each slug (decision F35, byte-consistent caching)",
+  "ids": [
+   "CX-43"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://a/zebra/SKILL.md",
+       "frontmatter": {
+        "name": "zebra",
+        "description": "z"
+       },
+       "resources": "dynamic"
+      },
+      {
+       "uri": "skill://z/alpha/SKILL.md",
+       "frontmatter": {
+        "name": "alpha",
+        "description": "a"
+       },
+       "resources": "dynamic"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "outcome.result.skills[*].frontmatter.name",
+      "equals": [
+       "zebra",
+       "alpha"
+      ]
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-44 slugUris does not rewrite a URI outside a template literal suffix",
+  "ids": [
+   "CX-44"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "https://example.test/{id}/public",
+       "name": "public"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "slugUris(result.text)"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "https://example.test/123/private"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "a+file:///doc"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "text": "https://example.test/123/private"
+      }
+     ]
+    }
+   }
+  ],
+  "route": "mux"
+ },
+ {
+  "name": "CX-45 schema wildcard deletion removes corresponding object requirements",
+  "ids": [
+   "CX-45"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "outputSchema": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ]
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "outputSchema": "dropSchema(outputSchema, ['*'])"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].outputSchema.properties",
+      "equals": {}
+     },
+     {
+      "path": "outcome.result.tools[0].outputSchema.required",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-46 read confirmation cannot be reused for directory read method",
+  "ids": [
+   "CX-46"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{+path}",
+       "name": "all"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/read",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok','Read?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///folder"
+    }
+   },
+   {
+    "op": "resources/directory/read",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///folder",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-47 gateway answer survives transition into upstream input round",
+  "ids": [
+   "CX-47"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Continue?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     }
+    ],
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     },
+     "requestState": "UP"
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UP"
+     },
+     {
+      "path": "outcome.forward.params.inputResponses.q",
+      "equals": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "requestState": "${steps.1.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-48 tool upstream input without optional upstream state preserves answers",
+  "ids": [
+   "CX-48"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.inputResponses.q",
+      "equals": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    ],
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-49 prompt upstream input without optional upstream state preserves answers",
+  "ids": [
+   "CX-49"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "p"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "op": "prompts/get",
+    "expect": [
+     {
+      "path": "outcome.forward.params.inputResponses.q",
+      "equals": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    ],
+    "params": {
+     "name": "p",
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-50 resource upstream input without optional upstream state preserves answers",
+  "ids": [
+   "CX-50"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Question",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {}
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.forward.params.inputResponses.q",
+      "equals": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    ],
+    "params": {
+     "uri": "file:///doc",
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-51 prompt state-only input_required is wrapped before returning to client",
+  "ids": [
+   "CX-51"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UPSTREAM-OPAQUE"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "p"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "requestState": "UPSTREAM-OPAQUE"
+    }
+   },
+   {
+    "op": "prompts/get",
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UPSTREAM-OPAQUE"
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "p",
+     "requestState": "${steps.0.reply.result.requestState}"
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-52 resource state-only input_required is wrapped before returning to client",
+  "ids": [
+   "CX-52"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UPSTREAM-OPAQUE"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "requestState": "UPSTREAM-OPAQUE"
+    }
+   },
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UPSTREAM-OPAQUE"
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc",
+     "requestState": "${steps.0.reply.result.requestState}"
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-53 search execute_tool continuation reaches the same call pipeline",
+  "ids": [
+   "CX-53"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Continue?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "execute_tool",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "a__t"
+    }
+   },
+   {
+    "op": "execute_tool",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     },
+     {
+      "path": "outcome.result",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "a__t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "route": "search",
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-54 same-argument replay remains allowed within the accepted five-minute window",
+  "ids": [
+   "CX-54"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Continue?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     }
+    ],
+    "now": "2026-11-14T12:00:10Z",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     }
+    ],
+    "now": "2026-11-14T12:04:59Z",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-55 unknown answer cannot be appended to valid state",
+  "ids": [
+   "CX-55"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Continue?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.invented": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-56 non-idempotent pre-confirmation patch runs once per original retry",
+  "ids": [
+   "CX-56"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "n": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "args.n": "args.n + 1"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Continue?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "n": 1
+     }
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.n",
+      "equals": 2
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "n": 1
+     },
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    }
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "caller": {
+   "userId": "u"
+  }
+ },
+ {
+  "name": "CX-57 audit parameter rename cannot change call reversal or exposed definition",
+  "ids": [
+   "CX-57"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.q.name": "'hidden'"
+      },
+      "mode": "audit"
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.q",
+      "exists": true
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.hidden",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "x"
+      }
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": "x"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-58 gateway added parameter remains removed after chained renames",
+  "ids": [
+   "CX-58"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.reason.add": "{'type':'string'}"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.reason.name": "'why'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.why.name": "'intent'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "x"
+      }
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": "x",
+      "intent": "audit"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-59 escaped backslash and dot parameter key round-trips through rename",
+  "ids": [
+   "CX-59"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "a\\b.c": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.a\\\\b\\.c.name": "'query'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "a\\b.c": "caf\u00e9 /\n"
+      }
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {
+      "query": "caf\u00e9 /\n"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-60 unicode canonical forms stay distinct in search definitions",
+  "ids": [
+   "CX-60"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "caf\u00e9",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "composed"
+      },
+      {
+       "name": "cafe\u0301",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "description": "decomposed"
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "get_tool_definition",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "composed"
+     },
+     {
+      "path": "outcome.result.tools[1].description",
+      "equals": "decomposed"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "names": [
+      "a__caf\u00e9",
+      "a__cafe\u0301"
+     ]
+    }
+   }
+  ],
+  "route": "search"
+ },
+ {
+  "name": "CX-61 real call Bash reverses one property while preserving all other bytes",
+  "ids": [
+   "CX-61"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {},
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "name != \"Bash\"",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.command.name": "\"codex_command\""
+      }
+     }
+    ],
+    "catalogRef": "../../../../internal/e2e/testdata/real/corpus.json#tools"
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "Bash"
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "command": "cd /home/localuser/source/sluice-gateway && grep -rn \"go:generate\" --include=*.go protocols/ models/ contracts/ | head && echo \"=== tygo\" && cat tygo.yaml | head -40 && echo \"=== makefile py-compat\" && grep -n \"py-compat:\" -A 5 Makefile"
+      }
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "Bash",
+     "arguments": {
+      "codex_command": "cd /home/localuser/source/sluice-gateway && grep -rn \"go:generate\" --include=*.go protocols/ models/ contracts/ | head && echo \"=== tygo\" && cat tygo.yaml | head -40 && echo \"=== makefile py-compat\" && grep -n \"py-compat:\" -A 5 Makefile"
+     }
+    }
+   }
+  ],
+  "limits": {
+   "budget": 10000000000
+  }
+ },
+ {
+  "name": "CX-62 real call Read reverses one property while preserving all other bytes",
+  "ids": [
+   "CX-62"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {},
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "name != \"Read\"",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.file_path.name": "\"codex_file_path\""
+      }
+     }
+    ],
+    "catalogRef": "../../../../internal/e2e/testdata/real/corpus.json#tools"
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "Read"
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "file_path": "/home/sandbox/.claude/skills/lab-cluster-access/health-check/references/schema.md"
+      }
+     },
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "Read",
+     "arguments": {
+      "codex_file_path": "/home/sandbox/.claude/skills/lab-cluster-access/health-check/references/schema.md"
+     }
+    }
+   }
+  ],
+  "limits": {
+   "budget": 10000000000
+  }
+ },
+ {
+  "name": "CX-63 real corpus filtered tool stays absent across all search surfaces",
+  "ids": [
+   "CX-63"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {},
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "name.startsWith('delete') || name.startsWith('create')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalogRef": "../../../../internal/e2e/testdata/real/corpus.json#tools"
+   }
+  ],
+  "steps": [
+   {
+    "op": "get_tool_definition",
+    "expect": [
+     {
+      "path": "outcome.result.tools",
+      "len": 0,
+      "exists": true
+     },
+     {
+      "path": "outcome.result.unknown",
+      "equals": [
+       "a__delete_data_observability_monitor_annotations"
+      ]
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "names": [
+      "a__delete_data_observability_monitor_annotations"
+     ]
+    }
+   },
+   {
+    "op": "execute_tool",
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32004
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "a__delete_data_observability_monitor_annotations",
+     "arguments": {}
+    }
+   }
+  ],
+  "route": "search",
+  "limits": {
+   "budget": 10000000000
+  }
+ },
+ {
+  "name": "CX-64 binary resource contents cannot bypass a resources/result deny",
+  "ids": [
+   "CX-64"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'blocked result'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "expect": [
+     {
+      "path": "reply.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "reply.result",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "resultType": "complete",
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "mimeType": "application/octet-stream",
+       "blob": "U0VDUkVU"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-65 tool result meta variable exposes upstream _meta under documented name",
+  "ids": [
+   "CX-65"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "{'trace': result.meta.trace}"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent.trace",
+      "equals": "upstream-trace"
+     },
+     {
+      "path": "reply.result.isError",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": [],
+     "_meta": {
+      "trace": "upstream-trace"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-66 discover includes the required 2026 supportedVersions field",
+  "ids": [
+   "CX-66"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {},
+    "rules": [],
+    "info": {
+     "name": "upstream",
+     "version": "1"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "outcome.result.supportedVersions",
+      "equals": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "path": "outcome.result._meta.io\\.modelcontextprotocol/serverInfo.name",
+      "equals": "bifrost"
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-67 discover advertises Skills extension before exposing skills methods",
+  "ids": [
+   "CX-67"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widget/SKILL.md",
+       "frontmatter": {
+        "name": "widget",
+        "description": "original"
+       },
+       "resources": [
+        {
+         "uri": "skill://widget/SKILL.md",
+         "digest": "sha256:e5ffcf1ef00f34afc641ef86e3e3ee3d544fbe80898441b527eeedef61db9de8",
+         "size": 48
+        }
+       ],
+       "files": {
+        "skill://widget/SKILL.md": {
+         "text": "---\nname: widget\ndescription: original\n---\nBody\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "outcome.result.capabilities.extensions.io\\.modelcontextprotocol/skills",
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "outcome.result.skills",
+      "len": 1,
+      "exists": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "CX-68 valid array structuredContent passes through without object coercion",
+  "ids": [
+   "CX-68"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       },
+       "outputSchema": {
+        "type": "array",
+        "items": {
+         "type": "integer"
+        }
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": [
+       1,
+       2,
+       3
+      ]
+     },
+     {
+      "path": "reply.result.content",
+      "equals": [
+       {
+        "type": "text",
+        "text": "[1,2,3]"
+       }
+      ]
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "structuredContent": [
+      1,
+      2,
+      3
+     ],
+     "content": [
+      {
+       "type": "text",
+       "text": "[1,2,3]"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-69 valid scalar and null structuredContent preserve their JSON types",
+  "ids": [
+   "CX-69"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": "text"
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": true
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": [],
+     "structuredContent": "text"
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": false
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": true
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": [],
+     "structuredContent": false
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": 7
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": true
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": [],
+     "structuredContent": 7
+    }
+   },
+   {
+    "op": "tools/call",
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": null
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": true
+     }
+    ],
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "resultType": "complete",
+     "content": [],
+     "structuredContent": null
+    }
+   }
+  ]
+ },
+ {
+  "name": "CX-70 unmodified composed schema and boolean properties remain valid passthrough",
+  "ids": [
+   "CX-70"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "a": true,
+         "b": false
+        },
+        "oneOf": [
+         {
+          "required": [
+           "a"
+          ]
+         },
+         {
+          "required": [
+           "b"
+          ]
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "rules": []
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].inputSchema",
+      "equals": {
+       "type": "object",
+       "properties": {
+        "a": true,
+        "b": false
+       },
+       "oneOf": [
+        {
+         "required": [
+          "a"
+         ]
+        },
+        {
+         "required": [
+          "b"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     },
+     {
+      "path": "problems.a",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ }
+]

@@ -3,3 +3,5 @@
 /web/dist/
 .env
 *.local
+# Real third-party and personal tool catalogs: regenerate with scripts/fixtures, never commit.
+internal/e2e/testdata/real/

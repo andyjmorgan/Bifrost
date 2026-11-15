@@ -1,0 +1,89 @@
+[
+{"name":"RH-CEL-01..06 operators, ternaries, concatenation, regex.replace and format","ids":["RH-CEL-01","RH-CEL-02","RH-CEL-03","RH-CEL-04","RH-CEL-05","RH-CEL-06"],
+ "caller":{"role":"admin"},
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/modify","when":"(name == 'a' || name == 'b') && !(name == 'b')","then":{"description":"'[' + description + ']'"}},
+   {"hook":"tools/modify","when":"caller.role == 'admin' ? name == 'b' : false","then":{"description":"caller.role == 'admin' ? 'admin view' : 'member view'"}},
+   {"hook":"tools/modify","when":"name == 'c'","then":{"description":"regex.replace(description, 'Confluence', 'the wiki')"}},
+   {"hook":"tools/modify","when":"name == 'd'","then":{"title":"'%s (%s)'.format([name, server.slug])"}}],
+  "catalog":{"tools":[
+   {"name":"a","description":"plain","inputSchema":{"type":"object"}},
+   {"name":"b","description":"x","inputSchema":{"type":"object"}},
+   {"name":"c","description":"Search Confluence pages","inputSchema":{"type":"object"}},
+   {"name":"d","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[
+   {"path":"outcome.result.tools[0].description","equals":"[plain]"},
+   {"path":"outcome.result.tools[1].description","equals":"admin view"},
+   {"path":"outcome.result.tools[2].description","equals":"Search the wiki pages"},
+   {"path":"outcome.result.tools[3].title","equals":"d (a)"}]}]},
+{"name":"RH-CEL-07 has() guards an optional field and RH-CEL-08 false && error is false","ids":["RH-CEL-07","RH-CEL-08"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/filter","when":"has(meta.secret) && meta.secret == true","then":{"decision":"'deny'"}},
+   {"hook":"tools/filter","when":"false && meta.missing.deeper == 1","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"open","inputSchema":{"type":"object"}},{"name":"hidden","inputSchema":{"type":"object"},"_meta":{"secret":true}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["open"]},{"path":"outcome.hits[*].effect","notContains":"error"}]}]},
+{"name":"RH-CEL-09 list, two-variable comprehension and set extensions","ids":["RH-CEL-09"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/modify","when":"sets.contains(['x','y','z'], [name])","then":{"description":"string(['a','b','c'].slice(0, 2).size()) + ':' + string({'k1': 1, 'k2': 2}.transformMap(k, v, v > 1, v * 10)['k2'])"}}],
+  "catalog":{"tools":[{"name":"x","inputSchema":{"type":"object"}},{"name":"q","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[1].description","equals":"2:20"},{"path":"outcome.result.tools[0].description","exists":false}]}]},
+{"name":"RH-EVAL-01 with no matching rule everything is visible and callable","ids":["RH-EVAL-01"],
+ "servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"name == 'nothing'","then":{"decision":"'deny'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["t"]}]},{"op":"tools/call","params":{"name":"t"},"expect":[{"path":"outcome.forward.params.name","equals":"t"}]}]},
+{"name":"RH-EVAL-03 an org-style deny cannot be undone by a later rule meant to re-allow admins","ids":["RH-EVAL-03"],"caller":{"role":"admin"},
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/filter","when":"name.startsWith('delete_')","then":{"decision":"'deny'"}},
+   {"hook":"tools/filter","when":"caller.role == 'admin' && name.startsWith('nonexistent')","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"delete_project","inputSchema":{"type":"object"}},{"name":"get","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["get"]}]}]},
+{"name":"RH-EVAL-04 the first deny stops evaluation and RH-EVAL-05 an enforce error denies","ids":["RH-EVAL-04","RH-EVAL-05"],
+ "servers":[{"slug":"a","rules":[
+   {"name":"first","hook":"tools/filter","when":"name == 'a'","then":{"decision":"'deny'"}},
+   {"name":"never-for-a","hook":"tools/filter","when":"name == 'zzz'","then":{"decision":"'deny'"}},
+   {"name":"boom","hook":"tools/filter","when":"name == 'b' && meta.missing == 1","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"a","inputSchema":{"type":"object"}},{"name":"b","inputSchema":{"type":"object"}},{"name":"c","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[
+   {"path":"outcome.result.tools[*].name","equals":["c"]},
+   {"path":"outcome.hits[*].rule","equals":["first","boom"]},
+   {"path":"outcome.hits[1].effect","equals":"error"},
+   {"path":"outcome.issues[0]","contains":"b:"}]}]},
+{"name":"RH-EVAL-06..08 audit rules log what they would do, never change the outcome, and still run after a stop","ids":["RH-EVAL-06","RH-EVAL-07","RH-EVAL-08"],
+ "servers":[{"slug":"a","rules":[
+   {"name":"enforce-deny","hook":"tools/filter","when":"name == 'x'","then":{"decision":"'deny'"}},
+   {"name":"audit-deny","mode":"audit","hook":"tools/filter","when":"true","then":{"decision":"'deny'"}},
+   {"name":"audit-error","mode":"audit","hook":"tools/filter","when":"meta.missing == 1","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"x","inputSchema":{"type":"object"}},{"name":"y","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[
+   {"path":"outcome.result.tools[*].name","equals":["y"]},
+   {"path":"outcome.hits[*].effect","equals":["deny","would deny","would error","would deny","would error"]}]}]},
+{"name":"RH-EVAL-09 call patches chain and RH-EVAL-10 nothing runs after an elicit","ids":["RH-EVAL-09","RH-EVAL-10"],"caller":{"userId":"u"},"client":{"capabilities":{"elicitation":{}}},
+ "servers":[{"slug":"a","generation":"1","rules":[
+   {"name":"clamp","hook":"tools/call","when":"args.limit > 100","then":{"args.limit":"100"}},
+   {"name":"double","hook":"tools/call","when":"args.limit == 100","then":{"args.note":"'clamped'"}},
+   {"name":"ask","hook":"tools/call","when":"args.limit == 100 && !has(input.ok)","then":{"result":"elicit('ok', 'Proceed?')"}},
+   {"name":"after","hook":"tools/call","when":"true","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object","properties":{"limit":{"type":"number"},"note":{"type":"string"}}}}]}}],
+ "steps":[{"op":"tools/call","params":{"name":"t","arguments":{"limit":500}},"expect":[
+   {"path":"outcome.result.resultType","equals":"input_required"},
+   {"path":"outcome.hits[*].rule","equals":["clamp","double","ask"]}]}]},
+{"name":"RH-EVAL-11 each item runs on its own","ids":["RH-EVAL-11"],
+ "servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"name == 'a'","then":{"decision":"'deny'"}},{"hook":"tools/modify","when":"true","then":{"description":"'seen ' + name"}}],
+  "catalog":{"tools":[{"name":"a","inputSchema":{"type":"object"}},{"name":"b","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].description","equals":["seen b"]}]}]},
+{"name":"RH-ITEM-01..03 top-level fields, stable upstream.name, chained renames","ids":["RH-ITEM-01","RH-ITEM-02","RH-ITEM-03"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/modify","when":"name == 'search_issues'","then":{"name":"'search'"}},
+   {"hook":"tools/modify","when":"name == 'search'","then":{"description":"'renamed from ' + upstream.name"}},
+   {"hook":"tools/modify","when":"upstream.name == 'search_issues'","then":{"title":"'still ' + upstream.name"}}],
+  "catalog":{"tools":[{"name":"search_issues","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[
+   {"path":"outcome.result.tools[0].name","equals":"search"},
+   {"path":"outcome.result.tools[0].description","equals":"renamed from search_issues"},
+   {"path":"outcome.result.tools[0].title","equals":"still search_issues"}]}]},
+{"name":"RH-ITEM-04 a _meta key a rule adds reaches the client unless removed","ids":["RH-ITEM-04"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/modify","when":"true","then":{"meta.flagged":"true"}},
+   {"hook":"tools/modify","when":"name == 'b'","then":{"meta.flagged":"null"}}],
+  "catalog":{"tools":[{"name":"a","inputSchema":{"type":"object"}},{"name":"b","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[0]._meta.flagged","equals":true},{"path":"outcome.result.tools[1]._meta.flagged","exists":false}]}]}
+]
