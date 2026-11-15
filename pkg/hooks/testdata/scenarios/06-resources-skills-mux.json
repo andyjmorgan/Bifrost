@@ -964,7 +964,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of skill://notebooks cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "skill://notebooks"
@@ -1009,7 +1009,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of skill://widgets cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "skill://widgets"
@@ -1410,7 +1410,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "RH-SKL-01/02/06/12 deny a skill by name: folder, nested skill and listings",
   "ids": [
    "RH-SKL-01",
@@ -1632,7 +1632,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "RH-SKL-03/04 name and description shortcuts; a uri rule denies one of two same-named skills",
   "ids": [
    "RH-SKL-03",
@@ -1814,7 +1814,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "RH-SKL-07/08 a rewrite recomputes digest and size and copies frontmatter into the entry",
   "ids": [
    "RH-SKL-07",
@@ -2020,7 +2020,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "RH-SKL-09 / ADV-31 a rewrite that changes the name is rejected and nothing is partly applied",
   "ids": [
    "RH-SKL-09",
@@ -2201,7 +2201,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "ADV-47 a rewrite rule that depends on the request is not applied to skills (digests would never match)",
   "ids": [
    "ADV-47"
@@ -2377,7 +2377,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "RH-SKL-10 denying one file inside a skill is allowed and leaves the manifest alone",
   "ids": [
    "RH-SKL-10"
@@ -2549,7 +2549,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "RH-MUX-01/02/05/11 mux: prefixed listings and skills, digests unchanged",
   "ids": [
    "RH-MUX-01",
@@ -3363,7 +3363,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "RH-MUX-09/10/11/13/14 fallback resolution: unique, ambiguous, unknown, filtered",
   "ids": [
    "RH-MUX-09",

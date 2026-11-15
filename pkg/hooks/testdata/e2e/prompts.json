@@ -1,0 +1,34 @@
+[
+{"name": "prompts/filter: hide a prompt; getting it is refused", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (prompts/list, summarize) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "prompts/filter", "when": "name == 'summarize'", "then": {"decision": "'deny'"}}]}],
+ "steps": [
+  {"op": "prompts/list", "expect": [{"path": "client.result.prompts[*].name", "set": ["greet"]}]},
+  {"op": "prompts/get", "params": {"name": "summarize", "arguments": {"topic": "x"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "unknown prompt summarize"}]}
+ ]},
+{"name": "prompts/modify: rename a prompt and an argument, change its text", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (prompts/list, hello, greet) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "prompts/modify", "when": "upstream.name == 'greet'", "then": {"name": "'hello'", "title": "'Hello'", "description": "'Say hello.'", "arguments.who.name": "'person'", "arguments.who.description": "'Who to greet.'", "meta.kind": "'greeting'"}}]}],
+ "steps": [
+  {"op": "prompts/list", "expect": [{"path": "client.result.prompts[name=hello].title", "equals": "Hello"}, {"path": "client.result.prompts[name=hello].description", "equals": "Say hello."}, {"path": "client.result.prompts[name=hello]._meta.kind", "equals": "greeting"}, {"path": "client.result.prompts[name=hello].arguments", "len": 1}, {"path": "client.result.prompts[name=hello].arguments[0].name", "equals": "person"}, {"path": "client.result.prompts[name=hello].arguments[0].description", "equals": "Who to greet."}, {"path": "client.result.prompts[name=hello].arguments[0].required", "equals": true}]},
+  {"op": "prompts/get", "params": {"name": "hello", "arguments": {"person": "Ana"}}, "expect": [{"path": "client.result.messages[0].content.text", "equals": "Hello, Ana!"}]},
+  {"op": "prompts/get", "params": {"name": "hello", "arguments": {"who": "Ana"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "argument \"who\" is not available on this prompt"}]},
+  {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "Ana"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "unknown prompt greet"}]}
+ ]},
+{"name": "prompts/get patch: fill a missing argument", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (summarize) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "prompts/get", "when": "upstream.name == 'summarize' && !has(args.tone)", "then": {"args.tone": "'formal'"}}]}],
+ "steps": [
+  {"op": "prompts/get", "params": {"name": "summarize", "arguments": {"topic": "oncall"}}, "expect": [{"path": "client.result.messages[0].content.text", "equals": "Summarize oncall in a formal tone."}]},
+  {"op": "prompts/get", "params": {"name": "summarize", "arguments": {"topic": "oncall", "tone": "dry"}}, "expect": [{"path": "client.result.messages[0].content.text", "equals": "Summarize oncall in a dry tone."}]}
+ ]},
+{"name": "prompts/get deny: deny on an argument value, with a reason", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (greet) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "prompts/get", "when": "has(args.who) && args.who == 'root'", "then": {"decision": "'deny'", "reason": "'Greeting root is not allowed.'"}}]}],
+ "steps": [
+  {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "root"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Greeting root is not allowed."}]},
+  {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "Ana"}}, "expect": [{"path": "client.result.messages[0].content.text", "equals": "Hello, Ana!"}]}
+ ]},
+{"name": "prompts/get confirm: confirm before a prompt: accept, then decline", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "client": {"capabilities": {"elicitation": {}}}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (greet) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "prompts/get", "when": "upstream.name == 'greet' && !has(input.ok)", "then": {"result": "elicit('ok', 'Greet {who}?', {'who': args.who})"}}]}],
+ "steps": [
+  {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "Ana"}}, "answers": [{"action": "accept", "content": {"confirm": true}}], "expect": [{"path": "client.result.messages[0].content.text", "equals": "Hello, Ana!"}, {"path": "questions", "len": 1}, {"path": "questions[0].message", "equals": "Greet \"Ana\"?"}]},
+  {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "Ana"}}, "answers": [{"action": "decline"}], "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Declined."}]}
+ ]}
+]

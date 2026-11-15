@@ -5,25 +5,25 @@
   {"slug":"b","rules":[{"hook":"server/connect","when":"true","then":{"clientInfo":"client","capabilities.elicitation":"true","meta":"true"}}],"catalog":{}},
   {"slug":"c","rules":[{"hook":"server/connect","when":"true","then":{"capabilities.elicitation":"false"}}],"catalog":{}}],
  "steps":[
-  {"op":"connect","params":{"slug":"a"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"bifrost"},{"path":"outcome.result.capabilities","equals":{}},{"path":"outcome.result.forwardMeta","equals":false}]},
-  {"op":"connect","params":{"slug":"b"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"claude-code"},{"path":"outcome.result.capabilities.elicitation","equals":{}},{"path":"outcome.result.forwardMeta","equals":true}]},
-  {"op":"connect","params":{"slug":"c"},"expect":[{"path":"outcome.result.capabilities.elicitation","exists":false}]}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for a, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"a"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"bifrost"},{"path":"outcome.result.capabilities","equals":{}},{"path":"outcome.result.forwardMeta","equals":false}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for b, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"b"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"claude-code"},{"path":"outcome.result.capabilities.elicitation","equals":{}},{"path":"outcome.result.forwardMeta","equals":true}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for c, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"c"},"expect":[{"path":"outcome.result.capabilities.elicitation","exists":false}]}]},
 {"name":"RH-SRV-03/04 switching tools, prompts and resources off","ids":["RH-SRV-03","RH-SRV-04"],
  "servers":[{"slug":"a","rules":[{"hook":"server/config","when":"true","then":{"tools":"false","prompts":"false","resources":"false"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
-  {"op":"tools/list","expect":[{"path":"outcome.result.tools","len":0}]},
+  {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"tools/list","expect":[{"path":"outcome.result.tools","len":0}]},
   {"op":"tools/call","params":{"name":"t"},"expect":[{"path":"outcome.error.code","equals":-32602}]},
-  {"op":"prompts/list","expect":[{"path":"outcome.result.prompts","len":0}]},
+  {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send prompts/list when the discover result did not advertise the prompts capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"prompts/list","expect":[{"path":"outcome.result.prompts","len":0}]},
   {"op":"prompts/get","params":{"name":"p"},"expect":[{"path":"outcome.error.code","equals":-32602}]},
-  {"op":"resources/list","expect":[{"path":"outcome.result.resources","len":0}]},
+  {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send resources/list when the discover result did not advertise the resources capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"resources/list","expect":[{"path":"outcome.result.resources","len":0}]},
   {"op":"resources/read","params":{"uri":"file:///r"},"expect":[{"path":"outcome.error.code","equals":-32602}]},
-  {"op":"discover","expect":[{"path":"outcome.result.capabilities","equals":{}}]}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.capabilities","equals":{}}]}]},
 {"name":"RH-SRV-05/06/08/09 discover on 1:1: instructions switch and rewrite, listChanged false, no completions or logging","ids":["RH-SRV-05","RH-SRV-06","RH-SRV-08","RH-SRV-09"],
  "servers":[{"slug":"wiki","info":{"name":"atlassian","version":"9","title":"Atlassian","instructions":"Use search first.\n## Confluence\nConfluence details."},
   "rules":[{"hook":"server/modify","when":"true","then":{"instructions":"regex.replace(server.instructions, '(?s)## Confluence.*', '') + 'All writes need a ticket ID.'","title":"'Jira (read only)'"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}]}}],
- "steps":[{"op":"discover","expect":[
+ "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[
    {"path":"outcome.result.instructions","equals":"Use search first.\nAll writes need a ticket ID."},
    {"path":"outcome.result._meta.io\\.modelcontextprotocol/serverInfo","equals":{"name":"bifrost","version":"test","title":"Jira (read only)"}},{"path":"outcome.result.supportedVersions","equals":["2026-07-28"]},
    {"path":"outcome.result.capabilities.tools.listChanged","equals":false},
@@ -35,10 +35,10 @@
 {"name":"RH-SRV-05 the instructions switch hides them; serverInfo switch exposes the upstream","ids":["RH-SRV-05"],
  "servers":[{"slug":"wiki","info":{"name":"atlassian","version":"9","instructions":"secret"},
   "rules":[{"hook":"server/config","when":"true","then":{"instructions":"false","serverInfo":"true"}}],"catalog":{}}],
- "steps":[{"op":"discover","expect":[{"path":"outcome.result.instructions","exists":false},{"path":"outcome.result._meta.io\\.modelcontextprotocol/serverInfo","equals":{"name":"atlassian","version":"9"}}]}]},
+ "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.instructions","exists":false},{"path":"outcome.result._meta.io\\.modelcontextprotocol/serverInfo","equals":{"name":"atlassian","version":"9"}}]}]},
 {"name":"RH-SRV-07 instructions are read live: a changed upstream shows at once","ids":["RH-SRV-07"],
  "servers":[{"slug":"wiki","info":{"instructions":"version two"},"catalog":{}}],
- "steps":[{"op":"discover","expect":[{"path":"outcome.result.instructions","equals":"version two"}]}]},
+ "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.instructions","equals":"version two"}]}]},
 {"name":"RH-SRV-11/12 mux instructions: labelled excerpts with budgets and get_server_instructions for the full text","ids":["RH-SRV-11","RH-SRV-12"],"route":"mux",
  "limits":{"instructionsPer":30,"instructionsAll":41},
  "servers":[
@@ -47,7 +47,7 @@
   {"slug":"gamma","info":{"instructions":"Gamma gets nothing left."},"catalog":{}},
   {"slug":"hidden","info":{"instructions":"never shown"},"rules":[{"hook":"server/config","when":"true","then":{"instructions":"false"}}],"catalog":{}}],
  "steps":[
-  {"op":"discover","expect":[
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[
    {"path":"outcome.result.instructions","contains":"## alpha\n> Alpha instructions are fairly … [truncated"},
    {"path":"outcome.result.instructions","contains":"## beta\n> Beta short."},
    {"path":"outcome.result.instructions","contains":"## gamma\n… [truncated"},

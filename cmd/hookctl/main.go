@@ -25,7 +25,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: hookctl run [-summary] [-only ID] [files...] | hookctl check [file]")
+		fmt.Fprintln(os.Stderr, "usage: hookctl run [-summary] [-only ID] [files...] | hookctl check [file] | hookctl hooks [hook]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -33,6 +33,8 @@ func main() {
 		os.Exit(run(os.Args[2:]))
 	case "check":
 		os.Exit(check(os.Args[2:]))
+	case "hooks":
+		os.Exit(hookSchemas(os.Args[2:]))
 	default:
 		fmt.Fprintln(os.Stderr, "unknown command "+os.Args[1])
 		os.Exit(2)
@@ -149,4 +151,31 @@ func trim(s string, n int) string {
 		return s
 	}
 	return s[:n-1] + "…"
+}
+
+// hookSchemas prints what a rule on each hook may read and set, as JSON:
+// every hook, or the one named. The flags struct is part of every hook.
+func hookSchemas(args []string) int {
+	all := hooks.Schema()
+	out := any(map[string]any{"flags": hooks.FlagDocs, "hooks": all})
+	if len(args) > 0 {
+		out = nil
+		for _, h := range all {
+			if h.Hook == args[0] {
+				out = h
+			}
+		}
+		if out == nil {
+			fmt.Fprintln(os.Stderr, "unknown hook "+args[0])
+			return 2
+		}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
 }

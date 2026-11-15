@@ -21,7 +21,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (problems.wiki) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -60,7 +60,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (problems.jira) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -130,7 +130,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {

@@ -34,7 +34,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["python-sdk", "typescript-sdk"], "reason": "The arguments hold a number (9007199254740993) that a 64-bit float cannot carry exactly. The driver's line protocol, and JavaScript, read JSON numbers as floats, so it would reach the gateway changed."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -94,7 +94,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["python-sdk", "typescript-sdk"], "reason": "The arguments hold a number (9007199254740993) that a 64-bit float cannot carry exactly. The driver's line protocol, and JavaScript, read JSON numbers as floats, so it would reach the gateway changed."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -214,7 +214,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["python-sdk", "typescript-sdk"], "reason": "The arguments hold a number (9007199254740993) that a 64-bit float cannot carry exactly. The driver's line protocol, and JavaScript, read JSON numbers as floats, so it would reach the gateway changed."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -607,7 +607,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.forward.params.arguments.n), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -703,7 +703,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this prompts/get p is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.forward.params.arguments), which only the raw client can see."}], 
     "op": "prompts/get",
     "expect": [
      {
@@ -1307,7 +1307,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///public cannot be sent."}], 
     "op": "resources/directory/read",
     "expect": [
      {
@@ -1368,7 +1368,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///public cannot be sent."}], 
     "op": "resources/directory/read",
     "expect": [
      {
@@ -1417,7 +1417,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///public cannot be sent."}], 
     "op": "resources/directory/read",
     "expect": [
      {
@@ -1493,7 +1493,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-24 clock dependent skill rewrite is skipped during reads as well as listings",
   "ids": [
    "CX-24"
@@ -1579,7 +1579,7 @@
    "userId": "u"
   }
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-25 caller dependent skill rewrite is skipped during reads as well as listings",
   "ids": [
    "CX-25"
@@ -1665,7 +1665,7 @@
    "userId": "u"
   }
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-26 rejected skill name rewrite also preserves SKILL.md read bytes",
   "ids": [
    "CX-26"
@@ -1748,7 +1748,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-27 skill transaction rollback covers earlier supporting file reads",
   "ids": [
    "CX-27"
@@ -1840,7 +1840,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-28 empty text file rewrite updates its advertised digest and size",
   "ids": [
    "CX-28"
@@ -1936,7 +1936,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-29 nested SKILL.md rewrite does not replace enclosing skill frontmatter",
   "ids": [
    "CX-29"
@@ -2015,7 +2015,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-30 dynamic skills are never rewritten (decision F21): entry and file both stay unchanged",
   "ids": [
    "CX-30"
@@ -2092,7 +2092,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "CX-31 rewritten SKILL.md must retain required description frontmatter",
   "ids": [
    "CX-31"
@@ -2234,7 +2234,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///public cannot be sent."}], 
     "op": "resources/directory/read",
     "expect": [
      {
@@ -2407,7 +2407,7 @@
    "maxResponseBytes": 512
   }
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "CX-37 upstream skill list size cap",
   "ids": [
    "CX-37"
@@ -2605,7 +2605,7 @@
   ],
   "route": "search"
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the case invokes search mode's tool_search on the direct route, which the engine harness can do by calling it directly; over a wire that route has no such tool"}], 
   "name": "CX-40 direct search results use names executable on that direct route",
   "ids": [
    "CX-40"
@@ -2749,7 +2749,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "CX-43 listing order is URI within each slug (decision F35, byte-consistent caching)",
   "ids": [
    "CX-43"
@@ -2954,7 +2954,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read file:///folder is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "resources/read",
     "expect": [
      {
@@ -2970,7 +2970,7 @@
      "uri": "file:///folder"
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///folder cannot be sent."}], 
     "op": "resources/directory/read",
     "expect": [
      {
@@ -3036,7 +3036,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3053,7 +3053,7 @@
      "arguments": {}
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3091,7 +3091,7 @@
      "requestState": "UP"
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.1.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"confirm\": true}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3158,7 +3158,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3190,7 +3190,7 @@
      }
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"confirm\": true}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3245,7 +3245,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this prompts/get p is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.resultType), which only the raw client can see."}], 
     "op": "prompts/get",
     "expect": [
      {
@@ -3277,7 +3277,7 @@
      }
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"confirm\": true}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "expect": [
      {
@@ -3333,7 +3333,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read file:///doc is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.resultType), which only the raw client can see."}], 
     "op": "resources/read",
     "expect": [
      {
@@ -3365,7 +3365,7 @@
      }
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"confirm\": true}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "resources/read",
     "expect": [
      {
@@ -3420,7 +3420,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The upstream answers this prompts/get p with input_required that carries state and no questions. The Go SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "python-sdk", "reason": "The upstream answers this prompts/get p with input_required that carries state and no questions. The Python SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}], 
     "op": "prompts/get",
     "expect": [
      {
@@ -3444,7 +3444,7 @@
      "requestState": "UPSTREAM-OPAQUE"
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "expect": [
      {
@@ -3491,7 +3491,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The upstream answers this resources/read file:///doc with input_required that carries state and no questions. The Go SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "python-sdk", "reason": "The upstream answers this resources/read file:///doc with input_required that carries state and no questions. The Python SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}], 
     "op": "resources/read",
     "expect": [
      {
@@ -3515,7 +3515,7 @@
      "requestState": "UPSTREAM-OPAQUE"
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "resources/read",
     "expect": [
      {
@@ -3573,7 +3573,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this execute_tool a__t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "execute_tool",
     "expect": [
      {
@@ -3589,7 +3589,7 @@
      "name": "a__t"
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "execute_tool",
     "expect": [
      {
@@ -3656,7 +3656,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3673,7 +3673,7 @@
      "arguments": {}
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3695,7 +3695,7 @@
      }
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3762,7 +3762,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3779,7 +3779,7 @@
      "arguments": {}
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.invented\": {\"action\": \"accept\", \"content\": {\"conf…). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3856,7 +3856,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -3875,7 +3875,7 @@
      }
     }
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -4458,7 +4458,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The Python SDK's result type always carries isError (false here). This step checks the result as the gateway sent it, without that field."}], 
     "op": "tools/call",
     "expect": [
      {
@@ -4505,7 +4505,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.supportedVersions) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -4526,7 +4526,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "CX-67 discover advertises Skills extension before exposing skills methods",
   "ids": [
    "CX-67"
@@ -4755,7 +4755,7 @@
      "structuredContent": 7
     }
    },
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The Go SDK's typed result cannot carry structuredContent: null; it drops the field, and this step checks that it is still there."}, {"harness": "python-sdk", "reason": "The upstream's result in this step has a structuredContent that is not an object. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "expect": [
      {

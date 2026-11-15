@@ -68,14 +68,25 @@ func compileTemplate(raw string) *uriTemplate {
 // matches reports whether uri can be produced by a supported template.
 func (t *uriTemplate) matches(uri string) bool { return t.re != nil && t.re.MatchString(uri) }
 
-// mayCover reports whether a template could produce uri: an exact match for
-// supported templates, the literal prefix for unsupported ones. Used only
-// to apply denies, never to grant.
+// mayCover reports whether a template could produce uri, for routing: an
+// exact match for a template the gateway can parse, the literal prefix for
+// one it cannot. A template with no literal prefix claims nothing.
 func (t *uriTemplate) mayCover(uri string) bool {
 	if t.re != nil {
 		return t.re.MatchString(uri)
 	}
 	return t.prefix != "" && strings.HasPrefix(uri, t.prefix)
+}
+
+// denies reports whether a denied template covers uri. It errs on the side
+// of the deny: a template the gateway cannot parse covers everything under
+// its literal prefix, and when it starts with an expression, so that there
+// is no literal prefix, it covers every URI. A deny is never silently lost.
+func (t *uriTemplate) denies(uri string) bool {
+	if t.re != nil {
+		return t.re.MatchString(uri)
+	}
+	return strings.HasPrefix(uri, t.prefix)
 }
 
 // ---- resource visibility --------------------------------------------------------------
@@ -144,7 +155,7 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	}
 	n := normalizeURI(uri)
 	for _, t := range v.badTemplates {
-		if t.mayCover(uri) {
+		if t.denies(uri) {
 			return nil, false, nil
 		}
 	}

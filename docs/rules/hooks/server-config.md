@@ -12,7 +12,7 @@ A switch that is off removes the whole kind. Its filter, modify and call hooks d
 
 | Variable | Type | Description |
 | --- | --- | --- |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 This hook has no item, so there is no `upstream` variable.
 
@@ -23,11 +23,11 @@ This hook has no item, so there is no `upstream` variable.
 | `tools` | bool | `true` | Expose tools |
 | `prompts` | bool | `true` | Expose prompts |
 | `resources` | bool | `true` | Expose resources, templates, skills and directory reads |
-| `tasks` | bool | `false` | Expose the `io.modelcontextprotocol/tasks` extension |
+| `tasks` | bool | `false` | Reserved. The gateway does not support the `io.modelcontextprotocol/tasks` extension yet, so this switch stays off whatever a rule sets, and a task handle a server returns is refused |
 | `instructions` | bool | `true` | Show the server's instructions in discover, mux excerpts and `get_server_instructions` |
 | `serverInfo` | bool | `false` | On the direct route, show the upstream's name and version in discover instead of the gateway's |
 | `searchRoster` | bool | `true` | Use the server's title, description and instructions, after [server/modify](server-modify.md), when search mode ranks tools |
-| `progress` | bool | `true` | Forward upstream progress notifications on the request's own stream |
+| `progress` | bool | `true` | Relay upstream progress events on the request's own stream. Only servers that speak MCP 2026-07-28 can have it; for any other server it stays off whatever a rule sets |
 
 No field stops evaluation. Later rules override earlier ones.
 
@@ -47,7 +47,8 @@ Discover advertises a capability only when at least one server on the route has 
 - If an enforce rule fails to evaluate, all eight switches are off for that request.
 - If the entitlement's enabled rules do not compile, every switch is off.
 - Switches are per server. On the mux route, each server's switches apply only to that server's items.
-- The engine evaluates `tasks` and `progress` and passes them to the gateway. No rules run on notifications.
+- When a rule asks for `tasks`, or for `progress` on a server that cannot have it, the gateway turns the switch off and records why in the hits, under the rule label `(gateway)`.
+- Progress events pass through the progress hooks: [tools/progress](tools-progress.md), [prompts/progress](prompts-progress.md) and [resources/progress](resources-progress.md). No rule runs on any other notification.
 
 ## Examples
 

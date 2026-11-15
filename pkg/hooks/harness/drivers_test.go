@@ -29,11 +29,13 @@ import (
 var drivers = []struct {
 	name string
 	open func() (clients.Driver, error)
+	// identity is the client name the driver program declares.
+	identity string
 	// noMeta marks a driver whose call does not pass a request's _meta on.
 	noMeta bool
 }{
-	{"python-sdk", clients.NewPython, true},
-	{"typescript-sdk", clients.NewTypeScript, false},
+	{"python-sdk", clients.NewPython, "harness-python-client", true},
+	{"typescript-sdk", clients.NewTypeScript, "harness-typescript-client", false},
 }
 
 // poolSize is how many processes each language driver may use at once.
@@ -45,7 +47,7 @@ func init() {
 	for _, d := range drivers {
 		c, err := newDriverClient(d.name, d.open)
 		if err == nil {
-			c.noMeta = d.noMeta
+			c.noMeta, c.identity = d.noMeta, d.identity
 		}
 		if err != nil {
 			// Loud, and by name: a missing runtime must not look like a pass.
@@ -68,9 +70,10 @@ func TestMain(m *testing.M) {
 
 // driverClient adapts a clients.Driver to harness.Client.
 type driverClient struct {
-	name   string
-	open   func() (clients.Driver, error)
-	noMeta bool
+	name     string
+	open     func() (clients.Driver, error)
+	noMeta   bool
+	identity string
 
 	mu   sync.Mutex
 	all  []clients.Driver
@@ -104,7 +107,8 @@ func (c *driverClient) close() {
 	}
 }
 
-func (c *driverClient) Name() string { return c.name }
+func (c *driverClient) Name() string     { return c.name }
+func (c *driverClient) Identity() string { return c.identity }
 
 func (c *driverClient) Can(req harness.ClientRequest) string {
 	if why := harness.SDKShape(req); why != "" {

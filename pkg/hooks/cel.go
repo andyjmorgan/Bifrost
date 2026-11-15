@@ -48,6 +48,8 @@ func envFor(spec *HookSpec) (*cel.Env, error) {
 		switch v {
 		case "route":
 			opts = append(opts, cel.Variable(v, cel.StringType))
+		case "flags":
+			opts = append(opts, cel.Variable(v, cel.MapType(cel.StringType, cel.BoolType)))
 		case "now":
 			opts = append(opts, cel.Variable(v, cel.TimestampType))
 		default:
@@ -69,6 +71,9 @@ func compileExpr(env *cel.Env, expr string, want *cel.Type, o Options) (cel.Prog
 	a, iss := env.Compile(expr)
 	if iss != nil && iss.Err() != nil {
 		return nil, nil, errors.New(firstLine(iss.Err().Error()))
+	}
+	if err := checkFlags(a); err != nil {
+		return nil, nil, err
 	}
 	if want != nil {
 		out := a.OutputType()

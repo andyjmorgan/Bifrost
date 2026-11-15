@@ -228,7 +228,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "tools/list",
     "expect": [
      {
@@ -286,7 +286,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "tools/list",
     "expect": [
      {
@@ -836,7 +836,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The arguments of this tools/call t repeat a JSON key, to test that duplicates are rejected. An SDK serialises arguments from a map, which cannot hold a key twice."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -854,7 +854,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["python-sdk", "typescript-sdk"], "reason": "The arguments hold a number (12345678901234567890) that a 64-bit float cannot carry exactly. The driver's line protocol, and JavaScript, read JSON numbers as floats, so it would reach the gateway changed."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -940,7 +940,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "tools/list",
     "expect": [
      {
@@ -1243,7 +1243,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.supportedVersions) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -1456,7 +1456,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}, {"harness": "typescript-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the TypeScript SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -1480,7 +1480,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}, {"harness": "typescript-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the TypeScript SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "params": {
      "name": "t"

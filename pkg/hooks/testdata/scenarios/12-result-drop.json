@@ -616,7 +616,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The Python SDK's result type always carries isError (false here). This step checks the result as the gateway sent it, without that field."}], 
     "op": "tools/call",
     "params": {
      "name": "t"

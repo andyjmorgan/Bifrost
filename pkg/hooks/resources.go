@@ -520,7 +520,7 @@ func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Serve
 	vars := r.context(s).vars()
 	vars["args"] = map[string]any{"uri": uri}
 	vars["result"] = resultVar(map[string]any{"contents": []any{content}})
-	vars[muxVar] = muxContext(r.Route, s.Slug, v.owned())
+	vars[muxVar] = muxContext(r.route(), s.Slug, v.owned())
 	o := s.Rules.run(ctx, "resources/result", uri, it.resolve, vars, func(key string, val any) error {
 		if key == "text" && !isText {
 			return nil // binary content keeps its bytes
@@ -718,8 +718,15 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 		// as an unprefixed one before settling on the prefixed reading.
 		if s == nil || !e.resourceView(ctx, r, s).claims(rest) {
 			var fo Outcome
-			if fs, fu, out, ferr := e.fallback(ctx, r, uri, method, &fo); ferr == nil {
+			fs, fu, out, ferr := e.fallback(ctx, r, uri, method, &fo)
+			if ferr == nil {
 				return fs, fu, out, nil
+			}
+			// Only "nobody claims it" falls through to the prefixed reading.
+			// Two claimants, or a server whose catalog is unavailable, is an
+			// answer in its own right and must reach the client as one.
+			if out.Fallback != nil && out.Fallback.Outcome != "not_found" {
+				return nil, "", out, ferr
 			}
 		}
 		if s == nil || !e.config(ctx, r, s, "resources", &o) {
@@ -873,7 +880,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return budgetOutcome(o)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: method, Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Args: args, Hash: hash, State: st, Answers: answers}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Args: args, Hash: hash, State: st, Answers: answers}
 	return o
 }
 
@@ -908,7 +915,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		it := &item{kind: KindResource, id: up, view: NewView(call.Item), label: up}
+		it := &item{kind: KindResource, id: up, view: NewView(call.Item), label: up, bare: call.Bare}
 		out, hits, err := e.inputHook(ctx, r, s, "resources/input", up, it.resolve, call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {

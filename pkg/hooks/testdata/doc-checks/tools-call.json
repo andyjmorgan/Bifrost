@@ -44,7 +44,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "search_pages",
@@ -344,7 +344,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "caller": {
      "type": "key"
@@ -419,7 +419,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.wiki), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -466,7 +466,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.confirm\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -495,7 +495,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -510,7 +510,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.confirm\": {\"action\": \"accept\", \"content\": {\"confi…). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -539,7 +539,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.confirm\": {\"action\": \"accept\", \"content\": {\"confi…). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -588,7 +588,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -603,7 +603,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.6.outcome.result.requestState}\"; inputResponses {\"bifrost.confirm\": {\"action\": \"accept\", \"content\": {\"confi…). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -630,7 +630,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -645,7 +645,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.8.outcome.result.requestState}\"; inputResponses {\"bifrost.confirm\": {\"action\": \"accept\", \"content\": {\"confi…). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -673,7 +673,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.inputRequests.bifrost\\.confirm.params.message), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "delete_page",
@@ -1182,7 +1182,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.inputRequests.bifrost\\.ok.params.message), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -1197,7 +1197,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.inputRequests.bifrost\\.ok.params.message), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "t",

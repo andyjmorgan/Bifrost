@@ -161,7 +161,15 @@ func (e *Engine) version() string {
 // Request is the per-request context: who is calling, from what, on which
 // route, and which entitlements the route exposes.
 type Request struct {
-	Route  string         // direct | mux | search
+	// Route is how the client reached the gateway: "direct" for one server,
+	// or "mux" for every server the caller holds. The two are exclusive.
+	// The value "search" is still accepted and means mux with the search
+	// flag on; it is how older scenario files say it.
+	Route string
+	// Flags are the switches the client set on this request, such as
+	// ?search=true, by name. They are not routes: any of them can be on for
+	// either route. Rules read them as flags.<name>; see Flags for the list.
+	Flags  map[string]bool
 	Caller map[string]any // userId, email, role, type, keyName, orgId, clientId
 	// Principal identifies whoever is making the request, as one opaque
 	// string the gateway chooses: the user under a per-user credential, the
@@ -180,8 +188,37 @@ func (r Request) context(s *Server) Context {
 		"slug": s.Slug, "name": s.Info.Name, "title": s.Info.Title, "description": s.Info.Description,
 		"instructions": s.Info.Instructions, "protocolVersion": s.Info.ProtocolVersion, "url": s.Info.URL,
 	}
-	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Route: r.Route, Now: r.Now}
+	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Route: r.route(), Flags: r.flags(), Now: r.Now}
 }
+
+// route is the route rules see: "direct" or "mux", never "search".
+func (r Request) route() string {
+	if r.mux() {
+		return "mux"
+	}
+	return "direct"
+}
+
+// search reports whether the request is in search mode, on either route.
+func (r Request) search() bool { return r.Flags[FlagSearch] || r.Route == "search" }
+
+// flags is the request's flags with the older spelling of search mode
+// folded in.
+func (r Request) flags() map[string]bool {
+	if r.Route != "search" || r.Flags[FlagSearch] {
+		return r.Flags
+	}
+	out := make(map[string]bool, len(r.Flags)+1)
+	for k, v := range r.Flags {
+		out[k] = v
+	}
+	out[FlagSearch] = true
+	return out
+}
+
+// plainMux is the mux route without search mode, where the gateway lists
+// its own instructions tool beside the servers' tools.
+func (r Request) plainMux() bool { return r.mux() && !r.search() }
 
 // principal is the identity confirmation state is bound to, or "" when the
 // gateway supplied none.
@@ -292,10 +329,13 @@ type CallContext struct {
 	Exposed   string
 	Transform *ToolTransform
 	Item      map[string]any // the exposed item's fields (prompts and resources)
-	Args      map[string]any // exactly what was sent upstream
-	Hash      string
-	State     *State
-	Answers   map[string]any // gateway answers validated for this request, carried into an upstream round
+	// Bare marks a resource the server does not list: rules may read its
+	// `uri` and nothing else, on the reply side as on the request side.
+	Bare    bool
+	Args    map[string]any // exactly what was sent upstream
+	Hash    string
+	State   *State
+	Answers map[string]any // gateway answers validated for this request, carried into an upstream round
 }
 
 // expired reports a spent rule budget; every success and forward path
@@ -349,7 +389,7 @@ func (e *Engine) ListTools(parent context.Context, r Request) (ret Outcome) {
 		if !e.config(ctx, r, s, "tools", &o) {
 			continue
 		}
-		tl := s.Rules.ListTools(ctx, s.Catalog.Tools, r.context(s), e.Limits.Workers)
+		tl := s.Rules.listTools(ctx, s.Catalog.Tools, r.context(s), e.Limits.Workers, "")
 		o.Hits = append(o.Hits, tl.Hits...)
 		for _, is := range tl.Issues {
 			o.Issues = append(o.Issues, s.Slug+": "+is)
@@ -364,7 +404,7 @@ func (e *Engine) ListTools(parent context.Context, r Request) (ret Outcome) {
 			res.Tools = append(res.Tools, t)
 		}
 	}
-	if r.Route == "mux" {
+	if r.plainMux() {
 		res.Tools = append(res.Tools, instructionsTool())
 	}
 	o.Result = res

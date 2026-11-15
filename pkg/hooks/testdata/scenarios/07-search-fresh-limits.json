@@ -26,7 +26,7 @@
  "steps":[
   {"op":"list_tools","expect":[{"path":"outcome.result","equals":"docs:\n  - get_server_instructions\n  - tool_search\n"}]},
   {"op":"execute_tool","params":{"name":"docs__tool_search"},"expect":[{"path":"outcome.forward.params.name","equals":"tool_search"}]}]},
-{"name":"RH-FRS-01 list results carry ttlMs and cacheScope private","ids":["RH-FRS-01"],"limits":{"ttlMs":60000},
+{"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], "name":"RH-FRS-01 list results carry ttlMs and cacheScope private","ids":["RH-FRS-01"],"limits":{"ttlMs":60000},
  "servers":[{"slug":"a","catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}],"resources":[{"uri":"file:///r","name":"r"}],"resourceTemplates":[{"uriTemplate":"file:///{x}","name":"x"}]}}],
  "steps":[
   {"op":"tools/list","expect":[{"path":"outcome.result.ttlMs","equals":60000},{"path":"outcome.result.cacheScope","equals":"private"}]},
@@ -38,7 +38,7 @@
 {"name":"RH-FRS-02 discover never advertises change notifications; RH-FRS-03 identical calls both forward (no result cache)","ids":["RH-FRS-02","RH-FRS-03"],
  "servers":[{"slug":"a","catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
-  {"op":"discover","expect":[{"path":"outcome.result.capabilities.tools.listChanged","equals":false},{"path":"outcome.result.capabilities.resources.subscribe","equals":false}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities.tools.listChanged) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.capabilities.tools.listChanged","equals":false},{"path":"outcome.result.capabilities.resources.subscribe","equals":false}]},
   {"op":"tools/call","params":{"name":"t","arguments":{"a":1}},"expect":[{"path":"outcome.forward.method","equals":"tools/call"}]},
   {"op":"tools/call","params":{"name":"t","arguments":{"a":1}},"expect":[{"path":"outcome.forward.method","equals":"tools/call"}]}]},
 {"name":"RH-FRS-04 upstream _meta is reduced to the allowlist before rules run","ids":["RH-FRS-04"],
@@ -48,9 +48,9 @@
 {"name":"RH-LIM-01 an upstream reply over the size cap is rejected; ADV-38 so is one rules enlarge","ids":["RH-LIM-01","ADV-38"],"limits":{"maxResponseBytes":200},
  "servers":[{"slug":"a","rules":[{"hook":"tools/result","when":"upstream.name == 'grow'","then":{"content":"[{'type':'text','text': lists.range(500).map(i, 'x').join('')}]"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}},{"name":"grow","inputSchema":{"type":"object"}}]}}],
  "steps":[
-  {"op":"tools/call","params":{"name":"t"},"upstream":{"content":[{"type":"text","text":"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK must complete server/discover before any request. This case caps replies at 200 bytes and the discover reply is larger, so the SDK never connects and this tools/call t is never sent."}], "op":"tools/call","params":{"name":"t"},"upstream":{"content":[{"type":"text","text":"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"}]},
    "expect":[{"path":"reply.error.message","equals":"upstream result exceeds gateway size limit"}]},
-  {"op":"tools/call","params":{"name":"grow"},"upstream":{"content":[{"type":"text","text":"small"}]},"expect":[{"path":"reply.error.message","contains":"after shaping"}]}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK must complete server/discover before any request. This case caps replies at 200 bytes and the discover reply is larger, so the SDK never connects and this tools/call grow is never sent."}], "op":"tools/call","params":{"name":"grow"},"upstream":{"content":[{"type":"text","text":"small"}]},"expect":[{"path":"reply.error.message","contains":"after shaping"}]}]},
 {"name":"RH-LIM-02 a rule over the CEL cost limit denies","ids":["RH-LIM-02"],"limits":{"costLimit":500},
  "servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"lists.range(10000).exists(i, i == 9999 && name == 'x')","then":{"decision":"'deny'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools","len":0},{"path":"outcome.hits[0].error","contains":"cost"}]}]},
@@ -80,8 +80,8 @@
 {"name":"ADV-19 large integers survive exactly; ADV-20 duplicate keys are rejected; ADV-37 deep nesting is bounded","ids":["ADV-19","ADV-20","ADV-37"],
  "servers":[{"slug":"a","catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[
-  {"op":"tools/call","params":{"name":"t","arguments":{"id":12345678901234567890123}},"expect":[{"path":"outcome.forward.params.arguments","matches":"12345678901234567890123"}]},
-  {"op":"tools/call","params":{"name":"t","arguments":{"a":{"b":1,"b":2}}},"expect":[{"path":"outcome.error.message","contains":"duplicate key"}]},
+  {"exclude": [{"harness": ["python-sdk", "typescript-sdk"], "reason": "The arguments hold a number (12345678901234567890123) that a 64-bit float cannot carry exactly. The driver's line protocol, and JavaScript, read JSON numbers as floats, so it would reach the gateway changed."}], "op":"tools/call","params":{"name":"t","arguments":{"id":12345678901234567890123}},"expect":[{"path":"outcome.forward.params.arguments","matches":"12345678901234567890123"}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The arguments of this tools/call t repeat a JSON key, to test that duplicates are rejected. An SDK serialises arguments from a map, which cannot hold a key twice."}], "op":"tools/call","params":{"name":"t","arguments":{"a":{"b":1,"b":2}}},"expect":[{"path":"outcome.error.message","contains":"duplicate key"}]},
   {"op":"tools/call","params":{"name":"t","arguments":{"a":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}},"expect":[{"path":"outcome.error.message","contains":"nested deeper"}]}]},
 {"name":"ADV-23 a clamp patch before an elicit does not break the retry","ids":["ADV-23"],"caller":{"userId":"u"},"client":{"capabilities":{"elicitation":{}}},
  "servers":[{"slug":"a","generation":"1","rules":[
@@ -89,8 +89,8 @@
    {"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object","properties":{"limit":{"type":"integer"}}}}]}}],
  "steps":[
-  {"op":"tools/call","params":{"name":"t","arguments":{"limit":99}},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
-  {"op":"tools/call","params":{"name":"t","arguments":{"limit":99},"requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.forward.params.arguments.limit","equals":10}]}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], "op":"tools/call","params":{"name":"t","arguments":{"limit":99}},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
+  {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], "op":"tools/call","params":{"name":"t","arguments":{"limit":99},"requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.forward.params.arguments.limit","equals":10}]}]},
 {"name":"ADV-24 one denied upstream input request refuses the whole round","client":{"capabilities":{"elicitation":{}}},"ids":["ADV-24"],"caller":{"userId":"u"},
  "servers":[{"slug":"a","generation":"1","rules":[{"hook":"tools/input","when":"request.key == 'password'","then":{"decision":"'deny'","reason":"'Upstream asked for a password.'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"op":"tools/call","params":{"name":"t"},"upstream":{"resultType":"input_required","inputRequests":{
@@ -99,7 +99,7 @@
    "expect":[{"path":"reply.result.content[0].text","equals":"Upstream asked for a password."}]}]},
 {"name":"ADV-33 request metadata cannot forge the caller","ids":["ADV-33"],"caller":{"userId":"u","role":"member"},
  "servers":[{"slug":"a","rules":[{"hook":"tools/call","when":"caller.role != 'admin'","then":{"decision":"'deny'","reason":"'admins only'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
- "steps":[{"op":"tools/call","params":{"name":"t","_meta":{"caller":{"role":"admin"},"io.modelcontextprotocol/clientInfo":{"name":"admin"}}},"expect":[{"path":"outcome.result.content[0].text","equals":"admins only"}]}]},
+ "steps":[{"exclude": [{"harness": "python-sdk", "reason": "This tools/call t carries its own _meta (caller, io.modelcontextprotocol/clientInfo). The Python driver's call takes a name and arguments only and does not pass a request _meta on."}], "op":"tools/call","params":{"name":"t","_meta":{"caller":{"role":"admin"},"io.modelcontextprotocol/clientInfo":{"name":"admin"}}},"expect":[{"path":"outcome.result.content[0].text","equals":"admins only"}]}]},
 {"name":"ADV-43 names are compared exactly; Unicode forms are distinct tools","ids":["ADV-43"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"name == 'caf\u00e9'","then":{"decision":"'deny'"}}],
   "catalog":{"tools":[{"name":"caf\u00e9","inputSchema":{"type":"object"}},{"name":"cafe\u0301","inputSchema":{"type":"object"}}]}}],
@@ -116,7 +116,7 @@
 {"name":"a positive timeout reaches the forward","ids":["RH-CALL-02"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/call","when":"true","then":{"timeout":"duration('90s')"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"op":"tools/call","params":{"name":"t"},"expect":[{"path":"outcome.forward.timeout","equals":"1m30s"}]}]},
-{"name":"ADV-29 a manifest entry outside the skill folder is dropped","ids":["ADV-29"],
+{"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], "name":"ADV-29 a manifest entry outside the skill folder is dropped","ids":["ADV-29"],
  "servers":[{"slug":"a","catalog":{"skills":[{"uri":"skill://notes/SKILL.md","frontmatter":{"name":"notes","description":"d"},
    "resources":[{"uri":"skill://notes/SKILL.md","digest":"sha256:00","size":1},{"uri":"skill://other/secret.md","digest":"sha256:01","size":1},{"uri":"skill://notes/../other/x.md","digest":"sha256:02","size":1}]}]}}],
  "steps":[{"op":"skills/list","expect":[{"path":"outcome.result.skills[0].resources[*].uri","equals":["skill://notes/SKILL.md"]},{"path":"outcome.issues","len":2}]}]},

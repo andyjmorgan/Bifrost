@@ -14,15 +14,20 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"iter"
+	"sort"
 )
 
 // Scenario is a self-contained test: servers with rules and catalogs, a
 // request context, and steps with expectations. hookctl reads scenarios as
 // JSON (one object, an array, or one object per line).
 type Scenario struct {
-	Name    string           `json:"name"`
-	IDs     []string         `json:"ids,omitempty"`
-	Route   string           `json:"route,omitempty"` // direct (default) | mux | search
+	Name  string   `json:"name"`
+	IDs   []string `json:"ids,omitempty"`
+	Route string   `json:"route,omitempty"` // direct (default) or mux; "search" is the older spelling of mux with the search flag
+	// Flags are the switches the request carries, such as {"search": true}
+	// or {"cli": true}. They can be set for either route.
+	Flags   map[string]bool  `json:"flags,omitempty"`
 	Caller  map[string]any   `json:"caller,omitempty"`
 	Client  map[string]any   `json:"client,omitempty"`
 	Now     string           `json:"now,omitempty"` // RFC 3339
@@ -30,8 +35,139 @@ type Scenario struct {
 	Secret  string           `json:"secret,omitempty"`
 	Servers []ScenarioServer `json:"servers"`
 	Steps   []Step           `json:"steps"`
+	// Upstream says what the servers are. "" or "mock": servers described
+	// by their catalogs, answering with each step's scripted reply.
+	// "reference": the real reference servers, one run per server language;
+	// the servers then carry only a slug and rules.
+	Upstream string `json:"upstream,omitempty"`
+	// Gateway sets transport options of the gateway in front of the engine.
+	Gateway *GatewayOptions `json:"gateway,omitempty"`
+	// Exclude lists the harnesses that must not run this case, each with
+	// the reason. See Exclusion.
+	Exclude []Exclusion `json:"exclude,omitempty"`
+	// Only marks an outlier: a case that makes sense on one harness alone.
+	// It runs on that harness and nowhere else, and is kept apart from the
+	// common set.
+	Only *OnlyHarness `json:"only,omitempty"`
 	// Dir resolves catalogRef paths; set by the loader.
 	Dir string `json:"-"`
+}
+
+// GatewayOptions are transport settings of the gateway a case runs behind.
+// They mean nothing to the engine itself.
+type GatewayOptions struct {
+	// Token is the bearer token every request must carry.
+	Token string `json:"token,omitempty"`
+	// KeepAliveMs is how often an open stream gets a comment line.
+	KeepAliveMs int `json:"keepAliveMs,omitempty"`
+}
+
+// OnlyHarness names the one harness an outlier case is for, and why it is
+// specific to it.
+type OnlyHarness struct {
+	Harness string `json:"harness"`
+	Reason  string `json:"reason"`
+}
+
+// Exclusion keeps one harness from running a case or a step, and says why.
+// A case is never dropped from the set because a harness cannot run it; it
+// stays, with an exclusion.
+//
+// Harness names: "engine" (this package's runner, no wire), the client
+// harnesses "raw", "go-sdk", "python-sdk" and "typescript-sdk", and the
+// server harnesses "server:go", "server:python" and "server:typescript".
+// Harness may be one name or a list of names that share the reason.
+type Exclusion struct {
+	Harness HarnessNames `json:"harness"`
+	Reason  string       `json:"reason"`
+}
+
+// HarnessNames is one harness name or a list of them.
+type HarnessNames []string
+
+// UnmarshalJSON accepts "name" or ["name", ...].
+func (h *HarnessNames) UnmarshalJSON(b []byte) error {
+	var one string
+	if json.Unmarshal(b, &one) == nil {
+		*h = HarnessNames{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return fmt.Errorf("exclude.harness must be a name or a list of names")
+	}
+	*h = many
+	return nil
+}
+
+// Excluded returns the reason a harness is excluded by a list, or "".
+func Excluded(list []Exclusion, harness string) string {
+	for _, e := range list {
+		for _, h := range e.Harness {
+			if h == harness {
+				if e.Reason == "" {
+					return "(no reason given)"
+				}
+				return e.Reason
+			}
+		}
+	}
+	return ""
+}
+
+// MockReply scripts what a mock upstream does besides returning the step's
+// `upstream` result.
+type MockReply struct {
+	// Stream answers with an SSE stream, not one JSON body.
+	Stream bool `json:"stream,omitempty"`
+	// DelayMs waits before the first byte; GapMs waits between events.
+	DelayMs int `json:"delayMs,omitempty"`
+	GapMs   int `json:"gapMs,omitempty"`
+	// Progress events are sent before the result, under the token the
+	// request carried. With no token they are not sent, unless
+	// ForceProgress is set.
+	Progress      []MockProgress `json:"progress,omitempty"`
+	ForceProgress bool           `json:"forceProgress,omitempty"`
+	// Notifications are sent after the progress events.
+	Notifications []MockNotification `json:"notifications,omitempty"`
+	// NoResponse ends the stream without a response.
+	NoResponse bool `json:"noResponse,omitempty"`
+	// Hang keeps the request open until the caller goes away.
+	Hang bool `json:"hang,omitempty"`
+	// Error answers with a JSON-RPC error instead of a result.
+	Error *RPCError `json:"error,omitempty"`
+	// Status, when not 200, answers with that HTTP status and Body.
+	Status int    `json:"status,omitempty"`
+	Body   string `json:"body,omitempty"`
+	// RawBody replaces the whole JSON-RPC message with these bytes.
+	RawBody string `json:"rawBody,omitempty"`
+	// Then holds the results of the second and later requests a step
+	// forwards, when a client makes several rounds of one request.
+	Then []json.RawMessage `json:"then,omitempty"`
+}
+
+// MockProgress is one scripted progress event.
+type MockProgress struct {
+	Progress float64 `json:"progress"`
+	Total    float64 `json:"total,omitempty"`
+	Message  string  `json:"message,omitempty"`
+}
+
+// MockNotification is one scripted notification of any other kind.
+type MockNotification struct {
+	Method string `json:"method"`
+	Params any    `json:"params,omitempty"`
+}
+
+// transport reports whether the script needs a real connection: things the
+// engine never sees.
+func (m *MockReply) transport() bool {
+	return m != nil && (m.DelayMs > 0 || m.Hang || m.Status != 0 || m.Body != "" || m.RawBody != "")
+}
+
+// events reports whether the script holds stream events the engine handles.
+func (m *MockReply) events() bool {
+	return m != nil && (len(m.Progress) > 0 || len(m.Notifications) > 0 || m.NoResponse || m.Error != nil)
 }
 
 // ScenarioServer is one entitlement in a scenario.
@@ -68,6 +204,24 @@ type Step struct {
 	// Generation replaces a server's policy generation from this step on.
 	Generation map[string]string `json:"generation,omitempty"`
 	Expect     []Expect          `json:"expect,omitempty"`
+
+	// Mock scripts the mock upstream's reply beyond its result.
+	Mock *MockReply `json:"mock,omitempty"`
+	// Progress makes the client ask for progress.
+	Progress bool `json:"progress,omitempty"`
+	// Answers are the client's scripted answers to the questions it is
+	// asked during this step, in order: {"action": ..., "content": ...}.
+	// The client makes every round of the request itself.
+	Answers []map[string]any `json:"answers,omitempty"`
+	// Token is the bearer token the client sends, when the gateway wants one.
+	Token *string `json:"token,omitempty"`
+	// RawBody is an HTTP request body sent as it is, in place of op and
+	// params. Only the raw client can send it.
+	RawBody string `json:"rawBody,omitempty"`
+	// Exclude lists the harnesses that must not make this step, each with
+	// the reason. A client harness's excluded step is made by the raw
+	// client in its place, so later steps still have what they need.
+	Exclude []Exclusion `json:"exclude,omitempty"`
 }
 
 // Expect is one assertion on a step's output. Path addresses the step
@@ -80,7 +234,27 @@ type Expect struct {
 	Exists      *bool  `json:"exists,omitempty"`
 	Len         *int   `json:"len,omitempty"`
 	Matches     string `json:"matches,omitempty"` // regexp on the string form
-	hasEquals   bool
+	// NotEquals is the negation of equals; a missing value passes.
+	NotEquals any `json:"notEquals,omitempty"`
+	// NotMatches is the negation of matches.
+	NotMatches string `json:"notMatches,omitempty"`
+	// Keys compares an object's keys, in any order.
+	Keys []string `json:"keys,omitempty"`
+	// Set compares a list's elements, in any order.
+	Set []any `json:"set,omitempty"`
+	// Has needs a list to hold an element that has every field given here
+	// (or, for a value that is not an object, an equal element).
+	Has any `json:"has,omitempty"`
+	// HasText and LacksText look for text anywhere in the value's JSON form.
+	HasText   []string `json:"hasText,omitempty"`
+	LacksText []string `json:"lacksText,omitempty"`
+	// Refused, on the path "client", needs the request to have been refused
+	// (a JSON-RPC error, or a result with isError true), or not.
+	Refused      *bool `json:"refused,omitempty"`
+	hasEquals    bool
+	hasNotEquals bool
+	hasSet       bool
+	hasKeys      bool
 }
 
 // UnmarshalJSON records whether equals was present (equals: null is valid).
@@ -95,6 +269,9 @@ func (e *Expect) UnmarshalJSON(b []byte) error {
 	var raw map[string]json.RawMessage
 	_ = json.Unmarshal(b, &raw)
 	_, p.hasEquals = raw["equals"]
+	_, p.hasNotEquals = raw["notEquals"]
+	_, p.hasSet = raw["set"]
+	_, p.hasKeys = raw["keys"]
 	*e = Expect(p)
 	return nil
 }
@@ -118,6 +295,19 @@ type StepReport struct {
 	Outcome Outcome  `json:"outcome"`
 	Reply   *Outcome `json:"reply,omitempty"`
 	Elapsed string   `json:"elapsed"`
+	// Client is what a client would have received for the step: the reply
+	// when the request was forwarded and answered, the outcome otherwise.
+	Client *ClientView `json:"client,omitempty"`
+	// Progress is the progress events relayed to the client, in order.
+	Progress []any `json:"progress"`
+	// Hits is every hit of the step, request side then reply side.
+	Hits []Hit `json:"hits,omitempty"`
+}
+
+// ClientView is a step's final message as a client sees it.
+type ClientView struct {
+	Result any       `json:"result,omitempty"`
+	Error  *RPCError `json:"error,omitempty"`
 }
 
 // ErrSkip marks a scenario that cannot run here (a missing real fixture).
@@ -155,8 +345,38 @@ func ParseScenarios(b []byte) ([]*Scenario, error) {
 	return out, nil
 }
 
-// Run executes a scenario.
+// Run executes a scenario on the engine harness: the engine alone, with no
+// wire. A case that needs a wire must carry an exclusion for "engine"; it is
+// then skipped with that reason. With HOOKS_RUN_EXCLUDED set, an excluded
+// case is run anyway where it can be, and fails if it passes, so a stale
+// exclusion is found.
 func (sc *Scenario) Run(ctx context.Context) Report {
+	excluded, needs := Excluded(sc.Exclude, "engine"), sc.NeedsWire()
+	stop := func(status, reason string) Report {
+		r := Report{Name: sc.Name, IDs: sc.IDs, Status: status, Reason: reason, Problems: map[string]any{}}
+		if status == "fail" {
+			r.Failures = []string{reason}
+		}
+		return r
+	}
+	if sc.Only != nil && sc.Only.Harness != "engine" {
+		return stop("skip", "an outlier for the "+sc.Only.Harness+" harness: "+sc.Only.Reason)
+	}
+	switch {
+	case needs != "" && excluded == "":
+		return stop("fail", "this case needs a wire ("+needs+") and has no exclude entry for the engine harness")
+	case excluded != "" && (needs != "" || os.Getenv("HOOKS_RUN_EXCLUDED") == ""):
+		return stop("skip", "excluded for the engine harness: "+excluded)
+	case excluded != "":
+		if r := sc.run(ctx); r.Status == "pass" {
+			return stop("fail", "excluded for the engine harness, but it passes; remove the exclusion: "+excluded)
+		}
+		return stop("skip", "excluded for the engine harness, and it does not pass: "+excluded)
+	}
+	return sc.run(ctx)
+}
+
+func (sc *Scenario) run(ctx context.Context) Report {
 	start := time.Now()
 	rep := Report{Name: sc.Name, IDs: sc.IDs, Status: "pass", Problems: map[string]any{}}
 	servers, err := sc.build(rep.Problems)
@@ -186,7 +406,7 @@ func (sc *Scenario) Run(ctx context.Context) Report {
 	eng := &Engine{Signer: Signer{Key: []byte(secret)}, Limits: sc.Limits}
 	var outputs []any
 	for i, st := range sc.Steps {
-		req := Request{Route: sc.Route, Caller: sc.Caller, Client: sc.Client, Servers: servers}
+		req := Request{Route: sc.Route, Flags: sc.Flags, Caller: sc.Caller, Client: sc.Client, Servers: servers}
 		if req.Route == "" {
 			req.Route = "direct"
 		}
@@ -234,9 +454,14 @@ func (sc *Scenario) Run(ctx context.Context) Report {
 			outputs = append(outputs, map[string]any{})
 			continue
 		}
+		if Excluded(st.Exclude, "engine") != "" && os.Getenv("HOOKS_RUN_EXCLUDED") == "" {
+			outputs = append(outputs, map[string]any{})
+			continue
+		}
 		t0 := time.Now()
-		sr := eng.step(ctx, req, st.Op, params, st.Upstream)
+		sr := eng.runStep(ctx, req, st, params)
 		sr.Elapsed = time.Since(t0).String()
+		sr.derive()
 		rep.Steps = append(rep.Steps, sr)
 		var generic any
 		b, _ := json.Marshal(sr)
@@ -539,6 +764,18 @@ func lookup(v any, path string) []any {
 				if l, ok := c.([]any); ok {
 					next = append(next, l...)
 				}
+			case strings.HasPrefix(seg, "[") && strings.Contains(seg, "="):
+				// [field=value]: the elements whose field has that value.
+				field, want, _ := strings.Cut(strings.Trim(seg, "[]"), "=")
+				if l, ok := c.([]any); ok {
+					for _, x := range l {
+						if m, ok := x.(map[string]any); ok {
+							if got, has := m[field]; has && plainString(got) == want {
+								next = append(next, x)
+							}
+						}
+					}
+				}
 			case strings.HasPrefix(seg, "["):
 				i, _ := strconv.Atoi(strings.Trim(seg, "[]"))
 				if l, ok := c.([]any); ok && i >= 0 && i < len(l) {
@@ -566,12 +803,14 @@ func tokenize(path string) []string {
 			b.Reset()
 		}
 	}
-	esc := false
+	esc, inBracket := false, false
 	for _, r := range path {
 		switch {
 		case esc:
 			b.WriteRune(r)
 			esc = false
+		case inBracket && r != ']':
+			b.WriteRune(r) // a selector's value may hold dots and slashes
 		case r == '\\':
 			esc = true
 		case r == '.':
@@ -579,9 +818,11 @@ func tokenize(path string) []string {
 		case r == '[':
 			flush()
 			b.WriteRune(r)
+			inBracket = true
 		case r == ']':
 			b.WriteRune(r)
 			flush()
+			inBracket = false
 		default:
 			b.WriteRune(r)
 		}
@@ -661,7 +902,127 @@ func (ex Expect) check(out any, extra map[string]any) string {
 			return fmt.Sprintf("%s = %s, want match /%s/", ex.Path, short(v), ex.Matches)
 		}
 	}
+	return ex.checkMore(v, exists)
+}
+
+// checkMore holds the operators added for end-to-end cases.
+func (ex Expect) checkMore(v any, exists bool) string {
+	text := func() string {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+	if ex.hasNotEquals && exists && jsonEqual(normJSON(v), normJSON(ex.NotEquals)) {
+		return fmt.Sprintf("%s = %s, want anything else", ex.Path, short(v))
+	}
+	if ex.NotMatches != "" {
+		re, err := regexp.Compile(ex.NotMatches)
+		if err != nil {
+			return "bad notMatches regexp: " + err.Error()
+		}
+		if exists && re.MatchString(text()) {
+			return fmt.Sprintf("%s = %s, want no match of /%s/", ex.Path, short(v), ex.NotMatches)
+		}
+	}
+	if ex.hasKeys {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Sprintf("%s = %s is not an object; keys needs one", ex.Path, short(v))
+		}
+		got := make([]string, 0, len(m))
+		for k := range m {
+			got = append(got, k)
+		}
+		want := append([]string(nil), ex.Keys...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+			return fmt.Sprintf("%s has keys %s, want %s", ex.Path, short(got), short(want))
+		}
+	}
+	if ex.hasSet {
+		l, ok := v.([]any)
+		if !ok && exists {
+			return fmt.Sprintf("%s = %s is not a list; set needs one", ex.Path, short(v))
+		}
+		canon := func(items []any) []string {
+			out := make([]string, 0, len(items))
+			for _, x := range items {
+				b, _ := json.Marshal(normJSON(x))
+				out = append(out, string(b))
+			}
+			sort.Strings(out)
+			return out
+		}
+		if strings.Join(canon(l), "\x00") != strings.Join(canon(ex.Set), "\x00") {
+			return fmt.Sprintf("%s = %s, want the set %s", ex.Path, short(v), short(ex.Set))
+		}
+	}
+	if ex.Has != nil {
+		l, _ := v.([]any)
+		found := false
+		for _, x := range l {
+			if subset(ex.Has, x) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Sprintf("%s = %s, want an element with %s", ex.Path, short(v), short(ex.Has))
+		}
+	}
+	for _, part := range ex.HasText {
+		if !strings.Contains(text(), part) {
+			return fmt.Sprintf("%s = %s, want it to hold the text %q", ex.Path, short(v), part)
+		}
+	}
+	for _, part := range ex.LacksText {
+		if exists && strings.Contains(text(), part) {
+			return fmt.Sprintf("%s = %s, want it not to hold the text %q", ex.Path, short(v), part)
+		}
+	}
+	if ex.Refused != nil {
+		m, _ := v.(map[string]any)
+		_, failed := m["error"]
+		res, _ := m["result"].(map[string]any)
+		isErr, _ := res["isError"].(bool)
+		if got := failed || isErr; got != *ex.Refused {
+			return fmt.Sprintf("%s: refused=%v, want %v (value %s)", ex.Path, got, *ex.Refused, short(v))
+		}
+	}
 	return ""
+}
+
+// subset reports whether got has everything want has: every field of an
+// object, recursively, and an equal value otherwise.
+func subset(want, got any) bool {
+	wm, ok := want.(map[string]any)
+	if !ok {
+		return jsonEqual(normJSON(got), normJSON(want))
+	}
+	gm, ok := got.(map[string]any)
+	if !ok {
+		return false
+	}
+	for k, w := range wm {
+		g, has := gm[k]
+		if !has || !subset(w, g) {
+			return false
+		}
+	}
+	return true
+}
+
+// plainString is a value's text for a [field=value] selector: a string as
+// it is, anything else in its JSON form.
+func plainString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 func normJSON(v any) any {
@@ -772,3 +1133,182 @@ func SubstituteRefs(raw json.RawMessage, outputs []any) (json.RawMessage, error)
 // Check evaluates the expectation against a step's output. extra holds
 // "problems" and "warnings". It returns "" when the expectation holds.
 func (ex Expect) Check(out any, extra map[string]any) string { return ex.check(out, extra) }
+
+// ---- end-to-end additions to the format ----------------------------------------------
+
+// NeedsWire reports why a case cannot run on the engine harness, or "". The
+// engine harness is the engine alone: no client, no connection, no real
+// server.
+func (sc *Scenario) NeedsWire() string {
+	switch {
+	case sc.Upstream != "" && sc.Upstream != "mock":
+		return "it runs against the " + sc.Upstream + " servers"
+	case sc.Gateway != nil:
+		return "it sets gateway transport options"
+	}
+	for i, st := range sc.Steps {
+		if Excluded(st.Exclude, "engine") != "" {
+			continue
+		}
+		at := fmt.Sprintf("step %d ", i)
+		switch {
+		case len(st.Answers) > 0:
+			return at + "has a client answer questions"
+		case st.Token != nil:
+			return at + "sends a bearer token"
+		case st.RawBody != "":
+			return at + "sends a raw HTTP body"
+		case st.Mock.transport():
+			return at + "scripts the upstream's transport"
+		}
+		for _, ex := range st.Expect {
+			for _, root := range []string{"wire", "request", "questions", "upstream", "gateway", "sdk"} {
+				if ex.Path == root || strings.HasPrefix(ex.Path, root+".") || strings.HasPrefix(ex.Path, root+"[") {
+					return at + "asserts on " + root + ", which only exists with a wire"
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// derive fills the views of a step that expectations share with the
+// end-to-end harnesses.
+func (sr *StepReport) derive() {
+	src := sr.Outcome
+	if sr.Reply != nil {
+		src = *sr.Reply
+	}
+	if src.Result != nil || src.Error != nil {
+		sr.Client = &ClientView{Result: src.Result, Error: src.Error}
+	}
+	if sr.Progress == nil {
+		sr.Progress = []any{}
+	}
+	sr.Hits = append([]Hit(nil), sr.Outcome.Hits...)
+	if sr.Reply != nil {
+		sr.Hits = append(sr.Hits, sr.Reply.Hits...)
+	}
+}
+
+// plainUpstreamReply is what a mock upstream answers when a step scripts
+// events but no result.
+func plainUpstreamReply(op string) json.RawMessage {
+	switch op {
+	case "tools/call", "execute_tool":
+		return json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`)
+	case "prompts/get":
+		return json.RawMessage(`{"messages":[]}`)
+	}
+	return json.RawMessage(`{"contents":[]}`)
+}
+
+// runStep runs one step. A step whose mock scripts stream events goes
+// through the engine's stream entry points, as a gateway would drive it;
+// every other step runs as before.
+func (e *Engine) runStep(ctx context.Context, r Request, st Step, params json.RawMessage) StepReport {
+	if !st.Mock.events() {
+		return e.step(ctx, r, st.Op, params, st.Upstream)
+	}
+	sr := StepReport{Op: st.Op}
+	bad := func(err error) StepReport {
+		sr.Outcome = errOutcome(CodeInvalidParams, "scenario params: "+err.Error())
+		return sr
+	}
+	// The upstream's events for a forwarded request: progress when the
+	// client asked for it and the server's switch allows it, the other
+	// notifications, then the response, unless the script withholds it.
+	events := func(call *CallContext) iter.Seq2[UpstreamEvent, error] {
+		return func(yield func(UpstreamEvent, error) bool) {
+			relay := st.Progress
+			if relay && call != nil && call.Server != nil {
+				sw, _ := e.Config(ctx, r, call.Server)
+				relay = sw["progress"]
+			}
+			if relay {
+				for _, p := range st.Mock.Progress {
+					m := map[string]any{"progressToken": "scenario", "progress": p.Progress}
+					if p.Total != 0 {
+						m["total"] = p.Total
+					}
+					if p.Message != "" {
+						m["message"] = p.Message
+					}
+					b, _ := json.Marshal(m)
+					if !yield(UpstreamEvent{Method: ProgressMethod, Params: b}, nil) {
+						return
+					}
+				}
+			}
+			for _, n := range st.Mock.Notifications {
+				b, _ := json.Marshal(n.Params)
+				if !yield(UpstreamEvent{Method: n.Method, Params: b}, nil) {
+					return
+				}
+			}
+			switch {
+			case st.Mock.NoResponse:
+			case st.Mock.Error != nil:
+				yield(UpstreamEvent{Error: st.Mock.Error}, nil)
+			case len(st.Upstream) > 0:
+				yield(UpstreamEvent{Result: st.Upstream}, nil)
+			default:
+				yield(UpstreamEvent{Result: plainUpstreamReply(st.Op)}, nil)
+			}
+		}
+	}
+	pump := func(o Outcome, stream func(iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error]) {
+		sr.Outcome = o
+		if o.Forward == nil {
+			return
+		}
+		for ev, err := range stream(events(o.Call)) {
+			if err != nil {
+				sr.Reply = &Outcome{Error: &RPCError{Code: -32603, Message: err.Error()}}
+				return
+			}
+			if ev.Final != nil {
+				sr.Reply = ev.Final
+				return
+			}
+			var p any
+			_ = json.Unmarshal(ev.Params, &p)
+			sr.Progress = append(sr.Progress, p)
+		}
+	}
+	switch st.Op {
+	case "tools/call":
+		var p mcp.CallToolParamsRaw
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return bad(err)
+			}
+		}
+		pump(e.CallTool(ctx, r, &p), func(in iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error] {
+			return e.ToolReplyStream(ctx, r, sr.Outcome.Call, &p, in)
+		})
+	case "prompts/get":
+		var p mcp.GetPromptParams
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return bad(err)
+			}
+		}
+		pump(e.GetPrompt(ctx, r, &p), func(in iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error] {
+			return e.PromptReplyStream(ctx, r, sr.Outcome.Call, &p, in)
+		})
+	case "resources/read":
+		var p mcp.ReadResourceParams
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &p); err != nil {
+				return bad(err)
+			}
+		}
+		pump(e.ReadResource(ctx, r, &p), func(in iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error] {
+			return e.ReadReplyStream(ctx, r, sr.Outcome.Call, &p, in)
+		})
+	default:
+		sr.Outcome = errOutcome(CodeInvalidParams, "a step with scripted events must be tools/call, prompts/get or resources/read, not "+st.Op)
+	}
+	return sr
+}

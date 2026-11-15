@@ -16,7 +16,7 @@
 | `meta` | map | The current `_meta`, or `{}` |
 | `icons` | list | The template's icons, or `[]` |
 | `upstream` | map | The template as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

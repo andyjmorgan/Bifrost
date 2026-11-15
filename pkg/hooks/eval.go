@@ -13,12 +13,13 @@ import (
 // Context is the request context every hook sees. All of it is read-only to
 // rules.
 type Context struct {
-	Server      map[string]any `json:"server,omitempty"`
-	Entitlement map[string]any `json:"entitlement,omitempty"`
-	Caller      map[string]any `json:"caller,omitempty"`
-	Client      map[string]any `json:"client,omitempty"`
-	Route       string         `json:"route,omitempty"`
-	Now         time.Time      `json:"now,omitempty"`
+	Server      map[string]any  `json:"server,omitempty"`
+	Entitlement map[string]any  `json:"entitlement,omitempty"`
+	Caller      map[string]any  `json:"caller,omitempty"`
+	Client      map[string]any  `json:"client,omitempty"`
+	Route       string          `json:"route,omitempty"` // direct | mux
+	Flags       map[string]bool `json:"flags,omitempty"` // the request's switches, such as search and cli
+	Now         time.Time       `json:"now,omitempty"`
 }
 
 func (c Context) vars() map[string]any {
@@ -41,8 +42,17 @@ func (c Context) vars() map[string]any {
 	}
 	return map[string]any{
 		"server": orEmpty(c.Server), "entitlement": orEmpty(c.Entitlement), "caller": orEmpty(c.Caller),
-		"client": client, "route": c.Route, "now": timeOrZero(c.Now),
+		"client": client, "route": ruleRoute(c.Route), "flags": flagVars(c.Flags), "now": timeOrZero(c.Now),
 	}
+}
+
+// ruleRoute is the route as rules see it. Search is a flag, not a route, so
+// the older value "search" reads as "mux".
+func ruleRoute(route string) string {
+	if route == "search" {
+		return "mux"
+	}
+	return route
 }
 
 // Hit records what one rule did, for audit and for scenario output.

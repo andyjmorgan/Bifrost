@@ -25,7 +25,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "jira"
@@ -52,7 +52,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "jira"
@@ -95,7 +95,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "caller": {
      "type": "user"
@@ -116,7 +116,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "caller": {
      "type": "key"
@@ -166,7 +166,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for tracing, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "tracing"
@@ -186,7 +186,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "This tools/call t carries its own _meta (io.modelcontextprotocol/clientInfo, trace). The Python driver's call takes a name and arguments only and does not pass a request _meta on."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -245,7 +245,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "This tools/call t carries its own _meta (trace). The Python driver's call takes a name and arguments only and does not pass a request _meta on."}], 
     "op": "tools/call",
     "params": {
      "name": "t",

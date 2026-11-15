@@ -17,7 +17,7 @@ On `prompts/get`, [prompts/get](prompts-get.md) rules see the prompt as this hoo
 | `meta` | map | The current `_meta`, or `{}` |
 | `icons` | list | The prompt's icons, or `[]` |
 | `upstream` | map | The prompt as the upstream sent it. It never changes |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

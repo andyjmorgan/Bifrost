@@ -104,7 +104,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The Python SDK's result type always carries isError (false here). This step checks the result as the gateway sent it, without that field."}, {"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "search_issues"
@@ -180,7 +180,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}, {"harness": "typescript-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the TypeScript SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "params": {
      "name": "list_issues"
@@ -223,7 +223,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}, {"harness": "typescript-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the TypeScript SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "params": {
      "name": "list_issues"
@@ -403,7 +403,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "query"
@@ -488,7 +488,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "fetch"
@@ -566,7 +566,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK must complete server/discover before any request. This case caps replies at 200 bytes and the discover reply is larger, so the SDK never connects and this tools/call docs__find is never sent."}], 
     "op": "tools/call",
     "params": {
      "name": "docs__find",
@@ -584,7 +584,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK must complete server/discover before any request. This case caps replies at 200 bytes and the discover reply is larger, so the SDK never connects and this tools/call docs__find is never sent."}], 
     "op": "tools/call",
     "params": {
      "name": "docs__find",
@@ -739,7 +739,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the Python SDK validates tool results, so it rejects the result or returns it without that part."}, {"harness": "typescript-sdk", "reason": "The upstream's result in this step has no content array. The engine passes it on unchanged (it does no schema validation), and the TypeScript SDK validates tool results, so it rejects the result or returns it without that part."}], 
     "op": "tools/call",
     "params": {
      "name": "t"

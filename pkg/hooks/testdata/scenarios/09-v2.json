@@ -39,7 +39,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -51,7 +51,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "generation": {
      "a": "2"
@@ -114,7 +114,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -126,7 +126,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "rules": {
      "a": [
@@ -435,7 +435,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of dir:///tree cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "dir:///tree"
@@ -843,7 +843,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.inputRequests.bifrost\\.ok.params.message), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -880,7 +880,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "tools/list",
     "expect": [
      {
@@ -914,7 +914,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -959,7 +959,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "config",
     "expect": [
      {
@@ -1084,7 +1084,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the case gives the engine one client and puts a different one in the request's _meta; over a wire the request's _meta is the client's only declaration, so the two cannot differ"}], 
   "name": "server/connect is carried in every forward, with the _meta policy applied",
   "ids": [
    "RH-SRV-01",
@@ -1361,7 +1361,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The reply to this prompts/get p is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.inputRequests.q.params.message), which only the raw client can see."}, {"harness": "python-sdk", "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.inputRequests.q.params.message) is never returned."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.inputRequests.q.params.message) is never returned."}], 
     "op": "prompts/get",
     "params": {
      "name": "p"
@@ -1478,7 +1478,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities.prompts) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -1531,7 +1531,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities.extensions.io\\.modelcontextprotocol/skills.directoryRead) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {

@@ -39,7 +39,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (problems.wiki) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -56,7 +56,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send prompts/list when the discover result did not advertise the prompts capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "prompts/list",
     "expect": [
      {
@@ -132,7 +132,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (problems.wiki) cannot be read through it."}], 
     "op": "discover",
     "caller": {
      "type": "user"
@@ -148,7 +148,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], 
     "op": "discover",
     "caller": {
      "type": "key"
@@ -206,7 +206,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "tools/list",
     "now": "2026-12-24T09:00:00Z",
     "expect": [
@@ -257,7 +257,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (problems.wiki) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
@@ -297,7 +297,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "config",
     "caller": {
      "type": "user"
@@ -353,7 +353,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities.extensions.io\\.modelcontextprotocol/skills.directoryRead) cannot be read through it."}], 
     "op": "discover",
     "caller": {
      "type": "user"
@@ -365,7 +365,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities.extensions) cannot be read through it."}], 
     "op": "discover",
     "caller": {
      "type": "key"
@@ -402,7 +402,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result._meta.io\\.modelcontextprotocol/serverInfo.name) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {

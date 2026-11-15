@@ -1044,7 +1044,7 @@ func TestUnknownsAreRecordedByShapeNeverByValue(t *testing.T) {
 
 	// A template form the gateway cannot parse.
 	lt := e.ListTemplates(ctx, r)
-	if u := findUnknown(lt.Unknown, UnknownTemplateForm, "expression {/path*}"); u == nil || u.Target != "repo://{owner}/contents{/path*}" || u.Action != "passed" {
+	if u := findUnknown(lt.Unknown, UnknownTemplateForm, "{/…*}"); u == nil || u.Target != "repo://{owner}/contents{/path*}" || u.Action != "passed" {
 		t.Errorf("template record = %+v", lt.Unknown)
 	}
 	if len(lt.Unknown) != 1 {
@@ -1061,7 +1061,7 @@ func TestUnknownsAreRecordedByShapeNeverByValue(t *testing.T) {
 	for key, want := range map[string]int{
 		"content_block video": 1, "content_block ": 1, "result_type partial": 1, "result_type task": 1,
 		"input_request sampling/createMessage": 1, "content_block hologram": 1,
-		"notification notifications/vendor/heartbeat": 1, "template_form expression {/path*}": 1,
+		"notification notifications/vendor/heartbeat": 1, "template_form {/…*}": 1,
 	} {
 		if counts[key] != want {
 			t.Errorf("callback got %q %d times, want %d (all: %v)", key, counts[key], want, counts)
@@ -1171,5 +1171,220 @@ func TestNowDefaultsToTheRealClock(t *testing.T) {
 	r.Now = time.Date(2019, 6, 1, 0, 0, 0, 0, time.UTC)
 	if out := e.CallTool(context.Background(), r, p); out.Forward != nil {
 		t.Error("the request's own time was ignored")
+	}
+}
+
+// ---- search is a flag, not a route -------------------------------------------------
+
+// The route is "direct" or "mux" and the two are exclusive. Search mode is
+// a separate flag that can be on for either, and rules read it as `search`.
+func TestSearchIsAFlagNotARoute(t *testing.T) {
+	rules := []Rule{
+		{Name: "mux only", Hook: "tools/result", When: "route == 'mux'", Then: map[string]string{"content": "[{'type': 'text', 'text': 'mux'}]"}},
+		{Name: "direct only", Hook: "tools/result", When: "route == 'direct'", Then: map[string]string{"content": "[{'type': 'text', 'text': 'direct'}]"}},
+		{Name: "search only", Hook: "tools/result", When: "flags.search", Then: map[string]string{"structuredContent": "{'search': true}"}},
+		{Name: "never", Hook: "tools/result", When: "route == 'search'", Then: map[string]string{"decision": "'deny'"}},
+	}
+	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name      string
+		route     string
+		search    bool
+		tool      string
+		wantRoute string
+		wantFlag  bool
+	}{
+		{"direct", "direct", false, "t", "direct", false},
+		{"direct with search", "direct", true, "t", "direct", true},
+		{"mux", "mux", false, "a" + Separator + "t", "mux", false},
+		{"mux with search", "mux", true, "a" + Separator + "t", "mux", true},
+		{"the older spelling of mux with search", "search", false, "a" + Separator + "t", "mux", true},
+	} {
+		r := reviewRequest(tc.route, s)
+		r.Flags = map[string]bool{FlagSearch: tc.search}
+		p := &mcp.CallToolParamsRaw{Name: tc.tool, Arguments: json.RawMessage(`{"q":"abc"}`)}
+		first := e.CallTool(ctx, r, p)
+		if first.Forward == nil {
+			t.Fatalf("%s: not forwarded: %+v %+v", tc.name, first.Error, first.Result)
+		}
+		out := e.UpstreamToolReply(ctx, r, first.Call, p, json.RawMessage(`{"content":[{"type":"text","text":"x"}]}`))
+		b, _ := json.Marshal(out.Result)
+		if !strings.Contains(string(b), `"text":"`+tc.wantRoute+`"`) {
+			t.Errorf("%s: rules saw the wrong route: %s", tc.name, b)
+		}
+		if got := strings.Contains(string(b), `"search":true`); got != tc.wantFlag {
+			t.Errorf("%s: search flag seen by rules = %v, want %v: %s", tc.name, got, tc.wantFlag, b)
+		}
+		if strings.Contains(string(b), "refused") {
+			t.Errorf("%s: a rule saw route == 'search': %s", tc.name, b)
+		}
+	}
+	// The mux's own instructions tool is listed on the plain mux, and not in
+	// search mode, whichever way search mode is spelled.
+	lists := func(route string, search bool) bool {
+		r := reviewRequest(route, s)
+		r.Flags = map[string]bool{FlagSearch: search}
+		out := e.ListTools(ctx, r)
+		b, _ := json.Marshal(out.Result)
+		return strings.Contains(string(b), InstructionsTool)
+	}
+	if !lists("mux", false) || lists("mux", true) || lists("search", false) || lists("direct", false) || lists("direct", true) {
+		t.Errorf("instructions tool listed: mux %v, mux+search %v, older spelling %v, direct %v, direct+search %v",
+			lists("mux", false), lists("mux", true), lists("search", false), lists("direct", false), lists("direct", true))
+	}
+}
+
+// Flags are read by name. Every known flag is always there, false when the
+// request did not set it; a name that is not a flag is refused when the
+// rule is saved.
+func TestFlagsAreNamedAndChecked(t *testing.T) {
+	rules := []Rule{
+		{Hook: "tools/result", When: "flags.cli && !flags.search", Then: map[string]string{"content": "[{'type': 'text', 'text': 'cli'}]"}},
+		{Hook: "tools/result", When: "flags.search && flags.cli", Then: map[string]string{"content": "[{'type': 'text', 'text': 'both'}]"}},
+	}
+	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
+	ctx := context.Background()
+	for _, tc := range []struct {
+		flags map[string]bool
+		want  string
+	}{
+		{nil, "x"},
+		{map[string]bool{}, "x"},
+		{map[string]bool{"cli": true}, "cli"},
+		{map[string]bool{"cli": true, "search": true}, "both"},
+		{map[string]bool{"search": true}, "x"},
+		{map[string]bool{"cli": false}, "x"},
+		{map[string]bool{"made-up": true}, "x"}, // a name the engine does not know is ignored
+	} {
+		r := reviewRequest("direct", s)
+		r.Flags = tc.flags
+		p := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"q":"abc"}`)}
+		first := e.CallTool(ctx, r, p)
+		if first.Forward == nil {
+			t.Fatalf("flags %v: not forwarded: %+v", tc.flags, first.Error)
+		}
+		out := e.UpstreamToolReply(ctx, r, first.Call, p, json.RawMessage(`{"content":[{"type":"text","text":"x"}]}`))
+		b, _ := json.Marshal(out.Result)
+		if !strings.Contains(string(b), `"text":"`+tc.want+`"`) {
+			t.Errorf("flags %v: got %s, want text %q", tc.flags, b, tc.want)
+		}
+	}
+	for _, bad := range []string{
+		"flags.serach",              // a typo
+		"flags.madeup == true",      // not a flag
+		"'search' in flags",         // must be read by name
+		"flags['search']",           // must be read by name
+		"size(flags) > 0",           // must be read by name
+		"has(flags.debug)",          // not a flag, even under has()
+		"search",                    // the old top-level variable is gone
+		"route == 'mux' && flags.x", // one bad flag in a longer condition
+	} {
+		if _, probs := Compile([]Rule{{Hook: "tools/filter", When: bad, Then: map[string]string{"decision": "'deny'"}}}); probs == nil {
+			t.Errorf("compiled, but should not: %s", bad)
+		}
+	}
+	for _, good := range []string{"flags.search", "flags.cli", "!flags.cli", "has(flags.cli) && flags.cli", "route == 'mux' && (flags.search || flags.cli)"} {
+		if _, probs := Compile([]Rule{{Hook: "tools/filter", When: good, Then: map[string]string{"decision": "'deny'"}}}); probs != nil {
+			t.Errorf("did not compile: %s: %v", good, probs)
+		}
+	}
+}
+
+// ---- hook schemas and docs stay in step with the registry -------------------------
+
+// Every hook's schema carries the flags struct with exactly the known
+// flags, and the route with its two values.
+func TestEveryHookSchemaHasTheFlagsStruct(t *testing.T) {
+	all := Schema()
+	if len(all) != len(Hooks) {
+		t.Fatalf("%d schemas for %d hooks", len(all), len(Hooks))
+	}
+	for _, name := range Flags {
+		if FlagDocs[name] == "" {
+			t.Errorf("flag %q has no description", name)
+		}
+	}
+	for _, h := range all {
+		var flags, route *VarSchema
+		for i := range h.Variables {
+			switch h.Variables[i].Name {
+			case "flags":
+				flags = &h.Variables[i]
+			case "route":
+				route = &h.Variables[i]
+			}
+			if h.Variables[i].Type == "" || h.Variables[i].Doc == "" {
+				t.Errorf("%s: variable %q has no type or description", h.Hook, h.Variables[i].Name)
+			}
+		}
+		if flags == nil || flags.Type != "struct" || len(flags.Fields) != len(Flags) {
+			t.Errorf("%s: flags = %+v", h.Hook, flags)
+			continue
+		}
+		for _, name := range Flags {
+			if flags.Fields[name] != "bool" {
+				t.Errorf("%s: flags.%s is %q, want bool", h.Hook, name, flags.Fields[name])
+			}
+		}
+		if route == nil || strings.Join(route.Values, ",") != "direct,mux" {
+			t.Errorf("%s: route = %+v", h.Hook, route)
+		}
+		if len(h.Sets) == 0 {
+			t.Errorf("%s: no settable fields", h.Hook)
+		}
+		// The schema says what compiles: a rule reading each flag compiles on
+		// this hook, and one reading a made-up flag does not.
+		then := map[string]string{h.Sets[0].Field: "'deny'"}
+		for _, name := range Flags {
+			if _, probs := compileRule(0, Rule{Hook: h.Hook, When: "flags." + name, Then: then}, Options{CostLimit: DefaultCostLimit}); hasProblem(probs, "when") {
+				t.Errorf("%s: flags.%s does not compile: %v", h.Hook, name, probs)
+			}
+		}
+		if _, probs := compileRule(0, Rule{Hook: h.Hook, When: "flags.madeup", Then: then}, Options{CostLimit: DefaultCostLimit}); !hasProblem(probs, "when") {
+			t.Errorf("%s: a made-up flag compiled", h.Hook)
+		}
+	}
+}
+
+func hasProblem(probs Problems, field string) bool {
+	for _, p := range probs {
+		if p.Field == field {
+			return true
+		}
+	}
+	return false
+}
+
+// Every hook has a doc page, and the page names every variable all hooks
+// share, including flags. The overview lists every flag.
+func TestEveryHookPageListsTheCommonVariables(t *testing.T) {
+	dir := "../../docs/rules/hooks/"
+	overview, err := os.ReadFile(dir + "overview.md")
+	if err != nil {
+		t.Skip("docs not present: " + err.Error())
+	}
+	for _, name := range Flags {
+		if !strings.Contains(string(overview), "`flags."+name+"`") {
+			t.Errorf("the overview does not document flags.%s", name)
+		}
+	}
+	for hook := range Hooks {
+		page := dir + strings.ReplaceAll(hook, "/", "-") + ".md"
+		b, err := os.ReadFile(page)
+		if err != nil {
+			t.Errorf("%s has no doc page: %v", hook, err)
+			continue
+		}
+		for _, v := range CommonVars {
+			if !strings.Contains(string(b), "`"+v+"`") {
+				t.Errorf("%s does not list the common variable %s", page, v)
+			}
+		}
+		if !strings.Contains(string(overview), "("+strings.ReplaceAll(hook, "/", "-")+".md)") {
+			t.Errorf("the overview does not link %s", hook)
+		}
 	}
 }

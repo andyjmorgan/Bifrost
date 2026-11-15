@@ -577,7 +577,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "python-sdk", "reason": "The Python SDK refuses a server-sent event over 1 MiB. The real Datadog tools/list result is about 1.4 MB and arrives as one event, so the listing fails at the client."}], 
     "op": "tools/list",
     "expect": [
      {

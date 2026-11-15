@@ -3,7 +3,6 @@ package harness
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,15 +11,6 @@ import (
 
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
-
-// knownGap skips a test that asserts behaviour the engine does not have
-// yet, so the default run stays green. Run them with HOOKS_KNOWN_GAPS=1.
-func knownGap(t *testing.T, waitingFor string) {
-	t.Helper()
-	if os.Getenv("HOOKS_KNOWN_GAPS") == "" {
-		t.Skipf("known gap, waiting for: %s (set HOOKS_KNOWN_GAPS=1 to run)", waitingFor)
-	}
-}
 
 // rule builds a rule from a hook, a condition and then-pairs.
 func rule(hook, when string, then ...string) hooks.Rule {
@@ -62,14 +52,6 @@ func refused(res *mcp.CallToolResult, err error) bool {
 	return err != nil || (res != nil && res.IsError)
 }
 
-func toolNames(ts []*mcp.Tool) []string {
-	var out []string
-	for _, t := range ts {
-		out = append(out, t.Name)
-	}
-	return out
-}
-
 func asJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
@@ -94,16 +76,6 @@ func lacks(t testing.TB, what, text, part string) {
 	if strings.Contains(text, part) {
 		t.Errorf("%s: %q contains %q", what, text, part)
 	}
-}
-
-// hit reports whether the record holds a hit for a hook with an effect.
-func hit(r Record, hook, effect string) bool {
-	for _, h := range r.Hits() {
-		if h.Hook == hook && h.Effect == effect {
-			return true
-		}
-	}
-	return false
 }
 
 const plainTool = `{"name":"t","inputSchema":{"type":"object","properties":{}}}`

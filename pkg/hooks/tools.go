@@ -795,7 +795,17 @@ type ToolList struct {
 // ListTools runs tools/filter then tools/modify over a catalog, one item
 // per goroutine (each writes only its own slot), then reduces: collisions
 // hide every tool involved, output is sorted by exposed name.
-func (s *Set) ListTools(ctx context.Context, cat []*mcp.Tool, c Context, workers int) ToolList {
+//
+// A panic here lists nothing and is reported as an issue: a caller outside
+// the engine has no other protection. The engine itself calls listTools,
+// which lets a panic travel to the entry point, where it becomes a refusal
+// with a full fault record.
+func (s *Set) ListTools(ctx context.Context, cat []*mcp.Tool, c Context, workers int) (list ToolList) {
+	defer func() {
+		if p := recover(); p != nil {
+			list = ToolList{Issues: []string{fmt.Sprintf("panic while listing tools; nothing is listed: %v", capture(p).val)}}
+		}
+	}()
 	return s.listTools(ctx, cat, c, workers, "")
 }
 

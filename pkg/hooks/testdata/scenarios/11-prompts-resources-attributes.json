@@ -69,5 +69,5 @@
   {"slug":"a","rules":[{"hook":"resources/modify","when":"true","then":{"uri":"'file:///other'"}}]},
   {"slug":"b","rules":[{"hook":"resources/modify","when":"true","then":{"name":"'other'"}}]},
   {"slug":"c","rules":[{"hook":"templates/modify","when":"true","then":{"uriTemplate":"'file:///{x}'"}}]}],
- "steps":[{"op":"resources/list","expect":[{"path":"problems.a","exists":true},{"path":"problems.b","exists":true},{"path":"problems.c","exists":true}]}]}
+ "steps":[{"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send resources/list when the discover result did not advertise the resources capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"resources/list","expect":[{"path":"problems.a","exists":true},{"path":"problems.b","exists":true},{"path":"problems.c","exists":true}]}]}
 ]

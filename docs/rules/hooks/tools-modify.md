@@ -21,7 +21,7 @@ On a call, [tools/call](tools-call.md) rules see the tool as this hook left it.
 | `params` | map | Each visible parameter's current name mapped to its exposed property schema |
 | `icons` | list | The tool's icons, or `[]` |
 | `upstream` | map | The tool as the upstream sent it. It never changes |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 
@@ -71,7 +71,7 @@ A rule that fails, such as a rename that collides, hides the tool. The listing r
 - A rename onto the name of a hidden parameter is allowed. If upstream `a` is renamed to `b` and upstream `b` is hidden, the client's `b` means `a`, and upstream `b` receives only values the gateway sets.
 - After `hide`, only `pin` and `default` can still change that parameter.
 - A parameter that is required upstream can be hidden only with a pin, a default, or an enforce [tools/call](tools-call.md) rule that sets `args.<p>`. Otherwise the tool is hidden. Audit rules never count. On each call, the parameter must actually receive a value after call rules run, or the call is refused.
-- Pins and defaults must be static. They cannot read `caller`, `client`, `route`, `now` or request data. To set a value per caller, hide the parameter here and set `args.<p>` in `tools/call`.
+- Pins and defaults must be static. They cannot read `caller`, `client`, `route`, `flags`, `now` or request data. To set a value per caller, hide the parameter here and set `args.<p>` in `tools/call`.
 - Pins always win, including over `tools/call` patches.
 - The gateway compares pins, `enum` values, `minimum` and `maximum` exactly. A large integer that differs from an allowed value in its last digit is refused.
 - Because constraints are checked before call rules run, call rules only see values the exposed schema allows.

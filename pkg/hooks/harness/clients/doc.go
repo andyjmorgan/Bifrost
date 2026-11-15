@@ -20,11 +20,14 @@
 //
 //	./pkg/hooks/harness/clients/setup.sh
 //
-// Then run the adherence battery:
+// The drivers are what the golden runner in the harness package uses to take
+// every JSON case through each SDK. The tests in this package are the client
+// outliers: the few checks that need code to drive one client in its own
+// way (see adherence_test.go). Run them with:
 //
 //	go test ./pkg/hooks/harness/clients/ -count=1 -v
 //
 // A client whose runtime or SDK is missing is skipped loudly, by name, and
-// never silently. The battery logs a table of every check against every
+// never silently. The outliers log a table of every check against every
 // client: conforms, differs (with what the client did) or not supported.
 package clients

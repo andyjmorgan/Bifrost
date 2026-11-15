@@ -615,7 +615,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this prompts/get export_space is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.wiki), which only the raw client can see."}], 
     "op": "prompts/get",
     "params": {
      "name": "export_space",
@@ -638,7 +638,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "params": {
      "name": "export_space",
@@ -666,7 +666,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this prompts/get export_space is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "prompts/get",
     "params": {
      "name": "export_space",
@@ -681,7 +681,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "params": {
      "name": "export_space",
@@ -705,7 +705,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "params": {
      "name": "export_space",
@@ -916,7 +916,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this prompts/get summary is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.wiki), which only the raw client can see."}], 
     "op": "prompts/get",
     "params": {
      "name": "summary",
@@ -960,7 +960,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"depth\": {\"action\": \"accept\", \"content\": {\"d\": \"short\"}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "prompts/get",
     "params": {
      "name": "summary",
@@ -1124,7 +1124,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The reply to this prompts/get p is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.a), which only the raw client can see."}, {"harness": "python-sdk", "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (problems.a) is never returned."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (problems.a) is never returned."}], 
     "op": "prompts/get",
     "params": {
      "name": "p",

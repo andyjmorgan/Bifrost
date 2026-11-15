@@ -31,8 +31,9 @@ type ClientRequest struct {
 	RawParams json.RawMessage
 	// Capabilities is what the client declares. Nil declares nothing.
 	Capabilities any
-	// ClientInfo is the client's declared identity. Nil or empty keeps the
-	// client's own.
+	// ClientInfo is the client's declared identity. Nil keeps the client's
+	// own. An empty, non-nil map declares no identity at all, which only
+	// the raw client can do; an SDK then keeps its own.
 	ClientInfo map[string]any
 	// Progress asks for progress events.
 	Progress bool
@@ -42,6 +43,9 @@ type ClientRequest struct {
 	Elicit []map[string]any
 	// Token is sent as a bearer token.
 	Token string
+	// Body, when set, is an HTTP request body sent as it is, in place of
+	// Method and Params. Only the raw client can send it.
+	Body string
 }
 
 // ClientError is a JSON-RPC error as the client saw it.
@@ -81,7 +85,11 @@ type ClientReply struct {
 
 // Client is one way of making requests.
 type Client interface {
+	// Name is the harness name: "raw", "go-sdk", "python-sdk", ...
 	Name() string
+	// Identity is the client name this client declares when a request does
+	// not give one.
+	Identity() string
 	// Can reports why this client cannot make the request, or "".
 	Can(req ClientRequest) string
 	// Do connects to the endpoint, makes the request and disconnects.
@@ -108,6 +116,7 @@ func SDKShape(req ClientRequest) string { return sdkShape(req) }
 type RawHTTP struct{}
 
 func (RawHTTP) Name() string             { return "raw" }
+func (RawHTTP) Identity() string         { return "harness-raw-client" }
 func (RawHTTP) Can(ClientRequest) string { return "" }
 
 func (RawHTTP) Do(ctx context.Context, endpoint string, req ClientRequest) (*ClientReply, error) {
@@ -135,9 +144,12 @@ func (RawHTTP) Do(ctx context.Context, endpoint string, req ClientRequest) (*Cli
 			verbatim = true // a _meta that is not an object is sent as it is
 		}
 	}
-	if len(req.ClientInfo) > 0 {
-		if _, has := meta[metaClient]; !has {
+	if _, has := meta[metaClient]; !has && !verbatim {
+		switch {
+		case len(req.ClientInfo) > 0:
 			meta[metaClient] = req.ClientInfo
+		case req.ClientInfo == nil:
+			meta[metaClient] = map[string]any{"name": RawHTTP{}.Identity(), "version": "1.0.0"}
 		}
 	}
 	if req.Capabilities != nil {
@@ -150,8 +162,9 @@ func (RawHTTP) Do(ctx context.Context, endpoint string, req ClientRequest) (*Cli
 	}
 	answers := req.Elicit
 	for round := 0; round < 10; round++ {
-		rr := RawRequest{Method: req.Method, Token: req.Token}
+		rr := RawRequest{Method: req.Method, Token: req.Token, Body: req.Body}
 		switch {
+		case req.Body != "":
 		case verbatim:
 			rr.RawParams = req.RawParams
 		case len(top) == 0 && len(meta) == 0 && len(req.RawParams) == 0 && req.Params == nil:
@@ -227,7 +240,8 @@ func (RawHTTP) Do(ctx context.Context, endpoint string, req ClientRequest) (*Cli
 // GoSDK is the official Go SDK client.
 type GoSDK struct{}
 
-func (GoSDK) Name() string { return "go-sdk" }
+func (GoSDK) Name() string     { return "go-sdk" }
+func (GoSDK) Identity() string { return "harness-go-client" }
 
 // sdkMethods are the requests an SDK has a call for.
 var sdkMethods = map[string]bool{
@@ -238,6 +252,9 @@ var sdkMethods = map[string]bool{
 // sdkShape reports why a request's params cannot be passed through a typed
 // SDK call, or "". It is the same for every SDK.
 func sdkShape(req ClientRequest) string {
+	if req.Body != "" {
+		return "a raw HTTP body"
+	}
 	if !sdkMethods[req.Method] {
 		return "no SDK call for " + req.Method
 	}
@@ -378,7 +395,7 @@ func (GoSDK) Do(ctx context.Context, endpoint string, req ClientRequest) (*Clien
 			mu.Unlock()
 		}
 	}
-	impl := &mcp.Implementation{Name: "harness-go-sdk", Version: "1.0.0"}
+	impl := &mcp.Implementation{Name: GoSDK{}.Identity(), Version: "1.0.0"}
 	if v, ok := req.ClientInfo["name"].(string); ok {
 		impl.Name = v
 	}

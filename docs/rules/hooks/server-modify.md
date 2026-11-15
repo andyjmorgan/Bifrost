@@ -21,7 +21,7 @@ The gateway reads instructions from the upstream live, so a change upstream show
 | `description` | string | The current description |
 | `instructions` | string | The current instructions |
 | `upstream` | map | `title`, `description` and `instructions` as the upstream sent them |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables). `server.instructions` is the upstream text and does not change |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables). `server.instructions` is the upstream text and does not change |
 
 ## Fields
 

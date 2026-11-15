@@ -35,6 +35,10 @@ type Record struct {
 	Method  string
 	Outcome hooks.Outcome  // the request side
 	Reply   *hooks.Outcome // the reply side, when the request was forwarded
+	// Headers and Meta are the client's request as the gateway received it:
+	// the HTTP headers, with lower-case names, and the request's _meta.
+	Headers map[string]string
+	Meta    map[string]any
 	// Aborted is set when the client's stream was closed without a final
 	// message, because the upstream's stream ended without one.
 	Aborted bool
@@ -415,22 +419,39 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			st.final(msg.ID, hooks.Outcome{Error: &hooks.RPCError{Code: -32603, Message: "The request could not be completed."}})
 		}
 	}()
-	g.handle(r.Context(), st, route, servers, msg, g.overrides(r))
+	ov := g.overrides(r)
+	ov.headers = map[string]string{}
+	for k, v := range r.Header {
+		ov.headers[strings.ToLower(k)] = strings.Join(v, ", ")
+	}
+	g.handle(r.Context(), st, route, servers, msg, ov)
 }
 
 // overrides is the per-request caller and clock of the test hooks.
 type overrides struct {
+	headers   map[string]string
 	caller    map[string]any
 	hasCaller bool
 	now       time.Time
+	// flags are the request's switches, read from the query string as a
+	// real gateway would: ?search=true, ?cli=true. Not a test hook.
+	flags map[string]bool
 }
 
 func (g *Gateway) overrides(r *http.Request) overrides {
 	var o overrides
+	q := r.URL.Query()
+	for _, name := range hooks.Flags {
+		if q.Get(name) == "true" {
+			if o.flags == nil {
+				o.flags = map[string]bool{}
+			}
+			o.flags[name] = true
+		}
+	}
 	if !g.TestHooks {
 		return o
 	}
-	q := r.URL.Query()
 	if q.Has("caller") {
 		o.hasCaller = true
 		dec := json.NewDecoder(strings.NewReader(q.Get("caller")))
@@ -501,14 +522,17 @@ func (g *Gateway) handle(ctx context.Context, st *stream, route string, servers 
 	dec := json.NewDecoder(bytes.NewReader(msg.Params))
 	dec.UseNumber()
 	_ = dec.Decode(&env)
-	req := hooks.Request{Route: route, Caller: g.Caller, Client: clientOf(env.Meta), Now: time.Now(), Servers: servers}
+	req := hooks.Request{Route: route, Flags: ov.flags, Caller: g.Caller, Client: clientOf(env.Meta), Now: time.Now(), Servers: servers}
+	// Search mode is a flag on either route. The /search path is the older
+	// way to ask for it on the mux.
+	searching := route == "search" || ov.flags[hooks.FlagSearch]
 	if ov.hasCaller {
 		req.Caller = ov.caller
 	}
 	if !ov.now.IsZero() {
 		req.Now = ov.now
 	}
-	rec := Record{Route: route, Method: msg.Method}
+	rec := Record{Route: route, Method: msg.Method, Headers: ov.headers, Meta: env.Meta}
 
 	own := func(out hooks.Outcome) {
 		rec.Outcome = out
@@ -528,7 +552,7 @@ func (g *Gateway) handle(ctx context.Context, st *stream, route string, servers 
 		own(g.serverHook(ctx, req, msg))
 		return
 	}
-	if route == "search" && msg.Method == "tools/list" {
+	if searching && msg.Method == "tools/list" {
 		own(hooks.Outcome{Result: map[string]any{"tools": searchTools(), "ttlMs": 0, "cacheScope": "private", "resultType": "complete"}})
 		return
 	}
@@ -539,12 +563,12 @@ func (g *Gateway) handle(ctx context.Context, st *stream, route string, servers 
 
 	var b begun
 	switch {
-	case msg.Method == "tools/call" && route == "mux" && env.Name == hooks.InstructionsTool:
+	case msg.Method == "tools/call" && route == "mux" && !searching && env.Name == hooks.InstructionsTool:
 		var p mcp.CallToolParamsRaw
 		_ = json.Unmarshal(msg.Params, &p)
 		own(g.ad.instructions(ctx, req, p.Arguments))
 		return
-	case msg.Method == "tools/call" && route == "search":
+	case msg.Method == "tools/call" && searching:
 		var p mcp.CallToolParamsRaw
 		if err := json.Unmarshal(msg.Params, &p); err != nil {
 			own(hooks.Outcome{Error: invalid(err)})

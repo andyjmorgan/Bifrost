@@ -30,41 +30,34 @@
 // recorded (Gateway.Records: hits, issues and outcomes), and what the
 // upstream actually received (Upstream.Requests).
 //
-// Everything here is Go: the mock servers, the gateway, the clients and the
-// tests. Run it with:
+// The mock servers, the gateway and the runner are Go. The cases are not:
+// they are JSON, and the Go here only runs them. Run everything with:
 //
-//	go test ./pkg/hooks/harness/ -race -count=1
+//	go test ./pkg/hooks/harness/... -race -count=1
 //
-// Tests that assert behaviour the engine does not have yet are skipped
-// unless HOOKS_KNOWN_GAPS=1 is set, the same convention as pkg/hooks. They
-// assert the decided behaviour and fail until the engine catches up.
+// # The golden set
 //
-// # Scenario parity
-//
-// TestScenarioParity (parity_test.go) replays every scenario in
-// pkg/hooks/testdata/scenarios and every doc check in
-// pkg/hooks/testdata/doc-checks end to end, once per client in Clients.
-// The mock upstreams serve the scenario's own catalogs and answer with its
-// own upstream replies; the scenario's expectations are checked by the
-// scenario runner's own checker. A new scenario runs here with no new code.
+// Every case is JSON under pkg/hooks/testdata; its README.md is the format.
+// TestGolden (golden_test.go) is the one runner that takes the set over a
+// wire: every case, once per client harness in Clients, against the mock
+// upstream or each reference server, as the case says. The engine harness
+// (hookctl) reads the same files with no wire.
 //
 //   - Clients (driver.go) is the client registry: the raw HTTP client and the
 //     Go SDK, plus the Python and TypeScript SDK drivers of the clients
 //     package, which drivers_test.go adapts and registers. A client whose
-//     runtime is missing is reported by name as "CLIENT NOT RUN".
-//   - An SDK makes a confirmation's rounds itself, so consecutive steps that
-//     are exactly what an SDK would send next are folded into one call with
-//     scripted answers. A step an SDK cannot express is made by the raw
-//     client and counted, with the reason, in the summary.
-//   - engineOnly and knownDifferences (parity_lists_test.go) are the two
-//     explicit lists: scenarios with no end-to-end form, and scenarios whose
-//     end-to-end result differs from the engine-level result for a client.
-//     The test fails if a scenario cannot run and is not listed, or is
-//     listed and no longer needs to be.
+//     runtime is missing is reported by name.
+//   - The runner decides nothing about what to skip. A case or a step runs
+//     on every harness unless it carries an `exclude` entry for that harness,
+//     with a reason, or the case is an outlier (`only`) for another harness.
+//     One that cannot run and has no entry fails.
+//   - A step excluded for a client harness is made by the raw client in its
+//     place, so the steps after it still have what they need.
 //
 // The summary is logged at the end of the test; run with -v to read it.
-// Maintenance aids: HARNESS_PRINT_ENGINE_ONLY=1 prints the entries
-// engineOnly should hold, HARNESS_PRINT_DIFFERENCES=1 (with
-// HOOKS_KNOWN_GAPS=1) prints every scenario that differs with its messages,
-// and HARNESS_DEBUG=1 logs what each client returned.
+// HOOKS_RUN_EXCLUDED=1 runs excluded cells and steps and fails on any that
+// pass. HARNESS_SUGGEST_EXCLUDES=1 prints what each missing exclusion would
+// have to say. HARNESS_DEBUG=1 logs what each client returned.
+//
+// The Go tests in machinery_test.go are not cases; each says why.
 package harness

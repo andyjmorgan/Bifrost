@@ -19,7 +19,7 @@ It does not run on directory reads, or when the upstream replies with `input_req
 | `args` | map | `{uri: <uri>}`, the content item's URI as the upstream knows it |
 | `uri`, `name`, `title`, `description`, `mimeType`, `annotations`, `meta`, `size`, `icons` | Various | The listed resource for the content item's URI, or only `uri` when no listing contains it |
 | `upstream` | map | The resource as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

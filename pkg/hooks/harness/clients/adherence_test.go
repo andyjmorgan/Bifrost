@@ -14,8 +14,14 @@ import (
 	"github.com/andyjmorgan/Bifrost/pkg/hooks/harness"
 )
 
-// The client adherence battery: every check runs against every official
-// client SDK, through the harness gateway, to scripted mock servers.
+// Client outliers, in code. Every case that fits the common format lives in
+// JSON under pkg/hooks/testdata and runs through the golden runner
+// (TestGolden in the harness package) on every client harness. What is left
+// here are the few checks that only make sense for one client at a time and
+// need code to drive it: they hold one session across several calls, cancel
+// a call mid-flight, read every HTTP exchange an SDK makes off a recording
+// proxy, point the client straight at a server, or generate megabytes of
+// payload. Each check says in a comment why it is an outlier.
 //
 // A check ends in one of three states for each client:
 //
@@ -27,6 +33,8 @@ import (
 // The test fails only where a difference would make the gateway unusable
 // for a client that is meant to work with it (the checks marked critical).
 // Every other difference is a finding, reported in the table the test logs.
+// The pre-2026 TypeScript package (typescript-v1) is run here too, to show
+// that it cannot connect to a 2026-only front door.
 
 const (
 	conforms    = "conforms"
@@ -222,6 +230,7 @@ type check struct {
 }
 
 var checks = []check{
+	// Not a case: the precondition every other check here needs, and the one place the pre-2026 TypeScript package is shown failing to connect.
 	{id: "connect", title: "Connects and negotiates 2026-07-28", critical: true, run: func(e *env) outcome {
 		u := harness.NewUpstream(e.t, harness.V2026)
 		u.Tool(plainTool, nil)
@@ -240,6 +249,7 @@ var checks = []check{
 		return ok("%s %s; on connect it sent: %s", rep.SDK.Name, rep.SDK.Version, strings.Join(first, ", "))
 	}},
 
+	// Outlier, in code: it needs two calls in one client session and reads each request off a recording proxy; the golden runner connects afresh for every step.
 	{id: "capabilities", title: "Declares its capabilities on every request", critical: true, run: func(e *env) outcome {
 		u := harness.NewUpstream(e.t, harness.V2026)
 		u.Tool(plainTool, nil)
@@ -293,6 +303,7 @@ var checks = []check{
 		return ok("with a handler: %s; without: %s", asJSON(with), asJSON(without))
 	}},
 
+	// Outlier, in code: it reads the content type of every HTTP exchange an SDK makes, including the ones the SDK makes on its own, off a recording proxy.
 	{id: "always-stream", title: "Accepts a stream as the reply to every request", critical: true, run: func(e *env) outcome {
 		u := harness.NewUpstream(e.t, harness.V2026)
 		u.Tool(plainTool, nil)
@@ -325,249 +336,14 @@ var checks = []check{
 		return ok("%d requests, every reply a stream", n)
 	}},
 
-	{id: "listings", title: "Lists tools, prompts, resources and templates", critical: true, run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(plainTool, nil)
-		u.Prompt(`{"name":"greet"}`, nil)
-		u.Resource("docs://a", nil)
-		u.Template("notes://{id}")
-		e.g.AddServer(e.t, "a", u)
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		for _, l := range []struct{ method, list, field, want string }{
-			{"tools/list", "tools", "name", "t"},
-			{"prompts/list", "prompts", "name", "greet"},
-			{"resources/list", "resources", "uri", "docs://a"},
-			{"resources/templates/list", "resourceTemplates", "uriTemplate", "notes://{id}"},
-		} {
-			rep := e.call(CallOptions{Method: l.method})
-			if rep.Error != nil {
-				return diff("%s: %s", l.method, errText(rep.Error))
-			}
-			if got := names(rep.Result, l.list, l.field); !has(got, l.want) {
-				return diff("%s returned %v, want %s", l.method, got, l.want)
-			}
-		}
-		return ok("all four listings")
-	}},
-
-	{id: "call-get-read", title: "Calls a tool, gets a prompt, reads a resource", critical: true, run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(`{"name":"echo","inputSchema":{"type":"object","properties":{"q":{"type":"string"}}}}`, func(r harness.Recorded) harness.Reply {
-			q, _ := r.Args()["q"].(string)
-			return harness.Reply{Result: harness.Text("echo " + q)}
-		})
-		u.Prompt(`{"name":"greet","arguments":[{"name":"who"}]}`, func(r harness.Recorded) harness.Reply {
-			who, _ := r.Args()["who"].(string)
-			return harness.Reply{Result: map[string]any{"messages": []any{map[string]any{"role": "user", "content": map[string]any{"type": "text", "text": "hello " + who}}}}}
-		})
-		u.Resource("docs://a", nil)
-		e.g.AddServer(e.t, "a", u)
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		if rep := e.tool("echo", map[string]any{"q": "hi"}); rep.Error != nil || textOf(rep.Result) != "echo hi" {
-			return diff("tools/call: %s, result %s", errText(rep.Error), asJSON(rep.Result))
-		}
-		p := e.call(CallOptions{Method: "prompts/get", Params: map[string]any{"name": "greet", "arguments": map[string]any{"who": "ana"}}})
-		if p.Error != nil || !strings.Contains(asJSON(p.Result), "hello ana") {
-			return diff("prompts/get: %s, result %s", errText(p.Error), asJSON(p.Result))
-		}
-		r := e.call(CallOptions{Method: "resources/read", Params: map[string]any{"uri": "docs://a"}})
-		if r.Error != nil || !strings.Contains(asJSON(r.Result), "content of docs://a") {
-			return diff("resources/read: %s, result %s", errText(r.Error), asJSON(r.Result))
-		}
-		return ok("all three")
-	}},
-
-	{id: "mux", title: "Works on the mux: prefixed names and <slug>+ URIs", critical: true, run: func(e *env) outcome {
-		for _, slug := range []string{"a", "b"} {
-			u := harness.NewUpstream(e.t, harness.V2026)
-			u.Tool(plainTool, harness.Static(harness.Reply{Result: harness.Text("from " + slug)}))
-			u.Resource("docs://shared", harness.Static(harness.Reply{Result: harness.Contents("docs://shared", "doc of "+slug)}))
-			e.g.AddServer(e.t, slug, u)
-		}
-		if out := e.mustConnect(e.g.Mux(), ConnectOptions{}); out != nil {
-			return *out
-		}
-		list := e.call(CallOptions{Method: "tools/list"})
-		if list.Error != nil || !has(names(list.Result, "tools", "name"), "a__t", "b__t") {
-			return diff("tools/list: %s, tools %v", errText(list.Error), names(list.Result, "tools", "name"))
-		}
-		if rep := e.tool("b__t", nil); rep.Error != nil || textOf(rep.Result) != "from b" {
-			return diff("call b__t: %s, text %q", errText(rep.Error), textOf(rep.Result))
-		}
-		res := e.call(CallOptions{Method: "resources/list"})
-		if res.Error != nil || !has(names(res.Result, "resources", "uri"), "a+docs://shared", "b+docs://shared") {
-			return diff("resources/list: %s, uris %v", errText(res.Error), names(res.Result, "resources", "uri"))
-		}
-		read := e.call(CallOptions{Method: "resources/read", Params: map[string]any{"uri": "b+docs://shared"}})
-		if read.Error != nil || !strings.Contains(asJSON(read.Result), "doc of b") {
-			return diff("read b+docs://shared: %s, result %s", errText(read.Error), asJSON(read.Result))
-		}
-		if !strings.Contains(asJSON(read.Result), `"uri":"b+docs://shared"`) {
-			return diff("the content's URI lost its prefix: %s", asJSON(read.Result))
-		}
-		return ok("listed, called and read through prefixed names and URIs")
-	}},
-
-	{id: "rpc-error", title: "Reports a JSON-RPC error delivered on a stream", critical: true, run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(`{"name":"boom"}`, harness.Static(harness.Reply{Stream: true, Error: &harness.RPCErr{Code: -32000, Message: "upstream exploded"}}))
-		u.Tool(`{"name":"down"}`, harness.Static(harness.Reply{Status: 503, Body: "unavailable"}))
-		e.g.AddServer(e.t, "a", u)
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		boom := e.tool("boom", nil)
-		if boom.Error == nil {
-			return diff("the upstream's error came back as a result: %s", asJSON(boom.Result))
-		}
-		if boom.Error.Kind != "rpc" || boom.Error.RPCCode() != -32000 || !strings.Contains(boom.Error.Message, "upstream exploded") {
-			return diff("the upstream's -32000 was reported as: %s", errText(boom.Error))
-		}
-		down := e.tool("down", nil)
-		if down.Error == nil || down.Error.Kind != "rpc" {
-			return diff("an upstream outage was reported as: %s, result %s", errText(down.Error), asJSON(down.Result))
-		}
-		return ok("upstream error: code %d; upstream outage: code %d", boom.Error.RPCCode(), down.Error.RPCCode())
-	}},
-
 	// 2026-07-28 requires resultType on every result, and the Python and
 	// TypeScript SDKs reject a result without it. The engine once left it
 	// off its own listings and refusals; this keeps that from coming back.
-	{id: "result-type", title: "Accepts the gateway's own results: a listing, a refusal, a forwarded result", critical: true,
-		run: func(e *env) outcome {
-			u := harness.NewUpstream(e.t, harness.V2026)
-			u.Tool(plainTool, nil)
-			u.Tool(`{"name":"blocked"}`, nil)
-			e.g.AddServer(e.t, "a", u, rule("tools/call", "name == 'blocked'", "decision", "'deny'", "reason", "'Not allowed.'"))
-			if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-				return *out
-			}
-			var bad []string
-			if rep := e.call(CallOptions{Method: "tools/list"}); rep.Error != nil {
-				bad = append(bad, "tools/list: "+trim(rep.Error.Message, 150))
-			}
-			if rep := e.tool("blocked", nil); rep.Error != nil {
-				bad = append(bad, "a refused call: "+trim(rep.Error.Message, 150))
-			}
-			if rep := e.tool("t", nil); rep.Error != nil {
-				bad = append(bad, "a forwarded call: "+trim(rep.Error.Message, 150))
-			}
-			if len(bad) > 0 {
-				return diff("the SDK rejects the gateway's results: %s", strings.Join(bad, " | "))
-			}
-			return ok("accepted a listing, a refusal and a forwarded result as the gateway sends them")
-		}},
 
 	// The engine once answered an unknown tool with -32004, which is the Go
 	// SDK's own code for "server is closing", so that client reported a
 	// closed connection. The spec's code for an unknown tool is -32602.
-	{id: "unknown-tool", title: "An unknown tool is reported as an error the caller can act on", critical: true, run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(plainTool, nil)
-		e.g.AddServer(e.t, "a", u)
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		e.call(CallOptions{Method: "tools/list"})
-		unknown := e.tool("no_such_tool", nil)
-		after := e.tool("t", nil)
-		usable := after.Error == nil && textOf(after.Result) == "ok"
-		switch {
-		case unknown.Error == nil && isError(unknown.Result):
-			return ok("an error result: %q", trim(textOf(unknown.Result), 100))
-		case unknown.Error == nil:
-			return diff("returned a normal result: %s", asJSON(unknown.Result))
-		case unknown.Error.Kind != "rpc":
-			return diff("reported as %s. The connection still works afterwards: %v", errText(unknown.Error), usable)
-		case !usable:
-			return diff("reported as %s, and the connection did not work afterwards: %s", errText(unknown.Error), errText(after.Error))
-		case unknown.Error.RPCCode() != -32602:
-			return diff("reported with code %d, want -32602: %s", unknown.Error.RPCCode(), errText(unknown.Error))
-		}
-		return ok("%s; the connection works afterwards", errText(unknown.Error))
-	}},
 
-	{id: "tool-error", title: "Returns a refused call as an error result, not an exception", run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(plainTool, nil)
-		e.g.AddServer(e.t, "a", u, rule("tools/call", "true", "decision", "'deny'", "reason", "'Production is blocked.'"))
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		rep := e.tool("t", nil)
-		if rep.Error != nil {
-			return diff("the SDK raised instead of returning the result: %s", errText(rep.Error))
-		}
-		if !isError(rep.Result) || textOf(rep.Result) != "Production is blocked." {
-			return diff("result was %s", asJSON(rep.Result))
-		}
-		return ok("isError result with the rule's reason")
-	}},
-
-	{id: "progress", title: "Receives progress in order, under its own token", run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(plainTool, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"), Progress: []harness.Progress{
-			{Progress: 1, Total: 3, Message: "step 1"}, {Progress: 2, Total: 3, Message: "step 2"}, {Progress: 3, Total: 3, Message: "step 3"},
-		}}))
-		e.g.AddServer(e.t, "a", u)
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		e.r.Forget()
-		rep := e.call(CallOptions{Method: "tools/call", Params: map[string]any{"name": "t", "arguments": map[string]any{}}, Progress: true})
-		if rep.Error != nil || textOf(rep.Result) != "done" {
-			return diff("the call failed: %s", errText(rep.Error))
-		}
-		sent := e.r.Seen("tools/call")
-		var token any
-		if len(sent) > 0 {
-			token = sent[0].Meta()["progressToken"]
-		}
-		if token == nil {
-			return none("asked for progress, but the request carried no progressToken; received %d events", len(rep.Progress))
-		}
-		got := messages(rep.Progress)
-		if strings.Join(got, "|") != "step 1|step 2|step 3" {
-			return diff("received %v under token %v", got, token)
-		}
-		for i, p := range rep.Progress {
-			if p["progress"] != float64(i+1) || p["total"] != float64(3) {
-				return diff("event %d had progress %v of %v", i+1, p["progress"], p["total"])
-			}
-		}
-		if up := u.Last(e.t, "tools/call").ProgressToken(); up == token {
-			return diff("the server saw the client's own token %v", token)
-		}
-		return ok("3 events in order; its token was %v", token)
-	}},
-
-	{id: "progress-rules", title: "Receives rule-reshaped and rule-dropped progress", run: func(e *env) outcome {
-		u := harness.NewUpstream(e.t, harness.V2026)
-		u.Tool(plainTool, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"), Progress: []harness.Progress{
-			{Progress: 1, Total: 3, Message: "Querying db-internal-7"}, {Progress: 2, Total: 3, Message: "noise"}, {Progress: 3, Total: 3, Message: "Finishing"},
-		}}))
-		e.g.AddServer(e.t, "a", u,
-			rule("tools/progress", "progress.message.contains('db-internal')", "message", "regex.replace(progress.message, 'db-internal-[0-9]+', 'the database')"),
-			rule("tools/progress", "progress.message == 'noise'", "decision", "'deny'"))
-		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
-			return *out
-		}
-		rep := e.call(CallOptions{Method: "tools/call", Params: map[string]any{"name": "t", "arguments": map[string]any{}}, Progress: true})
-		if rep.Error != nil || textOf(rep.Result) != "done" {
-			return diff("the call failed: %s", errText(rep.Error))
-		}
-		if got := messages(rep.Progress); strings.Join(got, "|") != "Querying the database|Finishing" {
-			return diff("received %v", got)
-		}
-		if len(rep.Progress) == 2 && (rep.Progress[0]["progress"] != float64(1) || rep.Progress[1]["progress"] != float64(3)) {
-			return diff("the numbers changed: %s", asJSON(rep.Progress))
-		}
-		return ok("one rewritten, one dropped, one untouched")
-	}},
 }
 
 // TestClientAdherence runs every check against every client and logs the

@@ -1,0 +1,55 @@
+[
+{"name": "mux names: name prefixes on the mux, with a rename and a link in a result", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "mux", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tools/list, beta__echo, alpha__say, echo) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": [{"hook": "tools/modify", "when": "upstream.name == 'echo'", "then": {"name": "'say'"}}]}, {"slug": "beta", "rules": []}],
+ "steps": [
+  {"op": "tools/list", "expect": [{"path": "client.result.tools[*].name", "contains": "alpha__say"}, {"path": "client.result.tools[*].name", "contains": "beta__echo"}, {"path": "client.result.tools[*].name", "contains": "get_server_instructions"}, {"path": "client.result.tools[*].name", "notContains": "alpha__echo"}, {"path": "client.result.tools[*].name", "notContains": "echo"}]},
+  {"op": "tools/call", "params": {"name": "beta__echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client.result.isError", "notEquals": true}]},
+  {"op": "tools/call", "params": {"name": "alpha__say", "arguments": {"text": "yo"}}, "expect": [{"path": "client.result.content[0].text", "equals": "yo"}, {"path": "client.result.isError", "notEquals": true}]},
+  {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.error.code", "equals": -32602}]},
+  {"op": "prompts/list", "expect": [{"path": "client.result.prompts[*].name", "contains": "alpha__greet"}, {"path": "client.result.prompts[*].name", "contains": "beta__greet"}]},
+  {"op": "prompts/get", "params": {"name": "beta__greet", "arguments": {"who": "Ana"}}, "expect": [{"path": "client.result.messages[0].content.text", "equals": "Hello, Ana!"}]},
+  {"op": "tools/call", "params": {"name": "alpha__picture", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.content", "len": 3}, {"path": "client.result.content[2].uri", "equals": "alpha+ref://docs/guide"}]}
+ ]},
+{"name": "mux uris: URI prefixes on the mux; slugUris rewrites this server's URIs in text", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "mux", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/list, resources/templates/list, beta+ref://notes/7, alpha+ref://docs/guide) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": []}, {"slug": "beta", "rules": [{"hook": "resources/result", "when": "true", "then": {"text": "slugUris(result.text)"}}]}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources[*].uri", "contains": "alpha+ref://docs/guide"}, {"path": "client.result.resources[*].uri", "contains": "beta+ref://docs/guide"}, {"path": "client.result.resources[*].uri", "contains": "alpha+ref://secrets/key"}]},
+  {"op": "resources/templates/list", "expect": [{"path": "client.result.resourceTemplates[*].uriTemplate", "contains": "alpha+ref://notes/{id}"}, {"path": "client.result.resourceTemplates[*].uriTemplate", "contains": "beta+ref://notes/{id}"}]},
+  {"op": "resources/read", "params": {"uri": "beta+ref://notes/7"}, "expect": [{"path": "client.result.contents[0].text", "equals": "note 7"}, {"path": "client.result.contents[0].uri", "equals": "beta+ref://notes/7"}]},
+  {"op": "resources/read", "params": {"uri": "alpha+ref://docs/guide"}, "expect": [{"path": "client.result.contents[0].text", "equals": "# Guide\nSee ref://docs/faq and https://example.com/x."}]},
+  {"op": "resources/read", "params": {"uri": "beta+ref://docs/guide"}, "expect": [{"path": "client.result.contents[0].text", "equals": "# Guide\nSee beta+ref://docs/faq and https://example.com/x."}, {"path": "client.result.contents[0].uri", "equals": "beta+ref://docs/guide"}]}
+ ]},
+{"name": "mux bare uri: a bare URI resolves to the one server that can read it", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "mux", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://secrets/key, beta+ref://secrets/key) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": []}, {"slug": "beta", "rules": [{"hook": "resources/filter", "when": "uri.startsWith('ref://secrets/')", "then": {"decision": "'deny'"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "expect": [{"path": "client.result.contents[0].text", "equals": "sk-test-123"}, {"path": "client.result.contents[0].uri", "equals": "alpha+ref://secrets/key"}]},
+  {"op": "resources/read", "params": {"uri": "beta+ref://secrets/key"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found"}]}
+ ]},
+{"name": "mux ambiguous uri: a bare URI two servers claim is refused with the candidates", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "mux", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://docs/faq, ref://nowhere/x) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": []}, {"slug": "beta", "rules": []}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://docs/faq"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Ambiguous URI ref://docs/faq"}, {"path": "client.error.message", "contains": "alpha+ref://docs/faq"}, {"path": "client.error.message", "contains": "beta+ref://docs/faq"}]},
+  {"op": "resources/read", "params": {"uri": "ref://nowhere/x"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found: ref://nowhere/x"}]}
+ ]},
+{"name": "mux instructions: server/modify instructions through get_server_instructions", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "mux", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (get_server_instructions) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": [{"hook": "server/modify", "when": "true", "then": {"instructions": "instructions + '\\nAll writes need a ticket.'"}}]}, {"slug": "beta", "rules": [{"hook": "server/config", "when": "true", "then": {"instructions": "false"}}]}],
+ "steps": [
+  {"op": "tools/call", "params": {"name": "get_server_instructions", "arguments": {"slug": "alpha"}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.content[0].text", "contains": "Use search first.\nAll writes need a ticket."}]},
+  {"op": "tools/call", "params": {"name": "get_server_instructions", "arguments": {"slug": "beta"}}, "expect": [{"path": "client", "refused": true}, {"path": "client", "lacksText": ["Use search first."]}]}
+ ]},
+{"name": "search mode: search mode exposes only what the flat list would, and executes", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "search", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tools/list, tool_search, get_tool_definition, execute_tool) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": [{"hook": "tools/filter", "when": "name == 'delete_page'", "then": {"decision": "'deny'"}}, {"hook": "server/modify", "when": "true", "then": {"description": "'zebra quartz archive'"}}]}, {"slug": "beta", "rules": []}],
+ "steps": [
+  {"op": "tools/list", "expect": [{"path": "client.result.tools[*].name", "set": ["execute_tool", "get_tool_definition", "list_tools", "tool_search"]}]},
+  {"op": "tools/call", "params": {"name": "tool_search", "arguments": {"query": "echo"}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.content[0].text", "contains": "alpha__echo"}, {"path": "client.result.content[0].text", "contains": "beta__echo"}]},
+  {"op": "tools/call", "params": {"name": "tool_search", "arguments": {"query": "zebra quartz"}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.structuredContent.tools[0]", "exists": true}, {"path": "client.result.structuredContent.tools[*].name", "notMatches": "\"beta__"}]},
+  {"op": "tools/call", "params": {"name": "get_tool_definition", "arguments": {"names": ["alpha__delete_page", "beta__delete_page"]}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.structuredContent.unknown", "equals": ["alpha__delete_page"]}]},
+  {"op": "tools/call", "params": {"name": "execute_tool", "arguments": {"name": "beta__echo", "arguments": {"text": "hi"}}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client.result.isError", "notEquals": true}]},
+  {"op": "tools/call", "params": {"name": "execute_tool", "arguments": {"name": "alpha__delete_page", "arguments": {"id": "1"}}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "unknown tool"}]}
+ ]},
+{"name": "search roster off: with searchRoster off, the server description does not rank tools", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "route": "search", "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tool_search) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "alpha", "rules": [{"hook": "server/config", "when": "true", "then": {"searchRoster": "false"}}, {"hook": "server/modify", "when": "true", "then": {"description": "'zebra quartz archive'"}}]}, {"slug": "beta", "rules": []}],
+ "steps": [
+  {"op": "tools/call", "params": {"name": "tool_search", "arguments": {"query": "zebra quartz"}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client.result.isError", "notEquals": true}, {"path": "client.result.structuredContent.tools", "len": 0}]}
+ ]}
+]

@@ -16,7 +16,7 @@ An upstream asks for input only if the gateway advertised elicitation to it, whi
 | `args` | map | `{uri: <uri>}`, with the URI as the upstream knows it |
 | `uri`, `name`, `title`, `description`, `mimeType`, `annotations`, `meta`, `size`, `icons` | Various | The listed resource for this URI, or only `uri` when no listing contains it |
 | `upstream` | map | The resource as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

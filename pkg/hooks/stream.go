@@ -64,8 +64,8 @@ const CodeUpstreamLost = -32014
 // to the administrator, not the client.
 func lost(cause error, ns *notifications) *Outcome {
 	out := &Outcome{Error: &RPCError{Code: CodeUpstreamLost, Message: "The server's reply was lost before it completed. The request may or may not have run."}}
-	out.Hits = ns.hits
-	out.Issues = append([]string{"upstream reply lost: " + cause.Error()}, ns.issues()...)
+	out.Issues = []string{"upstream reply lost: " + cause.Error()}
+	ns.finish(out)
 	return out
 }
 
@@ -107,7 +107,7 @@ func (e *Engine) ReadReplyStream(parent context.Context, r Request, call *CallCo
 	return e.replyStream(parent, r, call, replyKind{
 		op: "resources/read reply", ref: readCallRef("resources/read", p), hook: "resources/progress",
 		resolve: func() func(string) (any, bool) {
-			it := &item{kind: KindResource, id: call.Target, view: NewView(call.Item), label: call.Target}
+			it := &item{kind: KindResource, id: call.Target, view: NewView(call.Item), label: call.Target, bare: call.Bare}
 			return it.resolve
 		},
 		final: func(raw json.RawMessage) Outcome { return e.UpstreamReadReply(parent, r, call, p, raw) },
@@ -125,11 +125,17 @@ type replyKind struct {
 
 func (e *Engine) replyStream(parent context.Context, r Request, call *CallContext, k replyKind, upstream iter.Seq2[UpstreamEvent, error]) iter.Seq2[ReplyEvent, error] {
 	return func(yield func(ReplyEvent, error) bool) {
+		ns := &notifications{e: e, r: r, call: call, kind: k, parent: parent}
 		// The consumer's loop body runs inside yield. A panic there is the
 		// consumer's, and must pass through untouched; a panic anywhere else
 		// is the engine's, and becomes a refusal.
-		inYield, stopped := false, false
+		inYield, stopped, finalSent := false, false, false
 		emit := func(ev ReplyEvent, err error) bool {
+			if ev.Final != nil {
+				// A reply has exactly one final response. Once it is on its
+				// way nothing can replace it, whatever happens afterwards.
+				finalSent = true
+			}
 			inYield = true
 			ok := yield(ev, err)
 			inYield = false
@@ -150,20 +156,29 @@ func (e *Engine) replyStream(parent context.Context, r Request, call *CallContex
 				}
 				ep := capture(p)
 				f := &Fault{Op: k.op, Panic: fmt.Sprint(ep.val), Stack: string(ep.stack), Rule: ep.rule, Call: k.ref.fault()}
-				fault = &Outcome{Error: refusal(), Issues: []string{"panic in " + k.op + ": " + f.Panic}, Fault: f}
 				e.report(f)
+				if finalSent {
+					// The response has gone, for example when the upstream's
+					// stream fails as it is closed. The fault is reported to
+					// the administrator; the client keeps the response it has.
+					return
+				}
+				fault = &Outcome{Error: refusal(), Issues: []string{"panic in " + k.op + ": " + f.Panic}, Fault: f}
 			}()
-			e.pump(parent, r, call, k, upstream, emit)
+			e.pump(ns, k, upstream, emit)
 		}()
 		if fault != nil && !stopped {
+			ns.finish(fault)
 			emit(ReplyEvent{Final: fault}, nil)
 		}
+		// When the client left early, or the response had already gone, there
+		// is no outcome left to carry what was seen. The callback still gets it.
+		ns.flush()
 	}
 }
 
 // pump routes each upstream event and stops at the final response.
-func (e *Engine) pump(parent context.Context, r Request, call *CallContext, k replyKind, upstream iter.Seq2[UpstreamEvent, error], emit func(ReplyEvent, error) bool) {
-	ns := &notifications{e: e, r: r, call: call, kind: k, parent: parent}
+func (e *Engine) pump(ns *notifications, k replyKind, upstream iter.Seq2[UpstreamEvent, error], emit func(ReplyEvent, error) bool) {
 	for ev, err := range upstream {
 		if err != nil {
 			emit(ReplyEvent{Final: lost(err, ns)}, nil)
@@ -176,12 +191,7 @@ func (e *Engine) pump(parent context.Context, r Request, call *CallContext, k re
 			} else {
 				out = k.final(ev.Result)
 			}
-			out.Hits = append(ns.hits, out.Hits...)
-			out.Issues = append(out.Issues, ns.issues()...)
-			if found := ns.seen.list(); len(found) > 0 {
-				out.Unknown = append(out.Unknown, found...)
-				e.reportUnknowns(found)
-			}
+			ns.finish(&out)
 			emit(ReplyEvent{Final: &out}, nil)
 			return // anything after the response is ignored
 		}
@@ -211,6 +221,8 @@ type notifications struct {
 	exhausted bool // the allowance is spent; later events are dropped unseen
 
 	hits    []Hit
+	fault   *Fault         // the first panic in a progress rule, already reported
+	flushed bool           // the unknown records have been handed to the callback
 	seen    unknowns       // what the engine did not recognise, by shape
 	unknown map[string]int // dropped notifications of types the engine does not relay
 	spent   int            // progress events dropped after the allowance ran out
@@ -309,6 +321,16 @@ func (n *notifications) progress(params json.RawMessage) (json.RawMessage, bool)
 		return nil
 	})
 	n.hits = append(n.hits, o.hits...)
+	for i := range o.hits {
+		// A panic inside a progress rule drops its event, like any rule
+		// error. It is still a fault: report the first one now, with the
+		// rule and the call, and carry it to the final outcome. Later ones
+		// on the same stream stay as hits, so a stream cannot flood the log.
+		if h := &o.hits[i]; h.Panic && n.fault == nil {
+			n.fault = &Fault{Op: n.kind.op, Panic: h.Error, Rule: h.rule, Call: n.kind.ref.fault()}
+			n.e.report(n.fault)
+		}
+	}
 	if o.err != nil {
 		if errors.Is(o.err, errBudget) || expired(n.ctx) {
 			n.exhausted = true
@@ -325,7 +347,10 @@ func (n *notifications) progress(params json.RawMessage) (json.RawMessage, bool)
 	out := copyMap(m)
 	out["message"] = msg
 	b, err := json.Marshal(out)
-	if err != nil {
+	if err != nil || len(b) > n.e.Limits.maxBytes() {
+		// The limit bounds what the gateway sends as well as what it takes
+		// in. An event a rule made too large is dropped; the final response
+		// has its own allowance and is not affected.
 		n.invalid++
 		return nil, false
 	}
@@ -337,6 +362,30 @@ func (n *notifications) label() string {
 		return n.call.Exposed
 	}
 	return n.call.Target
+}
+
+// finish puts what the stream's events produced onto its final outcome: the
+// hits of progress rules, a summary of what was dropped, the first fault in
+// a progress rule, and the record of anything not recognised. It runs for
+// every kind of ending: a normal response, a lost reply and a refusal after
+// a panic.
+func (n *notifications) finish(out *Outcome) {
+	out.Hits = append(n.hits, out.Hits...)
+	out.Issues = append(out.Issues, n.issues()...)
+	if out.Fault == nil && n.fault != nil {
+		out.Fault = n.fault
+	}
+	out.Unknown = append(out.Unknown, n.seen.list()...)
+	n.flush()
+}
+
+// flush hands the unknown records to the callback, once.
+func (n *notifications) flush() {
+	if n.flushed {
+		return
+	}
+	n.flushed = true
+	n.e.reportUnknowns(n.seen.list())
 }
 
 // issues summarizes what was dropped, for the administrator.

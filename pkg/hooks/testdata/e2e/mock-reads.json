@@ -1,0 +1,42 @@
+[
+{"name": "a tool hands out a link to a resource the server never lists, and the link can be read",
+ "servers": [{"slug": "a", "catalog": {"tools": [{"name": "open", "inputSchema": {"type": "object", "properties": {}}}], "resources": [{"uri": "nb://index", "name": "nb://index"}]}}],
+ "steps": [
+  {"op": "tools/call", "params": {"name": "open", "arguments": {}}, "upstream": {"content": [{"type": "resource_link", "uri": "nb://notebook/123", "name": "nb"}]}, "expect": [{"path": "client.result.content[0].uri", "equals": "nb://notebook/123"}]},
+  {"op": "resources/read", "params": {"uri": "nb://notebook/123"}, "upstream": {"contents": [{"uri": "nb://notebook/123", "text": "content of nb://notebook/123"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "content of nb://notebook/123"}, {"path": "outcome.forward.params.uri", "equals": "nb://notebook/123"}]}
+ ]},
+{"name": "the same on the mux: the link carries the slug, so the read routes to its server", "route": "mux",
+ "servers": [{"slug": "a", "catalog": {"tools": [{"name": "open", "inputSchema": {"type": "object", "properties": {}}}]}}, {"slug": "b", "catalog": {"tools": [{"name": "t", "inputSchema": {"type": "object", "properties": {}}}]}}],
+ "steps": [
+  {"op": "tools/call", "params": {"name": "a__open", "arguments": {}}, "upstream": {"content": [{"type": "resource_link", "uri": "nb://notebook/123", "name": "nb"}]}, "expect": [{"path": "client.result.content[0].uri", "equals": "a+nb://notebook/123"}]},
+  {"op": "resources/read", "params": {"uri": "a+nb://notebook/123"}, "upstream": {"contents": [{"uri": "nb://notebook/123", "text": "content of nb://notebook/123"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "content of nb://notebook/123"}, {"path": "outcome.forward.slug", "equals": "a"}, {"path": "outcome.forward.params.uri", "equals": "nb://notebook/123"}]}
+ ]},
+{"name": "template forms real servers use: a path explosion and a query",
+ "servers": [{"slug": "gh", "catalog": {"resourceTemplates": [{"uriTemplate": "repo://{owner}/{repo}/contents{/path*}", "name": "contents"}, {"uriTemplate": "search://issues{?q,limit}", "name": "issues"}]}}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "repo://o/r/contents/docs/a.md"}, "upstream": {"contents": [{"uri": "repo://o/r/contents/docs/a.md", "text": "read repo://o/r/contents/docs/a.md"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "read repo://o/r/contents/docs/a.md"}, {"path": "outcome.forward.params.uri", "equals": "repo://o/r/contents/docs/a.md"}]},
+  {"op": "resources/read", "params": {"uri": "repo://o/r/contents"}, "upstream": {"contents": [{"uri": "repo://o/r/contents", "text": "read repo://o/r/contents"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "read repo://o/r/contents"}, {"path": "outcome.forward.params.uri", "equals": "repo://o/r/contents"}]},
+  {"op": "resources/read", "params": {"uri": "search://issues?q=bug&limit=5"}, "upstream": {"contents": [{"uri": "search://issues?q=bug&limit=5", "text": "read search://issues?q=bug&limit=5"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "read search://issues?q=bug&limit=5"}, {"path": "outcome.forward.params.uri", "equals": "search://issues?q=bug&limit=5"}]},
+  {"op": "resources/read", "params": {"uri": "search://issues"}, "upstream": {"contents": [{"uri": "search://issues", "text": "read search://issues"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "read search://issues"}, {"path": "outcome.forward.params.uri", "equals": "search://issues"}]}
+ ]},
+{"name": "a deny always wins: listed, unlisted and templated URIs under it never reach the server",
+ "servers": [{"slug": "a", "rules": [{"hook": "resources/filter", "when": "uri.startsWith('nb://secret/')", "then": {"decision": "'deny'"}}], "catalog": {"resources": [{"uri": "nb://index", "name": "nb://index"}, {"uri": "nb://secret/listed", "name": "nb://secret/listed"}], "resourceTemplates": [{"uriTemplate": "nb://{folder}/{name}", "name": "any"}]}}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources[*].uri", "equals": ["nb://index"]}]},
+  {"op": "resources/read", "params": {"uri": "nb://public/doc"}, "upstream": {"contents": [{"uri": "nb://public/doc", "text": "read nb://public/doc"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "read nb://public/doc"}]},
+  {"op": "resources/read", "params": {"uri": "nb://secret/listed"}, "expect": [{"path": "client.error", "exists": true}, {"path": "outcome.forward", "exists": false}]},
+  {"op": "resources/read", "params": {"uri": "nb://secret/key"}, "expect": [{"path": "client.error", "exists": true}, {"path": "outcome.forward", "exists": false}]},
+  {"op": "resources/read", "params": {"uri": "nb://secret/deeper/key"}, "expect": [{"path": "client.error", "exists": true}, {"path": "outcome.forward", "exists": false}]}
+ ]},
+{"name": "content the server returns under another URI for an allowed read is kept",
+ "servers": [{"slug": "a", "catalog": {"resources": [{"uri": "docs://guide", "name": "docs://guide"}]}}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "docs://guide"}, "upstream": {"contents": [{"uri": "https://docs.example.com/guide", "text": "hello"}]}, "expect": [{"path": "client.result.contents", "len": 1}, {"path": "client.result.contents[0].text", "equals": "hello"}]}
+ ]},
+{"name": "an encoded slash is not a slash: the encoded spelling is its own resource and reaches the server as written",
+ "servers": [{"slug": "a", "rules": [{"hook": "resources/result", "when": "uri == 'file:///a/b'", "then": {"text": "'shaped as the listed resource'"}}], "catalog": {"resources": [{"uri": "file:///a/b", "name": "file:///a/b"}]}}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "file:///a/b"}, "upstream": {"contents": [{"uri": "file:///a/b", "text": "listed"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "shaped as the listed resource"}]},
+  {"op": "resources/read", "params": {"uri": "file:///a%2Fb"}, "upstream": {"contents": [{"uri": "file:///a%2Fb", "text": "other"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "other"}, {"path": "outcome.forward.params.uri", "equals": "file:///a%2Fb"}]}
+ ]}
+]

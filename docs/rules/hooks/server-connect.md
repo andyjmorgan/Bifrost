@@ -12,7 +12,7 @@ By default, the gateway is anonymous to the upstream: it names itself `bifrost`,
 
 | Variable | Type | Description |
 | --- | --- | --- |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 This hook has no item, so there is no `upstream` variable.
 

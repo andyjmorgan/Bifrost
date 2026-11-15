@@ -22,7 +22,7 @@
 | `upstream` | map | The listed resource as the upstream sent it |
 | `args` | map | `{uri: <uri>}` |
 | `input` | map | The user's answers to this gateway's confirmations, by key. Empty on the first request |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

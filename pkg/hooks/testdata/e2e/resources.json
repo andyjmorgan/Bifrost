@@ -1,0 +1,69 @@
+[
+{"name": "resources/filter: hide a resource; reading it is not found", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/list, ref://secrets/key) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/filter", "when": "uri.startsWith('ref://secrets/')", "then": {"decision": "'deny'"}}]}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources[*].uri", "set": ["ref://docs/faq", "ref://docs/guide"]}]},
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found: ref://secrets/key"}]}
+ ]},
+{"name": "resources/modify: change a resource's title, description and annotations", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/list, ref://docs/guide) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/modify", "when": "uri == 'ref://docs/guide'", "then": {"title": "'The guide'", "description": "'How to start.'", "annotations.priority": "0.5", "annotations.audience": "['assistant']", "meta.source": "'wiki'"}}]}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources[uri=ref://docs/guide].title", "equals": "The guide"}, {"path": "client.result.resources[uri=ref://docs/guide].description", "equals": "How to start."}, {"path": "client.result.resources[uri=ref://docs/guide].annotations", "equals": {"audience": ["assistant"], "priority": 0.5}}, {"path": "client.result.resources[uri=ref://docs/guide]._meta.source", "equals": "wiki"}, {"path": "client.result.resources[uri=ref://docs/guide].name", "equals": "guide"}]},
+  {"op": "resources/read", "params": {"uri": "ref://docs/guide"}, "expect": [{"path": "client.result.contents[0].text", "equals": "# Guide\nSee ref://docs/faq and https://example.com/x."}]}
+ ]},
+{"name": "resources/read deny: deny a read with a reason; the resource stays listed", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/list, ref://docs/faq) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/read", "when": "uri == 'ref://docs/faq'", "then": {"decision": "'deny'", "reason": "'Use the search tool.'"}}]}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources[*].uri", "contains": "ref://docs/faq"}]},
+  {"op": "resources/read", "params": {"uri": "ref://docs/faq"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Use the search tool."}]}
+ ]},
+{"name": "resources/read confirm: confirm before a read: decline, then accept", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "client": {"capabilities": {"elicitation": {}}}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://secrets/key) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/read", "when": "uri.startsWith('ref://secrets/') && !has(input.ok)", "then": {"result": "elicit('ok', 'Share {uri}?', {'uri': uri})"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "answers": [{"action": "decline"}], "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Declined."}, {"path": "questions", "len": 1}, {"path": "questions[0].message", "equals": "Share \"ref://secrets/key\"?"}]},
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "answers": [{"action": "accept", "content": {"confirm": true}}], "expect": [{"path": "client.result.contents[0].text", "equals": "sk-test-123"}, {"path": "questions", "len": 1}, {"path": "questions[0].message", "equals": "Share \"ref://secrets/key\"?"}]}
+ ]},
+{"name": "resources/read confirm again: after an accepted confirmation, the next read asks again", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "client": {"capabilities": {"elicitation": {}}}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://secrets/key) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/read", "when": "uri.startsWith('ref://secrets/') && !has(input.ok)", "then": {"result": "elicit('ok', 'Share {uri}?', {'uri': uri})"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "answers": [{"action": "accept", "content": {"confirm": true}}], "expect": [{"path": "client.result.contents[0].text", "equals": "sk-test-123"}]},
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "answers": [{"action": "decline"}], "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "Declined."}, {"path": "questions", "len": 1}, {"path": "questions[0].message", "equals": "Share \"ref://secrets/key\"?"}]}
+ ]},
+{"name": "resources/result: rewrite read text; slugUris changes nothing on the direct route", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://docs/faq, ref://docs/guide) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/result", "when": "true", "then": {"text": "slugUris(regex.replace(result.text, 'FAQ', 'Questions'))"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://docs/faq"}, "expect": [{"path": "client.result.contents[0].text", "equals": "Questions"}, {"path": "client.result.contents[0].uri", "equals": "ref://docs/faq"}]},
+  {"op": "resources/read", "params": {"uri": "ref://docs/guide"}, "expect": [{"path": "client.result.contents[0].text", "equals": "# Guide\nSee ref://docs/faq and https://example.com/x."}]}
+ ]},
+{"name": "resources/result deny: withhold read content by pattern, with a reason", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://secrets/key, ref://docs/faq) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/result", "when": "result.text.startsWith('sk-')", "then": {"decision": "'deny'", "reason": "'The file holds a key and was withheld.'"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://secrets/key"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "The file holds a key and was withheld."}, {"path": "client", "lacksText": ["sk-test-123"]}]},
+  {"op": "resources/read", "params": {"uri": "ref://docs/faq"}, "expect": [{"path": "client.result.contents[0].text", "equals": "FAQ"}]}
+ ]},
+{"name": "templates/filter: hide a template; reads through it are not found", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/templates/list, ref://notes/7) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "templates/filter", "when": "uriTemplate.startsWith('ref://notes/')", "then": {"decision": "'deny'"}}]}],
+ "steps": [
+  {"op": "resources/templates/list", "expect": [{"path": "client.result.resourceTemplates", "len": 0}]},
+  {"op": "resources/read", "params": {"uri": "ref://notes/7"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found: ref://notes/7"}]}
+ ]},
+{"name": "templates/modify: change a template's title and description", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/templates/list, ref://notes/7) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "templates/modify", "when": "uriTemplate == 'ref://notes/{id}'", "then": {"title": "'A note'", "description": "'Replace {id} with the note number.'", "annotations": "{'audience': ['assistant'], 'priority': 0.1}", "meta.kind": "'note'"}}]}],
+ "steps": [
+  {"op": "resources/templates/list", "expect": [{"path": "client.result.resourceTemplates[uriTemplate=ref://notes/{id}].title", "equals": "A note"}, {"path": "client.result.resourceTemplates[uriTemplate=ref://notes/{id}].description", "equals": "Replace {id} with the note number."}, {"path": "client.result.resourceTemplates[uriTemplate=ref://notes/{id}].annotations", "equals": {"audience": ["assistant"], "priority": 0.1}}, {"path": "client.result.resourceTemplates[uriTemplate=ref://notes/{id}]._meta.kind", "equals": "note"}]},
+  {"op": "resources/read", "params": {"uri": "ref://notes/7"}, "expect": [{"path": "client.result.contents[0].text", "equals": "note 7"}]}
+ ]},
+{"name": "resources unlisted: an unlisted resource is readable unless denied", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (resources/list, ref://hidden/thing) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": []}],
+ "steps": [
+  {"op": "resources/list", "expect": [{"path": "client.result.resources", "exists": true}, {"path": "client.result.resources[*].uri", "notContains": "ref://hidden/thing"}]},
+  {"op": "resources/read", "params": {"uri": "ref://hidden/thing"}, "expect": [{"path": "client.result.contents[0].text", "equals": "hidden thing"}]}
+ ]},
+{"name": "resources close folder: a prefix deny closes a folder: templated and unlisted URIs alike", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (ref://notes/7, ref://hidden/thing, ref://docs/faq) over a wire; the engine harness has no connection to a real server."}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "resources/filter", "when": "uri.startsWith('ref://notes/') || uri.startsWith('ref://hidden/')", "then": {"decision": "'deny'"}}]}],
+ "steps": [
+  {"op": "resources/read", "params": {"uri": "ref://notes/7"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found: ref://notes/7"}]},
+  {"op": "resources/read", "params": {"uri": "ref://hidden/thing"}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "not found: ref://hidden/thing"}]},
+  {"op": "resources/read", "params": {"uri": "ref://docs/faq"}, "expect": [{"path": "client.result.contents[0].text", "equals": "FAQ"}]}
+ ]}
+]

@@ -40,7 +40,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call create_issue is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.jira), which only the raw client can see."}], 
     "op": "tools/call",
     "params": {
      "name": "create_issue",
@@ -92,7 +92,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"project\": {\"action\": \"accept\", \"content\": {\"p\": \"OPS\"}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "create_issue",
@@ -155,7 +155,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "create_issue"
@@ -263,7 +263,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The reply to this tools/call checkout is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.resultType), which only the raw client can see."}, {"harness": "python-sdk", "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}], 
     "op": "tools/call",
     "params": {
      "name": "checkout"
@@ -339,7 +339,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.a), which only the raw client can see."}, {"harness": "python-sdk", "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (problems.a) is never returned."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (problems.a) is never returned."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -427,7 +427,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.inputRequests.q.params.message), which only the raw client can see."}, {"harness": "python-sdk", "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.inputRequests.q.params.message) is never returned."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.inputRequests.q.params.message) is never returned."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -457,7 +457,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"p\": \"OPS\"}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}, {"harness": ["python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"accept\", \"content\": {\"p\": \"OPS\"}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -486,7 +486,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The upstream answers this tools/call t with input_required that carries state and no questions. The Go SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "python-sdk", "reason": "The upstream answers this tools/call t with input_required that carries state and no questions. The Python SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}], 
     "op": "tools/call",
     "params": {
      "name": "t"

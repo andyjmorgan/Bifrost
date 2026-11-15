@@ -16,7 +16,7 @@ An upstream asks for input only if the gateway advertised elicitation to it, whi
 | `args` | map | The arguments as sent upstream: upstream argument names, with `prompts/get` patches applied |
 | `name`, `title`, `description`, `arguments`, `meta`, `icons` | Various | The exposed prompt |
 | `upstream` | map | The prompt as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

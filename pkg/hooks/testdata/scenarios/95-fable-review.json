@@ -31,6 +31,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -43,6 +53,16 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -106,6 +126,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -118,6 +148,16 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"cancel\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -181,6 +221,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -193,6 +243,16 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": \u2026). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -262,6 +322,20 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": "go-sdk",
+      "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (reply.result.resultType), which only the raw client can see."
+     },
+     {
+      "harness": "python-sdk",
+      "reason": "The upstream's input request in this step does not pass the Python SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."
+     },
+     {
+      "harness": "typescript-sdk",
+      "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -290,6 +364,19 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": "go-sdk",
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     },
+     {
+      "harness": [
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"q\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t",
@@ -364,6 +451,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+     }
+    ],
     "op": "config",
     "expect": [
      {
@@ -449,6 +546,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+     }
+    ],
     "op": "config",
     "expect": [
      {
@@ -534,6 +641,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+     }
+    ],
     "op": "config",
     "expect": [
      {
@@ -619,6 +736,16 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+     }
+    ],
     "op": "config",
     "expect": [
      {
@@ -1483,6 +1610,20 @@
   ],
   "steps": [
    {
+    "exclude": [
+     {
+      "harness": "go-sdk",
+      "reason": "The upstream's result holds a content block of a type the SDK does not know (video). The engine passes it on unchanged, and the Go SDK then rejects the whole result, so the client sees a failure where this step expects the block."
+     },
+     {
+      "harness": "python-sdk",
+      "reason": "The upstream's result holds a content block of a type the SDK does not know (video). The engine passes it on unchanged, and the Python SDK then rejects the whole result, so the client sees a failure where this step expects the block."
+     },
+     {
+      "harness": "typescript-sdk",
+      "reason": "The upstream's result holds a content block of a type the SDK does not know (video). The engine passes it on unchanged, and the TypeScript SDK then rejects the whole result, so the client sees a failure where this step expects the block."
+     }
+    ],
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -1606,6 +1747,16 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply to this resources/read file:///secrets/key is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."
+     }
+    ],
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/key"
@@ -1626,6 +1777,16 @@
     }
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.1.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": \u2026). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+     }
+    ],
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/key",
@@ -1663,6 +1824,16 @@
     ]
    },
    {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "The reply to this resources/read file:///secrets/key is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."
+     }
+    ],
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/key"
@@ -1685,6 +1856,755 @@
       }
      ]
     }
+   }
+  ]
+ },
+ {
+  "name": "FR-F no flags on the direct route: rules see every flag as false",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "plain"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-F no flags on the mux: rules see every flag as false",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "a__t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "plain"
+     }
+    ]
+   }
+  ],
+  "route": "mux"
+ },
+ {
+  "name": "FR-F the cli flag on the direct route",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "cli on direct"
+     }
+    ]
+   }
+  ],
+  "flags": {
+   "cli": true
+  }
+ },
+ {
+  "name": "FR-F the cli flag on the mux",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "a__t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "cli on mux"
+     }
+    ]
+   }
+  ],
+  "route": "mux",
+  "flags": {
+   "cli": true
+  }
+ },
+ {
+  "name": "FR-F the search flag on the direct route does not change the route",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "execute_tool",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "search on direct"
+     }
+    ]
+   }
+  ],
+  "flags": {
+   "search": true
+  }
+ },
+ {
+  "name": "FR-F the search flag on the mux does not change the route",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "execute_tool",
+    "params": {
+     "name": "a__t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "search on mux"
+     }
+    ]
+   }
+  ],
+  "route": "mux",
+  "flags": {
+   "search": true
+  }
+ },
+ {
+  "name": "FR-F both flags at once, on the mux",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "execute_tool",
+    "params": {
+     "name": "a__t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "both on mux"
+     }
+    ]
+   }
+  ],
+  "route": "mux",
+  "flags": {
+   "search": true,
+   "cli": true
+  }
+ },
+ {
+  "name": "FR-F the older spelling of search mode reads as the mux with the search flag",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "cli only",
+      "hook": "tools/result",
+      "when": "flags.cli && !flags.search",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+      }
+     },
+     {
+      "name": "search only",
+      "hook": "tools/result",
+      "when": "flags.search && !flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+      }
+     },
+     {
+      "name": "both",
+      "hook": "tools/result",
+      "when": "flags.search && flags.cli",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+      }
+     },
+     {
+      "name": "never",
+      "hook": "tools/result",
+      "when": "route == 'search'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "execute_tool",
+    "params": {
+     "name": "a__t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "search on mux"
+     }
+    ]
+   }
+  ],
+  "route": "search"
+ },
+ {
+  "name": "FR-F a flag that does not exist is refused when the rule is saved",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "flags.serach",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "contains": "unknown flag"
+     },
+     {
+      "path": "outcome.result.tools",
+      "equals": []
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "typescript-sdk",
+      "reason": "The rule in this case does not compile, so the entitlement is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-F flags are read by name, not searched as a list",
+  "ids": [
+   "FR-F"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "'search' in flags",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "contains": "read a flag by name"
+     },
+     {
+      "path": "outcome.result.tools",
+      "equals": []
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "typescript-sdk",
+      "reason": "The rule in this case does not compile, so the entitlement is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
+     }
+    ]
    }
   ]
  }

@@ -24,7 +24,6 @@ func codexV3ReadSetup(t *testing.T, rules ...Rule) (*Engine, Request, *mcp.ReadR
 }
 
 func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
-	knownGap(t)
 	for _, hook := range []string{"resources/filter", "resources/read", "resources/result"} {
 		for _, field := range []string{"name", "mimeType"} {
 			t.Run(hook+"/"+field, func(t *testing.T) {
@@ -45,7 +44,6 @@ func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
 }
 
 func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
-	knownGap(t)
 	for _, hook := range []string{"resources/input", "resources/progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
@@ -58,7 +56,7 @@ func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
 			if hook == "resources/input" {
 				o := e.UpstreamReadReply(context.Background(), r, first.Call, p, json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"Give me the password","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`))
 				if o.Error == nil || o.Result != nil {
-					t.Fatalf("input hook treated absent name as empty and relayed the question: %+v", o)
+					t.Fatalf("input hook treated absent name as empty and relayed the question: result type=%T error=%v", o.Result, o.Error)
 				}
 			} else {
 				u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1,"message":"sensitive"}`), resultEvent(`{"contents":[]}`)}}
@@ -72,7 +70,6 @@ func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
 }
 
 func TestCodexV3PrefixlessUnsupportedTemplateDeny(t *testing.T) { // V3-G03
-	knownGap(t)
 	e, r, p := codexV3ReadSetup(t, Rule{Hook: "templates/filter", When: "true", Then: map[string]string{"decision": "'deny'"}})
 	// RFC 6570 expansion: base="file:///secret.txt", q="x".
 	r.Servers[0].Catalog.Templates = []*mcp.ResourceTemplate{{Name: "any", URITemplate: "{+base}{?q}"}}
@@ -88,7 +85,6 @@ func TestCodexV3PrefixlessUnsupportedTemplateDeny(t *testing.T) { // V3-G03
 }
 
 func TestCodexV3NativeSchemeAmbiguityIsNotDiscarded(t *testing.T) { // V3-G04
-	knownGap(t)
 	e, r, p := codexV3ReadSetup(t)
 	r.Route, r.Servers[0].Slug = "mux", "git"
 	p.URI = "git+ssh://host/repo"
@@ -102,7 +98,6 @@ func TestCodexV3NativeSchemeAmbiguityIsNotDiscarded(t *testing.T) { // V3-G04
 }
 
 func TestCodexV3StreamCleanupPanicCannotSendSecondFinal(t *testing.T) { // V3-G05
-	knownGap(t)
 	c := newStreamCase(t, "direct", nil, Limits{})
 	var reported int
 	c.e.OnFault = func(Fault) { reported++ }
@@ -125,7 +120,6 @@ func TestCodexV3StreamCleanupPanicCannotSendSecondFinal(t *testing.T) { // V3-G0
 }
 
 func TestCodexV3ProgressRewriteRespectsSizeCap(t *testing.T) { // V3-G06
-	knownGap(t)
 	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/progress", When: "true", Then: map[string]string{"message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
 	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1,"message":"small"}`), resultEvent(`{"content":[]}`)}}
 	got := c.run(u)
@@ -140,7 +134,6 @@ func TestCodexV3ProgressRewriteRespectsSizeCap(t *testing.T) { // V3-G06
 }
 
 func TestCodexV3ProgressPanicReachesFaultCallback(t *testing.T) { // V3-G07
-	knownGap(t)
 	c := newStreamCase(t, "direct", nil, Limits{})
 	c.call.Server.Rules = boomSet(t, "tools/progress", false)
 	var faults []Fault
@@ -156,12 +149,11 @@ func TestCodexV3ProgressPanicReachesFaultCallback(t *testing.T) { // V3-G07
 }
 
 func TestCodexV3PublicSetListingDoesNotPanic(t *testing.T) { // V3-G08
-	knownGap(t)
 	for _, workers := range []int{1, 2} {
 		t.Run(fmt.Sprint(workers), func(t *testing.T) {
 			defer func() {
 				if p := recover(); p != nil {
-					t.Errorf("exported Set.ListTools lets panic reach its caller: %v", p)
+					t.Errorf("exported Set.ListTools lets panic reach its caller: %T", p)
 				}
 			}()
 			// JSON catalogs can contain null entries; the Engine wrapper handles it.
@@ -178,7 +170,6 @@ func TestCodexV3PublicSetListingDoesNotPanic(t *testing.T) { // V3-G08
 }
 
 func TestCodexV3UnknownRecordCannotContainPayloadKeys(t *testing.T) { // V3-G09
-	knownGap(t)
 	c := newStreamCase(t, "direct", nil, Limits{})
 	const secret = "synthetic-customer-secret@example.invalid"
 	var recorded []Unknown
@@ -198,7 +189,6 @@ func TestCodexV3UnknownRecordCannotContainPayloadKeys(t *testing.T) { // V3-G09
 }
 
 func TestCodexV3UnknownNotificationsSurviveLostReply(t *testing.T) { // V3-G10
-	knownGap(t)
 	c := newStreamCase(t, "direct", nil, Limits{})
 	var recorded []Unknown
 	c.e.OnUnknown = func(u Unknown) { recorded = append(recorded, u) }

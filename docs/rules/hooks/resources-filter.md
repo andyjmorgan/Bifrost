@@ -25,9 +25,9 @@ All of these places use one [visibility check](overview.md#resources-and-templat
 | `size` | int | The size in bytes, or `0` |
 | `icons` | list | The resource's icons, or `[]` |
 | `upstream` | map | The resource as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
-When a read names a URI that no listing contains, such as a file reached through a template, only `uri` has a value. Every other field is empty.
+When a read names a URI that no listing contains, such as a file reached through a template or a link in a tool result, only `uri` is available. Every other field, and every field of `upstream` except `uri`, is unavailable: a rule that reads one fails, and a rule that fails refuses the read.
 
 ## Fields
 

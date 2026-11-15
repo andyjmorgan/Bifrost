@@ -19,7 +19,7 @@
 | `args` | map | The exact arguments forwarded upstream, under upstream names, after call patches and pins |
 | `name`, `title`, `description`, `annotations`, `annotationsRaw`, `meta`, `inputSchema`, `outputSchema`, `icons` | Various | The exposed tool |
 | `upstream` | map | The tool as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

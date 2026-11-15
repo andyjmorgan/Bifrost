@@ -76,10 +76,10 @@ type HookSpec struct {
 }
 
 // CommonVars are visible in every hook. None of them is writable.
-var CommonVars = []string{"server", "entitlement", "caller", "client", "route", "now"}
+var CommonVars = []string{"server", "entitlement", "caller", "client", "route", "flags", "now"}
 
 // DynamicVars make a rule depend on the request rather than the catalog.
-var DynamicVars = map[string]bool{"caller": true, "client": true, "route": true, "now": true, "args": true, "input": true, "result": true, "request": true, "progress": true}
+var DynamicVars = map[string]bool{"caller": true, "client": true, "route": true, "flags": true, "now": true, "args": true, "input": true, "result": true, "request": true, "progress": true}
 
 // ItemFields are the top-level variables for each item kind. Every item hook
 // also gets `upstream`, the item exactly as the upstream sent it.

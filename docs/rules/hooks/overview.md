@@ -147,7 +147,7 @@ Each hook works on one kind of item: a tool, prompt, resource, template, skill e
 - The item's current fields are top-level variables, such as `name`, `description` and `inputSchema`. They hold the item as earlier rules left it.
 - `upstream` holds the item exactly as the upstream sent it. It never changes. Match `upstream.name` when a rule must keep working after a rename. Match `name` when a rule builds on earlier rules.
 - `args`, `input`, `request` and `result` hold the request or response the hook handles. Rules change them only through the hook's fields, such as `args.limit` or `message`.
-- `server`, `entitlement`, `caller`, `client`, `route` and `now` are read-only in every hook.
+- `server`, `entitlement`, `caller`, `client`, `route`, `flags` and `now` are read-only in every hook.
 - A field the upstream left out reads as an empty value: `''` for text, `{}` for objects and `[]` for lists. `meta` reads `_meta`, or `{}` when there is none.
 
 Anything a rule adds to `meta` reaches the client unless a later rule removes it. Setting a `meta.<key>` field to `null` removes that key.
@@ -162,10 +162,31 @@ Every hook can read these variables:
 | `entitlement` | map | `id`, `slug`, `name` of the entitlement serving the request |
 | `caller` | map | The caller's identity, as the gateway supplies it. The engine treats it as opaque, so the fields depend on the gateway. Expect `userId` and `email`; guard any other field with `has()` |
 | `client` | map | `name`, `version`, `capabilities`, from the current request's `_meta`. `capabilities` is always present, and is `{}` when the client sent none |
-| `route` | string | `direct`, `mux` or `search` |
+| `route` | string | `direct` or `mux`. The two are exclusive |
+| `flags` | struct | The request's switches, read by name: `flags.search`, `flags.cli`. See [Flags](#flags) |
 | `now` | timestamp | The time of the request |
 
 If the gateway supplies a verified OAuth client id on `caller`, use it for security decisions about the client. `client.name` and `client.version` are self-reported.
+
+### Flags
+
+A request reaches the gateway by one route, `direct` or `mux`, and can also carry flags. A flag is a switch on the request that is independent of the route: any flag can be on for either route.
+
+| Flag | Type | True when |
+| --- | --- | --- |
+| `flags.search` | bool | The request is in search mode, set with `?search=true`. The gateway offers its search tools in place of the full listing |
+| `flags.cli` | bool | The request comes from the command line client, through the gateway's API. The request does not come in through MCP, but the call the gateway sends upstream is the same |
+
+- Read a flag by name, as `flags.search`. Every flag is always present, and is `false` when the request did not set it, so no `has()` guard is needed.
+- A name that is not a flag is refused when the rule is saved. `flags.serach` does not compile, and neither does `'search' in flags`.
+- New flags are added to this list over time. A rule that does not mention a flag is not affected by it.
+- A flag is something the client says about its own request. Use it to tailor behaviour. A rule that relaxes a deny because a flag is set is trusting the caller.
+
+```
+route == 'mux' && flags.search && !flags.cli
+```
+
+The command `hookctl hooks` prints, for every hook, the variables its rules can read and the fields they can set, including the flags, as JSON.
 
 `client.capabilities` is safe to branch on, because the client declares it on every request. `has(client.capabilities.elicitation)` never fails to evaluate: it is false when the client sent no capabilities.
 
@@ -284,11 +305,13 @@ Search mode uses the same pipeline, so it can never expose a tool that the flat 
 - `get_tool_definition`: the exposed definition. Names match exactly, including case.
 - `execute_tool`: a `tools/call`, with every step listed above.
 
-Tool names carry the `<slug>__` prefix only on the mux route. On the direct route, search returns the names that route lists, so they work in `execute_tool` and `tools/call` unchanged. In search mode on the mux route, `route` is `search`.
+Tool names carry the `<slug>__` prefix only on the mux route. On the direct route, search returns the names that route lists, so they work in `execute_tool` and `tools/call` unchanged. Search mode does not change `route`: it stays `direct` or `mux`, and `flags.search` is `true`.
 
 ### Notifications
 
-The gateway forwards progress notifications on a request's own response stream when the `progress` switch in `server/config` allows it. No rules run on notifications. The gateway sends no change notifications. Clients stay current through `ttlMs`.
+A server may answer a request with a stream: notifications first, then the result. The gateway relays progress notifications from that stream when the client sent a progress token, the `progress` switch in [server/config](server-config.md) is on, and the server speaks MCP 2026-07-28. Each progress event passes through the progress hook for its kind of request, [tools/progress](tools-progress.md), [prompts/progress](prompts-progress.md) or [resources/progress](resources-progress.md), which can drop it or reword its message.
+
+Log messages and every other notification on the stream are dropped; no rule runs on them. The gateway sends no change notifications. Clients stay current through `ttlMs`.
 
 ## Mux URIs
 
@@ -410,6 +433,7 @@ Tool hooks:
 - [tools/modify](tools-modify.md): tool names, text, annotations and parameters
 - [tools/call](tools-call.md): call decisions, argument patches and confirmations
 - [tools/input](tools-input.md): upstream requests for user input during a call
+- [tools/progress](tools-progress.md): progress events during a call
 - [tools/result](tools-result.md): the shape of tool results
 
 Prompt hooks:
@@ -418,6 +442,7 @@ Prompt hooks:
 - [prompts/modify](prompts-modify.md): prompt names, text and arguments
 - [prompts/get](prompts-get.md): `prompts/get` decisions, argument patches and confirmations
 - [prompts/input](prompts-input.md): upstream requests for user input during `prompts/get`
+- [prompts/progress](prompts-progress.md): progress events during `prompts/get`
 
 Resource, template and skill hooks:
 
@@ -427,5 +452,6 @@ Resource, template and skill hooks:
 - [templates/modify](templates-modify.md): template text and annotations
 - [resources/read](resources-read.md): read decisions and confirmations
 - [resources/input](resources-input.md): upstream requests for user input during a read
+- [resources/progress](resources-progress.md): progress events during a read
 - [resources/result](resources-result.md): the content of read results and skill files
 - [skills/filter](skills-filter.md): which skills and skill folders are visible

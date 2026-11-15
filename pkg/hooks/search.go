@@ -39,7 +39,7 @@ func (e *Engine) exposedCatalog(ctx context.Context, r Request) ([]toolsearch.Do
 		} else {
 			title, desc = "", ""
 		}
-		tl := s.Rules.ListTools(ctx, s.Catalog.Tools, r.context(s), e.Limits.Workers)
+		tl := s.Rules.listTools(ctx, s.Catalog.Tools, r.context(s), e.Limits.Workers, "")
 		hits = append(hits, tl.Hits...)
 		for _, et := range tl.Tools {
 			docs = append(docs, toolsearch.Doc{Namespace: s.Slug, ServerName: title, ServerDesc: desc, Instructions: instr, Tool: et.Tool})

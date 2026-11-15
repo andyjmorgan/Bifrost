@@ -400,7 +400,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send resources/list when the discover result did not advertise the resources capability. In this case discovery advertises none, so the request this step asserts on is never made."}], 
     "op": "resources/list",
     "expect": [
      {
@@ -840,7 +840,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read file:///secrets/db.txt is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.vault), which only the raw client can see."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/db.txt"
@@ -856,7 +856,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"decline\"}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/db.txt",
@@ -881,7 +881,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read file:///secrets/db.txt is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/db.txt"
@@ -893,7 +893,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/db.txt",
@@ -914,7 +914,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read file:///secrets/db.txt is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///secrets/db.txt"
@@ -926,7 +926,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///secrets/db.txt cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "file:///secrets/db.txt",
@@ -1015,7 +1015,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of skill://notebooks/ cannot be sent."}], 
     "op": "resources/directory/read",
     "caller": {
      "type": "key"
@@ -1076,7 +1076,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this resources/read drive://shared/plan.doc is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (problems.drive), which only the raw client can see."}], 
     "op": "resources/read",
     "params": {
      "uri": "drive://shared/plan.doc"
@@ -1113,7 +1113,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.reply.result.requestState}\"; inputResponses {\"why\": {\"action\": \"accept\", \"content\": {\"r\": \"review\"}}}). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], 
     "op": "resources/read",
     "params": {
      "uri": "drive://shared/plan.doc",
@@ -1465,7 +1465,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "resources/result E4 skill files are rewritten at list time with digests recomputed",
   "servers": [
    {
@@ -1533,7 +1533,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
   "name": "resources/result nuance: a rule that reads the caller is not applied to skill files",
   "servers": [
    {
@@ -1594,7 +1594,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "skills/filter E1 allow list by name",
   "servers": [
    {
@@ -1729,7 +1729,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "skills/filter E2 deny one of two skills with the same name",
   "servers": [
    {
@@ -1784,7 +1784,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "skills/filter E3 deny by frontmatter",
   "servers": [
    {
@@ -1859,7 +1859,7 @@
    }
   ]
  },
- {
+ {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
   "name": "skills/filter nuance: nested skills go with the parent; directory reads drop denied folders",
   "servers": [
    {
@@ -2172,7 +2172,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "go-sdk", "reason": "The upstream answers this resources/read file:///a.md with input_required that carries state and no questions. The Go SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "python-sdk", "reason": "The upstream answers this resources/read file:///a.md with input_required that carries state and no questions. The Python SDK takes that as 'try again' and sends the request again by itself, so its caller sees the later result, not the input_required reply this step checks."}, {"harness": "typescript-sdk", "reason": "The upstream's input request in this step does not pass the TypeScript SDK's own validation of elicitation requests, so the call fails at the client and the input_required reply this step checks (reply.result.resultType) is never returned."}], 
     "op": "resources/read",
     "params": {
      "uri": "file:///a.md"
@@ -2224,7 +2224,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of file:///repo/ cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "file:///repo/"

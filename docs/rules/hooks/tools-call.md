@@ -47,7 +47,7 @@ The gateway applies `additionalProperties: false` at the level where the schema 
 | `input` | map | The user's answers to this gateway's confirmations, by key. Each answer is a map such as `{action: 'accept', content: {confirm: true}}`. Empty on the first request |
 | `name`, `title`, `description`, `annotations`, `annotationsRaw`, `meta`, `inputSchema`, `outputSchema`, `params`, `icons` | Various | The exposed tool, after `tools/modify` |
 | `upstream` | map | The tool as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `now` | Various | The [common variables](overview.md#common-variables) |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
 ## Fields
 

@@ -63,7 +63,7 @@
    {"name":"ask","hook":"tools/call","when":"args.limit == 100 && !has(input.ok)","then":{"result":"elicit('ok', 'Proceed?')"}},
    {"name":"after","hook":"tools/call","when":"true","then":{"decision":"'deny'"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object","properties":{"limit":{"type":"number"},"note":{"type":"string"}}}}]}}],
- "steps":[{"op":"tools/call","params":{"name":"t","arguments":{"limit":500}},"expect":[
+ "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], "op":"tools/call","params":{"name":"t","arguments":{"limit":500}},"expect":[
    {"path":"outcome.result.resultType","equals":"input_required"},
    {"path":"outcome.hits[*].rule","equals":["clamp","double","ask"]}]}]},
 {"name":"RH-EVAL-11 each item runs on its own","ids":["RH-EVAL-11"],

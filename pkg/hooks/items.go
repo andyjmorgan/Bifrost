@@ -29,11 +29,20 @@ func toMap(v any) map[string]any {
 }
 
 func (it *item) resolve(name string) (any, bool) {
+	if it.bare {
+		// Only the URI is known. `upstream` is the same one field: it must
+		// not be filled in with empty defaults, or `upstream.name == 'x'`
+		// would quietly be false where it should fail.
+		switch name {
+		case "uri":
+			return it.id, true
+		case "upstream":
+			return map[string]any{"uri": it.id}, true
+		}
+		return nil, false
+	}
 	if name == "upstream" {
 		return derived(it.kind, it.view.Upstream()), true
-	}
-	if it.bare && name != "uri" {
-		return nil, false
 	}
 	for _, f := range ItemFields[it.kind] {
 		if f != name {

@@ -108,7 +108,7 @@
      }
     ]
    },
-   {
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK returns the result without its resultType field, and this step compares the whole result, resultType included."}], 
     "op": "tools/call",
     "params": {
      "name": "t"
@@ -218,7 +218,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "resources/directory/read is the directory-read method of the Skills extension, and the SDK has no call for it, so the read of skill://w/ cannot be sent."}], 
     "op": "resources/directory/read",
     "params": {
      "uri": "skill://w/"
@@ -316,7 +316,7 @@
    }
   ],
   "steps": [
-   {
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities) cannot be read through it."}], 
     "op": "discover",
     "expect": [
      {
