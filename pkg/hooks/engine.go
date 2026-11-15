@@ -9,6 +9,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -36,6 +37,23 @@ type Server struct {
 	// Broken holds the reason the entitlement's rules do not compile. A
 	// broken entitlement fails closed: it exposes nothing.
 	Broken error
+}
+
+// ProtocolCurrent is the protocol version the gateway's front door speaks.
+// An upstream may speak any version, but only one on this version can be
+// offered elicitation and progress. A server on an older version, or one
+// whose version is not known, gets neither, whatever the rules say: those
+// features work differently before this version, and the gateway does not
+// translate them.
+const ProtocolCurrent = "2026-07-28"
+
+// current reports whether the upstream speaks the front door's version.
+func (s *Server) current() bool { return s != nil && s.Info.ProtocolVersion == ProtocolCurrent }
+
+// gateHit records a setting the gateway overrode, so an administrator can
+// see why a rule had no effect.
+func gateHit(hook, slug, field, reason string) Hit {
+	return Hit{Hook: hook, Rule: "(gateway)", Item: slug, Mode: ModeEnforce, Effect: "set", Fields: []string{field}, Reason: reason}
 }
 
 // ServerInfo is what discover said about the upstream.
@@ -68,6 +86,17 @@ type Limits struct {
 	Workers          int           `json:"workers,omitempty"`
 	CostLimit        uint64        `json:"costLimit,omitempty"`   // CEL cost per evaluation; 0 = DefaultCostLimit
 	AuditBudget      time.Duration `json:"auditBudget,omitempty"` // time for audit rules in one request; 0 = 100ms
+	// ProgressBudget is the time for progress rules across one reply
+	// stream; 0 means the same as Budget. When it is spent, later progress
+	// events are dropped and the final response keeps its own Budget.
+	ProgressBudget time.Duration `json:"progressBudget,omitempty"`
+}
+
+func (l Limits) progressBudget() time.Duration {
+	if l.ProgressBudget <= 0 {
+		return l.budget()
+	}
+	return l.ProgressBudget
 }
 
 func (l Limits) maxBytes() int {
@@ -104,6 +133,22 @@ type Engine struct {
 	Limits Limits
 	// Version is the gateway version sent upstream in clientInfo.
 	Version string
+	// OnFault, if set, is called once for every panic the engine catches.
+	// The same record is on the Outcome; the callback is for gateways that
+	// want one place to log from.
+	OnFault func(Fault)
+	// OnUnknown, if set, is called for each thing the engine did not
+	// recognise: an unfamiliar content block, notification, result type,
+	// input request or template form. The same records are on the Outcome.
+	OnUnknown func(Unknown)
+	// States holds the gateway's own confirmation challenges. Nil means the
+	// in-memory stand-in, which is only correct for a single instance.
+	// TODO: the gateway supplies a shared store here (a Redis TTL key or
+	// similar) before it runs more than one instance.
+	States StateStore
+
+	memOnce sync.Once
+	mem     *MemoryStates
 }
 
 func (e *Engine) version() string {
@@ -166,7 +211,7 @@ func (e *RPCError) Error() string { return fmt.Sprintf("%d: %s", e.Code, e.Messa
 // Error codes.
 const (
 	CodeInvalidParams = -32602
-	CodeUnknownTool   = -32004
+	CodeUnknownTool   = -32602 // the spec's code for an unknown tool; -32004 is the Go SDK's own "server is closing"
 	CodeTooLarge      = -32013
 )
 
@@ -205,6 +250,12 @@ type Outcome struct {
 	Call *CallContext `json:"-"`
 	// Fallback is set when an unprefixed URI went through fallback resolution.
 	Fallback *FallbackEvent `json:"fallback,omitempty"`
+	// Fault is set when the engine caught a panic while handling the
+	// request. The gateway should log it.
+	Fault *Fault `json:"fault,omitempty"`
+	// Unknown lists what the engine did not recognise in this request, by
+	// shape and never by value. The gateway should log it for investigation.
+	Unknown []Unknown `json:"unknown,omitempty"`
 }
 
 // CallContext is the immutable record of a forwarded request: the server,
@@ -262,7 +313,8 @@ type ListedTools struct {
 
 // ListTools lists every server's exposed tools. On the mux, names are
 // prefixed slug__name. Output is ordered by slug a-z, then name a-z.
-func (e *Engine) ListTools(parent context.Context, r Request) Outcome {
+func (e *Engine) ListTools(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "tools/list", callRef{method: "tools/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	res := &mcp.ListToolsResult{Tools: []*mcp.Tool{}}
@@ -342,7 +394,8 @@ func (e *Engine) resolveTool(ctx context.Context, r Request, name string) (*Serv
 // CallTool runs the call side of a tools/call: resolve, effective arguments,
 // call rules, reversal. It returns either a result for the client (a deny,
 // an elicitation, an error) or the request to forward upstream.
-func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolParamsRaw) Outcome {
+func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolParamsRaw) (ret Outcome) {
+	defer e.recovered(&ret, "tools/call", toolCallRef(p))
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	s, et, hits, err := e.resolveTool(ctx, r, p.Name)
@@ -368,6 +421,11 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	}
 	hash := argsHash(args)
 	st, answers, upResponses, serr := e.continuation(r, s, "tools/call", tr.Upstream, hash, p.RequestState, p.InputResponses)
+	if serr == errDeclined {
+		o.Hits = append(o.Hits, declinedHit("tools/call", tr.Exposed))
+		o.Result = toolError(errDeclined.Message)
+		return o
+	}
 	if serr != nil {
 		o.Error = serr
 		return o
@@ -611,9 +669,21 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		}
 		return nil, answers, nil, nil
 	}
-	st, err := e.Signer.Open(token)
-	if err != nil {
-		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
+	var st State
+	if isStateKey(token) {
+		// A gateway confirmation. Taking it removes it, so it can be answered
+		// once, whether or not the answer turns out to be valid.
+		var ok bool
+		if st, ok = e.states().Take(token); !ok {
+			return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
+		}
+	} else {
+		// The signed envelope around an upstream's own state. It never
+		// carries a gateway confirmation.
+		var err error
+		if st, err = e.Signer.Open(token); err != nil || len(st.Pending) > 0 {
+			return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
+		}
 	}
 	now := r.Now
 	if now.IsZero() {
@@ -648,7 +718,11 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 			if !pending[key] {
 				return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: fmt.Sprintf("no pending input request %q", k)}
 			}
-			answers[key] = responseMap(v)
+			answer := responseMap(v)
+			if !confirmed(answer) {
+				return nil, nil, nil, errDeclined
+			}
+			answers[key] = answer
 			continue
 		}
 		if !upPending[k] {
@@ -660,6 +734,28 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		upstream[k] = v
 	}
 	return &st, answers, upstream, nil
+}
+
+// errDeclined is returned when the user answered a gateway confirmation
+// with anything but yes. The request stops here: it is never forwarded and
+// no rule sees the answer.
+var errDeclined = &RPCError{Code: CodeInvalidParams, Message: "Declined."}
+
+// confirmed reports a gateway confirmation answered with accept and the
+// confirm box ticked. A decline, a cancel, an accept with the box unticked
+// and an accept with no content are all a no.
+func confirmed(answer map[string]any) bool {
+	if answer["action"] != "accept" {
+		return false
+	}
+	content, _ := answer["content"].(map[string]any)
+	yes, _ := content["confirm"].(bool)
+	return yes
+}
+
+// declinedHit records a refused confirmation for the audit trail.
+func declinedHit(hook, item string) Hit {
+	return Hit{Hook: hook, Rule: "(confirmation)", Item: item, Mode: ModeEnforce, Effect: "deny", Reason: "the user did not confirm"}
 }
 
 func responseMap(v any) map[string]any {
@@ -706,7 +802,9 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 			"required":   []string{"confirm"},
 		},
 	}}
-	return InputRequired{InputRequests: reqs, RequestState: e.Signer.Seal(st)}, nil
+	key = newStateKey()
+	e.states().Put(key, st, StateTTL)
+	return InputRequired{InputRequests: reqs, RequestState: key}, nil
 }
 
 // InputRequired is an input_required result (2026-07-28 multi round trip).

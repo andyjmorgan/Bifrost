@@ -1,0 +1,11 @@
+{
+  "name": "bifrost-harness-ts-client-driver",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Subprocess driver that puts the official TypeScript MCP client SDK behind the harness's line protocol.",
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}

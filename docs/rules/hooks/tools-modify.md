@@ -49,7 +49,7 @@ No field stops evaluation. Changes chain. `dropSchema(schema, paths)` is availab
 
 - `tools/list` and the search tools show the modified tool.
 - A parameter with a pin or a default is no longer listed as required.
-- The old name of a renamed tool returns `-32004`, `unknown tool <name>`.
+- The old name of a renamed tool returns `-32602`, `unknown tool <name>`.
 
 On a call, invalid arguments return `-32602` with one of these messages:
 
@@ -106,7 +106,7 @@ A rule that fails, such as a rename that collides, hides the tool. The listing r
 ]
 ```
 
-`confluence_search` is listed as `search`, with `readOnlyHint: true` and the description `Search pages. (ENG space only)`. A call to `search` reaches the upstream as `confluence_search`. A call to `confluence_search` returns `-32004`. The second rule matches `upstream.name`, so it keeps working whatever the first rule does.
+`confluence_search` is listed as `search`, with `readOnlyHint: true` and the description `Search pages. (ENG space only)`. A call to `search` reaches the upstream as `confluence_search`. A call to `confluence_search` returns `-32602`. The second rule matches `upstream.name`, so it keeps working whatever the first rule does.
 
 ### Rename and describe a parameter
 

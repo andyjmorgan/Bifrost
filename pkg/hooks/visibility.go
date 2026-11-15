@@ -127,11 +127,14 @@ func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resVie
 	return v
 }
 
-// check decides one URI: any applicable deny wins; if no visible listing,
-// supported template or visible skill covers it, it is unknown. It also
-// runs resources/filter on URIs that are not listed, so a single file
-// reachable only through a template or skill can be denied. It returns the
-// item rules see for the URI.
+// check decides one URI. A read is allowed unless something denies it: a
+// denied skill root, a denied template that could cover the URI, a listed
+// resource that a filter hid, or a resources/filter rule. A URI the server
+// never listed is allowed too, because servers hand out URIs they do not
+// list, in tool results and through templates the gateway cannot parse.
+// resources/filter runs on such a URI with only `uri` to read, so a rule
+// that needs `name` or `mimeType` fails there and the read is refused.
+// It returns the item rules see for the URI.
 func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView, uri string) (map[string]any, bool, []Hit) {
 	if nonCanonical(uri) {
 		return nil, false, nil
@@ -152,31 +155,35 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 		}
 		return item, true, nil
 	}
-	known := false
-	for _, t := range v.okTemplates {
-		if t.matches(uri) {
-			known = true
-			break
-		}
-	}
-	if !known {
-		for _, sk := range v.skills {
-			if underRoot(uri, sk.Root()) {
-				known = true
-				break
-			}
-		}
-	}
-	if !known {
-		return nil, false, nil
-	}
 	probe := map[string]any{"uri": uri}
-	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri}
+	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri, bare: true}
 	o := s.Rules.run(ctx, "resources/filter", uri, it.resolve, r.context(s).vars(), func(string, any) error { return nil })
 	if o.denied {
 		return nil, false, o.hits
 	}
 	return probe, true, o.hits
+}
+
+// claims reports whether this server gives the gateway a reason to think a
+// URI is its own: it lists it, a template could produce it, or a skill
+// holds it. Fallback resolution uses it to route a URI that carries no slug.
+// It is about routing, not permission: on a route that already names the
+// server, a URI needs no claim to be read.
+func (v *resView) claims(uri string) bool {
+	if v.listedRes[normalizeURI(uri)] {
+		return true
+	}
+	for _, t := range v.okTemplates {
+		if t.mayCover(uri) {
+			return true
+		}
+	}
+	for _, sk := range v.skills {
+		if underRoot(uri, sk.Root()) {
+			return true
+		}
+	}
+	return false
 }
 
 // owned describes this upstream's URIs for slugUris: visible exact

@@ -23,8 +23,8 @@ A rule is a JSON object:
   "enabled": true,
   "mode": "enforce",
   "hook": "tools/filter",
-  "when": "name.startsWith('delete_') && caller.role != 'admin'",
-  "then": { "decision": "'deny'", "reason": "'Deleting is for admins.'" }
+  "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
+  "then": { "decision": "'deny'", "reason": "'Deleting is restricted.'" }
 }
 ```
 
@@ -100,12 +100,14 @@ The first deny stops evaluation for that item, and no later rule can undo it. Be
 ```json
 {
   "hook": "tools/filter",
-  "when": "name.startsWith('delete_') && caller.role != 'admin'",
+  "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
   "then": { "decision": "'deny'" }
 }
 ```
 
-A deny rule for all `delete_` tools followed by a rule meant to re-allow admins hides the tools from admins too.
+A deny rule for all `delete_` tools followed by a rule meant to re-allow some callers hides the tools from them too.
+
+To give a group of callers different rules, grant them a different entitlement. Rules belong to the entitlement, so this is usually simpler than listing exceptions.
 
 ### Audit mode
 
@@ -158,12 +160,12 @@ Every hook can read these variables:
 | --- | --- | --- |
 | `server` | map | `slug`, `name`, `title`, `description`, `instructions`, `protocolVersion`, `url`, as the upstream reported them |
 | `entitlement` | map | `id`, `slug`, `name` of the entitlement serving the request |
-| `caller` | map | `userId`, `email`, `role` (`admin` or `member`), `type` (`user` or `key`), `keyName`, `orgId`, `clientId` |
+| `caller` | map | The caller's identity, as the gateway supplies it. The engine treats it as opaque, so the fields depend on the gateway. Expect `userId` and `email`; guard any other field with `has()` |
 | `client` | map | `name`, `version`, `capabilities`, from the current request's `_meta`. `capabilities` is always present, and is `{}` when the client sent none |
 | `route` | string | `direct`, `mux` or `search` |
 | `now` | timestamp | The time of the request |
 
-Use `caller.clientId`, the verified OAuth client, for security decisions about the client. `client.name` and `client.version` are self-reported.
+If the gateway supplies a verified OAuth client id on `caller`, use it for security decisions about the client. `client.name` and `client.version` are self-reported.
 
 `client.capabilities` is safe to branch on, because the client declares it on every request. `has(client.capabilities.elicitation)` never fails to evaluate: it is false when the client sent no capabilities.
 
@@ -204,7 +206,7 @@ Output is sorted by slug, then by name. The output is the same, byte for byte, w
 ### tools/call
 
 1. `server/config`. If `tools` is off, the call fails as an unknown tool.
-2. `tools/filter` and `tools/modify` run over the catalog, and the gateway looks up the exposed name. A missing name fails with `-32004`.
+2. `tools/filter` and `tools/modify` run over the catalog, and the gateway looks up the exposed name. A missing name fails with `-32602`.
 3. The gateway builds the effective arguments under the exposed names. It rejects values for hidden parameters and for upstream names that were renamed, rejects undefined keys when the upstream schema sets `additionalProperties: false`, fills defaults, applies visible pins, and checks `enum`, `minimum` and `maximum`.
 4. `tools/call` rules run on the effective arguments. Patches chain. The first deny or `elicit()` stops evaluation.
 5. The gateway forces pinned values, checks constraints again, maps names and keys back to the upstream, and removes added parameters. A hidden required parameter that still has no value refuses the call.
@@ -221,14 +223,19 @@ Output is sorted by slug, then by name. The output is the same, byte for byte, w
 
 ### Resources and templates
 
-One visibility check decides every resource URI. Listings, reads, directory children, content items in a read result and fallback candidates all use it, so they cannot disagree. A URI is hidden and unreadable when any of these is true:
+One visibility check decides every resource URI. Listings, reads, directory children and content items in a read result all use it, so they cannot disagree.
+
+A read is allowed unless something denies it. That includes a URI the server never listed: servers hand out URIs they do not list, in tool results and through templates. A URI is hidden and unreadable when any of these is true:
 
 - it is under a denied skill folder
 - a template that covers it is denied, failed to modify, or collided
 - it is listed, but `resources/filter` denied it, `resources/modify` failed on it, or it collided with another resource
-- `resources/filter` denies it when the gateway checks it as an unlisted URI
+- `resources/filter` denies it. The filter runs on every read URI, listed or not
 - it is not in canonical form
-- no visible listing, supported template or visible skill covers it
+
+To close a folder, deny its prefix in [resources/filter](resources-filter.md), for example `uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
+
+The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`; it is forwarded exactly as the client sent it, as its own resource.
 
 The listings use that check:
 
@@ -312,10 +319,12 @@ Text inside resources and skills is not rewritten. A URI written in text reaches
 
 ### Fallback resolution
 
-On the mux route, a URI without a prefix resolves only when exactly one of the caller's servers is a confident match. The gateway never guesses, and never sends the URI to servers that do not list it. Candidates must pass the same visibility check as a read.
+On the mux route, a URI without a prefix resolves only when exactly one of the caller's servers is a confident match. The gateway never guesses, and never sends the URI to servers that do not claim it. A server claims a URI when it lists it or one of its templates could produce it. Candidates must also pass the same visibility check as a read.
+
+A URI that no server claims is not found on the mux, even though the same URI with a slug prefix is readable. A link in a tool result always carries the prefix, so this only affects URIs typed without one.
 
 1. An exact match is a visible listed resource, a skill URI, or a skill manifest URI.
-2. A match through a [supported template](templates-filter.md#how-templates-match-uris) counts only when no server has an exact match.
+2. A match through a [template](templates-filter.md#how-templates-match-uris) counts only when no server has an exact match.
 3. One match resolves. The response carries the prefixed URI, so the client uses the prefixed form from then on.
 4. Two or more matches return `-32602` with the candidates in the message and in `data`.
 5. No match returns `-32602` with `not found: <uri>`.

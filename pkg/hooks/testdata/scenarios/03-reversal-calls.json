@@ -4,7 +4,7 @@
   "catalog":{"tools":[{"name":"confluence_search","inputSchema":{"type":"object","properties":{"q":{"type":"string"}}}}]}}],
  "steps":[
   {"op":"tools/call","params":{"name":"search","arguments":{"q":"x"}},"expect":[{"path":"outcome.forward.params.name","equals":"confluence_search"},{"path":"outcome.forward.params.arguments","equals":{"q":"x"}}]},
-  {"op":"tools/call","params":{"name":"confluence_search","arguments":{"q":"x"}},"expect":[{"path":"outcome.error.code","equals":-32004}]}]},
+  {"op":"tools/call","params":{"name":"confluence_search","arguments":{"q":"x"}},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
 {"name":"RH-REV-02 chained tool renames resolve to the upstream name","ids":["RH-REV-02"],
  "servers":[{"slug":"a","rules":[
    {"hook":"tools/modify","when":"name == 'a'","then":{"name":"'b'"}},
@@ -60,7 +60,7 @@
 {"name":"RH-REV-11 two tools renamed to the same name both fail closed","ids":["RH-REV-11"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/modify","when":"name in ['a','b']","then":{"name":"'same'"}}],
   "catalog":{"tools":[{"name":"a","inputSchema":{"type":"object"}},{"name":"b","inputSchema":{"type":"object"}},{"name":"c","inputSchema":{"type":"object"}}]}}],
- "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["c"]},{"path":"outcome.issues[0]","contains":"name collision"}]},{"op":"tools/call","params":{"name":"same"},"expect":[{"path":"outcome.error.code","equals":-32004}]}]},
+ "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["c"]},{"path":"outcome.issues[0]","contains":"name collision"}]},{"op":"tools/call","params":{"name":"same"},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
 {"name":"RH-REV-12 two parameters renamed to the same key fail closed","ids":["RH-REV-12"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/modify","when":"true","then":{"params.a.name":"'k'"}},{"hook":"tools/modify","when":"true","then":{"params.b.name":"'k'"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"}}}}]}}],
@@ -104,8 +104,8 @@
  "servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"name == 'secret'","then":{"decision":"'deny'","reason":"'internal only'"}}],
   "catalog":{"tools":[{"name":"secret","inputSchema":{"type":"object"}}]}}],
  "steps":[
-  {"op":"tools/call","params":{"name":"secret"},"expect":[{"path":"outcome.error","equals":{"code":-32004,"message":"unknown tool secret"}}]},
-  {"op":"tools/call","params":{"name":"nothere"},"expect":[{"path":"outcome.error","equals":{"code":-32004,"message":"unknown tool nothere"}}]}]},
+  {"op":"tools/call","params":{"name":"secret"},"expect":[{"path":"outcome.error","equals":{"code":-32602,"message":"unknown tool secret"}}]},
+  {"op":"tools/call","params":{"name":"nothere"},"expect":[{"path":"outcome.error","equals":{"code":-32602,"message":"unknown tool nothere"}}]}]},
 {"name":"RH-CALL-08 a rule set change takes effect on the next call (rules are never cached)","ids":["RH-CALL-08"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/call","when":"now > timestamp('2026-11-14T12:30:00Z')","then":{"decision":"'deny'"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],

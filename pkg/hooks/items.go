@@ -14,6 +14,11 @@ type item struct {
 	view  *View
 	args  *argState // prompts only
 	label string
+	// bare marks a resource the server does not list. The gateway knows its
+	// URI and nothing else, so a rule that reads its name, MIME type or any
+	// other field fails, and a failing rule refuses. A deny written against
+	// a name can never be assumed not to apply to something with no name.
+	bare bool
 }
 
 func toMap(v any) map[string]any {
@@ -26,6 +31,9 @@ func toMap(v any) map[string]any {
 func (it *item) resolve(name string) (any, bool) {
 	if name == "upstream" {
 		return derived(it.kind, it.view.Upstream()), true
+	}
+	if it.bare && name != "uri" {
+		return nil, false
 	}
 	for _, f := range ItemFields[it.kind] {
 		if f != name {

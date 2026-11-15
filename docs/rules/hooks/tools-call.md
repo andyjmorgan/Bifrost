@@ -87,7 +87,9 @@ Refusals never name the rule that refused. The rule's label appears only in the 
 
 1. A rule returns `elicit('confirm', 'Delete page {id}?', {'id': args.id})`. The client receives `input_required` with one input request, keyed `bifrost.confirm`.
 2. The client asks the user and retries the same request with `inputResponses` and the `requestState` it received.
-3. The gateway checks the state, then runs the rules again. The answer is in `input.confirm`.
+3. The gateway checks the state and the answer. If the user confirmed, it runs the rules again, with the answer in `input.confirm`.
+
+Only a yes continues. A decline, a cancel, or an accept without `confirm: true` ends the request with the error result `Declined.`, and the upstream is not called. You do not need a rule for this, and no rule sees an answer that is not a yes.
 
 ### Show argument text with a values map
 
@@ -121,11 +123,11 @@ The gateway's input request is a form with one required boolean, `confirm`:
 
 The rule that asks must check `!has(input.<key>)`. Otherwise, the retry asks again and the client receives an error result: `confirmation "<key>" was already answered; the rule asking for it must check has(input.<key>)`.
 
-An accepted answer matches no rule, so the call goes ahead. Several confirmations in a row work: the signed state carries earlier answers.
+A confirmed answer matches no rule, so the call goes ahead. Several confirmations in a row work: the gateway carries earlier answers into each new challenge.
 
 ### Request state
 
-The `requestState` is signed. It binds the challenge to:
+The `requestState` for a confirmation is an opaque key. The gateway keeps the challenge itself, so the client cannot read or change it. The challenge is bound to:
 
 - the caller
 - the entitlement id, or its slug when there is no id
@@ -136,13 +138,13 @@ The `requestState` is signed. It binds the challenge to:
 
 Any change to the rules invalidates outstanding challenges, even if the gateway does not change its generation.
 
-The state expires after five minutes. It is not single-use: the same answer can be replayed with the same arguments until it expires. A retry fails with `-32602` when:
+A challenge expires after five minutes and can be answered once. Any retry uses it up, whether or not the retry succeeds. A replay, or a second attempt after a failed one, returns `invalid request state`, and the client must send the request again to be asked afresh. A retry fails with `-32602` when:
 
 | Situation | Message |
 | --- | --- |
 | Gateway answers without state | `input responses for the gateway require the gateway's request state` |
 | Other answers without state | `input responses require a request state` |
-| Tampered or malformed state | `invalid request state` |
+| Unknown, already used or malformed state | `invalid request state` |
 | More than five minutes old | `request state expired` |
 | A different tool or method | `request state belongs to another request` |
 | A different caller or entitlement | `request state belongs to another caller` |
@@ -236,20 +238,19 @@ The schema shows only `title`. For a caller with the email `ana@example.com`, `{
     "hook": "tools/call",
     "when": "upstream.name == 'delete_page' && !has(input.confirm)",
     "then": { "result": "elicit('confirm', 'Delete page {id}?', {'id': args.id})" }
-  },
-  {
-    "name": "Declined",
-    "hook": "tools/call",
-    "when": "upstream.name == 'delete_page' && has(input.confirm) && input.confirm.action != 'accept'",
-    "then": { "decision": "'deny'", "reason": "'Deletion was not confirmed.'" }
   }
 ]
 ```
 
+One rule is enough. The gateway refuses any answer that is not a yes.
+
 1. The first call with `{"id": "42"}` returns `input_required` with the message `Delete page "42"?`. The upstream is not called.
-2. A retry with `{"bifrost.confirm": {"action": "decline"}}` returns the error result `Deletion was not confirmed.`
+2. A retry with `{"bifrost.confirm": {"action": "decline"}}` returns the error result `Declined.` So does `{"action": "cancel"}`, and so does an accept with `{"confirm": false}`.
 3. A retry with `{"bifrost.confirm": {"action": "accept", "content": {"confirm": true}}}` forwards the call.
-4. A retry with `{"id": "43"}` and the same state returns `-32602`, `arguments changed since the confirmation was requested`.
+4. Sending that accepted retry a second time returns `-32602`, `invalid request state`. A challenge is answered once.
+5. A retry that changes the arguments to `{"id": "43"}` returns `-32602`, `arguments changed since the confirmation was requested`.
+
+After a refused or failed retry, the client sends the original request again and the user is asked afresh.
 
 A client without the elicitation capability receives the error result `This request needs confirmation (Delete page "42"?), which this client does not support.`
 

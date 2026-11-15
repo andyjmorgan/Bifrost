@@ -635,7 +635,7 @@
   ]
  },
  {
-  "name": "RH-RSC-07 a URI no listing or template covers is unknown",
+  "name": "RH-RSC-07 on 1:1 a URI the server does not list is forwarded; the server decides whether it exists",
   "ids": [
    "RH-RSC-07"
   ],
@@ -791,11 +791,8 @@
     },
     "expect": [
      {
-      "path": "outcome.error",
-      "equals": {
-       "code": -32602,
-       "message": "not found: https://example.com/x"
-      }
+      "path": "outcome.forward.params.uri",
+      "equals": "https://example.com/x"
      }
     ]
    }
@@ -3345,7 +3342,7 @@
     "expect": [
      {
       "path": "outcome.error.code",
-      "equals": -32004
+      "equals": -32602
      }
     ]
    },
@@ -3950,7 +3947,7 @@
   ]
  },
  {
-  "name": "ADV-13 native schemes containing + split at the first + only",
+  "name": "ADV-13 native schemes containing + split at the first + only; a bare URI whose own scheme has a + routes by who lists it",
   "ids": [
    "ADV-13",
    "RH-MUX-06"
@@ -4000,8 +3997,12 @@
     },
     "expect": [
      {
-      "path": "outcome.error.code",
-      "equals": -32602
+      "path": "outcome.forward.slug",
+      "equals": "git"
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "git+ssh://host/repo"
      }
     ]
    }

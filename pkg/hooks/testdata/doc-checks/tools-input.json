@@ -1,0 +1,511 @@
+[
+ {
+  "name": "tools/input E1 reword the upstream prompt",
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "Label Jira prompts",
+      "hook": "tools/input",
+      "when": "true",
+      "then": {
+       "message": "'Jira asks: ' + request.message"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "create_issue",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create_issue",
+     "arguments": {
+      "title": "Disk full"
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "project": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which project?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "p": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "UP-1"
+    },
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "reply.result.inputRequests.project.params.message",
+      "equals": "Jira asks: Which project?"
+     },
+     {
+      "path": "reply.result.inputRequests.project.method",
+      "equals": "elicitation/create"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UP-1"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create_issue",
+     "arguments": {
+      "title": "Disk full"
+     },
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "project": {
+       "action": "accept",
+       "content": {
+        "p": "OPS"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UP-1"
+     },
+     {
+      "path": "outcome.forward.params.inputResponses.project.content.p",
+      "equals": "OPS"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/input E2 refuse upstream prompts for API keys",
+  "caller": {
+   "userId": "k1",
+   "type": "key"
+  },
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "No prompts for keys",
+      "hook": "tools/input",
+      "when": "caller.type == 'key'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'This tool needs user input, which API keys cannot give.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "create_issue",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create_issue"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which project?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "reply.result",
+      "equals": {
+       "isError": true,
+       "content": [
+        {
+         "type": "text",
+         "text": "This tool needs user input, which API keys cannot give."
+        }
+       ],
+       "resultType": "complete"
+      }
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "tools/input E3 refuse URL-mode requests",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "pay",
+    "rules": [
+     {
+      "name": "No URL mode",
+      "hook": "tools/input",
+      "when": "request.mode == 'url'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "checkout",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "checkout"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "login": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "url",
+        "message": "Sign in",
+        "url": "https://pay.example.com/auth",
+        "elicitationId": "e1"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.pay",
+      "exists": false
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "The upstream server asked for input, which policy does not allow."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "checkout"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "amount": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Amount?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "tools/input nuance: request.key and args under upstream names",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.cql.name": "'q'"
+      }
+     },
+     {
+      "hook": "tools/input",
+      "when": "request.key == 'k' && args.cql == 'x'",
+      "then": {
+       "message": "'seen'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "cql": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": "x"
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "k": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "reply.result.inputRequests.k.params.message",
+      "equals": "seen"
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "tools/input v2: args are the forwarded arguments; state-only replies are wrapped; answers forwarded without upstream state",
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "args.limit": "10"
+      }
+     },
+     {
+      "hook": "tools/input",
+      "when": "args.limit == 10",
+      "then": {
+       "message": "'patched seen'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "limit": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "limit": 99
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.inputRequests.q.params.message",
+      "equals": "patched seen"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "limit": 99
+     },
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "accept",
+       "content": {
+        "p": "OPS"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.inputResponses.q",
+      "equals": {
+       "action": "accept",
+       "content": {
+        "p": "OPS"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "requestState": "UPSTREAM-OPAQUE"
+    },
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UPSTREAM-OPAQUE"
+     }
+    ]
+   }
+  ]
+ }
+]

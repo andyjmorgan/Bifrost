@@ -1,0 +1,31 @@
+[
+{"name":"tools/filter E1 allow list",
+ "servers":[{"slug":"wiki","rules":[{"name":"Allow list","hook":"tools/filter","when":"!(name in ['search_pages', 'get_page'])","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"search_pages","inputSchema":{"type":"object"}},{"name":"get_page","inputSchema":{"type":"object"}},{"name":"delete_page","inputSchema":{"type":"object"}}]}}],
+ "steps":[
+  {"op":"tools/list","expect":[{"path":"problems.wiki","exists":false},{"path":"outcome.result.tools[*].name","equals":["get_page","search_pages"]}]},
+  {"op":"tools/call","params":{"name":"delete_page"},"expect":[{"path":"outcome.error","equals":{"code":-32602,"message":"unknown tool delete_page"}},{"path":"outcome.forward","exists":false}]}]},
+{"name":"tools/filter E2 read-only tools only",
+ "servers":[{"slug":"gh","rules":[{"name":"Read-only","hook":"tools/filter","when":"!annotations.readOnlyHint","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"list_issues","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object"}},{"name":"create_issue","annotations":{"readOnlyHint":false},"inputSchema":{"type":"object"}},{"name":"merge","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"problems.gh","exists":false},{"path":"outcome.result.tools[*].name","equals":["list_issues"]}]}]},
+{"name":"tools/filter E3 admin tools for admins only",
+ "servers":[{"slug":"ops","rules":[{"name":"Admin tools","hook":"tools/filter","when":"!(caller.email in ['sre-lead@example.com']) && name.startsWith('admin_')","then":{"decision":"'deny'","reason":"'admin tools are restricted'"}}],
+  "catalog":{"tools":[{"name":"admin_reset","inputSchema":{"type":"object"}},{"name":"status","inputSchema":{"type":"object"}}]}}],
+ "steps":[
+  {"op":"tools/list","caller":{"email":"dev@example.com"},"expect":[{"path":"problems.ops","exists":false},{"path":"outcome.result.tools[*].name","equals":["status"]},{"path":"outcome.hits[0].reason","equals":"admin tools are restricted"}]},
+  {"op":"tools/list","caller":{"email":"sre-lead@example.com"},"expect":[{"path":"outcome.result.tools[*].name","equals":["admin_reset","status"]}]}]},
+{"name":"tools/filter E4 hide tools that do not declare readOnlyHint",
+ "servers":[{"slug":"gh","rules":[{"name":"Undeclared hint","hook":"tools/filter","when":"!has(annotationsRaw.readOnlyHint)","then":{"decision":"'deny'"}}],
+  "catalog":{"tools":[{"name":"list_issues","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object"}},{"name":"merge","inputSchema":{"type":"object"}}]}}],
+ "steps":[{"op":"tools/list","expect":[{"path":"problems.gh","exists":false},{"path":"outcome.result.tools[*].name","equals":["list_issues"]}]}]},
+{"name":"tools/filter nuance: a deny cannot be undone; exceptions go in the condition; filters see the upstream view",
+ "servers":[{"slug":"a","rules":[
+   {"hook":"tools/filter","when":"name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])","then":{"decision":"'deny'"}},
+   {"hook":"tools/filter","when":"!annotations.readOnlyHint && !name.startsWith('delete_')","then":{"decision":"'deny'"}},
+   {"hook":"tools/modify","when":"name == 'update'","then":{"annotations.readOnlyHint":"true"}}],
+  "catalog":{"tools":[{"name":"delete_page","inputSchema":{"type":"object"}},{"name":"update","inputSchema":{"type":"object"}},{"name":"read","annotations":{"readOnlyHint":true},"inputSchema":{"type":"object"}}]}}],
+ "steps":[
+  {"op":"tools/list","caller":{"email":"dev@example.com"},"expect":[{"path":"problems.a","exists":false},{"path":"outcome.result.tools[*].name","equals":["read"]}]},
+  {"op":"tools/list","caller":{"email":"sre-lead@example.com"},"expect":[{"path":"outcome.result.tools[*].name","equals":["delete_page","read"]}]}]}
+]

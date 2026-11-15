@@ -1,0 +1,334 @@
+[
+ {
+  "name": "claims: unknown arguments pass through; non-elicitation input method; result default deny; _meta kept",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent) && result.structuredContent.x == 1",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent) && result.structuredContent.x == 2",
+      "then": {
+       "content": "[]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": "a",
+      "extra": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "a",
+       "extra": 1
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "s": {
+       "method": "sampling/createMessage",
+       "params": {
+        "messages": []
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.isError",
+      "equals": true
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "contains": "only elicitation is supported"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "structuredContent": {
+      "x": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "The call to t was refused by policy."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "isError": true,
+     "_meta": {
+      "k": "v"
+     },
+     "structuredContent": {
+      "x": 2
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "x"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result",
+      "equals": {
+       "isError": true,
+       "_meta": {
+        "k": "v"
+       },
+       "structuredContent": {
+        "x": 2
+       },
+       "content": [],
+       "resultType": "complete"
+      }
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "claims: directory read of a denied skill folder; resources/result default deny; prompts/get eval error; resources/modify error hides",
+  "servers": [
+   {
+    "slug": "d",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'w'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/result",
+      "when": "result.text == 'bad'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "name": "Team check",
+      "hook": "prompts/get",
+      "when": "caller.team == 'x'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/modify",
+      "when": "uri == 'file:///b.md'",
+      "then": {
+       "title": "annotations.missing"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://w/SKILL.md",
+       "frontmatter": {
+        "name": "w",
+        "description": "d"
+       },
+       "resources": []
+      }
+     ],
+     "resources": [
+      {
+       "uri": "file:///a.md",
+       "name": "a"
+      },
+      {
+       "uri": "file:///b.md",
+       "name": "b"
+      }
+     ],
+     "prompts": [
+      {
+       "name": "p"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "skill://w/"
+    },
+    "expect": [
+     {
+      "path": "problems.d",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: skill://w/"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///a.md",
+       "text": "bad"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "the read result was refused by policy"
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "caller": {
+     "role": "member"
+    },
+    "params": {
+     "name": "p"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "prompts/get was refused by policy"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///a.md"
+      ]
+     },
+     {
+      "path": "outcome.issues",
+      "len": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "claims: mux discover always advertises tools; tools off elsewhere",
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "tools": "false",
+       "prompts": "false",
+       "resources": "false"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "outcome.result.capabilities",
+      "equals": {
+       "tools": {
+        "listChanged": false
+       }
+      }
+     }
+    ]
+   }
+  ]
+ }
+]

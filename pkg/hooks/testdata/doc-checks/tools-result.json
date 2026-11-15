@@ -1,0 +1,765 @@
+[
+ {
+  "name": "tools/result E1 drop fields, the text copy, and the matching schema",
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "Drop issue noise",
+      "hook": "tools/result",
+      "when": "upstream.name == 'search_issues' && has(result.structuredContent)",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])",
+       "content": "[]"
+      }
+     },
+     {
+      "name": "Drop issue noise from schema",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'search_issues'",
+      "then": {
+       "outputSchema": "dropSchema(outputSchema, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_issues",
+       "inputSchema": {
+        "type": "object"
+       },
+       "outputSchema": {
+        "type": "object",
+        "properties": {
+         "issues": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "required": [
+            "key",
+            "self"
+           ],
+           "properties": {
+            "key": {
+             "type": "string"
+            },
+            "self": {
+             "type": "string"
+            },
+            "avatarUrls": {
+             "type": "object"
+            },
+            "fields": {
+             "type": "object",
+             "properties": {
+              "watches": {
+               "type": "object"
+              },
+              "summary": {
+               "type": "string"
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].outputSchema.properties.issues.items",
+      "equals": {
+       "type": "object",
+       "required": [
+        "key"
+       ],
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "fields": {
+         "type": "object",
+         "properties": {
+          "summary": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_issues"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"issues\":[...]}"
+      }
+     ],
+     "structuredContent": {
+      "issues": [
+       {
+        "key": "OPS-1",
+        "self": "https://jira/1",
+        "avatarUrls": {},
+        "fields": {
+         "watches": {},
+         "summary": "Disk full"
+        }
+       }
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result",
+      "equals": {
+       "content": [],
+       "structuredContent": {
+        "issues": [
+         {
+          "key": "OPS-1",
+          "fields": {
+           "summary": "Disk full"
+          }
+         }
+        ]
+       },
+       "resultType": "complete"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result E2 keep chosen fields and cap the list",
+  "servers": [
+   {
+    "slug": "gh",
+    "rules": [
+     {
+      "name": "First 20 ids and titles",
+      "hook": "tools/result",
+      "when": "upstream.name == 'list_issues' && has(result.structuredContent.items)",
+      "then": {
+       "structuredContent": "cel.bind(items, result.structuredContent.items.map(i, {'number': i.number, 'title': i.title}), {'items': size(items) > 20 ? items.slice(0, 20) : items})"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "list_issues",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "list_issues"
+    },
+    "upstream": {
+     "structuredContent": {
+      "items": [
+       {
+        "number": 1,
+        "title": "a",
+        "body": "long"
+       },
+       {
+        "number": 2,
+        "title": "b",
+        "body": "long"
+       }
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.gh",
+      "exists": false
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "items": [
+        {
+         "number": 1,
+         "title": "a"
+        },
+        {
+         "number": 2,
+         "title": "b"
+        }
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "list_issues"
+    },
+    "upstream": {
+     "structuredContent": {
+      "items": [
+       {
+        "number": 1,
+        "title": "t1",
+        "body": "x"
+       },
+       {
+        "number": 2,
+        "title": "t2",
+        "body": "x"
+       },
+       {
+        "number": 3,
+        "title": "t3",
+        "body": "x"
+       },
+       {
+        "number": 4,
+        "title": "t4",
+        "body": "x"
+       },
+       {
+        "number": 5,
+        "title": "t5",
+        "body": "x"
+       },
+       {
+        "number": 6,
+        "title": "t6",
+        "body": "x"
+       },
+       {
+        "number": 7,
+        "title": "t7",
+        "body": "x"
+       },
+       {
+        "number": 8,
+        "title": "t8",
+        "body": "x"
+       },
+       {
+        "number": 9,
+        "title": "t9",
+        "body": "x"
+       },
+       {
+        "number": 10,
+        "title": "t10",
+        "body": "x"
+       },
+       {
+        "number": 11,
+        "title": "t11",
+        "body": "x"
+       },
+       {
+        "number": 12,
+        "title": "t12",
+        "body": "x"
+       },
+       {
+        "number": 13,
+        "title": "t13",
+        "body": "x"
+       },
+       {
+        "number": 14,
+        "title": "t14",
+        "body": "x"
+       },
+       {
+        "number": 15,
+        "title": "t15",
+        "body": "x"
+       },
+       {
+        "number": 16,
+        "title": "t16",
+        "body": "x"
+       },
+       {
+        "number": 17,
+        "title": "t17",
+        "body": "x"
+       },
+       {
+        "number": 18,
+        "title": "t18",
+        "body": "x"
+       },
+       {
+        "number": 19,
+        "title": "t19",
+        "body": "x"
+       },
+       {
+        "number": 20,
+        "title": "t20",
+        "body": "x"
+       },
+       {
+        "number": 21,
+        "title": "t21",
+        "body": "x"
+       },
+       {
+        "number": 22,
+        "title": "t22",
+        "body": "x"
+       },
+       {
+        "number": 23,
+        "title": "t23",
+        "body": "x"
+       },
+       {
+        "number": 24,
+        "title": "t24",
+        "body": "x"
+       },
+       {
+        "number": 25,
+        "title": "t25",
+        "body": "x"
+       }
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent.items",
+      "len": 20
+     },
+     {
+      "path": "reply.result.structuredContent.items[19]",
+      "equals": {
+       "number": 20,
+       "title": "t20"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result E3 replace upstream error details",
+  "servers": [
+   {
+    "slug": "db",
+    "rules": [
+     {
+      "name": "Generic error",
+      "hook": "tools/result",
+      "when": "result.isError",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'The query failed. Check the table name and try again.'}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "query",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "query"
+    },
+    "upstream": {
+     "isError": true,
+     "content": [
+      {
+       "type": "text",
+       "text": "pq: relation \"users_secret\" does not exist at 10.0.3.7:5432"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "problems.db",
+      "exists": false
+     },
+     {
+      "path": "reply.result",
+      "equals": {
+       "isError": true,
+       "content": [
+        {
+         "type": "text",
+         "text": "The query failed. Check the table name and try again."
+        }
+       ],
+       "resultType": "complete"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "query"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "3 rows"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "3 rows"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result E4 deny a result by its text",
+  "servers": [
+   {
+    "slug": "web",
+    "rules": [
+     {
+      "name": "Block keys",
+      "hook": "tools/result",
+      "when": "result.text.contains('BEGIN PRIVATE KEY')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'The result contained a private key and was withheld.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "fetch",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "fetch"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "-----BEGIN PRIVATE KEY-----\nMII..."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "problems.web",
+      "exists": false
+     },
+     {
+      "path": "reply.result",
+      "equals": {
+       "isError": true,
+       "content": [
+        {
+         "type": "text",
+         "text": "The result contained a private key and was withheld."
+        }
+       ],
+       "resultType": "complete"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result nuance: args under upstream names; mux prefix runs last; size cap",
+  "route": "mux",
+  "limits": {
+   "maxResponseBytes": 200
+  },
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.cql.name": "'q'"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "args.cql == 'link'",
+      "then": {
+       "content": "[{'type': 'resource_link', 'uri': 'file:///a.md', 'name': 'a'}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "find",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "cql": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "docs__find",
+     "arguments": {
+      "q": "link"
+     }
+    },
+    "upstream": {
+     "content": []
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].uri",
+      "equals": "docs+file:///a.md"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "docs__find",
+     "arguments": {
+      "q": "x"
+     }
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32013,
+       "message": "upstream result exceeds gateway size limit"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result nuance: slice past the end is an evaluation error, which denies",
+  "servers": [
+   {
+    "slug": "gh",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "{'items': result.structuredContent.items.slice(0, 20)}"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "l",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "l"
+    },
+    "upstream": {
+     "structuredContent": {
+      "items": [
+       1,
+       2
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.gh",
+      "exists": false
+     },
+     {
+      "path": "reply.result.isError",
+      "equals": true
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "The call to l was refused by policy."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/result v2: args are the forwarded arguments; result.meta; structuredContent keeps its type",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.env.pin": "'staging'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.limit) && args.limit > 10",
+      "then": {
+       "args.limit": "10"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "has(args.limit) && args.limit == 10 && args.env == 'staging' && result.meta.k == 'v'",
+      "then": {
+       "content": "[{'type': 'text', 'text': 'seen'}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "limit": {
+          "type": "integer"
+         },
+         "env": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "limit": 50
+     }
+    },
+    "upstream": {
+     "_meta": {
+      "k": "v"
+     },
+     "content": []
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "seen"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "structuredContent": [
+      1,
+      2
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": [
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,883 @@
+[
+ {
+  "name": "tools/modify E1 strip a prefix from tool names and mark read-only",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Strip prefix",
+      "hook": "tools/modify",
+      "when": "name.startsWith('confluence_')",
+      "then": {
+       "name": "regex.replace(name, '^confluence_', '')"
+      }
+     },
+     {
+      "name": "Search is read-only",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'confluence_search'",
+      "then": {
+       "annotations.readOnlyHint": "true",
+       "description": "description + ' (ENG space only)'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "confluence_search",
+       "description": "Search pages.",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "search"
+     },
+     {
+      "path": "outcome.result.tools[0].annotations.readOnlyHint",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "Search pages. (ENG space only)"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "q": "runbook"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "confluence_search",
+       "arguments": {
+        "q": "runbook"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "confluence_search",
+     "arguments": {
+      "q": "runbook"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify E2 rename and describe a parameter",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "cql to query",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'search'",
+      "then": {
+       "params.cql.name": "'query'",
+       "params.cql.description": "'A CQL query, such as type = page AND space = ENG.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "cql": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "cql"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.required",
+      "equals": [
+       "query"
+      ]
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.query.description",
+      "equals": "A CQL query, such as type = page AND space = ENG."
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.cql",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "query": "space = ENG",
+      "limit": 5
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "cql": "space = ENG",
+       "limit": 5
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "cql": "space = HR"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"cql\" is not available on this tool"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify E3 hide and pin a parameter",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Pin space",
+      "hook": "tools/modify",
+      "when": "'space' in params",
+      "then": {
+       "params.space.hide": "true",
+       "params.space.pin": "'ENG'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "space": {
+          "type": "string"
+         },
+         "q": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "space",
+         "q"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties",
+      "equals": {
+       "q": {
+        "type": "string"
+       }
+      }
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.required",
+      "equals": [
+       "q"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "q": "oncall"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "oncall",
+       "space": "ENG"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "q": "oncall",
+      "space": "HR"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"space\" is not available on this tool"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify E4 default and maximum",
+  "servers": [
+   {
+    "slug": "logs",
+    "rules": [
+     {
+      "name": "Bound limit",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'search_logs'",
+      "then": {
+       "params.limit.default": "50",
+       "params.limit.maximum": "500"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.logs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.limit",
+      "equals": {
+       "type": "integer",
+       "default": 50,
+       "maximum": 500
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "query": "status:error"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "query": "status:error",
+       "limit": 50
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "query": "status:error",
+      "limit": 1000
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"limit\" must be at most 500"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify nuance: a hidden required parameter without pin or default hides the tool; a collision hides both; a branch keyword refuses param changes",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 't1'",
+      "then": {
+       "params.space.hide": "true"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name in ['x', 'y']",
+      "then": {
+       "name": "'same'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'z'",
+      "then": {
+       "params.a.description": "'d'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t1",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "space": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "space"
+        ]
+       }
+      },
+      {
+       "name": "x",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "y",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "z",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "string"
+         }
+        },
+        "anyOf": [
+         {
+          "required": [
+           "a"
+          ]
+         }
+        ]
+       }
+      },
+      {
+       "name": "ok",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "ok"
+      ]
+     },
+     {
+      "path": "outcome.issues",
+      "len": 3
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify nuance: pin and default must be static",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.assignee.pin": "caller.email"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "contains": "pin and default values must be static"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify nuance: setting meta to null removes a key; added parameter is removed before forwarding",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "meta.internal": "null",
+       "params.reason.add": "{'type': 'string', 'description': 'Why you are calling this tool.'}"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "_meta": {
+        "internal": "x",
+        "keep": 1
+       },
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0]._meta",
+      "equals": {
+       "keep": 1
+      }
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.reason.type",
+      "equals": "string"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "q": "x",
+      "reason": "triage"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "x"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify v2: boolean property schemas; visible pin message; exact large integer enum",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.no.description": "'never'",
+       "params.env.pin": "'ENG'",
+       "params.big.enum": "[9007199254740992]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "yes": true,
+         "no": false,
+         "env": {
+          "type": "string"
+         },
+         "big": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.yes",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.no.allOf",
+      "equals": [
+       false
+      ]
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.no.description",
+      "equals": "never"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "env": "OPS"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"env\" must be \"ENG\""
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "big": 9007199254740993
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.message",
+      "contains": "must be one of"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "big": 9007199254740992
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "big": 9007199254740992,
+       "env": "ENG"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify v2: audit rules never supply a hidden required parameter",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.owner.hide": "true"
+      }
+     },
+     {
+      "mode": "audit",
+      "hook": "tools/call",
+      "when": "true",
+      "then": {
+       "args.owner": "'x'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "owner": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "owner"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools",
+      "len": 0
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "hidden without a pin"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/modify v2: dropSchema trailing * and $ref",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'all'",
+      "then": {
+       "outputSchema": "dropSchema(outputSchema, ['*'])"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'ref'",
+      "then": {
+       "outputSchema": "dropSchema(outputSchema, ['a.b'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "all",
+       "inputSchema": {
+        "type": "object"
+       },
+       "outputSchema": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ]
+       }
+      },
+      {
+       "name": "ref",
+       "inputSchema": {
+        "type": "object"
+       },
+       "outputSchema": {
+        "type": "object",
+        "properties": {
+         "a": {
+          "$ref": "#/$defs/x"
+         }
+        },
+        "$defs": {
+         "x": {
+          "type": "object",
+          "properties": {
+           "b": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "all"
+      ]
+     },
+     {
+      "path": "outcome.result.tools[0].outputSchema.properties",
+      "equals": {}
+     },
+     {
+      "path": "outcome.result.tools[0].outputSchema.required",
+      "exists": false
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "does not follow references"
+     }
+    ]
+   }
+  ]
+ }
+]

@@ -28,7 +28,7 @@
    {"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["good__t","get_server_instructions"]},{"path":"outcome.issues[0]","contains":"bad: rules do not compile"}]},
    {"op":"prompts/list","expect":[{"path":"outcome.result.prompts","len":0}]},
    {"op":"resources/list","expect":[{"path":"outcome.result.resources","len":0}]},
-   {"op":"tools/call","params":{"name":"bad__t"},"expect":[{"path":"outcome.error.code","equals":-32004},{"path":"outcome.forward","exists":false}]}]},
+   {"op":"tools/call","params":{"name":"bad__t"},"expect":[{"path":"outcome.error.code","equals":-32602},{"path":"outcome.forward","exists":false}]}]},
 {"name":"RH-HOOK-08 a disabled rule is skipped","ids":["RH-HOOK-08"],
  "servers":[{"slug":"a","rules":[{"hook":"tools/filter","enabled":false,"when":"true","then":{"decision":"'deny'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"op":"tools/list","expect":[{"path":"outcome.result.tools[*].name","equals":["t"]}]}]},

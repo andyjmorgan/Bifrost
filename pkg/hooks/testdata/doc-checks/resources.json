@@ -1,0 +1,2680 @@
+[
+ {
+  "name": "resources/filter E1 hide one resource",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Hide changelog",
+      "hook": "resources/filter",
+      "when": "uri == 'file:///CHANGELOG.md'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///CHANGELOG.md",
+       "name": "changelog"
+      },
+      {
+       "uri": "file:///README.md",
+       "name": "readme"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///README.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///CHANGELOG.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///CHANGELOG.md"
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/filter E2 deny single files reached through a template",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "name": "No env files",
+      "hook": "resources/filter",
+      "when": "uri.endsWith('.env') || uri.contains('/.git/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo file"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/config/prod.env"
+    },
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///repo/config/prod.env"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/src/main.go"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///repo/src/main.go"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/filter E3 hide large binary resources",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "No large binaries",
+      "hook": "resources/filter",
+      "when": "!mimeType.startsWith('text/') && size > 1048576",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///big.zip",
+       "name": "big",
+       "mimeType": "application/zip",
+       "size": 50000000
+      },
+      {
+       "uri": "file:///small.md",
+       "name": "small",
+       "mimeType": "text/markdown",
+       "size": 2000000
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///small.md"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/filter nuance: unlisted URIs have empty fields",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "mimeType == ''",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///repo/a.md",
+       "name": "a",
+       "mimeType": "text/markdown"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/a.md"
+    },
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///repo/a.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/b.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/modify E1 prefix titles",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "ENG titles",
+      "hook": "resources/modify",
+      "when": "uri.startsWith('confluence://ENG/')",
+      "then": {
+       "title": "'ENG wiki: ' + (title != '' ? title : name)"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "confluence://ENG/runbook",
+       "name": "runbook"
+      },
+      {
+       "uri": "confluence://OPS/oncall",
+       "name": "oncall",
+       "title": "On-call"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources[*].title",
+      "equals": [
+       "ENG wiki: runbook",
+       "On-call"
+      ]
+     },
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "confluence://ENG/runbook",
+       "confluence://OPS/oncall"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/modify E2 set audience and priority",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Assistant only",
+      "hook": "resources/modify",
+      "when": "uri.endsWith('.json')",
+      "then": {
+       "annotations.audience": "['assistant']",
+       "annotations.priority": "0.2"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///schema.json",
+       "name": "schema"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources[0].annotations",
+      "equals": {
+       "audience": [
+        "assistant"
+       ],
+       "priority": 0.2
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/modify E3 rewrite descriptions",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Wiki wording",
+      "hook": "resources/modify",
+      "when": "true",
+      "then": {
+       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///a.md",
+       "name": "a",
+       "description": "Exported from Confluence."
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources[0].description",
+      "equals": "Exported from the wiki."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/modify nuance: uri and name cannot be set",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/modify",
+      "when": "true",
+      "then": {
+       "name": "'x'"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "equals": "resources/modify cannot set \"name\""
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/filter E1 hide a template and refuse reads through it",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "No HR template",
+      "hook": "templates/filter",
+      "when": "uriTemplate.startsWith('confluence://HR/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "confluence://HR/{page}",
+       "name": "hr"
+      },
+      {
+       "uriTemplate": "confluence://ENG/{page}",
+       "name": "eng"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resourceTemplates[*].uriTemplate",
+      "equals": [
+       "confluence://ENG/{page}"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://HR/salaries"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: confluence://HR/salaries"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://ENG/runbook"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "confluence://ENG/runbook"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/filter E2 templates for users only",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "name": "Users only",
+      "hook": "templates/filter",
+      "when": "caller.type == 'key'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "caller": {
+     "type": "key"
+    },
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resourceTemplates",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "caller": {
+     "type": "key"
+    },
+    "params": {
+     "uri": "file:///repo/a.go"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "caller": {
+     "type": "user"
+    },
+    "params": {
+     "uri": "file:///repo/a.go"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///repo/a.go"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/filter nuance: a template deny also hides a listed resource that it covers",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "true",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///docs/a.md",
+       "name": "a"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///docs/{name}",
+       "name": "docs"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///docs/a.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/modify E1 title and description",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Describe page template",
+      "hook": "templates/modify",
+      "when": "uriTemplate.startsWith('confluence://ENG/')",
+      "then": {
+       "title": "'ENG wiki page'",
+       "description": "'A page in the ENG space. Replace {page} with the page ID.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "confluence://ENG/{page}",
+       "name": "eng"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resourceTemplates[0]",
+      "equals": {
+       "uriTemplate": "confluence://ENG/{page}",
+       "name": "eng",
+       "title": "ENG wiki page",
+       "description": "A page in the ENG space. Replace {page} with the page ID."
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/modify E2 annotations",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "name": "Low priority",
+      "hook": "templates/modify",
+      "when": "true",
+      "then": {
+       "annotations": "{'audience': ['assistant'], 'priority': 0.1}"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resourceTemplates[0].annotations",
+      "equals": {
+       "audience": [
+        "assistant"
+       ],
+       "priority": 0.1
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/modify E3 mux keeps template variables",
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "name": "Title",
+      "hook": "templates/modify",
+      "when": "true",
+      "then": {
+       "title": "'Repository file'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resourceTemplates[0].uriTemplate",
+      "equals": "repo+file:///repo/{+path}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/read E1 deny with a reason",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "ENG via search",
+      "hook": "resources/read",
+      "when": "uri.startsWith('confluence://ENG/')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'ENG pages are available only through the search tool.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "confluence://ENG/runbook",
+       "name": "runbook"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resources",
+      "len": 1
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "confluence://ENG/runbook"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "ENG pages are available only through the search tool."
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/read E2 confirm before reading",
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "vault",
+    "generation": "1",
+    "rules": [
+     {
+      "name": "Confirm read",
+      "hook": "resources/read",
+      "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Share {uri} with the assistant?', {'uri': uri})"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///secrets/db.txt",
+       "name": "db"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/db.txt"
+    },
+    "expect": [
+     {
+      "path": "problems.vault",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.ok.params.message",
+      "equals": "Share \"file:///secrets/db.txt\" with the assistant?"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/db.txt",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "decline"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "Declined."
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/db.txt"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/db.txt",
+     "requestState": "${steps.2.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///secrets/db.txt"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/db.txt"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "file:///secrets/db.txt",
+     "requestState": "${steps.4.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "request state belongs to another request"
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/read E3 skills for users only; runs on directory reads too",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Skills for users",
+      "hook": "resources/read",
+      "when": "caller.type == 'key' && uri.startsWith('skill://')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'Skills are available to users only.'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "d"
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:00",
+         "size": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "caller": {
+     "type": "key"
+    },
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "Skills are available to users only."
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/directory/read",
+    "caller": {
+     "type": "key"
+    },
+    "params": {
+     "uri": "skill://notebooks/"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.message",
+      "equals": "Skills are available to users only."
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "caller": {
+     "type": "user"
+    },
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "skill://notebooks/SKILL.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/input E1 reword",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "drive",
+    "rules": [
+     {
+      "name": "Label drive prompts",
+      "hook": "resources/input",
+      "when": "true",
+      "then": {
+       "message": "'Drive asks: ' + request.message"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "drive://shared/plan.doc",
+       "name": "plan"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "drive://shared/plan.doc"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "why": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Why do you need this file?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "r": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "UP-R"
+    },
+    "expect": [
+     {
+      "path": "problems.drive",
+      "exists": false
+     },
+     {
+      "path": "reply.result.inputRequests.why.params.message",
+      "equals": "Drive asks: Why do you need this file?"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "drive://shared/plan.doc",
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "why": {
+       "action": "accept",
+       "content": {
+        "r": "review"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UP-R"
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "resources/input E2 deny",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "drive",
+    "rules": [
+     {
+      "name": "No upstream prompts on reads",
+      "hook": "resources/input",
+      "when": "true",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'This server may not ask for input during reads.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "drive://shared/plan.doc",
+       "name": "plan"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "drive://shared/plan.doc"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "why": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Why?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.drive",
+      "exists": false
+     },
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "This server may not ask for input during reads."
+      }
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "resources/result E1 replace text",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Wiki wording",
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///guide.md",
+       "name": "guide"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///guide.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///guide.md",
+       "mimeType": "text/markdown",
+       "text": "Search Confluence first."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "reply.result.contents",
+      "equals": [
+       {
+        "uri": "file:///guide.md",
+        "mimeType": "text/markdown",
+        "text": "Search the wiki first."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///guide.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///guide.md",
+       "mimeType": "image/png",
+       "blob": "aGVsbG8="
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].blob",
+      "equals": "aGVsbG8="
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result E2 slugUris on the mux",
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Prefix own URIs",
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "slugUris(result.text)"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///guide.md",
+       "name": "guide"
+      },
+      {
+       "uri": "file:///faq.md",
+       "name": "faq"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs+file:///guide.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///guide.md",
+       "text": "See file:///faq.md and https://example.com/x."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///guide.md"
+     },
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "See docs+file:///faq.md and https://example.com/x."
+     },
+     {
+      "path": "reply.result.contents[0].uri",
+      "equals": "docs+file:///guide.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result E2b slugUris is a no-op on 1:1",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Prefix own URIs",
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "slugUris(result.text)"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///guide.md",
+       "name": "guide"
+      },
+      {
+       "uri": "file:///faq.md",
+       "name": "faq"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///guide.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///guide.md",
+       "text": "See file:///faq.md."
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "See file:///faq.md."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result E3 deny by content",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "name": "Withhold keys",
+      "hook": "resources/result",
+      "when": "result.text.contains('BEGIN PRIVATE KEY')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'This file contains a private key and was withheld.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/id_rsa"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///repo/id_rsa",
+       "text": "-----BEGIN PRIVATE KEY-----"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "problems.repo",
+      "exists": false
+     },
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "This file contains a private key and was withheld."
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result E4 skill files are rewritten at list time with digests recomputed",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Wiki wording",
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "Use Confluence."
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:00",
+         "size": 1
+        }
+       ],
+       "files": {
+        "skill://notebooks/SKILL.md": {
+         "text": "---\nname: notebooks\ndescription: Use Confluence.\n---\n",
+         "mimeType": "text/markdown"
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.skill.frontmatter.description",
+      "equals": "Use the wiki."
+     },
+     {
+      "path": "outcome.result.skill.resources[0].size",
+      "equals": 51
+     },
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "matches": "^sha256:[0-9a-f]{64}$"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result nuance: a rule that reads the caller is not applied to skill files",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "caller.type == 'user'",
+      "then": {
+       "text": "result.text + '!'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://n/SKILL.md",
+       "frontmatter": {
+        "name": "n",
+        "description": "d"
+       },
+       "resources": [
+        {
+         "uri": "skill://n/SKILL.md",
+         "digest": "sha256:00",
+         "size": 1
+        }
+       ],
+       "files": {
+        "skill://n/SKILL.md": {
+         "text": "---\nname: n\ndescription: d\n---\n"
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/get",
+    "caller": {
+     "type": "user"
+    },
+    "params": {
+     "uri": "skill://n/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skill.resources[0].digest",
+      "equals": "sha256:00"
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "depend on the request"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "skills/filter E1 allow list by name",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Allowed skills",
+      "hook": "skills/filter",
+      "when": "!(name in ['notebooks', 'widgets'])",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "d"
+       },
+       "resources": [
+        {
+         "uri": "skill://notebooks/SKILL.md",
+         "digest": "sha256:00",
+         "size": 1
+        }
+       ]
+      },
+      {
+       "uri": "skill://billing/SKILL.md",
+       "frontmatter": {
+        "name": "billing",
+        "description": "d"
+       },
+       "resources": [
+        {
+         "uri": "skill://billing/SKILL.md",
+         "digest": "sha256:00",
+         "size": 1
+        },
+        {
+         "uri": "skill://billing/refunds.md",
+         "digest": "sha256:00",
+         "size": 1
+        }
+       ]
+      }
+     ],
+     "resources": [
+      {
+       "uri": "skill://billing/refunds.md",
+       "name": "refunds"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "any skill file"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://notebooks/SKILL.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "skills/get",
+    "params": {
+     "uri": "skill://billing/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "unknown skill skill://billing/SKILL.md"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://billing/refunds.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: skill://billing/refunds.md"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://notebooks/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "skill://notebooks/SKILL.md"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "skills/filter E2 deny one of two skills with the same name",
+  "servers": [
+   {
+    "slug": "acme",
+    "rules": [
+     {
+      "name": "Hide support refunds",
+      "hook": "skills/filter",
+      "when": "uri == 'skill://acme/support/refunds/SKILL.md'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://acme/billing/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Billing refunds."
+       },
+       "resources": []
+      },
+      {
+       "uri": "skill://acme/support/refunds/SKILL.md",
+       "frontmatter": {
+        "name": "refunds",
+        "description": "Support refunds."
+       },
+       "resources": []
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "problems.acme",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://acme/billing/refunds/SKILL.md"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "skills/filter E3 deny by frontmatter",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "name": "Internal skills",
+      "hook": "skills/filter",
+      "when": "'internal' in frontmatter.?metadata.?tags.orValue([]) && caller.type == 'key'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://ops/SKILL.md",
+       "frontmatter": {
+        "name": "ops",
+        "description": "d",
+        "metadata": {
+         "tags": [
+          "internal"
+         ]
+        }
+       },
+       "resources": []
+      },
+      {
+       "uri": "skill://public/SKILL.md",
+       "frontmatter": {
+        "name": "public",
+        "description": "d"
+       },
+       "resources": []
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "caller": {
+     "type": "key"
+    },
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://public/SKILL.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "skills/list",
+    "caller": {
+     "type": "user"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.skills",
+      "len": 2
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "skills/filter nuance: nested skills go with the parent; directory reads drop denied folders",
+  "servers": [
+   {
+    "slug": "docs",
+    "rules": [
+     {
+      "hook": "skills/filter",
+      "when": "name == 'widgets'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://widgets/SKILL.md",
+       "frontmatter": {
+        "name": "widgets",
+        "description": "d"
+       },
+       "resources": []
+      },
+      {
+       "uri": "skill://widgets/charts/SKILL.md",
+       "frontmatter": {
+        "name": "charts",
+        "description": "d"
+       },
+       "resources": []
+      },
+      {
+       "uri": "skill://notebooks/SKILL.md",
+       "frontmatter": {
+        "name": "notebooks",
+        "description": "d"
+       },
+       "resources": []
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "skill://{+path}",
+       "name": "skills"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "skills/list",
+    "expect": [
+     {
+      "path": "problems.docs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.skills[*].uri",
+      "equals": [
+       "skill://notebooks/SKILL.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://widgets/charts/SKILL.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "skill://"
+    },
+    "upstream": {
+     "resources": [
+      {
+       "uri": "skill://widgets/",
+       "name": "widgets",
+       "mimeType": "inode/directory"
+      },
+      {
+       "uri": "skill://notebooks/",
+       "name": "notebooks",
+       "mimeType": "inode/directory"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.resources[*].uri",
+      "equals": [
+       "skill://notebooks/"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/modify v2: a failed modify hides the resource and makes it unreadable",
+  "servers": [
+   {
+    "slug": "d",
+    "rules": [
+     {
+      "hook": "resources/modify",
+      "when": "uri == 'file:///b.md'",
+      "then": {
+       "title": "annotations.missing"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///a.md",
+       "name": "a"
+      },
+      {
+       "uri": "file:///b.md",
+       "name": "b"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///{name}",
+       "name": "all"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///a.md"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///b.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///b.md"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/read v2: read results carry gateway cache hints; eval error generic",
+  "limits": {
+   "ttlMs": 123
+  },
+  "servers": [
+   {
+    "slug": "d",
+    "rules": [
+     {
+      "name": "Team check",
+      "hook": "resources/read",
+      "when": "uri == 'file:///b.md' && caller.team == 'x'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///a.md",
+       "name": "a"
+      },
+      {
+       "uri": "file:///b.md",
+       "name": "b"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a.md"
+    },
+    "upstream": {
+     "cacheScope": "public",
+     "ttlMs": 9999,
+     "contents": [
+      {
+       "uri": "file:///a.md",
+       "text": "x"
+      },
+      {
+       "uri": "file:///a/../b.md",
+       "text": "y"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     },
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 123
+     },
+     {
+      "path": "reply.result.contents",
+      "len": 1
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///b.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "resources/read was refused by policy"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/input v2: eval error generic; state-only reply wrapped",
+  "caller": {
+   "userId": "u"
+  },
+  "servers": [
+   {
+    "slug": "d",
+    "rules": [
+     {
+      "hook": "resources/input",
+      "when": "request.missing.deep == 1",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///a.md",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a.md"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Why?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "The upstream server asked for input, which policy does not allow."
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a.md"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "requestState": "UP-OPAQUE"
+    },
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UP-OPAQUE"
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "resources/filter v2: directory children get the read check, whatever their type",
+  "servers": [
+   {
+    "slug": "repo",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri.endsWith('.env')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "repo"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/directory/read",
+    "params": {
+     "uri": "file:///repo/"
+    },
+    "upstream": {
+     "resources": [
+      {
+       "uri": "file:///repo/a.md",
+       "mimeType": "text/markdown"
+      },
+      {
+       "uri": "file:///repo/prod.env",
+       "type": "directory"
+      },
+      {
+       "uri": "file:///repo/x.env",
+       "mimeType": "inode/directory"
+      },
+      {
+       "uri": "file:///other/c"
+      },
+      {
+       "uri": "file:///repo/x/../y"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.resources[*].uri",
+      "equals": [
+       "file:///repo/a.md"
+      ]
+     },
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     },
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 300000
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/filter v2: a denied template covers exactly the URIs it can produce",
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///docs/{name}.md",
+       "name": "d"
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "name == 'd'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///docs/a.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///docs/sub/a.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///docs/sub/a.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///docs/a.txt"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///docs/a.txt"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/filter v2: a template form the gateway cannot parse is listed as it is, reads under it are allowed, and a deny on it covers its literal prefix",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "name == 'deny'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///search/a",
+       "name": "a"
+      },
+      {
+       "uri": "file:///other",
+       "name": "o"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///search{?q}",
+       "name": "deny"
+      },
+      {
+       "uriTemplate": "file:///find{?q}",
+       "name": "keep"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates[*].name",
+      "equals": [
+       "keep"
+      ]
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///other"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///search/a"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///find?q=x"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///find?q=x"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "templates/modify v2: a failed template modify makes covered URIs unreadable",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "templates/modify",
+      "when": "true",
+      "then": {
+       "title": "annotations.missing"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///repo/{+path}",
+       "name": "r"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///repo/a.go"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result v2: binary items run rules; text changes skip them; default and error messages",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "result.text == 'bad' && result.missing.x == 1",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/result",
+      "when": "result.text == 'deny'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "resources/result",
+      "when": "result.text == ''",
+      "then": {
+       "text": "'changed'"
+      }
+     },
+     {
+      "hook": "resources/result",
+      "when": "result.contents[0].mimeType == 'application/x-bad'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'Binary withheld.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///doc",
+       "name": "doc"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "text": "bad"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "the read result was refused by policy"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "text": "deny"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "the read result was refused by policy"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "mimeType": "application/zip",
+       "blob": "QQ=="
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents",
+      "equals": [
+       {
+        "uri": "file:///doc",
+        "mimeType": "application/zip",
+        "blob": "QQ=="
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///doc"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///doc",
+       "mimeType": "application/x-bad",
+       "blob": "QQ=="
+      },
+      {
+       "uri": "file:///doc",
+       "text": "ok"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "Binary withheld."
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "resources/result v2: dynamic skills are never rewritten",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/result",
+      "when": "true",
+      "then": {
+       "text": "result.text + '!'"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://w/SKILL.md",
+       "frontmatter": {
+        "name": "w",
+        "description": "d"
+       },
+       "resources": "dynamic"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "skill://w/SKILL.md"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "skill://w/SKILL.md",
+       "text": "---\nname: w\ndescription: d\n---\n"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "---\nname: w\ndescription: d\n---\n"
+     }
+    ]
+   }
+  ]
+ }
+]

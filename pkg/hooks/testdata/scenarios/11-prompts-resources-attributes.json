@@ -1,0 +1,73 @@
+[
+{"name":"PATTR-01 prompt chain: rename, later rules match the new name; upstream.* keeps the original; get uses the new name","ids":["RH-PRM-02","RH-ITEM-03"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"prompts/modify","when":"name.startsWith('confluence_')","then":{"name":"name.replace('confluence_', 'wiki_')"}},
+   {"hook":"prompts/modify","when":"name == 'wiki_summary'","then":{"description":"'Summarise a wiki page (was ' + upstream.name + ').'","title":"'Wiki summary'"}},
+   {"hook":"prompts/modify","when":"name == 'confluence_summary'","then":{"title":"'must never match after the rename'"}},
+   {"hook":"prompts/modify","when":"true","then":{"meta.upstream":"[upstream.name, upstream.description].join('|')"}}],
+  "catalog":{"prompts":[{"name":"confluence_summary","description":"Summarise a Confluence page","arguments":[{"name":"page","required":true}]}]}}],
+ "steps":[
+  {"op":"prompts/list","expect":[
+    {"path":"outcome.error","exists":false},
+    {"path":"outcome.result.prompts[0].name","equals":"wiki_summary"},
+    {"path":"outcome.result.prompts[0].title","equals":"Wiki summary"},
+    {"path":"outcome.result.prompts[0].description","equals":"Summarise a wiki page (was confluence_summary)."},
+    {"path":"outcome.result.prompts[0]._meta.upstream","equals":"confluence_summary|Summarise a Confluence page"}]},
+  {"op":"prompts/get","params":{"name":"wiki_summary","arguments":{"page":"7"}},"expect":[{"path":"outcome.forward.params","equals":{"name":"confluence_summary","arguments":{"page":"7"}}}]},
+  {"op":"prompts/get","params":{"name":"confluence_summary","arguments":{"page":"7"}},"expect":[{"path":"outcome.forward","exists":false},{"path":"outcome.error","exists":true}]}]},
+{"name":"PATTR-02 prompt argument chain: rename an argument, a later rule describes it by the new name; get reverses it","ids":["RH-PRM-03"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"prompts/modify","when":"arguments.exists(x, x.name == 'pageId')","then":{"arguments.pageId.name":"'page'"}},
+   {"hook":"prompts/modify","when":"arguments.exists(x, x.name == 'page')","then":{"arguments.page.description":"'The page id'"}}],
+  "catalog":{"prompts":[{"name":"p","arguments":[{"name":"pageId","required":true},{"name":"tone"}]}]}}],
+ "steps":[
+  {"op":"prompts/list","expect":[{"path":"outcome.result.prompts[0].arguments","equals":[{"name":"page","description":"The page id","required":true},{"name":"tone"}]}]},
+  {"op":"prompts/get","params":{"name":"p","arguments":{"page":"7","tone":"dry"}},"expect":[{"path":"outcome.forward.params.arguments","equals":{"pageId":"7","tone":"dry"}}]},
+  {"op":"prompts/get","params":{"name":"p","arguments":{"pageId":"7"}},"expect":[{"path":"outcome.forward","exists":false}]}]},
+{"name":"PATTR-03 prompt descriptions: replace, derive and regex-rewrite; prompts/filter sees the upstream description","ids":["RH-PRM-02"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"prompts/filter","when":"description.contains('INTERNAL')","then":{"decision":"'deny'"}},
+   {"hook":"prompts/modify","when":"name == 'a'","then":{"description":"'Replaced.'"}},
+   {"hook":"prompts/modify","when":"name == 'b'","then":{"description":"regex.replace(description, '(?i)confluence', 'the wiki') + ' INTERNAL'"}}],
+  "catalog":{"prompts":[{"name":"a","description":"x"},{"name":"b","description":"Ask CONFLUENCE"},{"name":"c","description":"INTERNAL only"}]}}],
+ "steps":[{"op":"prompts/list","expect":[
+   {"path":"outcome.result.prompts[*].name","equals":["a","b"]},
+   {"path":"outcome.result.prompts[0].description","equals":"Replaced."},
+   {"path":"outcome.result.prompts[1].description","equals":"Ask the wiki INTERNAL"}]}]},
+{"name":"RATTR-01 resource annotations: read and correct; a later rule sees the change; upstream.annotations keeps the original","ids":["RH-RSC-04","RH-ITEM-02"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"resources/modify","when":"uri.endsWith('.log') && has(annotations.audience) && 'user' in annotations.audience","then":{"annotations.audience":"['assistant']","annotations.priority":"0.2"}},
+   {"hook":"resources/modify","when":"has(annotations.priority) && annotations.priority < 0.5","then":{"title":"'(low priority) ' + name"}},
+   {"hook":"resources/modify","when":"true","then":{"meta.was":"has(upstream.annotations) && has(upstream.annotations.audience) ? upstream.annotations.audience.join(',') : 'none'"}}],
+  "catalog":{"resources":[
+   {"uri":"file:///app.log","name":"app.log","annotations":{"audience":["user"],"priority":0.9}},
+   {"uri":"file:///readme.md","name":"readme"}]}}],
+ "steps":[{"op":"resources/list","expect":[
+   {"path":"outcome.error","exists":false},
+   {"path":"outcome.result.resources[0].uri","equals":"file:///app.log"},
+   {"path":"outcome.result.resources[0].annotations","equals":{"audience":["assistant"],"priority":0.2}},
+   {"path":"outcome.result.resources[0].title","equals":"(low priority) app.log"},
+   {"path":"outcome.result.resources[0]._meta.was","equals":"user"},
+   {"path":"outcome.result.resources[1].title","exists":false},
+   {"path":"outcome.result.resources[1]._meta.was","equals":"none"}]}]},
+{"name":"RATTR-02 resource descriptions change but URIs and names never do; reads still forward the upstream URI","ids":["RH-RSC-04","RH-MUX-01"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"resources/modify","when":"mimeType == 'text/markdown'","then":{"description":"'Docs: ' + name","title":"'Guide'"}},
+   {"hook":"resources/modify","when":"description.startsWith('Docs: ')","then":{"meta.chained":"true"}}],
+  "catalog":{"resources":[{"uri":"file:///guide.md","name":"guide","mimeType":"text/markdown","description":"old"}]}}],
+ "steps":[
+  {"op":"resources/list","expect":[{"path":"outcome.result.resources[0]","equals":{"uri":"file:///guide.md","name":"guide","mimeType":"text/markdown","description":"Docs: guide","title":"Guide","_meta":{"chained":true}}}]},
+  {"op":"resources/read","params":{"uri":"file:///guide.md"},"expect":[{"path":"outcome.forward.params.uri","equals":"file:///guide.md"}]}]},
+{"name":"RATTR-03 template chain: description and annotations change, a later rule sees them, uriTemplate is untouched","ids":["RH-RSC-05"],
+ "servers":[{"slug":"a","rules":[
+   {"hook":"templates/modify","when":"uriTemplate.startsWith('file:///logs/')","then":{"description":"'Log files'","annotations.audience":"['assistant']"}},
+   {"hook":"templates/modify","when":"description == 'Log files'","then":{"title":"name + ' (' + upstream.description + ')'"}}],
+  "catalog":{"resourceTemplates":[{"uriTemplate":"file:///logs/{day}","name":"logs","description":"raw logs"}]}}],
+ "steps":[{"op":"resources/templates/list","expect":[{"path":"outcome.result.resourceTemplates[0]","equals":{"uriTemplate":"file:///logs/{day}","name":"logs","description":"Log files","title":"logs (raw logs)","annotations":{"audience":["assistant"]}}}]}]},
+{"name":"RATTR-04 resources and templates cannot rename URIs or names: those rules fail validation","ids":["RH-RSC-04"],
+ "servers":[
+  {"slug":"a","rules":[{"hook":"resources/modify","when":"true","then":{"uri":"'file:///other'"}}]},
+  {"slug":"b","rules":[{"hook":"resources/modify","when":"true","then":{"name":"'other'"}}]},
+  {"slug":"c","rules":[{"hook":"templates/modify","when":"true","then":{"uriTemplate":"'file:///{x}'"}}]}],
+ "steps":[{"op":"resources/list","expect":[{"path":"problems.a","exists":true},{"path":"problems.b","exists":true},{"path":"problems.c","exists":true}]}]}
+]

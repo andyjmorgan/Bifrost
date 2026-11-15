@@ -24,7 +24,8 @@ func promptItems(ps []*mcp.Prompt) []map[string]any {
 }
 
 // ListPrompts lists every server's exposed prompts, slug a-z then name a-z.
-func (e *Engine) ListPrompts(parent context.Context, r Request) Outcome {
+func (e *Engine) ListPrompts(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "prompts/list", callRef{method: "prompts/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	var o Outcome
@@ -86,7 +87,8 @@ func (e *Engine) resolvePrompt(ctx context.Context, r Request, name string) (*Se
 }
 
 // GetPrompt runs the request side of prompts/get.
-func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptParams) Outcome {
+func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptParams) (ret Outcome) {
+	defer e.recovered(&ret, "prompts/get", promptCallRef(p))
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	s, l, o, err := e.resolvePrompt(ctx, r, p.Name)
@@ -104,6 +106,9 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 	}
 	hash := argsHash(args)
 	st, answers, upResp, serr := e.continuation(r, s, "prompts/get", l.upstreamID, hash, p.RequestState, p.InputResponses)
+	if serr == errDeclined {
+		o.Hits = append(o.Hits, declinedHit("prompts/get", l.exposedID))
+	}
 	if serr != nil {
 		o.Error = serr
 		return o
@@ -180,7 +185,8 @@ func upstreamPrompt(s *Server, name string) map[string]any {
 
 // UpstreamPromptReply handles the upstream's answer to a forwarded
 // prompts/get, using the CallContext GetPrompt returned with the forward.
-func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *CallContext, p *mcp.GetPromptParams, raw json.RawMessage) Outcome {
+func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *CallContext, p *mcp.GetPromptParams, raw json.RawMessage) (ret Outcome) {
+	defer e.recovered(&ret, "prompts/get reply", promptCallRef(p))
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	if call == nil {
@@ -195,7 +201,30 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 	if !ok {
 		return errOutcome(-32603, "upstream result is not a JSON object")
 	}
+	var seen unknowns
+	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
+	if rt, _ := m["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {
+		seen.add(UnknownResultType, rt, s.Slug, call.Target, "passed", m)
+	}
+	inputUnknowns(&seen, s.Slug, call.Target, m)
+	if msgs, ok := m["messages"].([]any); ok {
+		for _, x := range msgs {
+			if mm, ok := x.(map[string]any); ok {
+				// A prompt message holds one content block, or a list of them.
+				if list, isList := mm["content"].([]any); isList {
+					contentUnknowns(&seen, s.Slug, call.Target, list)
+				} else if mm["content"] != nil {
+					contentUnknowns(&seen, s.Slug, call.Target, []any{mm["content"]})
+				}
+			}
+		}
+	}
 	if isInputRequired(m) {
+		if msg, ok := inputAllowed(r, s); !ok {
+			o.Issues = append(o.Issues, s.Slug+": "+call.Target+" asked for input and was refused: "+msg)
+			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
+			return e.finishOutcome(ctx, o)
+		}
 		it := &item{kind: KindPrompt, view: NewView(call.Item), args: newArgState(call.Item)}
 		out, hits, err := e.inputHook(ctx, r, s, "prompts/input", call.Exposed, it.resolve, call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
@@ -215,7 +244,7 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 	if r.mux() {
 		m = prefixResultURIs(m, s.Slug)
 	}
-	o.Result = m
+	o.Result = complete(m)
 	return e.finishOutcome(ctx, o)
 }
 
@@ -288,7 +317,8 @@ func (e *Engine) skillView(ctx context.Context, r Request, s *Server) (visible [
 }
 
 // ListSkills answers skills/list.
-func (e *Engine) ListSkills(parent context.Context, r Request) Outcome {
+func (e *Engine) ListSkills(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "skills/list", callRef{method: "skills/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	var o Outcome
@@ -311,7 +341,8 @@ func (e *Engine) ListSkills(parent context.Context, r Request) Outcome {
 }
 
 // GetSkill answers skills/get.
-func (e *Engine) GetSkill(parent context.Context, r Request, uri string) Outcome {
+func (e *Engine) GetSkill(parent context.Context, r Request, uri string) (ret Outcome) {
+	defer e.recovered(&ret, "skills/get", callRef{method: "skills/get", target: uri})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	s, up, o, err := e.route(ctx, r, uri, "skills/get")
@@ -473,10 +504,11 @@ func (e *Engine) applyResultRules(ctx context.Context, r Request, s *Server, v *
 // administrator wrote, if any.
 func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Server, v *resView, uri, text, mime string, isText bool) (string, []Hit, string, bool, error) {
 	res := map[string]any{"uri": uri}
-	if item, ok := v.visibleRes[normalizeURI(uri)]; ok {
-		res = item
+	known, listed := v.visibleRes[normalizeURI(uri)]
+	if listed {
+		res = known
 	}
-	it := &item{kind: KindResource, id: uri, view: NewView(res), label: uri}
+	it := &item{kind: KindResource, id: uri, view: NewView(res), label: uri, bare: !listed}
 	content := map[string]any{"uri": uri}
 	if mime != "" {
 		content["mimeType"] = mime
@@ -572,7 +604,8 @@ func templateItems(ts []*mcp.ResourceTemplate) []map[string]any {
 
 // ListResources lists every server's exposed resources, slug a-z then URI
 // a-z. An entry appears only if the same check a read uses allows it.
-func (e *Engine) ListResources(parent context.Context, r Request) Outcome {
+func (e *Engine) ListResources(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "resources/list", callRef{method: "resources/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	var o Outcome
@@ -621,10 +654,13 @@ func deniedUnder(uri string, roots []string) bool {
 
 // ListTemplates lists every server's exposed resource templates, slug a-z
 // then template a-z.
-func (e *Engine) ListTemplates(parent context.Context, r Request) Outcome {
+func (e *Engine) ListTemplates(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "resources/templates/list", callRef{method: "resources/templates/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	var o Outcome
+	var seen unknowns
+	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
 	res := &mcp.ListResourceTemplatesResult{ResourceTemplates: []*mcp.ResourceTemplate{}}
 	res.TTLMs, res.CacheScope = e.Limits.ttl(), "private"
 	for _, s := range sortedServers(r.Servers) {
@@ -633,12 +669,14 @@ func (e *Engine) ListTemplates(parent context.Context, r Request) Outcome {
 		}
 		ls, issues, hits := s.Rules.listItems(ctx, KindTemplate, "templates/filter", "templates/modify", "uriTemplate", templateItems(s.Catalog.Templates), r.context(s), e.Limits.Workers)
 		o.Hits = append(o.Hits, hits...)
+		o.Issues = append(o.Issues, prefixed(s.Slug, issues)...)
 		for _, l := range ls {
+			// A template form the gateway cannot parse is listed as it is.
+			// Reads under it work; it only matters for denies and routing.
 			if ct := compileTemplate(l.upstreamID); ct.unsupported != "" {
-				issues = append(issues, "template "+l.upstreamID+" uses an unsupported "+ct.unsupported+"; it is listed but grants no reads")
+				seen.add(UnknownTemplateForm, ct.unsupported, s.Slug, l.upstreamID, "passed", nil)
 			}
 		}
-		o.Issues = append(o.Issues, prefixed(s.Slug, issues)...)
 		for _, l := range ls {
 			var x mcp.ResourceTemplate
 			b, _ := json.Marshal(l.value)
@@ -674,6 +712,16 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 	}
 	if slug, rest, ok := SplitURI(uri); ok {
 		s := r.server(slug)
+		// A native scheme can contain "+", so a URI with no slug prefix can
+		// look as if it had one: git+ssh://host/repo reads as slug "git".
+		// When the named server does not claim the rest, try the whole URI
+		// as an unprefixed one before settling on the prefixed reading.
+		if s == nil || !e.resourceView(ctx, r, s).claims(rest) {
+			var fo Outcome
+			if fs, fu, out, ferr := e.fallback(ctx, r, uri, method, &fo); ferr == nil {
+				return fs, fu, out, nil
+			}
+		}
 		if s == nil || !e.config(ctx, r, s, "resources", &o) {
 			return nil, "", o, &RPCError{Code: CodeInvalidParams, Message: "not found: " + uri}
 		}
@@ -682,9 +730,11 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 	return e.fallback(ctx, r, uri, method, &o)
 }
 
-// fallback resolves an unprefixed URI to one of the caller's servers using
-// the same check a read uses, or reports it unknown or ambiguous. It never
-// guesses and never asks an upstream that does not list the URI.
+// fallback resolves an unprefixed URI to one of the caller's servers, or
+// reports it unknown or ambiguous. A server is a candidate only when it
+// claims the URI (it lists it, or a template could produce it) and nothing
+// denies the read. It never guesses: a URI no server claims is not found on
+// the mux, and needs its slug prefix.
 func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o *Outcome) (*Server, string, Outcome, *RPCError) {
 	var exact, tmpl []Candidate
 	var unavailable []string
@@ -699,7 +749,7 @@ func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o 
 		}
 		v := e.resourceView(ctx, r, s)
 		o.Hits = append(o.Hits, v.hits...)
-		if _, ok, _ := e.checkURI(ctx, r, s, v, uri); !ok {
+		if _, ok, _ := e.checkURI(ctx, r, s, v, uri); !ok || !v.claims(uri) {
 			continue
 		}
 		isExact := v.listedRes[n]
@@ -761,7 +811,8 @@ func (e *Engine) ReadDirectory(parent context.Context, r Request, p *mcp.ReadRes
 	return e.read(parent, r, p, "resources/directory/read")
 }
 
-func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourceParams, method string) Outcome {
+func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourceParams, method string) (ret Outcome) {
+	defer e.recovered(&ret, method, readCallRef(method, p))
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	s, up, o, rerr := e.route(ctx, r, p.URI, method)
@@ -780,11 +831,14 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	args := map[string]any{"uri": up}
 	hash := argsHash(args)
 	st, answers, upResp, serr := e.continuation(r, s, method, up, hash, p.RequestState, p.InputResponses)
+	if serr == errDeclined {
+		o.Hits = append(o.Hits, declinedHit(method, p.URI))
+	}
 	if serr != nil {
 		o.Error = serr
 		return o
 	}
-	it := &item{kind: KindResource, id: up, view: NewView(res), label: up}
+	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[normalizeURI(up)]}
 	vars := r.context(s).vars()
 	vars["args"] = args
 	vars["input"] = answers
@@ -825,7 +879,8 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 
 // UpstreamReadReply handles the upstream's answer to a forwarded read or
 // directory read, using the CallContext read returned with the forward.
-func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *CallContext, p *mcp.ReadResourceParams, raw json.RawMessage) Outcome {
+func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *CallContext, p *mcp.ReadResourceParams, raw json.RawMessage) (ret Outcome) {
+	defer e.recovered(&ret, "resources/read reply", readCallRef("resources/read", p))
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	if call == nil {
@@ -840,8 +895,19 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 	if !ok {
 		return errOutcome(-32603, "upstream result is not a JSON object")
 	}
+	var seen unknowns
+	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
+	if rt, _ := m["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {
+		seen.add(UnknownResultType, rt, s.Slug, up, "passed", m)
+	}
+	inputUnknowns(&seen, s.Slug, up, m)
 	v := e.resourceView(ctx, r, s)
 	if isInputRequired(m) {
+		if msg, ok := inputAllowed(r, s); !ok {
+			o.Issues = append(o.Issues, s.Slug+": "+up+" asked for input and was refused: "+msg)
+			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
+			return e.finishOutcome(ctx, o)
+		}
 		it := &item{kind: KindResource, id: up, view: NewView(call.Item), label: up}
 		out, hits, err := e.inputHook(ctx, r, s, "resources/input", up, it.resolve, call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
@@ -936,7 +1002,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		m = prefixResultURIs(m, s.Slug)
 	}
 	m["ttlMs"], m["cacheScope"] = e.Limits.ttl(), "private"
-	o.Result = m
+	o.Result = complete(m)
 	return e.finishOutcome(ctx, o)
 }
 

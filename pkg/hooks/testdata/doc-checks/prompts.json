@@ -1,0 +1,1186 @@
+[
+ {
+  "name": "prompts/filter E1 hide a prompt by name",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Hide internal",
+      "hook": "prompts/filter",
+      "when": "name.startsWith('internal_')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "internal_review"
+      },
+      {
+       "name": "summary"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[*].name",
+      "equals": [
+       "summary"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "internal_review"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "unknown prompt internal_review"
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/filter E2 no prompts for API keys",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Users only",
+      "hook": "prompts/filter",
+      "when": "caller.type == 'key'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "caller": {
+     "type": "key"
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "prompts/list",
+    "caller": {
+     "type": "user"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.prompts",
+      "len": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/filter E3 hide prompts that take a given argument",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "No raw SQL",
+      "hook": "prompts/filter",
+      "when": "arguments.exists(a, a.name == 'sql')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "explain",
+       "arguments": [
+        {
+         "name": "sql"
+        }
+       ]
+      },
+      {
+       "name": "summary",
+       "arguments": [
+        {
+         "name": "topic"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[*].name",
+      "equals": [
+       "summary"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/modify E1 rename a prompt and an argument",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Rename summary",
+      "hook": "prompts/modify",
+      "when": "upstream.name == 'confluence_summary'",
+      "then": {
+       "name": "'summary'",
+       "arguments.space.name": "'area'",
+       "arguments.space.description": "'The wiki area to summarize, such as ENG.'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "confluence_summary",
+       "description": "Summarize a Confluence space",
+       "arguments": [
+        {
+         "name": "space",
+         "required": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[0].name",
+      "equals": "summary"
+     },
+     {
+      "path": "outcome.result.prompts[0].arguments",
+      "equals": [
+       {
+        "name": "area",
+        "required": true,
+        "description": "The wiki area to summarize, such as ENG."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "area": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "confluence_summary",
+       "arguments": {
+        "space": "ENG"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "argument \"space\" is not available on this prompt"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/modify E2 rewrite descriptions",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Neutral wording",
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary",
+       "description": "Summarize a Confluence space"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[0].description",
+      "equals": "Summarize a the wiki space"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/modify E3 title falls back to the name",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Wiki titles",
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "title": "'Wiki: ' + (title != '' ? title : name)"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary"
+      },
+      {
+       "name": "review",
+       "title": "Page review"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[*].title",
+      "equals": [
+       "Wiki: Page review",
+       "Wiki: summary"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/modify nuance: a rename onto an existing argument fails and hides the prompt; two prompts with one name are hidden",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "name == 'p'",
+      "then": {
+       "arguments.a.name": "'b'"
+      }
+     },
+     {
+      "hook": "prompts/modify",
+      "when": "name in ['x', 'y']",
+      "then": {
+       "name": "'same'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p",
+       "arguments": [
+        {
+         "name": "a"
+        },
+        {
+         "name": "b"
+        }
+       ]
+      },
+      {
+       "name": "x"
+      },
+      {
+       "name": "y"
+      },
+      {
+       "name": "ok"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.prompts[*].name",
+      "equals": [
+       "ok"
+      ]
+     },
+     {
+      "path": "outcome.issues",
+      "len": 2
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/get E1 deny an argument value",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "No HR",
+      "hook": "prompts/get",
+      "when": "has(args.space) && args.space == 'HR'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'HR prompts are restricted.'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary",
+       "arguments": [
+        {
+         "name": "space"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "space": "HR"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "HR prompts are restricted."
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "space": "ENG"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/get E2 fill a missing argument",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Default tone",
+      "hook": "prompts/get",
+      "when": "!has(args.tone)",
+      "then": {
+       "args.tone": "'neutral'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary",
+       "arguments": [
+        {
+         "name": "topic"
+        },
+        {
+         "name": "tone"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "topic": "oncall"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "topic": "oncall",
+       "tone": "neutral"
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "topic": "oncall",
+      "tone": "formal"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.tone",
+      "equals": "formal"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/get E3 confirm before a prompt runs",
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "wiki",
+    "generation": "1",
+    "rules": [
+     {
+      "name": "Confirm export",
+      "hook": "prompts/get",
+      "when": "upstream.name == 'export_space' && !has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Export the whole {space} space?', {'space': args.space})"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "export_space",
+       "arguments": [
+        {
+         "name": "space"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.ok.params.message",
+      "equals": "Export the whole \"ENG\" space?"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     },
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "decline"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "Declined."
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     },
+     "requestState": "${steps.2.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "export_space"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     },
+     "requestState": "${steps.2.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "invalid request state"
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "client": {
+     "capabilities": {}
+    },
+    "params": {
+     "name": "export_space",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "This request needs confirmation (Export the whole \"ENG\" space?), which this client does not support."
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/get nuance: rules see exposed argument names; a patch to a renamed argument's upstream name fails; default deny message; mux message URIs",
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "arguments.space.name": "'area'"
+      }
+     },
+     {
+      "hook": "prompts/get",
+      "when": "args.area == 'up'",
+      "then": {
+       "args.space": "'x'"
+      }
+     },
+     {
+      "hook": "prompts/get",
+      "when": "args.area == 'no'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary",
+       "arguments": [
+        {
+         "name": "space"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "wiki__summary",
+     "arguments": {
+      "area": "up"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "argument \"space\" is not available on this prompt"
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "wiki__summary",
+     "arguments": {
+      "area": "no"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "prompts/get was refused by policy"
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "wiki__summary",
+     "arguments": {
+      "area": "ENG"
+     }
+    },
+    "upstream": {
+     "messages": [
+      {
+       "role": "user",
+       "content": {
+        "type": "resource_link",
+        "uri": "file:///eng.md",
+        "name": "eng"
+       }
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.messages[0].content.uri",
+      "equals": "wiki+file:///eng.md"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "prompt name must be <slug>__<prompt>"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prompts/input E1 reword",
+  "caller": {
+   "userId": "u1"
+  },
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Label wiki prompts",
+      "hook": "prompts/input",
+      "when": "true",
+      "then": {
+       "message": "'The wiki asks: ' + request.message"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary",
+       "arguments": [
+        {
+         "name": "space"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "depth": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "How detailed?",
+        "requestedSchema": {
+         "type": "object",
+         "properties": {
+          "d": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "requestState": "UP-P"
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "reply.result.inputRequests.depth.params.message",
+      "equals": "The wiki asks: How detailed?"
+     },
+     {
+      "path": "reply.result.requestState",
+      "notContains": "UP-P"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary",
+     "arguments": {
+      "space": "ENG"
+     },
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "depth": {
+       "action": "accept",
+       "content": {
+        "d": "short"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "UP-P"
+     },
+     {
+      "path": "outcome.forward.params.inputResponses.depth.content.d",
+      "equals": "short"
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "prompts/input E2 deny",
+  "caller": {
+   "userId": "k1",
+   "type": "key"
+  },
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "No prompts for keys",
+      "hook": "prompts/input",
+      "when": "caller.type == 'key'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'This prompt needs user input, which API keys cannot give.'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "summary"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "reply.error",
+      "equals": {
+       "code": -32602,
+       "message": "This prompt needs user input, which API keys cannot give."
+      }
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "prompts v2: prompts/input sees upstream names and patches; eval errors are generic",
+  "caller": {
+   "userId": "u"
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "prompts/modify",
+      "when": "true",
+      "then": {
+       "arguments.space.name": "'area'"
+      }
+     },
+     {
+      "hook": "prompts/get",
+      "when": "!has(args.tone)",
+      "then": {
+       "args.tone": "'neutral'"
+      }
+     },
+     {
+      "name": "Team check",
+      "hook": "prompts/get",
+      "when": "has(args.area) && args.area == 'X' && caller.team == 'x'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "prompts/input",
+      "when": "true",
+      "then": {
+       "message": "request.message + ' ' + args.space + ' ' + args.tone"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "p",
+       "arguments": [
+        {
+         "name": "space",
+         "required": true
+        },
+        {
+         "name": "tone"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "p",
+     "arguments": {
+      "area": "ENG"
+     }
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "reply.result.inputRequests.q.params.message",
+      "equals": "Which? ENG neutral"
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "p",
+     "arguments": {
+      "area": "X"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "prompts/get was refused by policy"
+      }
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ }
+]

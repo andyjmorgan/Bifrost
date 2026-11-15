@@ -31,12 +31,26 @@ func parallel(n, workers int, fn func(i int)) {
 	}
 	var wg sync.WaitGroup
 	next := make(chan int)
+	var once sync.Once
+	var caught *enginePanic
+	// A panic on a worker goroutine would end the process, and no caller
+	// can recover it. Each item recovers its own, the first one is kept, and
+	// it is raised again on the caller's goroutine once every worker is done.
+	guarded := func(i int) {
+		defer func() {
+			if p := recover(); p != nil {
+				ep := capture(p)
+				once.Do(func() { caught = ep })
+			}
+		}()
+		fn(i)
+	}
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range next {
-				fn(i)
+				guarded(i)
 			}
 		}()
 	}
@@ -45,6 +59,9 @@ func parallel(n, workers int, fn func(i int)) {
 	}
 	close(next)
 	wg.Wait()
+	if caught != nil {
+		panic(caught)
+	}
 }
 
 // ---- elicitation state -------------------------------------------------------------

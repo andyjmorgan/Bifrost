@@ -60,9 +60,7 @@
      "name": "t",
      "requestState": "${steps.0.outcome.result.requestState}",
      "inputResponses": {
-      "bifrost.ok": {
-       "action": "accept"
-      }
+      "bifrost.ok": {"action":"accept","content":{"confirm":true}}
      }
     },
     "expect": [
@@ -145,9 +143,7 @@
      "name": "t",
      "requestState": "${steps.0.outcome.result.requestState}",
      "inputResponses": {
-      "bifrost.ok": {
-       "action": "accept"
-      }
+      "bifrost.ok": {"action":"accept","content":{"confirm":true}}
      }
     },
     "expect": [
@@ -211,7 +207,7 @@
     "expect": [
      {
       "path": "outcome.error.code",
-      "equals": -32004
+      "equals": -32602
      }
     ]
    },
@@ -1321,7 +1317,7 @@
   ]
  },
  {
-  "name": "prompts/input and resources/input reword or deny upstream prompts",
+  "name": "prompts/input and resources/input reword or deny upstream prompts","client":{"capabilities":{"elicitation":{}}},
   "ids": [
    "RH-INP-02",
    "RH-INP-03"
@@ -1602,80 +1598,9 @@
    }
   ]
  },
- {
-  "name": "a listed unsupported template is reported to administrators and grants no reads",
-  "ids": [
-   "RH-RSC-06"
-  ],
-  "servers": [
-   {
-    "slug": "a",
-    "catalog": {
-     "resources": [
-      {
-       "uri": "file:///doc",
-       "name": "doc"
-      }
-     ],
-     "resourceTemplates": [
-      {
-       "uriTemplate": "file:///x{?q}",
-       "name": "q"
-      }
-     ]
-    }
-   }
-  ],
-  "steps": [
-   {
-    "op": "resources/templates/list",
-    "expect": [
-     {
-      "path": "outcome.result.resourceTemplates",
-      "len": 1
-     },
-     {
-      "path": "outcome.issues[0]",
-      "contains": "unsupported expression {?q}"
-     }
-    ]
-   },
-   {
-    "op": "resources/read",
-    "params": {
-     "uri": "file:///x?q=1"
-    },
-    "expect": [
-     {
-      "path": "outcome.forward",
-      "exists": false
-     },
-     {
-      "path": "outcome.error",
-      "exists": true
-     }
-    ]
-   },
-   {
-    "op": "resources/read",
-    "params": {
-     "uri": "file:///doc"
-    },
-    "upstream": {
-     "contents": [
-      {
-       "uri": "file:///doc",
-       "text": "ok"
-      }
-     ]
-    },
-    "expect": [
-     {
-      "path": "reply.result.contents[0].text",
-      "equals": "ok"
-     }
-    ]
-   }
-  ]
- }
+ {"name":"a template form the gateway cannot parse is listed as it is, and reads under it are allowed","ids":["RH-RSC-06"],"servers":[{"slug":"a","catalog":{"resources":[{"uri":"file:///doc","name":"doc"}],"resourceTemplates":[{"uriTemplate":"file:///x{?q}","name":"q"}]}}],
+ "steps":[
+  {"op":"resources/templates/list","expect":[{"path":"outcome.result.resourceTemplates","len":1},{"path":"outcome.issues","exists":false}]},
+  {"op":"resources/read","params":{"uri":"file:///x?q=1"},"expect":[{"path":"outcome.forward.params.uri","equals":"file:///x?q=1"}]},
+  {"op":"resources/read","params":{"uri":"file:///doc"},"upstream":{"contents":[{"uri":"file:///doc","text":"ok"}]},"expect":[{"path":"reply.result.contents[0].text","equals":"ok"}]}]}
 ]

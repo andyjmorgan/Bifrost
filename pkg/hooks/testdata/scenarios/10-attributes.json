@@ -1,0 +1,1024 @@
+[
+ {
+  "name": "ATTR-01 read an annotation and correct it: a wrongly read-only tool is marked destructive",
+  "ids": [
+   "RH-ATTR-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name.startsWith('delete_') && annotations.readOnlyHint",
+      "then": {
+       "annotations.readOnlyHint": "false",
+       "annotations.destructiveHint": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "delete_page",
+       "annotations": {
+        "readOnlyHint": true
+       },
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "get_page",
+       "annotations": {
+        "readOnlyHint": true
+       },
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "delete_page"
+     },
+     {
+      "path": "outcome.result.tools[0].annotations.readOnlyHint",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.tools[0].annotations.destructiveHint",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.tools[1].annotations.readOnlyHint",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.tools[1].annotations.destructiveHint",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-02 a later modify rule sees the changed annotation; annotationsRaw chains too, upstream.annotationsRaw keeps the upstream view",
+  "ids": [
+   "RH-ATTR-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "!has(annotationsRaw.readOnlyHint)",
+      "then": {
+       "annotations.readOnlyHint": "false"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "!annotations.readOnlyHint",
+      "then": {
+       "title": "'(writes) ' + name"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "!has(upstream.annotationsRaw.readOnlyHint) && has(annotationsRaw.readOnlyHint)",
+      "then": {
+       "description": "'hint was missing upstream'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "merge",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "read",
+       "annotations": {
+        "readOnlyHint": true
+       },
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "merge"
+     },
+     {
+      "path": "outcome.result.tools[0].annotations.readOnlyHint",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.tools[0].title",
+      "equals": "(writes) merge"
+     },
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "hint was missing upstream"
+     },
+     {
+      "path": "outcome.result.tools[1].title",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[1].description",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-03 annotation title and openWorldHint are set; untouched hints stay as the upstream sent them",
+  "ids": [
+   "RH-ATTR-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name == 'fetch'",
+      "then": {
+       "annotations.title": "'Fetch a URL'",
+       "annotations.openWorldHint": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "fetch",
+       "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+       },
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].annotations",
+      "equals": {
+       "title": "Fetch a URL",
+       "openWorldHint": true,
+       "readOnlyHint": true,
+       "idempotentHint": true
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-04 drop an optional parameter: gone from the schema, refused on call, never forwarded",
+  "ids": [
+   "RH-REV-16"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name == 'search'",
+      "then": {
+       "params.include_archived.hide": "true",
+       "params.debug.hide": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string",
+          "description": "query"
+         },
+         "include_archived": {
+          "type": "boolean"
+         },
+         "debug": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "q"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties",
+      "equals": {
+       "q": {
+        "type": "string",
+        "description": "query"
+       }
+      }
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.required",
+      "equals": [
+       "q"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "q": "x"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "x"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search",
+     "arguments": {
+      "q": "x",
+      "include_archived": true
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.message",
+      "equals": "parameter \"include_archived\" is not available on this tool"
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-05 drop an optional parameter only for some tools; the same parameter on another tool is untouched",
+  "ids": [
+   "RH-REV-16"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name.startsWith('list_')",
+      "then": {
+       "params.org.hide": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "list_repos",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "org": {
+          "type": "string"
+         },
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      {
+       "name": "get_repo",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "org": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "get_repo"
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.org",
+      "exists": true
+     },
+     {
+      "path": "outcome.result.tools[1].inputSchema.properties.org",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "get_repo",
+     "arguments": {
+      "org": "dd",
+      "name": "x"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "org": "dd",
+       "name": "x"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-06 modify descriptions: replace, derive from the upstream text, regex-rewrite, and per parameter",
+  "ids": [
+   "RH-MOD-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name == 'a'",
+      "then": {
+       "description": "'Replaced.'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'b'",
+      "then": {
+       "description": "description + ' Read-only.'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'c'",
+      "then": {
+       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'c'",
+      "then": {
+       "params.space.description": "'Wiki space key, such as ENG.'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'd'",
+      "then": {
+       "description": "size(description) > 20 ? description.substring(0, 20) : description"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "a",
+       "description": "original",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "b",
+       "description": "Lists pages.",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "c",
+       "description": "Search Confluence and CONFLUENCE spaces",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "space": {
+          "type": "string",
+          "description": "space"
+         }
+        }
+       }
+      },
+      {
+       "name": "d",
+       "description": "A very long description that goes on",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "Replaced."
+     },
+     {
+      "path": "outcome.result.tools[1].description",
+      "equals": "Lists pages. Read-only."
+     },
+     {
+      "path": "outcome.result.tools[2].description",
+      "equals": "Search the wiki and the wiki spaces"
+     },
+     {
+      "path": "outcome.result.tools[2].inputSchema.properties.space",
+      "equals": {
+       "type": "string",
+       "description": "Wiki space key, such as ENG."
+      }
+     },
+     {
+      "path": "outcome.result.tools[3].description",
+      "equals": "A very long descript"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "c",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "c",
+       "arguments": {
+        "space": "ENG"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-07 a description change does not feed filters: filters see the upstream description",
+  "ids": [
+   "RH-MOD-03",
+   "RH-ITEM-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/filter",
+      "when": "description.contains('DEPRECATED')",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "description": "'DEPRECATED: ' + description"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "description": "fine",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "t"
+      ]
+     },
+     {
+      "path": "outcome.result.tools[0].description",
+      "equals": "DEPRECATED: fine"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-08 chain: rename, then a later rule matches the new name and changes description and annotations; calls use the new name",
+  "ids": [
+   "RH-ITEM-03",
+   "RH-REV-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name.startsWith('confluence_')",
+      "then": {
+       "name": "name.replace('confluence_', 'wiki_')"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'wiki_delete_page'",
+      "then": {
+       "description": "'Deletes a wiki page (was ' + upstream.name + ').'",
+       "annotations.destructiveHint": "true"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'confluence_delete_page'",
+      "then": {
+       "title": "'must never match after the rename'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name.startsWith('wiki_')",
+      "then": {
+       "name": "name + '_v2'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "name == 'wiki_delete_page_v2'",
+      "then": {
+       "title": "'Delete page'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "confluence_delete_page",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      {
+       "name": "jira_get",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "jira_get",
+       "wiki_delete_page_v2"
+      ]
+     },
+     {
+      "path": "outcome.result.tools[1].description",
+      "equals": "Deletes a wiki page (was confluence_delete_page)."
+     },
+     {
+      "path": "outcome.result.tools[1].annotations.destructiveHint",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.tools[1].title",
+      "equals": "Delete page"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "wiki_delete_page_v2",
+     "arguments": {
+      "id": "7"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "confluence_delete_page",
+       "arguments": {
+        "id": "7"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "confluence_delete_page",
+     "arguments": {
+      "id": "7"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "wiki_delete_page",
+     "arguments": {
+      "id": "7"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-09 chain on parameters: rename a parameter, then a later rule describes and constrains it by its new name",
+  "ids": [
+   "RH-REV-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "'spaceKey' in params",
+      "then": {
+       "params.spaceKey.name": "'space'"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "'space' in params",
+      "then": {
+       "params.space.description": "'Space key'",
+       "params.space.enum": "['ENG','OPS']"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "spaceKey": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties",
+      "equals": {
+       "space": {
+        "type": "string",
+        "description": "Space key",
+        "enum": [
+         "ENG",
+         "OPS"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "spaceKey": "ENG"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "space": "HR"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "spaceKey": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-10 call rules see the renamed tool and parameter names, while upstream.* keeps the originals",
+  "ids": [
+   "RH-CALL-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "name == 'confluence_search'",
+      "then": {
+       "name": "'wiki_search'",
+       "params.cql.name": "'query'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "name == 'wiki_search' && upstream.name == 'confluence_search' && args.query.contains('secret')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'No secret searches.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "confluence_search",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "cql": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "wiki_search",
+     "arguments": {
+      "query": "secret plans"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "No secret searches."
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "wiki_search",
+     "arguments": {
+      "query": "roadmap"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "confluence_search",
+       "arguments": {
+        "cql": "roadmap"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ATTR-11 upstream.* is the immutable original: after renaming the tool and a parameter and rewriting text, later rules still see the upstream values",
+  "ids": [
+   "RH-ITEM-02",
+   "RH-COW-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "name": "'renamed'",
+       "description": "'new text'",
+       "params.cql.name": "'query'",
+       "params.cql.description": "'new param text'",
+       "annotations.readOnlyHint": "false"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "title": "[upstream.name, upstream.description, string(upstream.annotations.readOnlyHint), upstream.inputSchema.properties.cql.description, string('cql' in upstream.inputSchema.properties), string('query' in params)].join('|')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "orig",
+       "description": "old text",
+       "annotations": {
+        "readOnlyHint": true
+       },
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "cql": {
+          "type": "string",
+          "description": "old param text"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].title",
+      "equals": "orig|old text|true|old param text|true|true"
+     },
+     {
+      "path": "outcome.result.tools[0].name",
+      "equals": "renamed"
+     }
+    ]
+   },
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[0].title",
+      "equals": "orig|old text|true|old param text|true|true"
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties.query.description",
+      "equals": "new param text"
+     }
+    ]
+   }
+  ]
+ }
+]

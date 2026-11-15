@@ -35,7 +35,7 @@ No field stops evaluation. Later rules override earlier ones.
 
 | Switch off | Result |
 | --- | --- |
-| `tools` | `tools/list` omits the server's tools. `tools/call` returns `-32004`, `unknown tool <name>` |
+| `tools` | `tools/list` omits the server's tools. `tools/call` returns `-32602`, `unknown tool <name>` |
 | `prompts` | `prompts/list` omits them. `prompts/get` returns `-32602`, `unknown prompt <name>` |
 | `resources` | Resource, template and skill listings omit them. Reads and `skills/get` return `-32602`, `not found: <uri>` |
 | `instructions` | Discover has no instructions. `get_server_instructions` returns an error result |
@@ -88,7 +88,7 @@ Users see the server's instructions in discover. API keys see none.
 }
 ```
 
-On December 10, 2026, `tools/list` shows the server's tools. On December 24, 2026, the list is empty and `tools/call` returns `-32004`, `unknown tool rollout`.
+On December 10, 2026, `tools/list` shows the server's tools. On December 24, 2026, the list is empty and `tools/call` returns `-32602`, `unknown tool rollout`.
 
 ### Show the upstream server name
 

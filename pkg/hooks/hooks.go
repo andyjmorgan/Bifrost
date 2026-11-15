@@ -34,6 +34,7 @@ const (
 	PhaseCall   Phase = "call"   // decides, elicits, patches arguments
 	PhaseInput  Phase = "input"  // shapes an upstream input request
 	PhaseResult Phase = "result" // shapes an upstream result
+	PhaseEvent  Phase = "event"  // drops or reshapes one event on a reply stream
 	PhaseServer Phase = "server" // server-level settings
 )
 
@@ -78,7 +79,7 @@ type HookSpec struct {
 var CommonVars = []string{"server", "entitlement", "caller", "client", "route", "now"}
 
 // DynamicVars make a rule depend on the request rather than the catalog.
-var DynamicVars = map[string]bool{"caller": true, "client": true, "route": true, "now": true, "args": true, "input": true, "result": true, "request": true}
+var DynamicVars = map[string]bool{"caller": true, "client": true, "route": true, "now": true, "args": true, "input": true, "result": true, "request": true, "progress": true}
 
 // ItemFields are the top-level variables for each item kind. Every item hook
 // also gets `upstream`, the item exactly as the upstream sent it.
@@ -95,6 +96,7 @@ var (
 	filterFields = []Field{{"decision", TDecision}, {"reason", TText}}
 	callFields   = []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}, {"args.*", TAny}, {"timeout", TDuration}, {"limit", TMap}}
 	inputFields  = []Field{{"decision", TDecision}, {"reason", TText}, {"message", TText}}
+	eventFields  = []Field{{"decision", TDecision}, {"reason", TText}, {"message", TText}} // deny drops the event; message reshapes it
 	textModify   = []Field{{"title", TText}, {"description", TText}, {"annotations", TMap}, {"annotations.*", TAny}, {"meta.*", TAny}}
 )
 
@@ -117,12 +119,14 @@ var Hooks = map[string]*HookSpec{
 	"tools/input": {Name: "tools/input", Item: KindTool, Phase: PhaseInput, Vars: []string{"args", "request"}, Fields: inputFields},
 	"tools/result": {Name: "tools/result", Item: KindTool, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"drop"},
 		Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"content", TList}, {"structuredContent", TAny}}},
+	"tools/progress": {Name: "tools/progress", Item: KindTool, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
 	"prompts/filter": {Name: "prompts/filter", Item: KindPrompt, Phase: PhaseFilter, Fields: filterFields},
 	"prompts/modify": {Name: "prompts/modify", Item: KindPrompt, Phase: PhaseModify,
 		Fields: []Field{{"name", TText}, {"title", TText}, {"description", TText}, {"arguments.*.name", TText}, {"arguments.*.description", TText}, {"meta.*", TAny}}},
-	"prompts/get":   {Name: "prompts/get", Item: KindPrompt, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}, {"args.*", TAny}}, Helpers: []string{"elicit"}},
-	"prompts/input": {Name: "prompts/input", Item: KindPrompt, Phase: PhaseInput, Vars: []string{"args", "request"}, Fields: inputFields},
+	"prompts/get":      {Name: "prompts/get", Item: KindPrompt, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}, {"args.*", TAny}}, Helpers: []string{"elicit"}},
+	"prompts/input":    {Name: "prompts/input", Item: KindPrompt, Phase: PhaseInput, Vars: []string{"args", "request"}, Fields: inputFields},
+	"prompts/progress": {Name: "prompts/progress", Item: KindPrompt, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
 	"resources/filter": {Name: "resources/filter", Item: KindResource, Phase: PhaseFilter, Fields: filterFields},
 	"resources/modify": {Name: "resources/modify", Item: KindResource, Phase: PhaseModify, Fields: textModify},
@@ -132,6 +136,7 @@ var Hooks = map[string]*HookSpec{
 	"resources/input":  {Name: "resources/input", Item: KindResource, Phase: PhaseInput, Vars: []string{"args", "request"}, Fields: inputFields},
 	"resources/result": {Name: "resources/result", Item: KindResource, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"slugUris"},
 		Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"text", TText}}},
+	"resources/progress": {Name: "resources/progress", Item: KindResource, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
 	"skills/filter": {Name: "skills/filter", Item: KindSkill, Phase: PhaseFilter, Fields: filterFields},
 }

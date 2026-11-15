@@ -271,6 +271,12 @@ func parseTime(s string) time.Time {
 func (sc *Scenario) build(problems map[string]any) ([]*Server, error) {
 	var out []*Server
 	for _, ss := range sc.Servers {
+		// A scenario describes a server on the front door's protocol version
+		// unless it says otherwise. The engine itself treats a missing
+		// version as old; write "unknown" to test that.
+		if ss.Info.ProtocolVersion == "" {
+			ss.Info.ProtocolVersion = ProtocolCurrent
+		}
 		rs, err := Parse(ss.Rules)
 		if err != nil {
 			problems[ss.Slug] = err.Error()
@@ -707,3 +713,62 @@ func findServer(ss []*Server, slug string) *Server {
 	}
 	return nil
 }
+
+// ---- exports for the end-to-end harness ----------------------------------------------
+//
+// pkg/hooks/harness replays every scenario over real HTTP. These wrappers
+// give it the runner's own building, substitution and assertion code, so an
+// end-to-end run means exactly what a Run means.
+
+// Built is a scenario's servers as Run builds them, with the compile
+// problems and warnings that `problems.*` and `warnings.*` expectations read.
+type Built struct {
+	Servers  []*Server
+	Problems map[string]any
+	Warnings map[string]any
+}
+
+// Build compiles the scenario's servers exactly as Run does. The error wraps
+// ErrSkip when a real fixture is not present.
+func (sc *Scenario) Build() (Built, error) {
+	b := Built{Problems: map[string]any{}}
+	servers, err := sc.build(b.Problems)
+	for k, v := range b.Problems {
+		if slug, ok := strings.CutPrefix(k, "\x00warn:"); ok {
+			if b.Warnings == nil {
+				b.Warnings = map[string]any{}
+			}
+			b.Warnings[slug] = v
+			delete(b.Problems, k)
+		}
+	}
+	b.Servers = servers
+	return b, err
+}
+
+// NewEngine returns the engine Run uses for this scenario.
+func (sc *Scenario) NewEngine() *Engine {
+	secret := sc.Secret
+	if secret == "" {
+		secret = "scenario-secret"
+	}
+	return &Engine{Signer: Signer{Key: []byte(secret)}, Limits: sc.Limits}
+}
+
+// StepTime is the clock Run gives a step.
+func (sc *Scenario) StepTime(st Step) time.Time {
+	if st.Now != "" {
+		return parseTime(st.Now)
+	}
+	return parseTime(sc.Now)
+}
+
+// SubstituteRefs resolves "${steps.N.path}" references against earlier step
+// outputs, as Run does.
+func SubstituteRefs(raw json.RawMessage, outputs []any) (json.RawMessage, error) {
+	return substitute(raw, outputs)
+}
+
+// Check evaluates the expectation against a step's output. extra holds
+// "problems" and "warnings". It returns "" when the expectation holds.
+func (ex Expect) Check(out any, extra map[string]any) string { return ex.check(out, extra) }

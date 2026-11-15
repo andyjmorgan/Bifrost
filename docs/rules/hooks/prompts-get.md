@@ -48,7 +48,7 @@ Patches chain.
 | Unknown or hidden prompt | `-32602`, `unknown prompt <name>` |
 | Mux name without a slug | `-32602`, `prompt name must be <slug>__<prompt>` |
 
-Confirmations work as in [tools/call](tools-call.md#elicitation). The signed state binds the method, the upstream prompt name, a hash of the client's arguments and the policy generation. Refusals never name the rule that refused.
+Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge is bound to the method, the upstream prompt name, a hash of the client's arguments and the policy generation. Refusals never name the rule that refused.
 
 ## Nuances and limits
 
@@ -95,17 +95,11 @@ Confirmations work as in [tools/call](tools-call.md#elicitation). The signed sta
     "hook": "prompts/get",
     "when": "upstream.name == 'export_space' && !has(input.ok)",
     "then": { "result": "elicit('ok', 'Export the whole {space} space?', {'space': args.space})" }
-  },
-  {
-    "name": "Export declined",
-    "hook": "prompts/get",
-    "when": "has(input.ok) && input.ok.action != 'accept'",
-    "then": { "decision": "'deny'", "reason": "'Export was not confirmed.'" }
   }
 ]
 ```
 
-The first request returns `input_required` with the message `Export the whole "ENG" space?`. A retry that declines returns `-32602`, `Export was not confirmed.` A retry that accepts reaches the upstream.
+The first request returns `input_required` with the message `Export the whole "ENG" space?`. A retry that declines returns `-32602`, `Declined.`, with no rule needed. A retry that accepts with `{"confirm": true}` reaches the upstream. Each challenge is answered once, so after a decline the client sends the request again to be asked afresh.
 
 ## Related pages
 

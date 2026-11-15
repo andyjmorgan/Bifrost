@@ -159,7 +159,15 @@ func (s *Set) Dynamic() map[string]bool {
 }
 
 // Compile checks every rule and returns the evaluable set, or every problem.
-func Compile(rs []Rule, opts ...Options) (*Set, Problems) {
+func Compile(rs []Rule, opts ...Options) (set *Set, problems Problems) {
+	// Rules are customer input. A panic while compiling them is reported as
+	// a problem, so the caller marks the entitlement broken (which denies)
+	// and the process carries on.
+	defer func() {
+		if p := recover(); p != nil {
+			set, problems = nil, Problems{{Rule: -1, Field: "", Message: fmt.Sprintf("internal error while compiling rules: %v", p)}}
+		}
+	}()
 	var o Options
 	if len(opts) > 0 {
 		o = opts[0]

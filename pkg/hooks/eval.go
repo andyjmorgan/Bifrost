@@ -55,6 +55,9 @@ type Hit struct {
 	Fields []string `json:"fields,omitempty"` // fields set
 	Reason string   `json:"reason,omitempty"`
 	Error  string   `json:"error,omitempty"`
+	// Panic marks an error that was a panic, not an ordinary rule error.
+	Panic bool `json:"panic,omitempty"`
+	rule  *FaultRule
 }
 
 // outcome is the result of running one hook over one item.
@@ -79,6 +82,18 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 		return o
 	}
 	act := &activation{vars: vars, item: resolve}
+	// A panic in the engine's own code while a rule is in play travels up
+	// with that rule attached, so the fault record can show its text.
+	var cur *compiledRule
+	defer func() {
+		if p := recover(); p != nil {
+			ep := capture(p)
+			if ep.rule == nil {
+				ep.rule = faultRule(hook, itemLabel, cur)
+			}
+			panic(ep)
+		}
+	}()
 	stopped := false
 	bounded := newRunBudget(budgetFrom(ctx))
 	defer bounded.close()
@@ -86,6 +101,7 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 		if stopped && !r.audit {
 			continue
 		}
+		cur = r
 		mode := ModeEnforce
 		if r.audit {
 			mode = ModeAudit
@@ -117,6 +133,9 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 		}
 		if err != nil {
 			hit.Effect, hit.Error = "error", err.Error()
+			if celPanic(err) {
+				hit.Panic, hit.rule = true, faultRule(hook, itemLabel, r)
+			}
 			if r.audit {
 				hit.Effect = "would error"
 				o.hits = append(o.hits, hit)
@@ -140,6 +159,9 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 			v, _, err := t.prog.ContextEval(ectx, act)
 			if err != nil {
 				hit.Effect, hit.Error = "error", fmt.Sprintf("%s: %v", t.key, err)
+				if celPanic(err) {
+					hit.Panic, hit.rule = true, faultRule(hook, itemLabel, r)
+				}
 				failed = true
 				break
 			}
@@ -240,6 +262,7 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 			stopped = true
 		}
 	}
+	cur = nil
 	return o
 }
 

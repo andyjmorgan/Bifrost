@@ -13,7 +13,7 @@
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
   {"op":"tools/list","expect":[{"path":"outcome.result.tools","len":0}]},
-  {"op":"tools/call","params":{"name":"t"},"expect":[{"path":"outcome.error.code","equals":-32004}]},
+  {"op":"tools/call","params":{"name":"t"},"expect":[{"path":"outcome.error.code","equals":-32602}]},
   {"op":"prompts/list","expect":[{"path":"outcome.result.prompts","len":0}]},
   {"op":"prompts/get","params":{"name":"p"},"expect":[{"path":"outcome.error.code","equals":-32602}]},
   {"op":"resources/list","expect":[{"path":"outcome.result.resources","len":0}]},

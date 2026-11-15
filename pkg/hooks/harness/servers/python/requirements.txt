@@ -1,0 +1,6 @@
+# Official MCP Python SDK. 2.3.0 speaks 2026-07-28 (stateless, per-request
+# envelope) plus the handshake versions 2024-11-05 .. 2025-11-25.
+mcp==2.3.0
+# mcp already depends on uvicorn and starlette; uvicorn is pinned here because
+# server.py imports it directly to serve the SDK's ASGI app.
+uvicorn==0.54.0

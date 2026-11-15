@@ -49,7 +49,8 @@ func (e *Engine) exposedCatalog(ctx context.Context, r Request) ([]toolsearch.Do
 }
 
 // ToolSearch ranks exposed tools with BM25.
-func (e *Engine) ToolSearch(parent context.Context, r Request, query string, limit int) Outcome {
+func (e *Engine) ToolSearch(parent context.Context, r Request, query string, limit int) (ret Outcome) {
+	defer e.recovered(&ret, "tools/search", callRef{method: "tools/search", target: query})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	docs, hits := e.exposedCatalog(ctx, r)
@@ -69,7 +70,8 @@ func (e *Engine) ToolSearch(parent context.Context, r Request, query string, lim
 // ListToolsYAML renders exposed tools grouped by slug, names indented, in a
 // YAML-style text. Names that are not plain identifiers are quoted, so an
 // upstream name or slug cannot inject structure.
-func (e *Engine) ListToolsYAML(parent context.Context, r Request) Outcome {
+func (e *Engine) ListToolsYAML(parent context.Context, r Request) (ret Outcome) {
+	defer e.recovered(&ret, "tools/list as text", callRef{method: "tools/list"})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	docs, hits := e.exposedCatalog(ctx, r)
@@ -105,7 +107,8 @@ func yamlScalar(s string) string {
 }
 
 // ToolDefinitions returns exposed definitions for exact names (slug__tool).
-func (e *Engine) ToolDefinitions(parent context.Context, r Request, names []string) Outcome {
+func (e *Engine) ToolDefinitions(parent context.Context, r Request, names []string) (ret Outcome) {
+	defer e.recovered(&ret, "tools/definitions", callRef{method: "tools/definitions", target: strings.Join(names, ",")})
 	ctx, cancel := e.ctx(parent)
 	defer cancel()
 	docs, hits := e.exposedCatalog(ctx, r)

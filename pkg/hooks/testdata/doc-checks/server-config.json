@@ -1,0 +1,417 @@
+[
+ {
+  "name": "server/config E1 tools only",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Tools only",
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "prompts": "false",
+       "resources": "false"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ],
+     "prompts": [
+      {
+       "name": "summary"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "file:///guide.md",
+       "name": "guide"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.capabilities",
+      "equals": {
+       "tools": {
+        "listChanged": false
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "outcome.result.prompts",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "summary"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "unknown prompt summary"
+      }
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///guide.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "not found: file:///guide.md"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "search"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config E2 hide instructions from API keys",
+  "servers": [
+   {
+    "slug": "wiki",
+    "info": {
+     "name": "atlassian",
+     "version": "9",
+     "instructions": "Use search first."
+    },
+    "rules": [
+     {
+      "name": "No instructions for keys",
+      "hook": "server/config",
+      "when": "caller.type == 'key'",
+      "then": {
+       "instructions": "false"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "caller": {
+     "type": "user"
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.instructions",
+      "equals": "Use search first."
+     }
+    ]
+   },
+   {
+    "op": "discover",
+    "caller": {
+     "type": "key"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.instructions",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config E3 switch tools off during a change freeze",
+  "servers": [
+   {
+    "slug": "deploy",
+    "rules": [
+     {
+      "name": "Holiday freeze",
+      "hook": "server/config",
+      "when": "now >= timestamp('2026-12-20T00:00:00Z') && now < timestamp('2027-01-04T00:00:00Z')",
+      "then": {
+       "tools": "false"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "rollout",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "now": "2026-12-10T09:00:00Z",
+    "expect": [
+     {
+      "path": "problems.deploy",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "rollout"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/list",
+    "now": "2026-12-24T09:00:00Z",
+    "expect": [
+     {
+      "path": "outcome.result.tools",
+      "len": 0
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "now": "2026-12-24T09:00:00Z",
+    "params": {
+     "name": "rollout"
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "unknown tool rollout"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config E4 expose the upstream server name",
+  "servers": [
+   {
+    "slug": "wiki",
+    "info": {
+     "name": "atlassian",
+     "version": "9"
+    },
+    "rules": [
+     {
+      "name": "Show upstream",
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "serverInfo": "true"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.serverInfo",
+      "exists": false
+     },
+     {
+      "path": "outcome.result._meta.io\\.modelcontextprotocol/serverInfo",
+      "equals": {
+       "name": "atlassian",
+       "version": "9"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config nuance: an evaluation error switches every switch off",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server/config",
+      "when": "caller.team == 'ops'",
+      "then": {
+       "tools": "false"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "config",
+    "caller": {
+     "type": "user"
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.result",
+      "equals": {
+       "tools": false,
+       "prompts": false,
+       "resources": false,
+       "instructions": false,
+       "tasks": false,
+       "serverInfo": false,
+       "searchRoster": false,
+       "progress": false
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config: skills extension only where skills are served",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server/config",
+      "when": "caller.type == 'key'",
+      "then": {
+       "resources": "false"
+      }
+     }
+    ],
+    "catalog": {
+     "skills": [
+      {
+       "uri": "skill://s/SKILL.md",
+       "frontmatter": {
+        "name": "s",
+        "description": "d"
+       },
+       "resources": "dynamic"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "caller": {
+     "type": "user"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.capabilities.extensions.io\\.modelcontextprotocol/skills.directoryRead",
+      "equals": true
+     }
+    ]
+   },
+   {
+    "op": "discover",
+    "caller": {
+     "type": "key"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.capabilities.extensions",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/config E4 on the mux route the gateway names itself",
+  "servers": [
+   {
+    "slug": "wiki",
+    "info": {
+     "name": "atlassian",
+     "version": "9"
+    },
+    "rules": [
+     {
+      "name": "Show upstream",
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "serverInfo": "true"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "outcome.result._meta.io\\.modelcontextprotocol/serverInfo.name",
+      "equals": "bifrost"
+     }
+    ]
+   }
+  ],
+  "route": "mux"
+ }
+]

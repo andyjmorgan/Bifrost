@@ -2,7 +2,6 @@ package hooks
 
 import (
 	"fmt"
-	"net/url"
 	"path"
 	"regexp"
 	"sort"
@@ -90,10 +89,12 @@ func prefixBlock(x any, slug string) any {
 
 // ---- URI normalization ---------------------------------------------------------------
 
-// normalizeURI canonicalizes a URI for policy checks: percent-decoding of
-// unreserved characters, "." and ".." segments resolved, duplicate slashes
-// collapsed. Policy decisions (folder denies, listing matches) compare
-// normalized forms so an encoded or dotted path cannot slip past a deny.
+// normalizeURI puts a URI in one form for comparing it with listings and
+// folders: the scheme in lower case, and "." and ".." segments and
+// duplicate slashes resolved in the path. It never decodes: a percent
+// escape such as %2F stays as written, so file:///a%2Fb is not file:///a/b.
+// The gateway compares what the client sent with what the server listed; it
+// does not translate between them. The query and fragment are left alone.
 func normalizeURI(u string) string {
 	scheme, rest, ok := strings.Cut(u, "://")
 	if !ok {
@@ -103,11 +104,9 @@ func normalizeURI(u string) string {
 	if i := strings.IndexByte(rest, '/'); i >= 0 {
 		host, p = rest[:i], rest[i:]
 	}
-	if dec, err := url.PathUnescape(p); err == nil {
-		p = dec
-	}
-	if dec, err := url.PathUnescape(host); err == nil {
-		host = dec
+	tail := ""
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p, tail = p[:i], p[i:]
 	}
 	if p != "" {
 		trailing := strings.HasSuffix(p, "/") && len(p) > 1
@@ -116,7 +115,7 @@ func normalizeURI(u string) string {
 			p += "/"
 		}
 	}
-	return strings.ToLower(scheme) + "://" + host + p
+	return strings.ToLower(scheme) + "://" + host + p + tail
 }
 
 // nonCanonical reports URIs whose path a careless upstream could resolve
@@ -128,6 +127,11 @@ func nonCanonical(u string) bool {
 	if !ok {
 		return false
 	}
+	// Only the path is checked. A query often carries another URL, such as
+	// web://fetch?url=https://example.com/a, and that is not a path.
+	if i := strings.IndexAny(rest, "?#"); i >= 0 {
+		rest = rest[:i]
+	}
 	for _, seg := range strings.Split(rest, "/")[1:] {
 		if seg == "." || seg == ".." {
 			return true
@@ -136,9 +140,9 @@ func nonCanonical(u string) bool {
 	if i := strings.IndexByte(rest, '/'); i >= 0 && strings.Contains(rest[i:], "//") {
 		return true
 	}
-	for i := 0; i+2 < len(u); i++ {
-		if u[i] == '%' {
-			if b, err := hexByte(u[i+1 : i+3]); err == nil && isUnreserved(b) {
+	for i := 0; i+2 < len(rest); i++ {
+		if rest[i] == '%' {
+			if b, err := hexByte(rest[i+1 : i+3]); err == nil && isUnreserved(b) {
 				return true
 			}
 		}

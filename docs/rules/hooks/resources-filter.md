@@ -41,7 +41,7 @@ Every filter rule must set `decision`.
 ## What the client sees
 
 - `resources/list` omits the resource.
-- `resources/read` returns `-32602`, `not found: <uri>`, the same as for a URI that does not exist. The upstream is not called.
+- `resources/read` returns `-32602`, `not found: <uri>`. The upstream is not called, so the reply says nothing about whether the resource exists.
 - A directory read drops denied children, whatever their MIME type, and whether or not they are marked as directories.
 - A read result drops content items for other URIs that the caller cannot read, and content items whose URI is not in canonical form.
 
@@ -51,7 +51,8 @@ If an enforce rule fails to evaluate, the resource is hidden and reads are refus
 
 - Rules always see URIs without the mux prefix, so the same rule works on both routes.
 - Because the filter runs on every read URI, it can deny a single file that is reachable only through a template or a skill.
-- Write conditions on unlisted URIs with `uri` only. A condition on `mimeType` or `name` sees `''` for them.
+- A URI the server does not list has no name, MIME type or other fields, only `uri`. A rule that reads one of those fields fails on such a URI, and a rule that fails refuses the read. So a deny written on `name` also stops every unlisted read on that server. Put a `uri` condition first to avoid that, for example `uri.startsWith('docs://') && name.startsWith('internal')`.
+- A read is allowed unless a rule denies it, whether or not the server lists the URI. To close a folder, deny its prefix: `uri.startsWith('file:///secret/')`.
 - A directory read checks every child with the same check as a read, including `resources/filter`. A read of a denied directory URI itself is refused.
 - Resource URIs cannot be rewritten by any rule.
 

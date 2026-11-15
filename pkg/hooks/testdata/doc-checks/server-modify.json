@@ -1,0 +1,224 @@
+[
+ {
+  "name": "server/modify E1 remove a section from the instructions",
+  "servers": [
+   {
+    "slug": "wiki",
+    "info": {
+     "instructions": "Use search first.\n## Confluence\nConfluence details."
+    },
+    "rules": [
+     {
+      "name": "Drop Confluence section",
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.instructions",
+      "equals": "Use search first.\n"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/modify E2 retitle the server",
+  "servers": [
+   {
+    "slug": "jira",
+    "info": {
+     "name": "atlassian",
+     "version": "9",
+     "title": "Atlassian"
+    },
+    "rules": [
+     {
+      "name": "Retitle",
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "title": "'Jira (read only)'"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.serverInfo",
+      "exists": false
+     },
+     {
+      "path": "outcome.result._meta.io\\.modelcontextprotocol/serverInfo",
+      "equals": {
+       "name": "bifrost",
+       "version": "test",
+       "title": "Jira (read only)"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/modify E3 changes chain: append a note after the rewrite",
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "wiki",
+    "info": {
+     "instructions": "Use search first.\n## Confluence\nConfluence details."
+    },
+    "rules": [
+     {
+      "name": "Drop Confluence section",
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
+      }
+     },
+     {
+      "name": "Ticket note",
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "instructions": "instructions + 'All writes need a ticket ID.'"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "get_server_instructions",
+    "params": {
+     "slug": "wiki"
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "Use search first.\nAll writes need a ticket ID."
+     }
+    ]
+   },
+   {
+    "op": "discover",
+    "expect": [
+     {
+      "path": "outcome.result.instructions",
+      "contains": "## wiki\n> Use search first.\n> All writes need a ticket ID."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/modify: search ranks with the modified title and description when searchRoster is on",
+  "route": "search",
+  "servers": [
+   {
+    "slug": "jira",
+    "info": {
+     "name": "atlassian-raw",
+     "description": "raw"
+    },
+    "rules": [
+     {
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "title": "'Jira'",
+       "description": "'Issue tracking'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "find",
+       "description": "find things",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "searchRoster": "false"
+      }
+     },
+     {
+      "hook": "server/modify",
+      "when": "true",
+      "then": {
+       "description": "'Issue tracking'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "page",
+       "description": "get a page",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tool_search",
+    "params": {
+     "query": "issue tracking"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "jira__find"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

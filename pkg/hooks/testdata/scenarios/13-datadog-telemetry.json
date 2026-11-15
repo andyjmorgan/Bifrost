@@ -1,0 +1,614 @@
+[
+ {
+  "name": "DD-01 Datadog telemetry: hidden from every tool, pinned upstream to 'mind your own business'",
+  "ids": [
+   "RH-REV-17"
+  ],
+  "servers": [
+   {
+    "slug": "dd",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "'telemetry' in params",
+      "then": {
+       "params.telemetry.hide": "true",
+       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "mute_findings",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry",
+         "reason"
+        ]
+       }
+      },
+      {
+       "name": "get_service_health",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "plain",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools",
+      "len": 4
+     },
+     {
+      "path": "outcome.result.tools[*].inputSchema.properties.telemetry",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[3].name",
+      "equals": "search_logs"
+     },
+     {
+      "path": "outcome.result.tools[3].inputSchema.required",
+      "exists": false
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "query": "error"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "query": "error",
+       "telemetry": {
+        "intent": "mind your own business"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "query": "error",
+      "telemetry": {
+       "intent": "I am debugging the payments outage for ana@example.com"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "outcome.error.message",
+      "equals": "parameter \"telemetry\" is not available on this tool"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "plain",
+     "arguments": {
+      "query": "x"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "query": "x"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DD-02 the optional 'reason' parameter is dropped; where it is required it is pinned instead",
+  "ids": [
+   "RH-REV-16",
+   "RH-REV-17"
+  ],
+  "servers": [
+   {
+    "slug": "dd",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "'telemetry' in params",
+      "then": {
+       "params.telemetry.hide": "true",
+       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "'reason' in params && !('reason' in upstream.inputSchema.required)",
+      "then": {
+       "params.reason.hide": "true"
+      }
+     },
+     {
+      "hook": "tools/modify",
+      "when": "'reason' in params && 'reason' in upstream.inputSchema.required",
+      "then": {
+       "params.reason.hide": "true",
+       "params.reason.pin": "'mind your own business'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "mute_findings",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry",
+         "reason"
+        ]
+       }
+      },
+      {
+       "name": "get_service_health",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "plain",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].inputSchema.properties.reason",
+      "exists": false
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "get_service_health",
+     "arguments": {
+      "query": "web"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "query": "web",
+       "telemetry": {
+        "intent": "mind your own business"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "mute_findings",
+     "arguments": {
+      "query": "x"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "query": "x",
+       "reason": "mind your own business",
+       "telemetry": {
+        "intent": "mind your own business"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DD-03 hiding the required telemetry without a pin fails closed: the tools are withheld, with an issue",
+  "ids": [
+   "RH-REV-06"
+  ],
+  "servers": [
+   {
+    "slug": "dd",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "'telemetry' in params",
+      "then": {
+       "params.telemetry.hide": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "mute_findings",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry",
+         "reason"
+        ]
+       }
+      },
+      {
+       "name": "get_service_health",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "intent": {
+            "type": "string",
+            "description": "Briefly describe the wider context task, and why this tool was chosen. Omit argument values, PII/secrets. Use English."
+           }
+          },
+          "required": [
+           "intent"
+          ]
+         },
+         "reason": {
+          "type": "string",
+          "description": "Describe why you are calling this tool"
+         }
+        },
+        "required": [
+         "telemetry"
+        ]
+       }
+      },
+      {
+       "name": "plain",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "plain"
+      ]
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "required upstream and hidden"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DD-04 real Datadog catalog: telemetry is gone from every listed tool and every call carries the pin",
+  "ids": [
+   "RH-REV-17"
+  ],
+  "servers": [
+   {
+    "slug": "dd",
+    "catalogRef": "../../../../internal/e2e/testdata/real/datadog.json",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "'telemetry' in params",
+      "then": {
+       "params.telemetry.hide": "true",
+       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.error",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools",
+      "len": 498
+     },
+     {
+      "path": "outcome.result.tools[*].inputSchema.properties.telemetry",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "aap_get_activation_options",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.telemetry",
+      "equals": {
+       "intent": "mind your own business"
+      }
+     }
+    ]
+   }
+  ]
+ }
+]

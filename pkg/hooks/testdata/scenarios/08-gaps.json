@@ -9,7 +9,7 @@
             {"slug":"other","catalog":{}}],
  "steps":[
   {"op":"tools/call","params":{"name":"docs__delete_page"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
-  {"op":"tools/call","slugs":["other"],"params":{"name":"docs__delete_page","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.code","equals":-32004},{"path":"outcome.forward","exists":false}]}]},
+  {"op":"tools/call","slugs":["other"],"params":{"name":"docs__delete_page","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.code","equals":-32602},{"path":"outcome.forward","exists":false}]}]},
 {"name":"ADV-22 state cannot move between methods or targets; a changed policy generation invalidates it","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
  "servers":[{"slug":"a","generation":"1","rules":[
    {"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}},
@@ -17,12 +17,13 @@
   "catalog":{"tools":[{"name":"t1","inputSchema":{"type":"object"}},{"name":"t2","inputSchema":{"type":"object"}}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
   {"op":"tools/call","params":{"name":"t1"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
-  {"op":"tools/call","params":{"name":"t2","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]},
-  {"op":"resources/read","params":{"uri":"file:///r","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]}]},
+  {"op":"tools/call","params":{"name":"t2","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]},
+  {"op":"tools/call","params":{"name":"t1"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
+  {"op":"resources/read","params":{"uri":"file:///r","requestState":"${steps.2.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]}]},
 {"name":"ADV-22 a policy change between prompt and retry invalidates the state","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
  "servers":[{"slug":"a","generation":"2","rules":[{"hook":"tools/call","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "secret":"fixed",
- "steps":[{"op":"tools/call","params":{"name":"t","requestState":"eyJjIjoiMSIsIm0iOiJ0b29scy9jYWxsIiwidSI6InUxIiwiZSI6ImEiLCJ0IjoidCIsImgiOiIiLCJnIjoiMSIsIngiOjk5OTk5OTk5OTl9.x","inputResponses":{"bifrost.ok":{"action":"accept"}}},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
+ "steps":[{"op":"tools/call","params":{"name":"t","requestState":"eyJjIjoiMSIsIm0iOiJ0b29scy9jYWxsIiwidSI6InUxIiwiZSI6ImEiLCJ0IjoidCIsImgiOiIiLCJnIjoiMSIsIngiOjk5OTk5OTk5OTl9.x","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
 {"name":"ADV-30 the rewrite pipeline never touches a file the caller cannot read","ids":["ADV-30"],
  "servers":[{"slug":"a","rules":[
    {"hook":"resources/filter","when":"uri.endsWith('secret.md')","then":{"decision":"'deny'"}},

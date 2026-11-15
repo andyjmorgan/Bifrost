@@ -1,0 +1,9 @@
+# Installed by setup.sh
+python/.venv/
+typescript/node_modules/
+
+# Built Go server (servers.go builds it here once per test binary)
+go/.bin/
+refserver-go
+*.tmp
+__pycache__/

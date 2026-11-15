@@ -1,0 +1,300 @@
+[
+ {
+  "name": "server/connect E1 pass the client name and version through",
+  "client": {
+   "name": "claude-code",
+   "version": "2.1",
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "Pass client identity",
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "clientInfo": "{'name': client.name, 'version': client.version}"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "connect",
+    "params": {
+     "slug": "jira"
+    },
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.clientInfo",
+      "equals": {
+       "name": "claude-code",
+       "version": "2.1"
+      }
+     },
+     {
+      "path": "outcome.result.capabilities",
+      "equals": {}
+     },
+     {
+      "path": "outcome.result.forwardMeta",
+      "equals": false
+     }
+    ]
+   },
+   {
+    "op": "connect",
+    "params": {
+     "slug": "jira"
+    },
+    "client": {
+     "capabilities": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.result.clientInfo",
+      "equals": {
+       "name": "bifrost",
+       "version": "test"
+      }
+     },
+     {
+      "path": "outcome.hits[0].effect",
+      "equals": "error"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/connect E2 advertise elicitation upstream for users only",
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "Elicitation for users",
+      "hook": "server/connect",
+      "when": "caller.type == 'user'",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     }
+    ],
+    "catalog": {}
+   }
+  ],
+  "steps": [
+   {
+    "op": "connect",
+    "caller": {
+     "type": "user"
+    },
+    "params": {
+     "slug": "jira"
+    },
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.capabilities",
+      "equals": {
+       "elicitation": {}
+      }
+     }
+    ]
+   },
+   {
+    "op": "connect",
+    "caller": {
+     "type": "key"
+    },
+    "params": {
+     "slug": "jira"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.capabilities",
+      "equals": {}
+     }
+    ]
+   }
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "server/connect E3 forward _meta to one upstream",
+  "servers": [
+   {
+    "slug": "tracing",
+    "rules": [
+     {
+      "name": "Forward meta",
+      "hook": "server/connect",
+      "when": "server.slug == 'tracing'",
+      "then": {
+       "meta": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "connect",
+    "params": {
+     "slug": "tracing"
+    },
+    "expect": [
+     {
+      "path": "problems.tracing",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.forwardMeta",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.clientInfo.name",
+      "equals": "bifrost"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "_meta": {
+      "trace": "x",
+      "io.modelcontextprotocol/clientInfo": {
+       "name": "spoof"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params._meta",
+      "equals": {
+       "trace": "x"
+      }
+     },
+     {
+      "path": "outcome.forward.connect.clientInfo.name",
+      "equals": "bifrost"
+     },
+     {
+      "path": "outcome.forward.connect.forwardMeta",
+      "equals": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "server/connect: every forward carries the connect result; meta is stripped by default",
+  "servers": [
+   {
+    "slug": "jira",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ],
+     "prompts": [
+      {
+       "name": "p"
+      }
+     ],
+     "resources": [
+      {
+       "uri": "file:///r",
+       "name": "r"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "_meta": {
+      "trace": "x"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.connect",
+      "equals": {
+       "clientInfo": {
+        "name": "bifrost",
+        "version": "dev"
+       },
+       "capabilities": {},
+       "forwardMeta": false
+      }
+     },
+     {
+      "path": "outcome.forward.params._meta",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "prompts/get",
+    "params": {
+     "name": "p"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.connect.clientInfo.name",
+      "equals": "bifrost"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///r"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.connect.clientInfo.name",
+      "equals": "bifrost"
+     }
+    ]
+   }
+  ]
+ }
+]

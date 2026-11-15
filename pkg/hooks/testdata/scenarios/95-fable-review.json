@@ -1,0 +1,1544 @@
+[
+ {
+  "name": "FR-01a a declined gateway confirmation does not call the tool",
+  "ids": [
+   "FR-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok','Delete it?')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "decline"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-01b a cancelled gateway confirmation does not call the tool",
+  "ids": [
+   "FR-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok','Delete it?')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "cancel"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-01c accepting with the confirm box unticked does not call the tool",
+  "ids": [
+   "FR-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok','Delete it?')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": false
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-01 control: a decline of the upstream server's own prompt is passed through to the server",
+  "ids": [
+   "FR-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "info": {
+     "protocolVersion": "2026-07-28"
+    },
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "resultType": "input_required",
+     "requestState": "up1",
+     "inputRequests": {
+      "q": {
+       "method": "elicitation/create",
+       "params": {
+        "mode": "form",
+        "message": "Which?",
+        "requestedSchema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "requestState": "${steps.0.reply.result.requestState}",
+     "inputResponses": {
+      "q": {
+       "action": "decline"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.inputResponses.q.action",
+      "equals": "decline"
+     },
+     {
+      "path": "outcome.forward.params.requestState",
+      "equals": "up1"
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-13 a server on 2025-06-18 gets no elicitation, tasks or progress, whatever the rules say",
+  "ids": [
+   "FR-13"
+  ],
+  "servers": [
+   {
+    "slug": "old",
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     },
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "tasks": "true",
+       "progress": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "info": {
+     "protocolVersion": "2025-06-18"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "config",
+    "expect": [
+     {
+      "path": "outcome.result.tasks",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.progress",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.tools",
+      "equals": true
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     },
+     {
+      "path": "outcome.forward.connect.capabilities.elicitation",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-13 a server on 2025-11-25 gets no elicitation, tasks or progress, whatever the rules say",
+  "ids": [
+   "FR-13"
+  ],
+  "servers": [
+   {
+    "slug": "nov",
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     },
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "tasks": "true",
+       "progress": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "info": {
+     "protocolVersion": "2025-11-25"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "config",
+    "expect": [
+     {
+      "path": "outcome.result.tasks",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.progress",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.tools",
+      "equals": true
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     },
+     {
+      "path": "outcome.forward.connect.capabilities.elicitation",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-13 a server on an unknown version gets no elicitation, tasks or progress, whatever the rules say",
+  "ids": [
+   "FR-13"
+  ],
+  "servers": [
+   {
+    "slug": "unknown",
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     },
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "tasks": "true",
+       "progress": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "info": {
+     "protocolVersion": "unknown"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "config",
+    "expect": [
+     {
+      "path": "outcome.result.tasks",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.progress",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.tools",
+      "equals": true
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "t"
+     },
+     {
+      "path": "outcome.forward.connect.capabilities.elicitation",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-13 control: a 2026-07-28 server can be given elicitation and progress; tasks stay off",
+  "ids": [
+   "FR-13"
+  ],
+  "servers": [
+   {
+    "slug": "new",
+    "rules": [
+     {
+      "hook": "server/connect",
+      "when": "true",
+      "then": {
+       "capabilities.elicitation": "true"
+      }
+     },
+     {
+      "hook": "server/config",
+      "when": "true",
+      "then": {
+       "tasks": "true",
+       "progress": "true"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    },
+    "info": {
+     "protocolVersion": "2026-07-28"
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "config",
+    "expect": [
+     {
+      "path": "outcome.result.tasks",
+      "equals": false
+     },
+     {
+      "path": "outcome.result.progress",
+      "equals": true
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.connect.capabilities.elicitation",
+      "exists": true
+     }
+    ]
+   }
+  ],
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
+ },
+ {
+  "name": "FR-05 an encoded slash is never decoded: the URI is forwarded exactly as sent, as its own resource",
+  "ids": [
+   "FR-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///a/b",
+       "name": "file:///a/b"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a/b"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///a/b"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///a%2Fb"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///a%2Fb"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-16 the guarded pattern rewrites text and keeps other blocks",
+  "ids": [
+   "FR-16"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'secret', '[x]')} : c)"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "a secret"
+      },
+      {
+       "type": "image",
+       "data": "AAAA",
+       "mimeType": "image/png"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content",
+      "equals": [
+       {
+        "type": "text",
+        "text": "a [x]"
+       },
+       {
+        "type": "image",
+        "data": "AAAA",
+        "mimeType": "image/png"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-07 a URI whose query carries another URL is listed and readable; odd forms in the path are still refused",
+  "ids": [
+   "FR-07"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "web://fetch?url=https://example.com/a//b",
+       "name": "fetch"
+      },
+      {
+       "uri": "web://page?next=..%2F..&tilde=%7E",
+       "name": "page"
+      },
+      {
+       "uri": "web://docs/a//b",
+       "name": "double slash in the path"
+      },
+      {
+       "uri": "web://docs/%7Ehome",
+       "name": "encoded letter in the path"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "web://fetch?url=https://example.com/a//b",
+       "web://page?next=..%2F..&tilde=%7E"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://fetch?url=https://example.com/a//b"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "web://fetch?url=https://example.com/a//b"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://page?next=..%2F..&tilde=%7E"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "web://page?next=..%2F..&tilde=%7E"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://docs/a//b"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://docs/%7Ehome"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-06a a resource a tool linked to is readable although the server does not list it",
+  "ids": [
+   "FR-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ],
+     "resources": [
+      {
+       "uri": "nb://index",
+       "name": "nb://index"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "resource_link",
+       "uri": "nb://notebook/123",
+       "name": "nb"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].uri",
+      "equals": "nb://notebook/123"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "nb://notebook/123"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "nb://notebook/123"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-06b GitHub's {/path*} template: reads under it work, a URI outside it is allowed too, and a deny on the template still applies",
+  "ids": [
+   "FR-06"
+  ],
+  "servers": [
+   {
+    "slug": "gh",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "repo://{owner}/{repo}/contents{/path*}",
+       "name": "contents"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "ghdeny",
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "true",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "repo://{owner}/{repo}/contents{/path*}",
+       "name": "contents"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/templates/list",
+    "expect": [
+     {
+      "path": "outcome.result.resourceTemplates[0].uriTemplate",
+      "equals": "gh+repo://{owner}/{repo}/contents{/path*}"
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "gh+repo://o/r/contents/docs/a.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "repo://o/r/contents/docs/a.md"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "gh+repo://o/r/contents"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "repo://o/r/contents"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "gh+repo://o/r/issues/1"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "repo://o/r/issues/1"
+     },
+     {
+      "path": "outcome.forward.slug",
+      "equals": "gh"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "ghdeny+repo://o/r/contents/docs/a.md"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ],
+  "route": "mux"
+ },
+ {
+  "name": "FR-06c a {?query} template grants reads",
+  "ids": [
+   "FR-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "search://issues{?q,limit}",
+       "name": "s"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "search://issues?q=bug&limit=5"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "search://issues?q=bug&limit=5"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "search://issues"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "search://issues"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-11 content the server returns under another URI for an allowed read is kept",
+  "ids": [
+   "FR-11"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://guide",
+       "name": "docs://guide"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://guide"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "https://docs.example.com/guide",
+       "text": "hello"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "hello"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://guide"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://Guide",
+       "text": "hello"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "hello"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-06 closing a folder takes a prefix deny in resources/filter; it covers listed, templated, deeper and unlisted URIs alike",
+  "ids": [
+   "FR-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "uri.startsWith('file:///secret/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///secret/listed",
+       "name": "listed"
+      },
+      {
+       "uri": "file:///open/listed",
+       "name": "open"
+      }
+     ],
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///secret/{name}",
+       "name": "secret"
+      },
+      {
+       "uriTemplate": "file:///open/{name}",
+       "name": "open"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "file:///open/listed"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secret/listed"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secret/templated"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secret/deep/er/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///open/listed"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///open/listed"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///open/templated"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///open/templated"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///open/deep/er/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///open/deep/er/key"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///elsewhere/unlisted"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///elsewhere/unlisted"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-06 a deny rule that reads a field an unlisted URI does not have refuses that read",
+  "ids": [
+   "FR-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/filter",
+      "when": "name.startsWith('internal')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "public a"
+      },
+      {
+       "uri": "docs://b",
+       "name": "internal b"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[*].uri",
+      "equals": [
+       "docs://a"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://a"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://b"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://unlisted"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-06 on the mux a bare URI no server lists is not found; with its slug prefix it is forwarded",
+  "ids": [
+   "FR-06"
+  ],
+  "route": "mux",
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "nb://index",
+       "name": "index"
+      }
+     ]
+    }
+   },
+   {
+    "slug": "b",
+    "catalog": {
+     "resources": [
+      {
+       "uri": "wiki://home",
+       "name": "home"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "nb://notebook/123"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "outcome.error.message",
+      "contains": "not found"
+     },
+     {
+      "path": "outcome.fallback.outcome",
+      "equals": "not_found"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "a+nb://notebook/123"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "a"
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "nb://notebook/123"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "b+nb://notebook/123"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.slug",
+      "equals": "b"
+     },
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "nb://notebook/123"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "FR-U a content block of an unknown type is passed on unchanged and recorded by shape, never by value",
+  "ids": [
+   "FR-U"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "fine"
+      },
+      {
+       "type": "video",
+       "url": "https://secret.example/clip",
+       "frames": [
+        1,
+        2,
+        3
+       ]
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[1].type",
+      "equals": "video"
+     },
+     {
+      "path": "reply.result.content[1].url",
+      "equals": "https://secret.example/clip"
+     },
+     {
+      "path": "reply.unknown[0].kind",
+      "equals": "content_block"
+     },
+     {
+      "path": "reply.unknown[0].name",
+      "equals": "video"
+     },
+     {
+      "path": "reply.unknown[0].action",
+      "equals": "passed"
+     },
+     {
+      "path": "reply.unknown[0].shape",
+      "equals": {
+       "type": "string",
+       "url": "string",
+       "frames": "array[3]"
+      }
+     },
+     {
+      "path": "reply.unknown[0].count",
+      "equals": 1
+     }
+    ]
+   }
+  ]
+ }
+]

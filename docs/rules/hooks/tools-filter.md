@@ -39,14 +39,14 @@ Every filter rule must set `decision`.
 ## What the client sees
 
 - `tools/list` and the search tools omit the tool.
-- `tools/call` returns the same error as for a tool that does not exist: `-32004`, `unknown tool <name>`. The upstream is not called.
+- `tools/call` returns the same error as for a tool that does not exist: `-32602`, `unknown tool <name>`. The upstream is not called.
 - `reason` never reaches the client, so a denial does not reveal that the tool exists.
 
 If an enforce rule fails to evaluate, the tool is hidden.
 
 ## Nuances and limits
 
-- A deny is final. A later rule cannot bring a tool back. Write exceptions into the deny condition, such as `&& caller.role != 'admin'`.
+- A deny is final. A later rule cannot bring a tool back. Write exceptions into the deny condition, such as `&& !(caller.email in ['sre-lead@example.com'])`.
 - Filters see the upstream view. `tools/modify` runs after `tools/filter`, so a renamed tool or a corrected hint does not feed a filter. To correct a wrong hint, write the correction into the filter condition.
 - Annotations are hints from the upstream and are not trusted. Use `annotationsRaw` to tell a missing hint from a default.
 - Rules run on every request. A policy change takes effect on the next call.
@@ -64,7 +64,7 @@ If an enforce rule fails to evaluate, the tool is hidden.
 }
 ```
 
-`tools/list` shows `get_page` and `search_pages`. A call to `delete_page` returns `-32004`, `unknown tool delete_page`.
+`tools/list` shows `get_page` and `search_pages`. A call to `delete_page` returns `-32602`, `unknown tool delete_page`.
 
 ### Expose read-only tools only
 
@@ -79,18 +79,18 @@ If an enforce rule fails to evaluate, the tool is hidden.
 
 A tool with `readOnlyHint: true` stays. A tool with `readOnlyHint: false`, or with no hint, is hidden, because the default is false.
 
-### Restrict admin tools to admins
+### Restrict admin tools to named operators
 
 ```json
 {
   "name": "Admin tools",
   "hook": "tools/filter",
-  "when": "caller.role != 'admin' && name.startsWith('admin_')",
-  "then": { "decision": "'deny'", "reason": "'admin tools are for admins'" }
+  "when": "!(caller.email in ['sre-lead@example.com']) && name.startsWith('admin_')",
+  "then": { "decision": "'deny'", "reason": "'admin tools are restricted'" }
 }
 ```
 
-Members see `status` only. Admins see `admin_reset` and `status`. The reason appears in the audit record for members' listings.
+Most callers see `status` only. The listed operator sees `admin_reset` and `status`. The reason appears in the audit record for other callers' listings. For a larger group, grant them a separate entitlement without this rule.
 
 ### Hide tools that do not declare a hint
 

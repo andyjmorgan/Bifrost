@@ -4,19 +4,40 @@ Every question raised while designing the hooks model, written as a test case. E
 
 The design is "v3: Hooks" in the "MCP Gateway - Policy Engine Intent" note. The engine is the standalone library `pkg/hooks` with the `hookctl` CLI; it is not wired into the Bifrost gateway yet.
 
-Levels:
+## How the tests are built
 
-- `unit` and `e2e` cases are proven in `pkg/hooks`: by scenario files in `pkg/hooks/testdata/scenarios/` (each scenario lists the IDs it proves) or by Go tests in `pkg/hooks/hooks_test.go` (the ID is in a comment). "e2e" here means a full request through the engine, with simulated upstream replies.
+Every test is written in Go and runs with the Go toolchain. There are no Python tests.
+
+- Go tests are the `*_test.go` files in `pkg/hooks/` and `pkg/hooks/harness/`. `go test` runs them.
+- Scenario files are JSON data, not code. Each one describes servers, rules, requests and expected outcomes. A Go runner executes them: `pkg/hooks/scenario.go`, through the `hookctl` CLI in `cmd/hookctl`, which is also Go.
+- The two Python files in `scripts/fixtures/` are not tests. They download the real tool catalogs used as fixtures. No test calls them.
+
+| Suite | Where | What it proves | How to run |
+| --- | --- | --- | --- |
+| Go tests | `pkg/hooks/*_test.go` | Unit, corpus, fuzz, benchmark and soak tests of the engine, including panic safety, confirmations and reply streams | `go test ./pkg/hooks/ -race -count=1` |
+| Scenarios | `pkg/hooks/testdata/scenarios/*.json` | Full requests through the engine with simulated upstream replies. Each scenario lists the IDs it proves | `./bin/hookctl run -summary pkg/hooks/testdata/scenarios/*.json` |
+| Doc checks | `pkg/hooks/testdata/doc-checks/*.json` | Every example rule in `docs/rules/hooks/` behaves as its page says | `./bin/hookctl run -summary pkg/hooks/testdata/doc-checks/*.json` |
+| Known gaps | `pkg/hooks/testdata/known-gaps/*.json` | Behaviour that is decided but not built. These fail until the engine catches up, and sit outside the main folder so it stays green | `./bin/hookctl run -summary pkg/hooks/testdata/known-gaps/*.json` |
+| Harness | `pkg/hooks/harness/` | End to end over real HTTP: the official Go SDK client and a raw HTTP client, through a test gateway built on the engine, to scriptable mock MCP servers | `go test ./pkg/hooks/harness/ -race -count=1` |
+| Soak | `TestSoak` in `pkg/hooks/soak_test.go` | Hours of mixed load with no failure, leak or change to the shared catalog | `HOOKS_SOAK=6h go test ./pkg/hooks/ -run TestSoak -timeout 0` |
+
+Run everything that should pass:
+
+```
+go build -o bin/hookctl ./cmd/hookctl
+./bin/hookctl run -summary pkg/hooks/testdata/scenarios/*.json
+./bin/hookctl run -summary pkg/hooks/testdata/doc-checks/*.json
+go test ./pkg/hooks/... -race -count=1
+```
+
+Some Go tests assert behaviour that is decided but not built. They are skipped unless `HOOKS_KNOWN_GAPS=1` is set, and fail when it is, until the engine catches up.
+
+Levels in the tables below:
+
+- `unit` and `e2e` cases are proven in `pkg/hooks`, by a scenario file that lists the ID or by a Go test that carries the ID in a comment. "e2e" here means a full request through the engine, with simulated upstream replies. Tests over real HTTP are in the harness.
 - `integration` cases need the gateway itself: catalog fetching, caching and refresh. They are deferred until the engine is wired into Bifrost.
 
-Run everything:
-
-```
-go test ./pkg/hooks/ -race
-go build -o bin/hookctl ./cmd/hookctl && ./bin/hookctl run -summary pkg/hooks/testdata/scenarios/*.json
-```
-
-Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers and the harness) and 936 real tool-call examples live in `internal/e2e/testdata/real/`, which is gitignored. `scripts/fixtures/` regenerates them. Tests that need them skip when they are absent.
+Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers and the Bifrost test servers) and 936 real tool-call examples live in `internal/e2e/testdata/real/`, which is gitignored. `scripts/fixtures/` regenerates them. Tests that need them skip when they are absent.
 
 ## Hooks and rule shape
 

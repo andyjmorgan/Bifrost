@@ -1,0 +1,19 @@
+{
+  "name": "refserver-typescript",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reference MCP server on the official TypeScript MCP SDK, for the bifrost hooks end-to-end harness.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs --port 0",
+    "selftest": "node selftest.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0"
+  }
+}

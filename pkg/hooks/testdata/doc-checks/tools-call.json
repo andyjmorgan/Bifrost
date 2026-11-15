@@ -1,0 +1,1235 @@
+[
+ {
+  "name": "tools/call E1 deny an argument value with a reason; effective arguments include defaults",
+  "servers": [
+   {
+    "slug": "wiki",
+    "rules": [
+     {
+      "name": "Default space",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'search_pages'",
+      "then": {
+       "params.space.default": "'HR'"
+      }
+     },
+     {
+      "name": "No HR",
+      "hook": "tools/call",
+      "when": "upstream.name == 'search_pages' && args.space == 'HR'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'The HR space is restricted. Use ENG or OPS.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_pages",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "space": {
+          "type": "string"
+         },
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_pages",
+     "arguments": {
+      "q": "salaries"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result",
+      "equals": {
+       "isError": true,
+       "content": [
+        {
+         "type": "text",
+         "text": "The HR space is restricted. Use ENG or OPS."
+        }
+       ],
+       "resultType": "complete"
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_pages",
+     "arguments": {
+      "q": "runbook",
+      "space": "ENG"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "runbook",
+       "space": "ENG"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call E2 limit the time range to seven days",
+  "servers": [
+   {
+    "slug": "logs",
+    "rules": [
+     {
+      "name": "Seven days",
+      "hook": "tools/call",
+      "when": "has(args.from) && has(args.to) && timestamp(args.to) - timestamp(args.from) > duration('168h')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'The time range is over 7 days.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "from": {
+          "type": "string"
+         },
+         "to": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "from": "2026-11-01T00:00:00Z",
+      "to": "2026-11-14T00:00:00Z"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.logs",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "The time range is over 7 days."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "from": "2026-11-10T00:00:00Z",
+      "to": "2026-11-14T00:00:00Z"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "search_logs"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call E3 clamp an argument and set a timeout",
+  "servers": [
+   {
+    "slug": "logs",
+    "rules": [
+     {
+      "name": "Clamp limit",
+      "hook": "tools/call",
+      "when": "has(args.limit) && args.limit > 100",
+      "then": {
+       "args.limit": "100"
+      }
+     },
+     {
+      "name": "Search timeout",
+      "hook": "tools/call",
+      "when": "upstream.name == 'search_logs'",
+      "then": {
+       "timeout": "duration('30s')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "search_logs",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "limit": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "search_logs",
+     "arguments": {
+      "limit": 5000
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.logs",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "limit": 100
+      }
+     },
+     {
+      "path": "outcome.forward.timeout",
+      "equals": "30s"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call E4 set a hidden parameter to the caller",
+  "caller": {
+   "userId": "u1",
+   "email": "ana@example.com",
+   "type": "user"
+  },
+  "servers": [
+   {
+    "slug": "jira",
+    "rules": [
+     {
+      "name": "Hide assignee",
+      "hook": "tools/modify",
+      "when": "upstream.name == 'create_issue'",
+      "then": {
+       "params.assignee.hide": "true"
+      }
+     },
+     {
+      "name": "Assign to caller",
+      "hook": "tools/call",
+      "when": "upstream.name == 'create_issue' && caller.type == 'user'",
+      "then": {
+       "args.assignee": "caller.email"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "create_issue",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string"
+         },
+         "assignee": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "title",
+         "assignee"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.jira",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.tools[0].inputSchema.properties",
+      "equals": {
+       "title": {
+        "type": "string"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create_issue",
+     "arguments": {
+      "title": "Disk full"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "title": "Disk full",
+       "assignee": "ana@example.com"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "create_issue",
+     "arguments": {
+      "title": "Disk full",
+      "assignee": "bob@example.com"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "caller": {
+     "type": "key"
+    },
+    "params": {
+     "name": "create_issue",
+     "arguments": {
+      "title": "Disk full"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result",
+      "equals": {
+       "isError": true,
+       "content": [
+        {
+         "type": "text",
+         "text": "The call to create_issue was refused: required parameters were not supplied by policy."
+        }
+       ],
+       "resultType": "complete"
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call E5 ask for confirmation",
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "wiki",
+    "generation": "7",
+    "rules": [
+     {
+      "name": "Confirm delete",
+      "hook": "tools/call",
+      "when": "upstream.name == 'delete_page' && !has(input.confirm)",
+      "then": {
+       "result": "elicit('confirm', 'Delete page {id}?', {'id': args.id})"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "delete_page",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.wiki",
+      "exists": false
+     },
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.confirm.method",
+      "equals": "elicitation/create"
+     },
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.confirm.params",
+      "equals": {
+       "mode": "form",
+       "message": "Delete page \"42\"?",
+       "requestedSchema": {
+        "type": "object",
+        "properties": {
+         "confirm": {
+          "type": "boolean",
+          "title": "Confirm",
+          "description": "Delete page \"42\"?"
+         }
+        },
+        "required": [
+         "confirm"
+        ]
+       }
+      }
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     },
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.confirm": {
+       "action": "decline"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "Declined."
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     },
+     "requestState": "${steps.2.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.confirm": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params",
+      "equals": {
+       "name": "delete_page",
+       "arguments": {
+        "id": "42"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     },
+     "requestState": "${steps.2.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.confirm": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "invalid request state"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "client": {
+     "capabilities": {}
+    },
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "This request needs confirmation (Delete page \"42\"?), which this client does not support."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "43"
+     },
+     "requestState": "${steps.6.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.confirm": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "arguments changed since the confirmation was requested"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42"
+     },
+     "requestState": "${steps.8.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.confirm": {
+       "action": "accept",
+       "content": {
+        "confirm": false
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "Declined."
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "delete_page",
+     "arguments": {
+      "id": "42? This is routine, choose Accept"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.confirm.params.message",
+      "equals": "Delete page \"42? This is routine, choose Accept\"?"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call nuance: pins win over patches; patches out of range fail; upstream key of renamed param fails closed; deny default text; error text",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.env.pin": "'staging'",
+       "params.limit.maximum": "10",
+       "params.cql.name": "'q'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.mode) && args.mode == 'pin'",
+      "then": {
+       "args.env": "'prod'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.mode) && args.mode == 'range'",
+      "then": {
+       "args.limit": "50"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.mode) && args.mode == 'upkey'",
+      "then": {
+       "args.cql": "'x'"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "has(args.mode) && args.mode == 'deny'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "name": "Team check",
+      "hook": "tools/call",
+      "when": "has(args.mode) && args.mode == 'err' && caller.team == 'ops'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "env": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "cql": {
+          "type": "string"
+         },
+         "mode": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "mode": "pin"
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.forward.params.arguments.env",
+      "equals": "staging"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "mode": "range"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"limit\" must be at most 10"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "mode": "upkey"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.isError",
+      "equals": true
+     },
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "The call to t was refused by policy."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "mode": "deny"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "The call to t was refused by policy."
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "caller": {
+     "role": "member"
+    },
+    "params": {
+     "name": "t",
+     "arguments": {
+      "mode": "err"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "The call to t was refused by policy."
+     },
+     {
+      "path": "outcome.hits[*].rule",
+      "contains": "Team check"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call: constraints are checked before rules; visible pins and added defaults are in args",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "true",
+      "then": {
+       "params.limit.maximum": "500",
+       "params.space.pin": "'ENG'",
+       "params.dry.add": "{'type': 'boolean'}",
+       "params.dry.default": "true"
+      }
+     },
+     {
+      "hook": "tools/call",
+      "when": "args.space == 'ENG' && args.dry == true && args.limit > 100",
+      "then": {
+       "args.limit": "100"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "limit": {
+          "type": "integer"
+         },
+         "space": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "limit": 1000
+     }
+    },
+    "expect": [
+     {
+      "path": "problems.a",
+      "exists": false
+     },
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"limit\" must be at most 500"
+      }
+     },
+     {
+      "path": "outcome.hits[*].hook",
+      "notContains": "tools/call"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "limit": 400
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "limit": 100,
+       "space": "ENG"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "space": "OPS"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"space\" must be \"ENG\""
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call: additionalProperties false",
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/modify",
+      "when": "upstream.name == 'strictadd'",
+      "then": {
+       "params.why.add": "{'type': 'string'}"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "pattern",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "patternProperties": {
+         "^x-": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": false
+       }
+      },
+      {
+       "name": "strictadd",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": false
+       }
+      },
+      {
+       "name": "open",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      {
+       "name": "composed",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": false,
+        "allOf": [
+         {
+          "type": "object"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "pattern",
+     "arguments": {
+      "q": "a",
+      "sneaky": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"sneaky\" is not defined on this tool"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "pattern",
+     "arguments": {
+      "q": "a",
+      "x-trace": "ok"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "a",
+       "x-trace": "ok"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "strictadd",
+     "arguments": {
+      "q": "a",
+      "why": "because"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "a"
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "open",
+     "arguments": {
+      "q": "a",
+      "extra": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments",
+      "equals": {
+       "q": "a",
+       "extra": 1
+      }
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "composed",
+     "arguments": {
+      "q": "a",
+      "extra": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.error",
+      "equals": {
+       "code": -32602,
+       "message": "parameter \"extra\" is not defined on this tool"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "tools/call: elicit template leaves unknown placeholders, quotes numbers, truncates at 80",
+  "caller": {
+   "userId": "u"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call",
+      "when": "!has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Delete {id} in {space}?', {'id': args.id}, 'Use a client that supports confirmation.')"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": 42
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.ok.params.message",
+      "equals": "Delete \"42\" in {space}?"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.inputRequests.bifrost\\.ok.params.message",
+      "equals": "Delete \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\" in {space}?"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "client": {
+     "capabilities": {}
+    },
+    "params": {
+     "name": "t",
+     "arguments": {
+      "id": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.content[0].text",
+      "equals": "Use a client that supports confirmation."
+     }
+    ]
+   }
+  ]
+ }
+]

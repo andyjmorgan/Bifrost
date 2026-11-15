@@ -20,12 +20,14 @@ The gateway supports a subset of RFC 6570. A supported template is literal text 
 
 Every literal part must match exactly, and the whole URI must match. For example, `file:///docs/{name}.md` matches `file:///docs/a.md` but not `file:///docs/sub/a.md` or `file:///docs/a.txt`.
 
-Any other form, such as `{?q}`, `{/path}` or `{#frag}`, is unsupported:
+The gateway does not parse any other form, such as `{?q}`, `{/path*}` or `{#frag}`:
 
-- An unsupported template never makes a URI readable. `resources/templates/list` still lists it and records an issue for administrators, such as `uses an unsupported expression {?q}; it is listed but grants no reads`.
-- A deny on an unsupported template applies to every URI that starts with its literal text before the first expression. This can deny more than the template would expand to, but a deny is never lost.
+- The template is listed as the server sent it, and reads under it work, because a read needs no template to allow it.
+- A deny on such a template applies to every URI that starts with its literal text before the first expression. This can deny more than the template would expand to, but a deny is never lost.
 
-Reserved escapes such as `%2F` stay opaque. `file:///a%2Fb` does not match `file:///a/{name}`.
+Matching matters in two places. A denied template covers exactly the URIs it can produce: denying `file:///docs/{name}.md` refuses `file:///docs/a.md`, and leaves `file:///docs/sub/a.md` alone. And on the mux, a template lets the gateway route a URI that has no slug prefix. To close a whole folder, deny its prefix in [resources/filter](resources-filter.md).
+
+The gateway never decodes a URI. `file:///a%2Fb` does not match `file:///a/{name}`.
 
 ## Variables
 

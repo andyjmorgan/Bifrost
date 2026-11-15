@@ -1,0 +1,1137 @@
+[
+ {
+  "name": "DROP-01 drop a whole parent object: the subtree goes, siblings stay",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "id": 1,
+      "user": {
+       "name": "ana",
+       "email": "a@x",
+       "prefs": {
+        "tz": "UTC"
+       }
+      },
+      "status": "ok"
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1,
+       "status": "ok"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-02 drop a deep child outside arrays: only that leaf goes, its parents stay",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.prefs.tz'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "user": {
+       "name": "ana",
+       "prefs": {
+        "tz": "UTC",
+        "lang": "en"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "user": {
+        "name": "ana",
+        "prefs": {
+         "lang": "en"
+        }
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-03 parent and child paths together: order does not matter and nothing errors",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "args.order == 'child-first'",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email', 'user'])"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "args.order == 'parent-first'",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user', 'user.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "order": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "order": "child-first"
+     }
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "id": 1,
+      "user": {
+       "email": "a@x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1
+      }
+     },
+     {
+      "path": "reply.error",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {
+      "order": "parent-first"
+     }
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "id": 1,
+      "user": {
+       "email": "a@x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1
+      }
+     },
+     {
+      "path": "reply.error",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-04 missing paths and paths through scalars are no-ops",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['nope', 'id.deeper', 'items.*.nope', 'user.missing.leaf'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "id": 1,
+      "items": [
+       {
+        "a": 1
+       }
+      ],
+      "user": {
+       "n": "x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1,
+       "items": [
+        {
+         "a": 1
+        }
+       ],
+       "user": {
+        "n": "x"
+       }
+      }
+     },
+     {
+      "path": "reply.error",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-05 parent inside array items: each item's subtree goes; nested arrays are walked",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['issues.*.fields', 'issues.*.comments.*.author.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "issues": [
+       {
+        "key": "A-1",
+        "fields": {
+         "secret": 1
+        },
+        "comments": [
+         {
+          "body": "hi",
+          "author": {
+           "name": "n",
+           "email": "e"
+          }
+         }
+        ]
+       },
+       {
+        "key": "A-2",
+        "comments": []
+       }
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "issues": [
+        {
+         "key": "A-1",
+         "comments": [
+          {
+           "body": "hi",
+           "author": {
+            "name": "n"
+           }
+          }
+         ]
+        },
+        {
+         "key": "A-2",
+         "comments": []
+        }
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-06 keys that contain a dot are addressed with an escaped dot",
+  "ids": [
+   "RH-RES-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['labels.team\\\\.name'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "labels": {
+       "team.name": "x",
+       "team": {
+        "name": "keep"
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "labels": {
+        "team": {
+         "name": "keep"
+        }
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-07 dropping from structuredContent leaves text content alone; text needs its own rule",
+  "ids": [
+   "RH-RES-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"user\":{\"name\":\"ana\",\"email\":\"a@x\"}}"
+      }
+     ],
+     "structuredContent": {
+      "user": {
+       "name": "ana",
+       "email": "a@x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "user": {
+        "name": "ana"
+       }
+      }
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "{\"user\":{\"name\":\"ana\",\"email\":\"a@x\"}}"
+     },
+     {
+      "path": "reply.issues",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-08 the upstream result object is not modified by drop",
+  "ids": [
+   "RH-RES-01",
+   "RH-COW-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user'])"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent.user)",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'later rules must see the dropped view'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [],
+     "structuredContent": {
+      "id": 1,
+      "user": {
+       "n": "x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1
+      }
+     },
+     {
+      "path": "reply.error",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-09 YAML text content: no rule touches it, nothing throws, it passes through byte-identical",
+  "ids": [
+   "RH-RES-07"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "user:\n  name: ana\n  email: a@x\n"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "user:\n  name: ana\n  email: a@x\n"
+     },
+     {
+      "path": "reply.error",
+      "exists": false
+     },
+     {
+      "path": "reply.result.isError",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-10 an unguarded drop on a result with no structuredContent is an evaluation error, so the enforce rule refuses the result",
+  "ids": [
+   "RH-RES-07",
+   "RH-EVAL-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "user:\n  name: ana\n  email: a@x\n"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.isError",
+      "equals": true
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "notContains": "a@x"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-11 YAML text alongside structuredContent: the drop applies to structuredContent only; the YAML is unchanged",
+  "ids": [
+   "RH-RES-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email'])"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "user:\n  name: ana\n  email: a@x\n"
+      }
+     ],
+     "structuredContent": {
+      "user": {
+       "name": "ana",
+       "email": "a@x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "user": {
+        "name": "ana"
+       }
+      }
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "user:\n  name: ana\n  email: a@x\n"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-12 favour structured output only: content is emptied, structuredContent stays",
+  "ids": [
+   "RH-RES-08"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "content": "[]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"id\":1}"
+      }
+     ],
+     "structuredContent": {
+      "id": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.content",
+      "len": 0
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "id": 1
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-13 favour plain output only: structuredContent is removed, the text stays",
+  "ids": [
+   "RH-RES-08"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "structuredContent": "null"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "summary: ok"
+      }
+     ],
+     "structuredContent": {
+      "id": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "exists": false
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "summary: ok"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-14 removing structuredContent leaves every text block, including its JSON copy",
+  "ids": [
+   "RH-RES-06",
+   "RH-RES-08"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "structuredContent": "null"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"id\":1}"
+      },
+      {
+       "type": "text",
+       "text": "done"
+      }
+     ],
+     "structuredContent": {
+      "id": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.content",
+      "equals": [
+       {
+        "type": "text",
+        "text": "{\"id\":1}"
+       },
+       {
+        "type": "text",
+        "text": "done"
+       }
+      ]
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-15 two rules: one drops the field from structuredContent, one redacts it from text",
+  "ids": [
+   "RH-RES-06"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['user.email'])"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+', '[redacted]')})"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "{\"user\":{\"name\":\"ana\",\"email\":\"a@x\"}}"
+      },
+      {
+       "type": "text",
+       "text": "user:\n  email: a@x.io\n"
+      }
+     ],
+     "structuredContent": {
+      "user": {
+       "name": "ana",
+       "email": "a@x"
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "user": {
+        "name": "ana"
+       }
+      }
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "{\"user\":{\"name\":\"ana\",\"email\":\"[redacted]\"}}"
+     },
+     {
+      "path": "reply.result.content[1].text",
+      "equals": "user:\n  email: [redacted]\n"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "DROP-16 Datadog shape: drop a field from JSON structuredContent and remove the same key's lines from YAML-in-XML text with regex",
+  "ids": [
+   "RH-RES-06",
+   "RH-RES-07"
+  ],
+  "servers": [
+   {
+    "slug": "dd",
+    "rules": [
+     {
+      "hook": "tools/result",
+      "when": "has(result.structuredContent)",
+      "then": {
+       "structuredContent": "drop(result.structuredContent, ['data.*.owner_email'])"
+      }
+     },
+     {
+      "hook": "tools/result",
+      "when": "true",
+      "then": {
+       "content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, '(?m)^\\\\s*owner_email:.*\\\\n', '')})"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "list_services",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "list_services"
+    },
+    "upstream": {
+     "content": [
+      {
+       "type": "text",
+       "text": "<result>\n<metadata>\ncount: 2\n</metadata>\n<data>\n- service: web\n  owner_email: ana@example.com\n  status: ok\n- service: api\n  owner_email: sam@example.com\n  status: degraded\n</data>\n</result>\n"
+      }
+     ],
+     "structuredContent": {
+      "count": 2,
+      "data": [
+       {
+        "service": "web",
+        "owner_email": "ana@example.com",
+        "status": "ok"
+       },
+       {
+        "service": "api",
+        "owner_email": "sam@example.com",
+        "status": "degraded"
+       }
+      ]
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.structuredContent",
+      "equals": {
+       "count": 2,
+       "data": [
+        {
+         "service": "web",
+         "status": "ok"
+        },
+        {
+         "service": "api",
+         "status": "degraded"
+        }
+       ]
+      }
+     },
+     {
+      "path": "reply.result.content[0].text",
+      "equals": "<result>\n<metadata>\ncount: 2\n</metadata>\n<data>\n- service: web\n  status: ok\n- service: api\n  status: degraded\n</data>\n</result>\n"
+     }
+    ]
+   }
+  ]
+ }
+]

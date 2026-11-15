@@ -44,7 +44,7 @@
 | Confirmation, client cannot elicit | `-32602`, `This request needs confirmation (<message>), which this client does not support.`, or the error argument of `elicit()` |
 | A rule fails to evaluate | `-32602`, `resources/read was refused by policy` |
 
-Confirmations work as in [tools/call](tools-call.md#elicitation). The signed state binds the upstream URI and the method. A directory read binds `resources/directory/read`, so a confirmation given for a read cannot be used for a directory read of the same URI, or the other way round. Refusals never name the rule that refused.
+Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge is bound to the upstream URI and the method. A directory read binds `resources/directory/read`, so a confirmation given for a read cannot be used for a directory read of the same URI, or the other way round. Refusals never name the rule that refused.
 
 ## Nuances and limits
 
@@ -77,17 +77,11 @@ Confirmations work as in [tools/call](tools-call.md#elicitation). The signed sta
     "hook": "resources/read",
     "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
     "then": { "result": "elicit('ok', 'Share {uri} with the assistant?', {'uri': uri})" }
-  },
-  {
-    "name": "Read declined",
-    "hook": "resources/read",
-    "when": "has(input.ok) && input.ok.action != 'accept'",
-    "then": { "decision": "'deny'", "reason": "'The read was not confirmed.'" }
   }
 ]
 ```
 
-A read of `file:///secrets/db.txt` returns `input_required` with the message `Share "file:///secrets/db.txt" with the assistant?`. A retry that declines returns `-32602`, `The read was not confirmed.` A retry that accepts reaches the upstream.
+A read of `file:///secrets/db.txt` returns `input_required` with the message `Share "file:///secrets/db.txt" with the assistant?`. A retry that declines returns `-32602`, `Declined.`, with no rule needed. A retry that accepts with `{"confirm": true}` reaches the upstream. Each challenge is answered once, so after a decline the client sends the read again to be asked afresh.
 
 ### Skills for users only
 

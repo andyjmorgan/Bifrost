@@ -647,7 +647,12 @@
      "requestState": "UP"
     }
    }
-  ]
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
  },
  {
   "name": "CX-11 prompt input hook gets reversed and patched upstream arguments",
@@ -737,7 +742,12 @@
      "requestState": "UP"
     }
    }
-  ]
+  ],
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  }
  },
  {
   "name": "CX-12 resource hidden by modify evaluation error is also unreadable",
@@ -1070,7 +1080,7 @@
   "route": "mux"
  },
  {
-  "name": "CX-17 resource template matching respects interior literal segments",
+  "name": "CX-17 a denied template covers the URIs it can produce, respecting interior literal segments",
   "ids": [
    "CX-17"
   ],
@@ -1082,15 +1092,30 @@
       {
        "uriTemplate": "file:///teams/{team}/public/{file}",
        "name": "public"
+      },
+      {
+       "uriTemplate": "file:///teams/{team}/private/{file}",
+       "name": "private"
       }
      ]
     },
-    "rules": []
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "name == 'private'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
    }
   ],
   "steps": [
    {
     "op": "resources/read",
+    "params": {
+     "uri": "file:///teams/blue/private/key"
+    },
     "expect": [
      {
       "path": "outcome.error.code",
@@ -1104,15 +1129,48 @@
       "path": "problems.a",
       "exists": false
      }
-    ],
+    ]
+   },
+   {
+    "op": "resources/read",
     "params": {
-     "uri": "file:///teams/blue/private/key"
-    }
+     "uri": "file:///teams/blue/public/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///teams/blue/public/key"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///teams/private/public/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///teams/private/public/key"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///teams/blue/other/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///teams/blue/other/key"
+     }
+    ]
    }
   ]
  },
  {
-  "name": "CX-18 simple template expansion cannot consume raw slash segments",
+  "name": "CX-18 simple template expansion cannot consume raw slash segments, so a denied template does not cover deeper paths",
   "ids": [
    "CX-18"
   ],
@@ -1127,12 +1185,23 @@
       }
      ]
     },
-    "rules": []
+    "rules": [
+     {
+      "hook": "templates/filter",
+      "when": "name == 'public'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ]
    }
   ],
   "steps": [
    {
     "op": "resources/read",
+    "params": {
+     "uri": "file:///public/key"
+    },
     "expect": [
      {
       "path": "outcome.error.code",
@@ -1146,10 +1215,19 @@
       "path": "problems.a",
       "exists": false
      }
-    ],
+    ]
+   },
+   {
+    "op": "resources/read",
     "params": {
      "uri": "file:///public/deep/key"
-    }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "file:///public/deep/key"
+     }
+    ]
    }
   ]
  },
@@ -2453,6 +2531,11 @@
   ],
   "limits": {
    "maxResponseBytes": 1024
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
   }
  },
  {
@@ -3534,7 +3617,7 @@
   }
  },
  {
-  "name": "CX-54 same-argument replay remains allowed within the accepted five-minute window",
+  "name": "CX-54 a confirmation is answered once: a same-argument replay is refused",
   "ids": [
    "CX-54"
   ],
@@ -3607,8 +3690,12 @@
     "op": "tools/call",
     "expect": [
      {
-      "path": "outcome.forward.params.name",
-      "equals": "t"
+      "path": "outcome.error.message",
+      "equals": "invalid request state"
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
      }
     ],
     "now": "2026-11-14T12:04:59Z",
@@ -4252,7 +4339,7 @@
     "expect": [
      {
       "path": "outcome.error.code",
-      "equals": -32004
+      "equals": -32602
      },
      {
       "path": "outcome.forward",

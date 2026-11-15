@@ -119,3 +119,66 @@ What changed:
 - The hail mary asserts the fallback event, the prefixed reply URI, that the prefixed URI then works directly, ambiguous and template outcomes, and directory reads through fallback.
 - New: byte consistency on the shuffled real corpus, an exact-outcome oracle for real-call policy cases, and fuzzing of the scenario loader.
 - RH-SRV-07 and RH-SRV-10 are reclassified as gateway integration. The real-call policy test is relabelled as a smoke test, alongside the new oracle.
+
+## Round 2, after Codex's v2 review
+
+Added November 15, 2026. This section supersedes the results and weak spots above where they disagree.
+
+### Results now
+
+- 248 of 248 scenarios pass in `pkg/hooks/testdata/scenarios/`, including Codex's 70
+- 126 of 126 doc checks pass in `pkg/hooks/testdata/doc-checks/`; each verifies an example in `docs/rules/hooks/`
+- the full Go suite passes under the race detector, including Codex's 4 v2 regression tests in `codex_v2_review_test.go`
+- a 6-hour soak on 10 cores passed: 919,000 operations, 0 failures, live heap 79 to 160 MiB with no growth, garbage collection under 0.5% of runtime
+
+### Codex's v2 findings, fixed
+
+| Finding | Fix |
+| --- | --- |
+| V2-F01 prepared-cache leak | The cached value no longer references its weak key. The leaky soak grew from 2.5 to 4.7 GiB in a minute; the fixed one stayed flat |
+| V2-F02 unsupported-template panic | Unsupported templates are left out of URI ownership; they still deny but never grant |
+| V2-F03 audit time expiring enforcement | Each rule gets a fresh deadline from what is left of its own allowance |
+| V2-F04 `allOf` disabling `additionalProperties: false` | Always enforced at its own level; composition elsewhere cannot widen it (JSON Schema core) |
+| V2-F05 runner accepted missing values | `len` and `notContains` require a present value; regression test `TestExpectRequiresPresentValues` |
+| Weak tests | Byte-consistency test requires a successful listing of more than 1,000 tools; the oracle test is renamed `TestPolicyCallOracle` and says it is synthetic |
+
+### Other fixes this round
+
+- `get_tool_definition` returned `null` instead of `[]` when nothing matched
+- `resources/result` denies dropped the administrator's reason
+- forwards sent the version `"bifrost"`; they now send `Engine.Version` (default `"dev"`)
+- a listed unsupported template now records an issue for administrators
+- the scenario report includes `warnings.<slug>` for disabled rules that do not compile
+- a rule that sets `structuredContent` to `null` removes it (plain output only)
+
+### Decisions this round
+
+- A rule changes only the field it names. Dropping from `structuredContent` does not touch text content, including a JSON copy of it; text needs its own rule. For v1, text is edited with `regex.replace`, including Datadog's YAML-in-XML text (DROP-16).
+- The default CEL cost limit (1,000,000) refuses a `regex.replace` over a 1 MB argument, so the call fails closed. With the limit at 50,000,000 the rewrite takes about 56 ms and 25 MB (`TestRegexReplaceOnLargeNotebook`).
+- Performance work has stopped; current speed and memory are enough for an MCP gateway.
+- The docs no longer assume Bifrost's `caller.role`. `caller` is opaque and gateway-supplied; the docs assume only `userId` and `email`.
+
+### New coverage this round
+
+- `10-attributes.json`: annotations read and changed, optional parameters dropped, descriptions, chained renames
+- `11-prompts-resources-attributes.json`: the same for prompts, resources and templates
+- `12-result-drop.json`: dropping parents and children from results, YAML text, structured-only and plain-only output
+- `13-datadog-telemetry.json`: hiding Datadog's required `telemetry` parameter with a pin, on a copy of the schema and on the real catalog
+- `TestCatalogIsNeverModified`: the real catalog is byte-identical after heavy listing and calling
+
+### Known weak spots now
+
+1. Budget time is summed across parallel listing workers, so large parallel listings can hit the 2 s budget early. Undecided: wall-clock or summed.
+2. Calls under a policy that renames tools still evaluate the whole catalog (30 to 50 ms on 1,481 tools).
+3. In the scenario runner, `notContains` on an object checks for a key, not a substring. Other scenarios may rely on it vacuously; not yet audited.
+4. Two version strings in the runner: `connect` and `discover` steps use `"test"`, forwards use `Engine.Version`.
+5. CX-64 checks only the error code, not the administrator's reason.
+6. Regex on YAML text is reliable only for single-line values.
+7. Nine doc examples use Bifrost's `caller.type`; whether Datadog has an equivalent is an open question.
+8. Unchanged from above: no single-use elicitation until the KV store, unsupported templates over-deny, skill plans recomputed per read, and the deferred gateway integration items.
+
+### Follow-ups documented in the design note
+
+- `request.ip` and `request.headers`, pending which headers Datadog exposes
+- caller identity questions for Datadog
+- a `dropNulls()` helper for results
