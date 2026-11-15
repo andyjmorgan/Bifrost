@@ -161,11 +161,18 @@ func (e *Engine) version() string {
 // Request is the per-request context: who is calling, from what, on which
 // route, and which entitlements the route exposes.
 type Request struct {
-	Route   string         // direct | mux | search
-	Caller  map[string]any // userId, email, role, type, keyName, orgId, clientId
-	Client  map[string]any // name, version, capabilities (from this request's _meta)
-	Now     time.Time
-	Servers []*Server // direct: exactly one; mux/search: every entitlement on the route (already narrowed by ?slugs=)
+	Route  string         // direct | mux | search
+	Caller map[string]any // userId, email, role, type, keyName, orgId, clientId
+	// Principal identifies whoever is making the request, as one opaque
+	// string the gateway chooses: the user under a per-user credential, the
+	// key under a shared one. Confirmation state is bound to it, so a
+	// challenge issued to one principal cannot be answered by another. When
+	// it is empty the engine falls back to Caller["userId"]; with neither,
+	// it cannot bind state and refuses to ask for confirmation.
+	Principal string
+	Client    map[string]any // name, version, capabilities (from this request's _meta)
+	Now       time.Time
+	Servers   []*Server // direct: exactly one; mux/search: every entitlement on the route (already narrowed by ?slugs=)
 }
 
 func (r Request) context(s *Server) Context {
@@ -175,6 +182,23 @@ func (r Request) context(s *Server) Context {
 	}
 	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Route: r.Route, Now: r.Now}
 }
+
+// principal is the identity confirmation state is bound to, or "" when the
+// gateway supplied none.
+func (r Request) principal() string {
+	if r.Principal != "" {
+		return r.Principal
+	}
+	if id, ok := r.Caller["userId"]; ok && id != nil {
+		if s := fmt.Sprint(id); s != "" {
+			return "user:" + s
+		}
+	}
+	return ""
+}
+
+// errNoPrincipal refuses a confirmation that could not be bound to anyone.
+var errNoPrincipal = errors.New("This request needs confirmation, which is not available without a caller identity.")
 
 func (r Request) mux() bool { return r.Route == "mux" || r.Route == "search" }
 
@@ -694,7 +718,7 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state expired"}
 	case st.Method != method || st.Target != target:
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state belongs to another request"}
-	case st.Caller != fmt.Sprint(r.Caller["userId"]) || st.Entitlement != entitlementID(s):
+	case r.principal() == "" || st.Caller != r.principal() || st.Entitlement != entitlementID(s):
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state belongs to another caller"}
 	case st.Generation != generation(s):
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state is from an older policy"}
@@ -779,11 +803,14 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 	if _, done := answers[key]; done {
 		return nil, fmt.Errorf("confirmation %q was already answered; the rule asking for it must check has(input.%s)", key, key)
 	}
+	if r.principal() == "" {
+		return nil, errNoPrincipal
+	}
 	now := r.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
-	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: fmt.Sprint(r.Caller["userId"]), Entitlement: entitlementID(s),
+	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: r.principal(), Entitlement: entitlementID(s),
 		Target: target, ArgsHash: hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Pending: []string{key}}
 	if len(answers) > 0 {
 		st.Answers = map[string]map[string]any{}

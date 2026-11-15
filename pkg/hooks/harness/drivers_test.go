@@ -178,7 +178,13 @@ func (c *driverClient) Do(ctx context.Context, endpoint string, req harness.Clie
 		call.Elicit = append(call.Elicit, answer)
 	}
 	rep, err := d.Call(ctx, call)
-	if err != nil && strings.Contains(err.Error(), "does not advertise") {
+	notSent := err != nil && strings.Contains(err.Error(), "does not advertise")
+	for _, note := range rep.Notes {
+		if strings.Contains(note, "does not advertise") {
+			notSent = true
+		}
+	}
+	if notSent {
 		// The TypeScript SDK will not send a request for a capability the
 		// server's discovery did not advertise. The request was never made.
 		out.Refused = "the SDK will not ask for a capability the server does not advertise"

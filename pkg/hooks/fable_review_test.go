@@ -1095,3 +1095,81 @@ func TestKnownThingsAreNotReportedAsUnknown(t *testing.T) {
 		t.Errorf("calls %d, unknown %+v, error %v", calls, got.Unknown, got.Error)
 	}
 }
+
+// ---- the principal ----------------------------------------------------------------
+
+// Confirmation state is bound to an opaque principal the gateway supplies.
+// One principal cannot answer another's challenge, and with no principal at
+// all the engine refuses to ask rather than bind a challenge to nobody.
+func TestConfirmationIsBoundToThePrincipal(t *testing.T) {
+	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
+	ctx := context.Background()
+	caps := map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}
+	req := func(principal string, caller map[string]any) Request {
+		return Request{Route: "direct", Servers: []*Server{s}, Principal: principal, Caller: caller, Client: caps}
+	}
+	ask := func(r Request) (string, Outcome) {
+		out := e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"id":1}`)})
+		ir, _ := out.Result.(InputRequired)
+		return ir.RequestState, out
+	}
+	var yes mcp.InputResponseMap
+	_ = json.Unmarshal([]byte(`{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}`), &yes)
+	answer := func(r Request, state string) Outcome {
+		return e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"id":1}`), RequestState: state, InputResponses: yes})
+	}
+
+	// No principal and no user id: the engine does not ask.
+	for _, r := range []Request{req("", nil), req("", map[string]any{"email": "ana@example.com"}), req("", map[string]any{"userId": nil}), req("", map[string]any{"userId": ""})} {
+		state, out := ask(r)
+		b, _ := json.Marshal(out.Result)
+		if state != "" || out.Forward != nil || !strings.Contains(string(b), "caller identity") {
+			t.Errorf("a challenge was issued to nobody: state %q, result %s", state, b)
+		}
+	}
+
+	// A principal with no user id works: a shared key, for example.
+	key := req("key:shared-1", map[string]any{"email": "ana@example.com"})
+	state, _ := ask(key)
+	if state == "" {
+		t.Fatal("no challenge for a principal without a user id")
+	}
+	// Another principal cannot answer it, even with the same caller fields.
+	other := req("key:shared-2", map[string]any{"email": "ana@example.com"})
+	if out := answer(other, state); out.Forward != nil || out.Error == nil || !strings.Contains(out.Error.Message, "another caller") {
+		t.Fatalf("another principal answered the challenge: %+v", out.Error)
+	}
+	// Two callers behind the same shared principal are the same principal.
+	state, _ = ask(key)
+	if out := answer(req("key:shared-1", map[string]any{"email": "bo@example.com"}), state); out.Forward == nil {
+		t.Errorf("the same principal could not answer: %+v", out.Error)
+	}
+	// With no principal the user id is used, and a principal that merely
+	// equals another caller's user id is a different principal.
+	state, _ = ask(req("", map[string]any{"userId": "u1"}))
+	if out := answer(req("u1", nil), state); out.Forward != nil {
+		t.Error("a principal equal to a user id answered that user's challenge")
+	}
+	state, _ = ask(req("", map[string]any{"userId": "u1"}))
+	if out := answer(req("", map[string]any{"userId": "u1"}), state); out.Forward == nil {
+		t.Errorf("the same user could not answer: %+v", out.Error)
+	}
+}
+
+// Rules see the real time when the gateway does not set one.
+func TestNowDefaultsToTheRealClock(t *testing.T) {
+	rules := []Rule{{Hook: "tools/call", When: "now < timestamp('2020-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'", "reason": "'the clock reads before 2020'"}}}
+	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
+	p := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"q":"abc"}`)}
+	if out := e.CallTool(context.Background(), reviewRequest("direct", s), p); out.Forward == nil {
+		b, _ := json.Marshal(out.Result)
+		t.Errorf("an unset clock read as the distant past: %s", b)
+	}
+	r := reviewRequest("direct", s)
+	r.Now = time.Date(2019, 6, 1, 0, 0, 0, 0, time.UTC)
+	if out := e.CallTool(context.Background(), r, p); out.Forward != nil {
+		t.Error("the request's own time was ignored")
+	}
+}

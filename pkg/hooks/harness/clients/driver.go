@@ -102,7 +102,10 @@ type Reply struct {
 	Error        *Error           `json:"error,omitempty"`
 	Progress     []map[string]any `json:"progress,omitempty"`
 	Elicitations []map[string]any `json:"elicitations,omitempty"`
-	SDK          SDK              `json:"sdk"`
+	// Notes is what the SDK logged while handling the call. An SDK that
+	// decides not to send a request says so there and nowhere else.
+	Notes []string `json:"notes,omitempty"`
+	SDK   SDK      `json:"sdk"`
 }
 
 // Driver puts one client SDK behind the same three operations. Connect may

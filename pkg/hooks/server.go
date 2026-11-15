@@ -622,11 +622,14 @@ func denyOr(reason, def string) string {
 // forwarded call's binding, earlier gateway answers, and the upstream's own
 // state (which may be absent). It needs a policy generation.
 func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken, upstreamState string, reqs mcp.InputRequestMap) (string, error) {
+	if r.principal() == "" {
+		return "", fmt.Errorf("The server asked for input, which is not available without a caller identity.")
+	}
 	now := r.Now
 	if now.IsZero() {
 		now = timeNow()
 	}
-	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: fmt.Sprint(r.Caller["userId"]), Entitlement: entitlementID(s),
+	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: r.principal(), Entitlement: entitlementID(s),
 		Target: call.Target, ArgsHash: call.Hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Upstream: upstreamState, UpstreamRound: true}
 	if len(call.Answers) > 0 {
 		st.Answers = map[string]map[string]any{}

@@ -44,7 +44,7 @@ if (v1) {
   ({ Client, StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client'));
 }
 
-const state = { client: null, answers: [], progress: [], elicitations: [], timeoutMs: 20000 };
+const state = { client: null, answers: [], progress: [], elicitations: [], notes: [], timeoutMs: 20000 };
 
 function sdk() {
   const out = { name: pkgName, version: sdkVersion(), language: 'typescript' };
@@ -130,6 +130,7 @@ async function call(req) {
   state.answers = [...(req.elicit ?? [])];
   state.progress = [];
   state.elicitations = [];
+  state.notes = [];
   state.aborted = false;
   const options = { timeout: req.readTimeoutSeconds ? req.readTimeoutSeconds * 1000 : state.timeoutMs };
   if (req.progress) {
@@ -159,6 +160,7 @@ async function call(req) {
   }
   out.progress = state.progress;
   out.elicitations = state.elicitations;
+  if (state.notes.length > 0) out.notes = state.notes;
   return out;
 }
 
@@ -178,8 +180,16 @@ function send(reply) {
   process.stdout.write(JSON.stringify(reply) + '\n');
 }
 
-// The SDK may log through console.log; keep stdout for the protocol.
-console.log = (...a) => console.error(...a);
+// The SDK logs through console.log, console.debug and console.info, which
+// all write to stdout. Keep stdout for the protocol, and keep what the SDK
+// said during a call: it is how the SDK reports a request it decided not to
+// send, such as a listing the server does not advertise.
+for (const method of ['log', 'debug', 'info', 'trace', 'dir', 'table']) {
+  console[method] = (...a) => {
+    state.notes.push(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
+    console.error(...a);
+  };
+}
 
 let chain = Promise.resolve();
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });

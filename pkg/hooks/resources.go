@@ -1002,6 +1002,12 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		m = prefixResultURIs(m, s.Slug)
 	}
 	m["ttlMs"], m["cacheScope"] = e.Limits.ttl(), "private"
+	if call.State != nil || len(call.Answers) > 0 {
+		// This read was let through by a confirmation or after a question.
+		// A client that cached it would serve the next read itself, and the
+		// user would not be asked again. Tell clients not to cache it.
+		m["ttlMs"] = 0
+	}
 	o.Result = complete(m)
 	return e.finishOutcome(ctx, o)
 }

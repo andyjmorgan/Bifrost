@@ -1540,5 +1540,152 @@
     ]
    }
   ]
+ },
+ {
+  "name": "FR-C a read let through by a confirmation tells clients not to cache it, so the next read asks again",
+  "ids": [
+   "FR-C"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/read",
+      "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
+      "then": {
+       "result": "elicit('ok', 'Share {uri}?', {'uri': uri})"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///secrets/key",
+       "name": "key"
+      },
+      {
+       "uri": "file:///open/readme",
+       "name": "readme"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///open/readme"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///open/readme",
+       "text": "hello"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 300000
+     },
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ],
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///secrets/key",
+       "text": "sk-test"
+      }
+     ]
+    }
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/key",
+     "requestState": "${steps.1.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.ok": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///secrets/key",
+       "text": "sk-test"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "sk-test"
+     },
+     {
+      "path": "reply.result.ttlMs",
+      "equals": 0
+     },
+     {
+      "path": "reply.result.cacheScope",
+      "equals": "private"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ],
+    "upstream": {
+     "contents": [
+      {
+       "uri": "file:///secrets/key",
+       "text": "sk-test"
+      }
+     ]
+    }
+   }
+  ]
  }
 ]

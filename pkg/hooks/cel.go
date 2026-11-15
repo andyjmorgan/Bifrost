@@ -279,9 +279,12 @@ func (a *activation) Parent() interpreter.Activation { return nil }
 var _ interpreter.Activation = (*activation)(nil)
 
 // timeOrZero keeps `now` typed even when unset.
+// timeOrZero gives rules the request's time, or the real time when the
+// gateway did not set one. An unset clock must not read as 1970: a rule
+// about a change freeze or office hours would then silently never match.
 func timeOrZero(t time.Time) time.Time {
 	if t.IsZero() {
-		return time.Unix(0, 0).UTC()
+		return time.Now().UTC()
 	}
 	return t
 }
