@@ -295,7 +295,7 @@ func soakCatalogFor(cat []*mcp.Tool, name string) []*mcp.Tool {
 }
 
 var soakElicitSet = func() *Set {
-	s, _ := Compile([]Rule{{Hook: "tools/call", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Go {id}?', {'id': string(args.id)})"}}})
+	s, _ := Compile([]Rule{{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Go {id}?', {'id': string(args.id)})"}}})
 	return s
 }()
 
@@ -345,9 +345,9 @@ func soakFallback(ctx context.Context, e *Engine, fail func(string)) {
 
 var soakStreamSet = func() *Set {
 	set, probs := Compile([]Rule{
-		{Hook: "tools/progress", When: "progress.message.contains('/srv')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/progress", When: "progress.message.startsWith('step')", Then: map[string]string{"message": "'working: ' + progress.message"}},
-		{Hook: "tools/result", When: "has(result.structuredContent) && result.structuredContent != null", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['internal'])"}},
+		{Hook: "tools/call.post.progress", When: "progress.message.contains('/srv')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.progress", When: "progress.message.startsWith('step')", Then: map[string]string{"message": "'working: ' + progress.message"}},
+		{Hook: "tools/call.post.result", When: "has(result.structuredContent) && result.structuredContent != null", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['internal'])"}},
 	})
 	if probs != nil {
 		panic(probs)

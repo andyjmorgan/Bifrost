@@ -1,12 +1,12 @@
-# resources/elicit
+# resources/read.post.elicit
 
-`resources/elicit` decides whether an upstream server may ask the user for input during a read, and can reword what it asks.
+`resources/read.post.elicit` decides whether an upstream server may ask the user for input during a read, and can reword what it asks.
 
 ## When it runs
 
-`resources/elicit` runs when the upstream answers a forwarded `resources/read` or directory read with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [resources/result](resources-result.md) does not run on that reply. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
+`resources/read.post.elicit` runs when the upstream answers a forwarded `resources/read` or directory read with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [resources/read.post.result](resources-read-post-result.md) does not run on that reply. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
 
-An upstream asks for input only if the gateway advertised elicitation to it, which [server/connect](server-connect.md) controls. Gateway confirmations from [resources/read](resources-read.md) always resolve before the upstream is called.
+An upstream asks for input only if the gateway advertised elicitation to it, which [server.session](server-session.md) controls. Gateway confirmations from [resources/read.pre](resources-read-pre.md) always resolve before the upstream is called.
 
 ## Variables
 
@@ -49,7 +49,7 @@ The gateway wraps the upstream's `requestState`, if any, in its own signed state
 ```json
 {
   "name": "Label drive prompts",
-  "hook": "resources/elicit",
+  "hook": "resources/read.post.elicit",
   "when": "true",
   "then": { "message": "'Drive asks: ' + request.message" }
 }
@@ -62,7 +62,7 @@ An upstream request with the message `Why do you need this file?` reaches the cl
 ```json
 {
   "name": "No upstream prompts on reads",
-  "hook": "resources/elicit",
+  "hook": "resources/read.post.elicit",
   "when": "true",
   "then": { "decision": "'deny'", "reason": "'This server may not ask for input during reads.'" }
 }
@@ -73,5 +73,5 @@ The client receives `{"code": -32602, "message": "This server may not ask for in
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [tools/elicit, the matching hook for tool calls](tools-elicit.md)
-- [server/connect for advertising elicitation upstream](server-connect.md)
+- [tools/call.post.elicit, the matching hook for tool calls](tools-call-post-elicit.md)
+- [server.session for advertising elicitation upstream](server-session.md)

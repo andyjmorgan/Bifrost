@@ -10,9 +10,9 @@
   {"op": "tools/call", "params": {"name": "crash", "arguments": {}}, "expect": [{"path": "client.error.code", "equals": -32603}]}
  ]},
 {"name": "audit: audit-mode rules change nothing and leave hits", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tools/list, echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/filter", "when": "name == 'echo'", "then": {"decision": "'deny'"}, "mode": "audit"}, {"hook": "tools/call", "when": "upstream.name == 'echo'", "then": {"decision": "'deny'", "reason": "'would refuse'"}, "mode": "audit"}, {"hook": "tools/result", "when": "upstream.name == 'echo'", "then": {"content": "[]"}, "mode": "audit"}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/list.post", "when": "name == 'echo'", "then": {"decision": "'deny'"}, "mode": "audit"}, {"hook": "tools/call.pre", "when": "upstream.name == 'echo'", "then": {"decision": "'deny'", "reason": "'would refuse'"}, "mode": "audit"}, {"hook": "tools/call.post.result", "when": "upstream.name == 'echo'", "then": {"content": "[]"}, "mode": "audit"}]}],
  "steps": [
-  {"op": "tools/list", "expect": [{"path": "client.result.tools[*].name", "contains": "echo"}, {"path": "hits", "has": {"hook": "tools/filter", "effect": "would deny"}}]},
-  {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent", "equals": {"text": "hi"}}, {"path": "hits", "has": {"hook": "tools/call", "effect": "would deny"}}, {"path": "hits", "has": {"hook": "tools/result", "effect": "would set"}}]}
+  {"op": "tools/list", "expect": [{"path": "client.result.tools[*].name", "contains": "echo"}, {"path": "hits", "has": {"hook": "tools/list.post", "effect": "would deny"}}]},
+  {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent", "equals": {"text": "hi"}}, {"path": "hits", "has": {"hook": "tools/call.pre", "effect": "would deny"}}, {"path": "hits", "has": {"hook": "tools/call.post.result", "effect": "would set"}}]}
  ]}
 ]

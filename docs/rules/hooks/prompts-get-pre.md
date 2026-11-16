@@ -1,17 +1,17 @@
-# prompts/get
+# prompts/get.pre
 
-`prompts/get` decides whether a `prompts/get` request goes ahead, and can patch its arguments or ask the user to confirm first.
+`prompts/get.pre` decides whether a `prompts/get` request goes ahead, and can patch its arguments or ask the user to confirm first.
 
 ## When it runs
 
-`prompts/get` runs once for each `prompts/get` request:
+`prompts/get.pre` runs once for each `prompts/get` request:
 
-1. [server/config](server-config.md). If `prompts` is off, the prompt is unknown.
-2. [prompts/filter](prompts-filter.md) and [prompts/modify](prompts-modify.md), to find the exposed prompt.
+1. [server.settings](server-settings.md). If `prompts` is off, the prompt is unknown.
+2. [prompts/list.post](prompts-list-post.md), to find the exposed prompt.
 3. The gateway rejects arguments that use a renamed argument's upstream name.
-4. `prompts/get` rules run.
+4. `prompts/get.pre` rules run.
 5. The gateway maps the prompt name and argument names back to the upstream.
-6. The upstream call. An `input_required` reply goes to [prompts/elicit](prompts-elicit.md), which sees the arguments as sent upstream. On the mux route, structured URIs in the returned messages get the slug prefix.
+6. The upstream call. An `input_required` reply goes to [prompts/get.post.elicit](prompts-get-post-elicit.md), which sees the arguments as sent upstream. On the mux route, structured URIs in the returned messages get the slug prefix.
 
 ## Variables
 
@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `args` | map | The arguments the client sent, under exposed names. Values are strings. Patches from earlier rules are visible |
 | `input` | map | The user's answers to this gateway's confirmations, by key. Empty on the first request |
-| `name`, `title`, `description`, `arguments`, `meta`, `icons` | Various | The exposed prompt, after `prompts/modify` |
+| `name`, `title`, `description`, `arguments`, `meta`, `icons` | Various | The exposed prompt, after `prompts/list.post` |
 | `upstream` | map | The prompt as the upstream sent it |
 | `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
@@ -48,7 +48,7 @@ Patches chain.
 | Unknown or hidden prompt | `-32602`, `unknown prompt <name>` |
 | Mux name without a slug | `-32602`, `prompt name must be <slug>__<prompt>` |
 
-Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge is bound to the method, the upstream prompt name, a hash of the client's arguments and the policy generation. Refusals never name the rule that refused.
+Confirmations work as in [tools/call.pre](tools-call-pre.md#elicitation). The challenge is bound to the method, the upstream prompt name, a hash of the client's arguments and the policy generation. Refusals never name the rule that refused.
 
 ## Nuances and limits
 
@@ -65,7 +65,7 @@ Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge 
 ```json
 {
   "name": "No HR",
-  "hook": "prompts/get",
+  "hook": "prompts/get.pre",
   "when": "has(args.space) && args.space == 'HR'",
   "then": { "decision": "'deny'", "reason": "'HR prompts are restricted.'" }
 }
@@ -78,7 +78,7 @@ Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge 
 ```json
 {
   "name": "Default tone",
-  "hook": "prompts/get",
+  "hook": "prompts/get.pre",
   "when": "!has(args.tone)",
   "then": { "args.tone": "'neutral'" }
 }
@@ -92,7 +92,7 @@ Confirmations work as in [tools/call](tools-call.md#elicitation). The challenge 
 [
   {
     "name": "Confirm export",
-    "hook": "prompts/get",
+    "hook": "prompts/get.pre",
     "when": "upstream.name == 'export_space' && !has(input.ok)",
     "then": { "result": "elicit('ok', 'Export the whole {space} space?', {'space': args.space})" }
   }
@@ -104,6 +104,6 @@ The first request returns `input_required` with the message `Export the whole "E
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [prompts/modify for argument renames](prompts-modify.md)
-- [prompts/elicit for input requests from the upstream](prompts-elicit.md)
-- [Elicitation in tools/call](tools-call.md#elicitation)
+- [prompts/list.post for argument renames](prompts-list-post.md)
+- [prompts/get.post.elicit for input requests from the upstream](prompts-get-post-elicit.md)
+- [Elicitation in tools/call.pre](tools-call-pre.md#elicitation)

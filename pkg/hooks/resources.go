@@ -35,7 +35,7 @@ func (e *Engine) ListPrompts(parent context.Context, r Request) (ret Outcome) {
 		if !e.config(ctx, r, s, "prompts", &o) {
 			continue
 		}
-		ls, issues, hits := s.Rules.listItems(ctx, KindPrompt, "prompts/filter", "prompts/modify", "name", promptItems(s.Catalog.Prompts), r.context(s), e.Limits.Workers)
+		ls, issues, hits := s.Rules.listItems(ctx, KindPrompt, "prompts/list.post", "name", promptItems(s.Catalog.Prompts), r.context(s), e.Limits.Workers)
 		o.Hits = append(o.Hits, hits...)
 		o.Issues = append(o.Issues, prefixed(s.Slug, issues)...)
 		for _, l := range ls {
@@ -76,7 +76,7 @@ func (e *Engine) resolvePrompt(ctx context.Context, r Request, name string) (*Se
 	if s == nil || !e.config(ctx, r, s, "prompts", &o) {
 		return nil, nil, o, &RPCError{Code: CodeInvalidParams, Message: "unknown prompt " + name}
 	}
-	ls, _, hits := s.Rules.listItems(ctx, KindPrompt, "prompts/filter", "prompts/modify", "name", promptItems(s.Catalog.Prompts), r.context(s), e.Limits.Workers)
+	ls, _, hits := s.Rules.listItems(ctx, KindPrompt, "prompts/list.post", "name", promptItems(s.Catalog.Prompts), r.context(s), e.Limits.Workers)
 	o.Hits = append(o.Hits, hits...)
 	for i := range ls {
 		if ls[i].exposedID == name {
@@ -107,7 +107,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 	hash := argsHash(args)
 	st, answers, upResp, serr := e.continuation(r, s, "prompts/get", l.upstreamID, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit("prompts/get", l.exposedID))
+		o.Hits = append(o.Hits, declinedHit("prompts/get.pre", l.exposedID))
 	}
 	if serr != nil {
 		o.Error = serr
@@ -124,7 +124,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 	vars := r.context(s).vars()
 	vars["args"] = args
 	vars["input"] = answers
-	co := s.Rules.run(ctx, "prompts/get", l.exposedID, resolve, vars, func(key string, val any) error {
+	co := s.Rules.run(ctx, "prompts/get.pre", l.exposedID, resolve, vars, func(key string, val any) error {
 		parts := splitPath(key)
 		args[parts[1]] = val
 		vars["args"] = args
@@ -227,7 +227,7 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.elicitHook(ctx, r, s, "prompts/elicit", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, s, "prompts/get.post.elicit", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -299,7 +299,7 @@ func skillItem(sk Skill) map[string]any {
 func (e *Engine) skillView(ctx context.Context, r Request, s *Server) (visible []Skill, deniedRoots []string, hits []Hit) {
 	for _, sk := range s.Catalog.Skills {
 		it := &item{kind: KindSkill, id: sk.URI, view: NewView(skillItem(sk)), label: sk.URI}
-		o := s.Rules.run(ctx, "skills/filter", sk.URI, it.resolve, r.context(s).vars(), func(string, any) error { return nil })
+		o := s.Rules.run(ctx, "skills/list.post", sk.URI, it.resolve, r.context(s).vars(), func(string, any) error { return nil })
 		hits = append(hits, o.hits...)
 		if o.denied {
 			deniedRoots = append(deniedRoots, sk.Root())
@@ -385,16 +385,16 @@ func (e *Engine) planSkill(ctx context.Context, r Request, s *Server, v *resView
 	p := &skillPlan{status: "none", fm: sk.Frontmatter}
 	ms, isManifest := sk.manifest()
 	p.manifest = ms
-	if !s.Rules.Has("resources/result") {
+	if !s.Rules.Has("resources/read.post.result") {
 		return p
 	}
 	if !isManifest {
 		p.status, p.reason = "skipped", "dynamic skills are served unchanged"
 		return p
 	}
-	for _, c := range s.Rules.byHook["resources/result"] {
+	for _, c := range s.Rules.byHook["resources/read.post.result"] {
 		if !c.audit && (c.vars["caller"] || c.vars["client"] || c.vars["now"]) {
-			p.status, p.reason = "skipped", "resources/result rules depend on the request, so skill files are served unchanged"
+			p.status, p.reason = "skipped", "resources/read.post.result rules depend on the request, so skill files are served unchanged"
 			return p
 		}
 	}
@@ -493,7 +493,7 @@ func (v *resView) skillFor(uri string) (Skill, bool) {
 	return best, found
 }
 
-// applyResultRules runs resources/result over one content item. text may
+// applyResultRules runs resources/read.post.result over one content item. text may
 // be empty and binary items pass text=="" with isText false; a deny blocks
 // either. mutate=false evaluates decisions but keeps the text.
 func (e *Engine) applyResultRules(ctx context.Context, r Request, s *Server, v *resView, uri, text, mime string, isText bool) (string, []Hit, bool, error) {
@@ -523,7 +523,7 @@ func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Serve
 	vars["args"] = map[string]any{"uri": uri}
 	vars["result"] = resultVar(map[string]any{"contents": []any{content}})
 	vars[muxVar] = muxContext(r.route(), s.Slug, v.owned())
-	o := s.Rules.run(ctx, "resources/result", uri, resolve, vars, func(key string, val any) error {
+	o := s.Rules.run(ctx, "resources/read.post.result", uri, resolve, vars, func(key string, val any) error {
 		if key == "text" && !isText {
 			return nil // binary content keeps its bytes
 		}
@@ -669,7 +669,7 @@ func (e *Engine) ListTemplates(parent context.Context, r Request) (ret Outcome) 
 		if !e.config(ctx, r, s, "resources", &o) {
 			continue
 		}
-		ls, issues, hits := s.Rules.listItems(ctx, KindTemplate, "templates/filter", "templates/modify", "uriTemplate", templateItems(s.Catalog.Templates), r.context(s), e.Limits.Workers)
+		ls, issues, hits := s.Rules.listItems(ctx, KindTemplate, "resources/templates/list.post", "uriTemplate", templateItems(s.Catalog.Templates), r.context(s), e.Limits.Workers)
 		o.Hits = append(o.Hits, hits...)
 		o.Issues = append(o.Issues, prefixed(s.Slug, issues)...)
 		for _, l := range ls {
@@ -841,7 +841,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	hash := argsHash(args)
 	st, answers, upResp, serr := e.continuation(r, s, method, up, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit(method, p.URI))
+		o.Hits = append(o.Hits, declinedHit("resources/read.pre", p.URI))
 	}
 	if serr != nil {
 		o.Error = serr
@@ -852,7 +852,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	vars := r.context(s).vars()
 	vars["args"] = args
 	vars["input"] = answers
-	co := s.Rules.run(ctx, "resources/read", up, resolve, vars, func(string, any) error { return nil })
+	co := s.Rules.run(ctx, "resources/read.pre", up, resolve, vars, func(string, any) error { return nil })
 	o.Hits = append(o.Hits, co.hits...)
 	if expired(ctx) {
 		return budgetOutcome(o)
@@ -920,7 +920,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.elicitHook(ctx, r, s, "resources/elicit", up, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, s, "resources/read.post.elicit", up, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}

@@ -1,6 +1,6 @@
 [
  {
-  "name": "V3-S01 resources/filter cannot default upstream.name on an unlisted URI (direct)",
+  "name": "V3-S01 resources/list.post cannot default upstream.name on an unlisted URI (direct)",
   "ids": [
    "V3-S01"
   ],
@@ -13,7 +13,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -43,7 +43,7 @@
   ]
  },
  {
-  "name": "V3-S02 resources/filter cannot default upstream.name on an unlisted URI (mux)",
+  "name": "V3-S02 resources/list.post cannot default upstream.name on an unlisted URI (mux)",
   "ids": [
    "V3-S02"
   ],
@@ -56,7 +56,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -99,7 +99,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -142,7 +142,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -172,7 +172,7 @@
   ]
  },
  {
-  "name": "V3-S05 resources/result cannot default upstream.name on an unlisted URI (direct)",
+  "name": "V3-S05 resources/read.post.result cannot default upstream.name on an unlisted URI (direct)",
   "ids": [
    "V3-S05"
   ],
@@ -185,7 +185,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -227,7 +227,7 @@
   ]
  },
  {
-  "name": "V3-S06 resources/result cannot default upstream.name on an unlisted URI (mux)",
+  "name": "V3-S06 resources/read.post.result cannot default upstream.name on an unlisted URI (mux)",
   "ids": [
    "V3-S06"
   ],
@@ -240,7 +240,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -295,7 +295,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri != 'file:///dir/' && upstream.mimeType == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -356,7 +356,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri != 'file:///public' && upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -407,14 +407,14 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
       }
      },
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -489,7 +489,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -778,7 +778,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -859,7 +859,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.startsWith('private://') && name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -898,7 +898,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "name == 'secret'",
       "then": {
        "decision": "'deny'"
@@ -985,7 +985,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "uri == 'file:///secret' && upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"

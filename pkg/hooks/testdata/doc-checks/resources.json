@@ -1,13 +1,13 @@
 [
  {
-  "name": "resources/filter E1 hide one resource",
+  "name": "resources/list.post E1 hide one resource",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Hide changelog",
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri == 'file:///CHANGELOG.md'",
       "then": {
        "decision": "'deny'"
@@ -66,14 +66,14 @@
   ]
  },
  {
-  "name": "resources/filter E2 deny single files reached through a template",
+  "name": "resources/list.post E2 deny single files reached through a template",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
       "name": "No env files",
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.endsWith('.env') || uri.contains('/.git/')",
       "then": {
        "decision": "'deny'"
@@ -125,14 +125,14 @@
   ]
  },
  {
-  "name": "resources/filter E3 hide large binary resources",
+  "name": "resources/list.post E3 hide large binary resources",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "No large binaries",
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "!mimeType.startsWith('text/') && size > 1048576",
       "then": {
        "decision": "'deny'"
@@ -176,13 +176,13 @@
   ]
  },
  {
-  "name": "resources/filter nuance: unlisted URIs have empty fields",
+  "name": "resources/list.post nuance: unlisted URIs have empty fields",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "mimeType == ''",
       "then": {
        "decision": "'deny'"
@@ -238,14 +238,14 @@
   ]
  },
  {
-  "name": "resources/modify E1 prefix titles",
+  "name": "resources/list.post E1 prefix titles",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "ENG titles",
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri.startsWith('confluence://ENG/')",
       "then": {
        "title": "'ENG wiki: ' + (title != '' ? title : name)"
@@ -294,14 +294,14 @@
   ]
  },
  {
-  "name": "resources/modify E2 set audience and priority",
+  "name": "resources/list.post E2 set audience and priority",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Assistant only",
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri.endsWith('.json')",
       "then": {
        "annotations.audience": "['assistant']",
@@ -341,14 +341,14 @@
   ]
  },
  {
-  "name": "resources/modify E3 rewrite descriptions",
+  "name": "resources/list.post E3 rewrite descriptions",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Wiki wording",
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "true",
       "then": {
        "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
@@ -383,13 +383,13 @@
   ]
  },
  {
-  "name": "resources/modify nuance: uri and name cannot be set",
+  "name": "resources/list.post nuance: uri and name cannot be set",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "true",
       "then": {
        "name": "'x'"
@@ -405,21 +405,21 @@
     "expect": [
      {
       "path": "problems.a[0].message",
-      "equals": "resources/modify cannot set \"name\""
+      "equals": "resources/list.post cannot set \"name\""
      }
     ]
    }
   ]
  },
  {
-  "name": "templates/filter E1 hide a template and refuse reads through it",
+  "name": "resources/templates/list.post E1 hide a template and refuse reads through it",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "No HR template",
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "uriTemplate.startsWith('confluence://HR/')",
       "then": {
        "decision": "'deny'"
@@ -486,14 +486,14 @@
   ]
  },
  {
-  "name": "templates/filter E2 templates for users only",
+  "name": "resources/templates/list.post E2 templates for users only",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
       "name": "Users only",
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'"
@@ -560,13 +560,13 @@
   ]
  },
  {
-  "name": "templates/filter nuance: a template deny also hides a listed resource that it covers",
+  "name": "resources/templates/list.post nuance: a template deny also hides a listed resource that it covers",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -614,14 +614,14 @@
   ]
  },
  {
-  "name": "templates/modify E1 title and description",
+  "name": "resources/templates/list.post E1 title and description",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Describe page template",
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "uriTemplate.startsWith('confluence://ENG/')",
       "then": {
        "title": "'ENG wiki page'",
@@ -661,14 +661,14 @@
   ]
  },
  {
-  "name": "templates/modify E2 annotations",
+  "name": "resources/templates/list.post E2 annotations",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
       "name": "Low priority",
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "annotations": "{'audience': ['assistant'], 'priority': 0.1}"
@@ -707,7 +707,7 @@
   ]
  },
  {
-  "name": "templates/modify E3 mux keeps template variables",
+  "name": "resources/templates/list.post E3 mux keeps template variables",
   "route": "mux",
   "servers": [
    {
@@ -715,7 +715,7 @@
     "rules": [
      {
       "name": "Title",
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "title": "'Repository file'"
@@ -756,7 +756,7 @@
     "rules": [
      {
       "name": "ENG via search",
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri.startsWith('confluence://ENG/')",
       "then": {
        "decision": "'deny'",
@@ -822,7 +822,7 @@
     "rules": [
      {
       "name": "Confirm read",
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
       "then": {
        "result": "elicit('ok', 'Share {uri} with the assistant?', {'uri': uri})"
@@ -964,7 +964,7 @@
     "rules": [
      {
       "name": "Skills for users",
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "caller.type == 'key' && uri.startsWith('skill://')",
       "then": {
        "decision": "'deny'",
@@ -1048,7 +1048,7 @@
   ]
  },
  {
-  "name": "resources/elicit E1 reword",
+  "name": "resources/read.post.elicit E1 reword",
   "caller": {
    "userId": "u1"
   },
@@ -1058,7 +1058,7 @@
     "rules": [
      {
       "name": "Label drive prompts",
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "true",
       "then": {
        "message": "'Drive asks: ' + request.message"
@@ -1142,7 +1142,7 @@
   }
  },
  {
-  "name": "resources/elicit E2 deny",
+  "name": "resources/read.post.elicit E2 deny",
   "caller": {
    "userId": "u1"
   },
@@ -1152,7 +1152,7 @@
     "rules": [
      {
       "name": "No upstream prompts on reads",
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "true",
       "then": {
        "decision": "'deny'",
@@ -1213,14 +1213,14 @@
   }
  },
  {
-  "name": "resources/result E1 replace text",
+  "name": "resources/read.post.result E1 replace text",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Wiki wording",
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
@@ -1293,7 +1293,7 @@
   ]
  },
  {
-  "name": "resources/result E2 slugUris on the mux",
+  "name": "resources/read.post.result E2 slugUris on the mux",
   "route": "mux",
   "servers": [
    {
@@ -1301,7 +1301,7 @@
     "rules": [
      {
       "name": "Prefix own URIs",
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "slugUris(result.text)"
@@ -1358,14 +1358,14 @@
   ]
  },
  {
-  "name": "resources/result E2b slugUris is a no-op on 1:1",
+  "name": "resources/read.post.result E2b slugUris is a no-op on 1:1",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Prefix own URIs",
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "slugUris(result.text)"
@@ -1410,14 +1410,14 @@
   ]
  },
  {
-  "name": "resources/result E3 deny by content",
+  "name": "resources/read.post.result E3 deny by content",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
       "name": "Withhold keys",
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text.contains('BEGIN PRIVATE KEY')",
       "then": {
        "decision": "'deny'",
@@ -1466,14 +1466,14 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
-  "name": "resources/result E4 skill files are rewritten at list time with digests recomputed",
+  "name": "resources/read.post.result E4 skill files are rewritten at list time with digests recomputed",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Wiki wording",
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
@@ -1534,13 +1534,13 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], 
-  "name": "resources/result nuance: a rule that reads the caller is not applied to skill files",
+  "name": "resources/read.post.result nuance: a rule that reads the caller is not applied to skill files",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "caller.type == 'user'",
       "then": {
        "text": "result.text + '!'"
@@ -1595,14 +1595,14 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
-  "name": "skills/filter E1 allow list by name",
+  "name": "skills/list.post E1 allow list by name",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Allowed skills",
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "!(name in ['notebooks', 'widgets'])",
       "then": {
        "decision": "'deny'"
@@ -1730,14 +1730,14 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
-  "name": "skills/filter E2 deny one of two skills with the same name",
+  "name": "skills/list.post E2 deny one of two skills with the same name",
   "servers": [
    {
     "slug": "acme",
     "rules": [
      {
       "name": "Hide support refunds",
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "uri == 'skill://acme/support/refunds/SKILL.md'",
       "then": {
        "decision": "'deny'"
@@ -1785,14 +1785,14 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
-  "name": "skills/filter E3 deny by frontmatter",
+  "name": "skills/list.post E3 deny by frontmatter",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
       "name": "Internal skills",
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "'internal' in frontmatter.?metadata.?tags.orValue([]) && caller.type == 'key'",
       "then": {
        "decision": "'deny'"
@@ -1860,13 +1860,13 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/list step has no endpoint to reach"}], 
-  "name": "skills/filter nuance: nested skills go with the parent; directory reads drop denied folders",
+  "name": "skills/list.post nuance: nested skills go with the parent; directory reads drop denied folders",
   "servers": [
    {
     "slug": "docs",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
@@ -1968,13 +1968,13 @@
   ]
  },
  {
-  "name": "resources/modify v2: a failed modify hides the resource and makes it unreadable",
+  "name": "resources/list.post v2: a failed modify hides the resource and makes it unreadable",
   "servers": [
    {
     "slug": "d",
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri == 'file:///b.md'",
       "then": {
        "title": "annotations.missing"
@@ -2041,7 +2041,7 @@
     "rules": [
      {
       "name": "Team check",
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri == 'file:///b.md' && caller.team == 'x'",
       "then": {
        "decision": "'deny'"
@@ -2115,7 +2115,7 @@
   ]
  },
  {
-  "name": "resources/elicit v2: eval error generic; state-only reply wrapped",
+  "name": "resources/read.post.elicit v2: eval error generic; state-only reply wrapped",
   "caller": {
    "userId": "u"
   },
@@ -2124,7 +2124,7 @@
     "slug": "d",
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "request.missing.deep == 1",
       "then": {
        "decision": "'deny'"
@@ -2200,13 +2200,13 @@
   }
  },
  {
-  "name": "resources/filter v2: directory children get the read check, whatever their type",
+  "name": "resources/list.post v2: directory children get the read check, whatever their type",
   "servers": [
    {
     "slug": "repo",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.endsWith('.env')",
       "then": {
        "decision": "'deny'"
@@ -2271,7 +2271,7 @@
   ]
  },
  {
-  "name": "templates/filter v2: a denied template covers exactly the URIs it can produce",
+  "name": "resources/templates/list.post v2: a denied template covers exactly the URIs it can produce",
   "servers": [
    {
     "slug": "a",
@@ -2285,7 +2285,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "name == 'd'",
       "then": {
        "decision": "'deny'"
@@ -2338,13 +2338,13 @@
   ]
  },
  {
-  "name": "templates/filter v2: a template form the gateway cannot parse is listed as it is, reads under it are allowed, and a deny on it covers its literal prefix",
+  "name": "resources/templates/list.post v2: a template form the gateway cannot parse is listed as it is, reads under it are allowed, and a deny on it covers its literal prefix",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "name == 'deny'",
       "then": {
        "decision": "'deny'"
@@ -2429,13 +2429,13 @@
   ]
  },
  {
-  "name": "templates/modify v2: a failed template modify makes covered URIs unreadable",
+  "name": "resources/templates/list.post v2: a failed template modify makes covered URIs unreadable",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "title": "annotations.missing"
@@ -2477,34 +2477,34 @@
   ]
  },
  {
-  "name": "resources/result v2: binary items run rules; text changes skip them; default and error messages",
+  "name": "resources/read.post.result v2: binary items run rules; text changes skip them; default and error messages",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text == 'bad' && result.missing.x == 1",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text == 'deny'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text == ''",
       "then": {
        "text": "'changed'"
       }
      },
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.contents[0].mimeType == 'application/x-bad'",
       "then": {
        "decision": "'deny'",
@@ -2627,13 +2627,13 @@
   ]
  },
  {
-  "name": "resources/result v2: dynamic skills are never rewritten",
+  "name": "resources/read.post.result v2: dynamic skills are never rewritten",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "result.text + '!'"

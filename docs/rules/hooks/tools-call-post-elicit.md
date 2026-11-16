@@ -1,16 +1,16 @@
-# tools/elicit
+# tools/call.post.elicit
 
-`tools/elicit` decides whether an upstream server may ask the user for input during a tool call, and can reword what it asks.
+`tools/call.post.elicit` decides whether an upstream server may ask the user for input during a tool call, and can reword what it asks.
 
 ## When it runs
 
-`tools/elicit` runs when the upstream answers a forwarded `tools/call` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [tools/result](tools-result.md) does not run on that reply.
+`tools/call.post.elicit` runs when the upstream answers a forwarded `tools/call` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [tools/call.post.result](tools-call-post-result.md) does not run on that reply.
 
 The gateway recognizes an `input_required` reply that carries input requests, a `requestState`, or both. A reply with only a `requestState` has no requests for rules to check, so the gateway wraps the state and returns it to the client.
 
-An upstream asks for input only if the gateway advertised elicitation to it. That is off by default and controlled by [server/connect](server-connect.md).
+An upstream asks for input only if the gateway advertised elicitation to it. That is off by default and controlled by [server.session](server-session.md).
 
-Gateway confirmations from [tools/call](tools-call.md) always resolve before the upstream is called, so the gateway and the upstream never ask in the same round.
+Gateway confirmations from [tools/call.pre](tools-call-pre.md) always resolve before the upstream is called, so the gateway and the upstream never ask in the same round.
 
 ## Variables
 
@@ -46,7 +46,7 @@ The gateway wraps the upstream's `requestState`, if any, inside its own signed s
 - A deny on any one request refuses the whole round.
 - The gateway supports only `elicitation/create` requests. Any other method returns an error result.
 - Upstream request keys must not start with `bifrost.`, which the gateway reserves for its own confirmations. Such a reply returns an error result.
-- `args` holds upstream parameter names, not the names the client sees, because these are the arguments the upstream received. A value that a `tools/call` rule patched or a pin forced appears as forwarded.
+- `args` holds upstream parameter names, not the names the client sees, because these are the arguments the upstream received. A value that a `tools/call.pre` rule patched or a pin forced appears as forwarded.
 - The size limit applies to the reply after rules reword messages, so a long message cannot bypass it.
 - On the retry, an answer to a key that the upstream did not ask returns `-32602`, `no pending input request "<key>"`.
 
@@ -57,7 +57,7 @@ The gateway wraps the upstream's `requestState`, if any, inside its own signed s
 ```json
 {
   "name": "Label Jira prompts",
-  "hook": "tools/elicit",
+  "hook": "tools/call.post.elicit",
   "when": "true",
   "then": { "message": "'Jira asks: ' + request.message" }
 }
@@ -70,7 +70,7 @@ An upstream request with the message `Which project?` reaches the client as `Jir
 ```json
 {
   "name": "No prompts for keys",
-  "hook": "tools/elicit",
+  "hook": "tools/call.post.elicit",
   "when": "caller.type == 'key'",
   "then": { "decision": "'deny'", "reason": "'This tool needs user input, which API keys cannot give.'" }
 }
@@ -83,7 +83,7 @@ For an API key, the client receives `{"isError": true, "content": [{"type": "tex
 ```json
 {
   "name": "No URL mode",
-  "hook": "tools/elicit",
+  "hook": "tools/call.post.elicit",
   "when": "request.mode == 'url'",
   "then": { "decision": "'deny'" }
 }
@@ -94,6 +94,6 @@ An upstream request that sends the user to a URL returns the error result `The u
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [server/connect for advertising elicitation upstream](server-connect.md)
-- [tools/call for gateway confirmations](tools-call.md)
-- [prompts/elicit](prompts-elicit.md) and [resources/elicit](resources-elicit.md), the matching hooks for prompts and reads
+- [server.session for advertising elicitation upstream](server-session.md)
+- [tools/call.pre for gateway confirmations](tools-call-pre.md)
+- [prompts/get.post.elicit](prompts-get-post-elicit.md) and [resources/read.post.elicit](resources-read-post-elicit.md), the matching hooks for prompts and reads

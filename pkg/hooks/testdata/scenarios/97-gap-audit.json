@@ -1,6 +1,6 @@
 [
  {
-  "name": "GA-01 tools/result reads the exposed tool: a rule on the renamed name fires",
+  "name": "GA-01 tools/call.post.result reads the exposed tool: a rule on the renamed name fires",
   "ids": [
    "GA-01"
   ],
@@ -9,7 +9,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'echo'",
       "then": {
        "name": "'say'",
@@ -17,7 +17,7 @@
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "name == 'say'",
       "then": {
        "content": "[{'type': 'text', 'text': 'matched the exposed name'}]"
@@ -66,7 +66,7 @@
   ]
  },
  {
-  "name": "GA-02 tools/result reads the exposed tool: description is the modified one",
+  "name": "GA-02 tools/call.post.result reads the exposed tool: description is the modified one",
   "ids": [
    "GA-02"
   ],
@@ -75,14 +75,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "description": "'Exposed text'"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "content": "[{'type': 'text', 'text': description}]"
@@ -127,7 +127,7 @@
   ]
  },
  {
-  "name": "GA-03 tools/progress reads the exposed tool: a rule on the renamed name fires",
+  "name": "GA-03 tools/call.post.progress reads the exposed tool: a rule on the renamed name fires",
   "ids": [
    "GA-03"
   ],
@@ -136,14 +136,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'echo'",
       "then": {
        "name": "'say'"
       }
      },
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "name == 'say'",
       "then": {
        "message": "'working'"
@@ -203,7 +203,7 @@
   ]
  },
  {
-  "name": "GA-04 tools/elicit reads the exposed tool: a rule on the renamed name rewords the question",
+  "name": "GA-04 tools/call.post.elicit reads the exposed tool: a rule on the renamed name rewords the question",
   "ids": [
    "GA-04"
   ],
@@ -220,14 +220,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'create'",
       "then": {
        "name": "'new_issue'"
       }
      },
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "name == 'new_issue'",
       "then": {
        "message": "'Reworded'"
@@ -303,7 +303,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "mode": "audit",
       "when": "true",
       "then": {
@@ -357,7 +357,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "mode": "audit",
        "effect": "would error"
       }
@@ -367,7 +367,7 @@
   ]
  },
  {
-  "name": "GA-06 audit mode on resources/filter: an audit deny neither hides the resource nor refuses the read",
+  "name": "GA-06 audit mode on resources/list.post: an audit deny neither hides the resource nor refuses the read",
   "ids": [
    "GA-06"
   ],
@@ -376,7 +376,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "mode": "audit",
       "when": "uri == 'docs://secret'",
       "then": {
@@ -412,7 +412,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/filter",
+       "hook": "resources/list.post",
        "mode": "audit",
        "effect": "would deny"
       }
@@ -446,7 +446,7 @@
   ]
  },
  {
-  "name": "GA-07 audit mode on server/config: an audit rule that switches tools off leaves them on",
+  "name": "GA-07 audit mode on server.settings: an audit rule that switches tools off leaves them on",
   "ids": [
    "GA-07"
   ],
@@ -455,7 +455,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "mode": "audit",
       "when": "true",
       "then": {
@@ -520,7 +520,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "mode": "audit",
       "when": "true",
       "then": {
@@ -566,7 +566,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/get",
+       "hook": "prompts/get.pre",
        "mode": "audit",
        "effect": "would elicit"
       }
@@ -946,7 +946,7 @@
   ]
  },
  {
-  "name": "GA-15 prompts/progress and resources/progress: a deny drops the event and the reply still completes",
+  "name": "GA-15 prompts/get.post.progress and resources/read.post.progress: a deny drops the event and the reply still completes",
   "ids": [
    "GA-15"
   ],
@@ -955,14 +955,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "progress.message.contains('/srv')",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "progress.message.contains('/srv')",
       "then": {
        "decision": "'deny'"
@@ -1147,7 +1147,7 @@
   ]
  },
  {
-  "name": "GA-17 prompts/modify: a rename to the empty string hides the prompt and is reported",
+  "name": "GA-17 prompts/list.post: a rename to the empty string hides the prompt and is reported",
   "ids": [
    "GA-17"
   ],
@@ -1156,7 +1156,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "name == 'greet'",
       "then": {
        "name": "''"
@@ -1206,7 +1206,7 @@
   ]
  },
  {
-  "name": "GA-18 tools/modify: a rename to the empty string hides the tool and is reported",
+  "name": "GA-18 tools/list.post: a rename to the empty string hides the tool and is reported",
   "ids": [
    "GA-18"
   ],
@@ -1215,7 +1215,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "name == 't'",
       "then": {
        "name": "''"
@@ -1272,7 +1272,7 @@
   ]
  },
  {
-  "name": "GA-19 tools/modify: adding a parameter whose name is already taken hides the tool, not the old parameter",
+  "name": "GA-19 tools/list.post: adding a parameter whose name is already taken hides the tool, not the old parameter",
   "ids": [
    "GA-19"
   ],
@@ -1281,7 +1281,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "params.q.add": "{'type': 'string'}"
@@ -1333,7 +1333,7 @@
   ]
  },
  {
-  "name": "GA-20 route is readable in tools/filter: a tool hidden on the mux is listed and callable on the direct route only",
+  "name": "GA-20 route is readable in tools/list.post: a tool hidden on the mux is listed and callable on the direct route only",
   "ids": [
    "GA-20"
   ],
@@ -1343,7 +1343,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "route == 'mux' && name == 'admin'",
       "then": {
        "decision": "'deny'"
@@ -1402,7 +1402,7 @@
   ]
  },
  {
-  "name": "GA-21 flags.search is readable in tools/filter: search mode cannot find, describe or execute a tool the rule hides",
+  "name": "GA-21 flags.search is readable in tools/list.post: search mode cannot find, describe or execute a tool the rule hides",
   "ids": [
    "GA-21"
   ],
@@ -1415,7 +1415,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "flags.search && name == 'zebra_admin'",
       "then": {
        "decision": "'deny'"
@@ -1518,7 +1518,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok', 'Delete?')"
@@ -1580,7 +1580,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "params.mode.pin": "flags.cli ? 'cli' : 'mcp'"
@@ -1641,7 +1641,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "entitlement.name == 'Readers' && name == 'write'",
       "then": {
        "decision": "'deny'"
@@ -1681,7 +1681,7 @@
   ]
  },
  {
-  "name": "GA-25 resources/modify on the mux: the modified title is listed under the prefixed URI and a read reaches the server unprefixed",
+  "name": "GA-25 resources/list.post on the mux: the modified title is listed under the prefixed URI and a read reaches the server unprefixed",
   "ids": [
    "GA-25"
   ],
@@ -1691,7 +1691,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri == 'docs://a'",
       "then": {
        "title": "'Doc A'"
@@ -1758,7 +1758,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -1804,7 +1804,7 @@
   ]
  },
  {
-  "name": "GA-27 prompts/progress and prompts/elicit read the exposed prompt after a rename",
+  "name": "GA-27 prompts/get.post.progress and prompts/get.post.elicit read the exposed prompt after a rename",
   "ids": [
    "GA-27"
   ],
@@ -1821,21 +1821,21 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "name == 'greet'",
       "then": {
        "name": "'hello'"
       }
      },
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "name == 'hello'",
       "then": {
        "message": "'working'"
       }
      },
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "name == 'hello'",
       "then": {
        "message": "'Reworded'"
@@ -1942,7 +1942,7 @@
   ]
  },
  {
-  "name": "GA-28 resources/result reads the exposed resource: a title set by resources/modify",
+  "name": "GA-28 resources/read.post.result reads the exposed resource: a title set by resources/list.post",
   "ids": [
    "GA-28"
   ],
@@ -1951,14 +1951,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri == 'docs://a'",
       "then": {
        "title": "'Public'"
       }
      },
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "title == 'Public'",
       "then": {
        "text": "'shaped'"
@@ -2000,7 +2000,7 @@
   ]
  },
  {
-  "name": "GA-29 server/connect meta forwards the client's _meta on prompts/get and resources/read too",
+  "name": "GA-29 server.session meta forwards the client's _meta on prompts/get and resources/read too",
   "ids": [
    "GA-29"
   ],
@@ -2009,7 +2009,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "meta": "true"
@@ -2077,7 +2077,7 @@
   ]
  },
  {
-  "name": "GA-30 without server/connect meta, a prompts/get and a resources/read never forward the client's _meta",
+  "name": "GA-30 without server.session meta, a prompts/get and a resources/read never forward the client's _meta",
   "ids": [
    "GA-30"
   ],
@@ -2244,14 +2244,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "has(meta.hidden) && meta.hidden == true",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "meta.secret": "null"
@@ -2319,7 +2319,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "result": "elicit('ok', 'Sure?')"
@@ -2403,7 +2403,7 @@
   ]
  },
  {
-  "name": "GA-34 prompts on the mux: prompts/get and prompts/elicit rules read the unprefixed exposed name",
+  "name": "GA-34 prompts on the mux: prompts/get and prompts/get.post.elicit rules read the unprefixed exposed name",
   "ids": [
    "GA-34"
   ],
@@ -2421,14 +2421,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "name == 'greet'",
       "then": {
        "message": "'Reworded'"
@@ -2514,7 +2514,7 @@
   ]
  },
  {
-  "name": "GA-35 resources/elicit on a URI the server does not list: a rule that reads name refuses, it is not skipped",
+  "name": "GA-35 resources/read.post.elicit on a URI the server does not list: a rule that reads name refuses, it is not skipped",
   "ids": [
    "GA-35"
   ],
@@ -2531,7 +2531,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "name == 'other'",
       "then": {
        "message": "'x'"
@@ -2603,7 +2603,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'search_issues'",
       "then": {
        "name": "'find'",
@@ -2613,21 +2613,21 @@
       }
      },
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "args.query == 'blocked'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['secret'])"
       }
      },
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "true",
       "then": {
        "message": "'step ' + string(progress.progress)"
@@ -2804,7 +2804,7 @@
   ]
  },
  {
-  "name": "GA-37 a resources/result rule that fails to evaluate refuses the read; the content is not passed on unchecked",
+  "name": "GA-37 a resources/read.post.result rule that fails to evaluate refuses the read; the content is not passed on unchecked",
   "ids": [
    "GA-37"
   ],
@@ -2813,7 +2813,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text.contains(args.missing)",
       "then": {
        "text": "'x'"

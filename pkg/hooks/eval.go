@@ -87,6 +87,11 @@ type setter func(key string, val any) error
 // evaluation error stops enforce rules; audit rules still run so the log is
 // complete, but never change anything.
 func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter) outcome {
+	return s.runIf(ctx, hook, itemLabel, resolve, vars, set, nil)
+}
+
+// runIf is run over the rules keep accepts; nil accepts every rule.
+func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter, keep func(*compiledRule) bool) outcome {
 	var o outcome
 	if s == nil {
 		return o
@@ -109,6 +114,9 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 	defer bounded.close()
 	for _, r := range s.byHook[hook] {
 		if stopped && !r.audit {
+			continue
+		}
+		if keep != nil && !keep(r) {
 			continue
 		}
 		cur = r

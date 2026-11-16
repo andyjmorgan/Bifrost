@@ -1,6 +1,6 @@
 [
  {
-  "name": "server/connect E1 pass the client name and version through",
+  "name": "server.session E1 pass the client name and version through",
   "client": {
    "name": "claude-code",
    "version": "2.1",
@@ -14,7 +14,7 @@
     "rules": [
      {
       "name": "Pass client identity",
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "clientInfo": "{'name': client.name, 'version': client.version}"
@@ -25,7 +25,7 @@
    }
   ],
   "steps": [
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "jira"
@@ -52,7 +52,7 @@
      }
     ]
    },
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "jira"
@@ -77,14 +77,14 @@
   ]
  },
  {
-  "name": "server/connect E2 advertise elicitation upstream for users only",
+  "name": "server.session E2 advertise elicitation upstream for users only",
   "servers": [
    {
     "slug": "jira",
     "rules": [
      {
       "name": "Elicitation for users",
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "caller.type == 'user'",
       "then": {
        "capabilities.elicitation": "true"
@@ -95,7 +95,7 @@
    }
   ],
   "steps": [
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "caller": {
      "type": "user"
@@ -116,7 +116,7 @@
      }
     ]
    },
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for jira, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "caller": {
      "type": "key"
@@ -139,14 +139,14 @@
   }
  },
  {
-  "name": "server/connect E3 forward _meta to one upstream",
+  "name": "server.session E3 forward _meta to one upstream",
   "servers": [
    {
     "slug": "tracing",
     "rules": [
      {
       "name": "Forward meta",
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "server.slug == 'tracing'",
       "then": {
        "meta": "true"
@@ -166,7 +166,7 @@
    }
   ],
   "steps": [
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server/connect decided for tracing, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for tracing, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "connect",
     "params": {
      "slug": "tracing"
@@ -217,7 +217,7 @@
   ]
  },
  {
-  "name": "server/connect: every forward carries the connect result; meta is stripped by default",
+  "name": "server.session: every forward carries the connect result; meta is stripped by default",
   "servers": [
    {
     "slug": "jira",

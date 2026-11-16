@@ -1,10 +1,10 @@
-# resources/progress
+# resources/read.post.progress
 
-`resources/progress` drops or rewords the progress events an upstream server sends while it reads a resource.
+`resources/read.post.progress` drops or rewords the progress events an upstream server sends while it reads a resource.
 
 ## When it runs
 
-`resources/progress` runs once for each progress event on the reply to a forwarded resource read or directory read, before the event reaches the client. It works the same way as [tools/progress](tools-progress.md): the same conditions for relaying progress, the same fields and the same limits.
+`resources/read.post.progress` runs once for each progress event on the reply to a forwarded resource read or directory read, before the event reaches the client. It works the same way as [tools/call.post.progress](tools-call-post-progress.md): the same conditions for relaying progress, the same fields and the same limits.
 
 ## Variables
 
@@ -29,7 +29,7 @@
 ```json
 {
   "name": "No file paths in progress",
-  "hook": "resources/progress",
+  "hook": "resources/read.post.progress",
   "when": "uri.startsWith('docs://')",
   "then": { "message": "'Reading the document'" }
 }
@@ -39,6 +39,6 @@ A progress event with the message `reading /srv/docs/a.md` reaches the client as
 
 ## Related pages
 
-- [tools/progress, for the full description](tools-progress.md)
-- [resources/read](resources-read.md)
+- [tools/call.post.progress, for the full description](tools-call-post-progress.md)
+- [resources/read.pre](resources-read-pre.md)
 - [Hooks and rules overview](overview.md)

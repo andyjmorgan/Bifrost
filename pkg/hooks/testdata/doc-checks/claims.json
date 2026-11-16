@@ -9,14 +9,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent) && result.structuredContent.x == 1",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent) && result.structuredContent.x == 2",
       "then": {
        "content": "[]"
@@ -153,20 +153,20 @@
   }
  },
  {
-  "name": "claims: directory read of a denied skill folder; resources/result default deny; prompts/get eval error; resources/modify error hides",
+  "name": "claims: directory read of a denied skill folder; resources/read.post.result default deny; prompts/get eval error; resources/list.post error hides",
   "servers": [
    {
     "slug": "d",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'w'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.text == 'bad'",
       "then": {
        "decision": "'deny'"
@@ -174,14 +174,14 @@
      },
      {
       "name": "Team check",
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "caller.team == 'x'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri == 'file:///b.md'",
       "then": {
        "title": "annotations.missing"
@@ -303,7 +303,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tools": "false",

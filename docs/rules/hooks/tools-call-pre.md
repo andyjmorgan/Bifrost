@@ -1,16 +1,16 @@
-# tools/call
+# tools/call.pre
 
-`tools/call` decides whether a tool call goes ahead, and can patch its arguments, set a timeout or ask the user to confirm first.
+`tools/call.pre` decides whether a tool call goes ahead, and can patch its arguments, set a timeout or ask the user to confirm first.
 
 ## When it runs
 
-`tools/call` runs once for each `tools/call` request, and for each `execute_tool` call in search mode. It runs after the gateway has found the exposed tool and built the effective arguments, and before the upstream call:
+`tools/call.pre` runs once for each `tools/call` request, and for each `execute_tool` call in search mode. It runs after the gateway has found the exposed tool and built the effective arguments, and before the upstream call:
 
-1. [server/config](server-config.md), then [tools/filter](tools-filter.md) and [tools/modify](tools-modify.md) to find the exposed tool.
+1. [server.settings](server-settings.md), then [tools/list.post](tools-list-post.md) to find the exposed tool.
 2. The gateway builds the effective arguments.
-3. `tools/call` rules run.
+3. `tools/call.pre` rules run.
 4. The gateway forces pins, checks constraints again, maps names and keys back to the upstream, and checks that every hidden required parameter has a value.
-5. The upstream call. Its reply goes to [tools/elicit](tools-elicit.md) or [tools/result](tools-result.md), which see the exact arguments that were forwarded.
+5. The upstream call. Its reply goes to [tools/call.post.elicit](tools-call-post-elicit.md) or [tools/call.post.result](tools-call-post-result.md), which see the exact arguments that were forwarded.
 
 ### Effective arguments
 
@@ -19,11 +19,11 @@ Rules see the arguments that will actually be sent, under the names the client s
 1. Rejects duplicate keys and nesting deeper than 64 levels.
 2. Rejects values for hidden parameters, and for upstream names of renamed parameters.
 3. Rejects keys the tool does not define, when the upstream input schema sets `additionalProperties: false`. See [undefined arguments](#undefined-arguments).
-4. Fills defaults set in `tools/modify` for missing arguments, including defaults of parameters that `tools/modify` added.
+4. Fills defaults set in `tools/list.post` for missing arguments, including defaults of parameters that `tools/list.post` added.
 5. Applies visible pins. A client value that differs from a pin is rejected.
 6. Checks `enum`, `minimum` and `maximum`.
 
-Because the gateway checks constraints before rules run, a call rule only sees values that the exposed schema allows. A rule that clamps `limit` never sees a value above the `maximum` that `tools/modify` set.
+Because the gateway checks constraints before rules run, a call rule only sees values that the exposed schema allows. A rule that clamps `limit` never sees a value above the `maximum` that `tools/list.post` set.
 
 Integral numbers that fit in a 64-bit integer become CEL `int` values, so `1`, `1.0` and `1e0` all equal `1`. Other numbers become `double`. The forwarded value keeps the client's original text unless a rule changes it.
 
@@ -34,7 +34,7 @@ When the upstream input schema does not set `additionalProperties: false`, argum
 When it does set `additionalProperties: false`, the gateway refuses undefined keys before any rule runs:
 
 - a key that matches a `patternProperties` pattern is allowed
-- a parameter that `tools/modify` added counts as defined
+- a parameter that `tools/list.post` added counts as defined
 - any other key returns `-32602`, `parameter "<p>" is not defined on this tool`
 
 The gateway applies `additionalProperties: false` at the level where the schema sets it, using the `properties` and `patternProperties` at that level only. Composition keywords elsewhere in the schema, such as `allOf`, `anyOf` or `$ref`, do not widen it, as JSON Schema specifies. A schema with `additionalProperties: false` and `allOf: [{}]` still refuses undefined keys.
@@ -45,7 +45,7 @@ The gateway applies `additionalProperties: false` at the level where the schema 
 | --- | --- | --- |
 | `args` | map | The effective arguments, under exposed names. Patches from earlier rules are visible |
 | `input` | map | The user's answers to this gateway's confirmations, by key. Each answer is a map such as `{action: 'accept', content: {confirm: true}}`. Empty on the first request |
-| `name`, `title`, `description`, `annotations`, `annotationsRaw`, `meta`, `inputSchema`, `outputSchema`, `params`, `icons` | Various | The exposed tool, after `tools/modify` |
+| `name`, `title`, `description`, `annotations`, `annotationsRaw`, `meta`, `inputSchema`, `outputSchema`, `params`, `icons` | Various | The exposed tool, after `tools/list.post` |
 | `upstream` | map | The tool as the upstream sent it |
 | `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
 
@@ -67,14 +67,14 @@ Patches chain: a later rule sees `args` as earlier rules left it. Patches in a r
 
 | Outcome | Result |
 | --- | --- |
-| Allowed | The upstream's reply, after [tools/result](tools-result.md) |
+| Allowed | The upstream's reply, after [tools/call.post.result](tools-call-post-result.md) |
 | Denied | `{"isError": true, "content": [{"type": "text", "text": "<reason>"}]}`. Without a reason, the text is `The call to <tool> was refused by policy.` |
 | Confirmation | `{"resultType": "input_required", "inputRequests": {...}, "requestState": "..."}` |
 | Confirmation, client cannot elicit | An error result: `This request needs confirmation (<message>), which this client does not support.`, or the error argument of `elicit()` |
 | A rule fails to evaluate | An error result: `The call to <tool> was refused by policy.` |
 | An argument patch is not allowed | An error result: `The call to <tool> was refused by policy.` |
 | A hidden required parameter has no value after rules | An error result: `The call to <tool> was refused: required parameters were not supplied by policy.` |
-| Invalid arguments, before or after rules | `-32602`, with the messages listed in [tools/modify](tools-modify.md#what-the-client-sees) |
+| Invalid arguments, before or after rules | `-32602`, with the messages listed in [tools/list.post](tools-list-post.md#changing-a-tool) |
 | Rules exceed the time budget | `-32603`, `rule evaluation exceeded its time budget` |
 
 A deny returns an error result rather than a JSON-RPC error, so the model can read the reason and change its arguments. The upstream is never called after a deny or a confirmation request.
@@ -159,7 +159,7 @@ A challenge expires after five minutes and can be answered once. Any retry uses 
 - Pins win over patches. A patch to a pinned parameter has no effect.
 - The gateway checks constraints again after rules. A patch that moves a value out of range fails with `-32602`.
 - Patch a renamed parameter by its exposed name. A patch that names its upstream key fails the rule, which refuses the call.
-- A patch to a hidden parameter uses the parameter's name at the time it was hidden. Setting `args.<p>` for a hidden required parameter is what lets `tools/modify` hide it without a pin or default. If no enforce rule sets it on a call, the call is refused. Audit rules never supply a value.
+- A patch to a hidden parameter uses the parameter's name at the time it was hidden. Setting `args.<p>` for a hidden required parameter is what lets `tools/list.post` hide it without a pin or default. If no enforce rule sets it on a call, the call is refused. Audit rules never supply a value.
 - Guard optional arguments with `has()`. `args.limit > 100` fails to evaluate when `limit` is missing, which refuses the call.
 - `has(client.capabilities.elicitation)` is safe without a guard. `client.capabilities` is `{}` when the client sends none.
 - Conditions can compare times with `timestamp()` and `duration()`. For example, `has(args.from) && has(args.to) && timestamp(args.to) - timestamp(args.from) > duration('168h')` matches ranges over seven days.
@@ -172,13 +172,13 @@ A challenge expires after five minutes and can be answered once. Any retry uses 
 [
   {
     "name": "Default space",
-    "hook": "tools/modify",
+    "hook": "tools/list.post",
     "when": "upstream.name == 'search_pages'",
     "then": { "params.space.default": "'HR'" }
   },
   {
     "name": "No HR",
-    "hook": "tools/call",
+    "hook": "tools/call.pre",
     "when": "upstream.name == 'search_pages' && args.space == 'HR'",
     "then": { "decision": "'deny'", "reason": "'The HR space is restricted. Use ENG or OPS.'" }
   }
@@ -193,20 +193,20 @@ A call with `{"q": "salaries"}` is denied, because the default fills `space` wit
 [
   {
     "name": "Clamp limit",
-    "hook": "tools/call",
+    "hook": "tools/call.pre",
     "when": "has(args.limit) && args.limit > 100",
     "then": { "args.limit": "100" }
   },
   {
     "name": "Search timeout",
-    "hook": "tools/call",
+    "hook": "tools/call.pre",
     "when": "upstream.name == 'search_logs'",
     "then": { "timeout": "duration('30s')" }
   }
 ]
 ```
 
-A call with `limit: 5000` reaches the upstream with `limit: 100` and a 30-second timeout. If `tools/modify` also set `maximum` to 500 on `limit`, the gateway would refuse `limit: 5000` with `-32602` before this rule runs.
+A call with `limit: 5000` reaches the upstream with `limit: 100` and a 30-second timeout. If `tools/list.post` also set `maximum` to 500 on `limit`, the gateway would refuse `limit: 5000` with `-32602` before this rule runs.
 
 ### Set a hidden parameter to the caller
 
@@ -214,13 +214,13 @@ A call with `limit: 5000` reaches the upstream with `limit: 100` and a 30-second
 [
   {
     "name": "Hide assignee",
-    "hook": "tools/modify",
+    "hook": "tools/list.post",
     "when": "upstream.name == 'create_issue'",
     "then": { "params.assignee.hide": "true" }
   },
   {
     "name": "Assign to caller",
-    "hook": "tools/call",
+    "hook": "tools/call.pre",
     "when": "upstream.name == 'create_issue' && caller.type == 'user'",
     "then": { "args.assignee": "caller.email" }
   }
@@ -235,7 +235,7 @@ The schema shows only `title`. For a caller with the email `ana@example.com`, `{
 [
   {
     "name": "Confirm delete",
-    "hook": "tools/call",
+    "hook": "tools/call.pre",
     "when": "upstream.name == 'delete_page' && !has(input.confirm)",
     "then": { "result": "elicit('confirm', 'Delete page {id}?', {'id': args.id})" }
   }
@@ -257,6 +257,6 @@ A client without the elicitation capability receives the error result `This requ
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [tools/modify for parameters, pins and defaults](tools-modify.md)
-- [tools/elicit for input requests from the upstream](tools-elicit.md)
-- [tools/result for shaping the reply](tools-result.md)
+- [tools/list.post for parameters, pins and defaults](tools-list-post.md)
+- [tools/call.post.elicit for input requests from the upstream](tools-call-post-elicit.md)
+- [tools/call.post.result for shaping the reply](tools-call-post-result.md)

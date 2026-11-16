@@ -99,7 +99,7 @@ type resView struct {
 	listedRes    map[string]bool           // normalized URI is in the upstream listing
 	originalRes  map[string]map[string]any // normalized URI -> the resource as the upstream sent it
 	okTemplates  []*uriTemplate
-	badTemplates []*uriTemplate // denied, failed modify or collided
+	badTemplates []*uriTemplate // denied, failed a change or collided
 	deniedRoots  []string
 	skills       []Skill
 	hits         []Hit
@@ -116,13 +116,13 @@ func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resVie
 		v.listedRes[normalizeURI(x.URI)] = true
 		v.originalRes[normalizeURI(x.URI)] = toMap(x)
 	}
-	ls, issues, hits := s.Rules.listItems(ctx, KindResource, "resources/filter", "resources/modify", "uri", resourceItems(s.Catalog.Resources), c, e.Limits.Workers)
+	ls, issues, hits := s.Rules.listItems(ctx, KindResource, "resources/list.post", "uri", resourceItems(s.Catalog.Resources), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)
 	v.issues = append(v.issues, issues...)
 	for _, l := range ls {
 		v.visibleRes[normalizeURI(l.upstreamID)] = l.value
 	}
-	ts, issues, hits := s.Rules.listItems(ctx, KindTemplate, "templates/filter", "templates/modify", "uriTemplate", templateItems(s.Catalog.Templates), c, e.Limits.Workers)
+	ts, issues, hits := s.Rules.listItems(ctx, KindTemplate, "resources/templates/list.post", "uriTemplate", templateItems(s.Catalog.Templates), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)
 	v.issues = append(v.issues, issues...)
 	ok := map[string]bool{}
@@ -142,11 +142,13 @@ func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resVie
 
 // check decides one URI. A read is allowed unless something denies it: a
 // denied skill root, a denied template that could cover the URI, a listed
-// resource that a filter hid, or a resources/filter rule. A URI the server
+// resource that a rule hid, or a resources/list.post rule. A URI the server
 // never listed is allowed too, because servers hand out URIs they do not
 // list, in tool results and through templates the gateway cannot parse.
-// resources/filter runs on such a URI with only `uri` to read, so a rule
-// that needs `name` or `mimeType` fails there and the read is refused.
+// Only the deny rules of resources/list.post run on such a URI, with only
+// `uri` to read and nothing changed, so a deny rule that needs `name` or
+// `mimeType` fails there and the read is refused. Rules that change a
+// resource are skipped: there is no listed resource to change.
 // It returns the item rules see for the URI.
 func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView, uri string) (map[string]any, bool, []Hit) {
 	if nonCanonical(uri) {
@@ -164,13 +166,14 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	if v.listedRes[n] {
 		item, visible := v.visibleRes[n]
 		if !visible {
-			return nil, false, nil // hidden by a filter, a failed modify or a collision
+			return nil, false, nil // hidden by a rule, a failed change or a collision
 		}
 		return item, true, nil
 	}
 	probe := map[string]any{"uri": uri}
 	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri, bare: true}
-	o := s.Rules.run(ctx, "resources/filter", uri, it.resolve, r.context(s).vars(), func(string, any) error { return nil })
+	o := s.Rules.runIf(ctx, "resources/list.post", uri, it.resolve, r.context(s).vars(), func(string, any) error { return nil },
+		func(c *compiledRule) bool { return c.denies })
 	if o.denied {
 		return nil, false, o.hits
 	}

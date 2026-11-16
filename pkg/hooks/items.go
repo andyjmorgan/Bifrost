@@ -112,7 +112,7 @@ func (it *item) set(key string, val any) error {
 	return nil
 }
 
-// listed is one item after filter and modify.
+// listed is one item after its list hook.
 type listed struct {
 	upstreamID string
 	exposedID  string
@@ -120,9 +120,11 @@ type listed struct {
 	args       *argState
 }
 
-// listItems runs a filter hook then a modify hook over items, in parallel,
-// then sorts a-z by exposed identity and drops identity collisions.
-func (s *Set) listItems(ctx context.Context, kind ItemKind, filter, modify string, idKey string, items []map[string]any, c Context, workers int) ([]listed, []string, []Hit) {
+// listItems runs a list hook over items, in parallel, then sorts a-z by
+// exposed identity and drops identity collisions. The hook's rules run in
+// written order: each one hides the item or changes it, and a later rule
+// reads the item as changed so far.
+func (s *Set) listItems(ctx context.Context, kind ItemKind, hook string, idKey string, items []map[string]any, c Context, workers int) ([]listed, []string, []Hit) {
 	type res struct {
 		l      listed
 		hidden bool
@@ -138,23 +140,14 @@ func (s *Set) listItems(ctx context.Context, kind ItemKind, filter, modify strin
 			it.args = newArgState(base)
 		}
 		vars := c.vars()
-		fo := s.run(ctx, filter, id, it.resolve, vars, func(string, any) error { return nil })
-		results[i].hits = append(results[i].hits, fo.hits...)
-		if fo.denied {
+		o := s.run(ctx, hook, id, it.resolve, vars, it.set)
+		results[i].hits = append(results[i].hits, o.hits...)
+		if o.denied {
 			results[i].hidden = true
-			if fo.err != nil {
-				results[i].issue = fmt.Sprintf("%s: %v", id, fo.err)
+			if o.err != nil {
+				results[i].issue = fmt.Sprintf("%s: %v", id, o.err)
 			}
 			return
-		}
-		if modify != "" {
-			mo := s.run(ctx, modify, id, it.resolve, vars, it.set)
-			results[i].hits = append(results[i].hits, mo.hits...)
-			if mo.denied {
-				results[i].hidden = true
-				results[i].issue = fmt.Sprintf("%s: %s", id, errText(mo))
-				return
-			}
 		}
 		v := it.view.Materialize()
 		if it.args != nil && it.args.touched {

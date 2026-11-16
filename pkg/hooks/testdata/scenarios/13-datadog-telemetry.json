@@ -9,7 +9,7 @@
     "slug": "dd",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'telemetry' in params",
       "then": {
        "params.telemetry.hide": "true",
@@ -226,7 +226,7 @@
     "slug": "dd",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'telemetry' in params",
       "then": {
        "params.telemetry.hide": "true",
@@ -234,14 +234,14 @@
       }
      },
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'reason' in params && !('reason' in upstream.inputSchema.required)",
       "then": {
        "params.reason.hide": "true"
       }
      },
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'reason' in params && 'reason' in upstream.inputSchema.required",
       "then": {
        "params.reason.hide": "true",
@@ -423,7 +423,7 @@
     "slug": "dd",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'telemetry' in params",
       "then": {
        "params.telemetry.hide": "true"
@@ -566,7 +566,7 @@
     "catalogRef": "../../../../internal/e2e/testdata/real/datadog.json",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "'telemetry' in params",
       "then": {
        "params.telemetry.hide": "true",

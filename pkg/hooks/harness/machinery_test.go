@@ -160,7 +160,7 @@ func TestDenyAppliesAtCallTimeDespiteACachedListing(t *testing.T) {
 	}
 	mustCall(t, cs, "t", nil)
 
-	g.SetRules(t, "a", rule("tools/filter", "true", "decision", "'deny'"))
+	g.SetRules(t, "a", rule("tools/list.post", "true", "decision", "'deny'"))
 
 	again, err := cs.ListTools(bg(t), nil)
 	if err != nil {
@@ -201,7 +201,7 @@ func TestReadCachingInTheSDKClient(t *testing.T) {
 	n := len(u.Requests("resources/read"))
 	t.Logf("two reads of one URI on one session reached the server %d time(s)", n)
 
-	g.SetRules(t, "a", rule("resources/filter", "true", "decision", "'deny'"))
+	g.SetRules(t, "a", rule("resources/list.post", "true", "decision", "'deny'"))
 	_, cachedErr := read(t, cs, "docs://a")
 	t.Logf("after a deny, the same session's read returns error=%v", cachedErr)
 	if _, err := read(t, Connect(t, g.Direct("a"), ClientOptions{}), "docs://a"); err == nil {
@@ -221,7 +221,7 @@ func TestEnginePanicFailsClosedAndTheGatewayKeepsServing(t *testing.T) {
 	healthy := NewUpstream(t, V2026)
 	healthy.Tool(plainTool, nil)
 	g := NewGateway(t)
-	g.AddServer(t, "a", u, rule("tools/modify", "true", "description", "'changed'"))
+	g.AddServer(t, "a", u, rule("tools/list.post", "true", "description", "'changed'"))
 	g.AddServer(t, "b", healthy)
 	cs := Connect(t, g.Direct("a"), ClientOptions{})
 	other := Connect(t, g.Direct("b"), ClientOptions{})
@@ -269,8 +269,8 @@ func TestEnginePanicFailsClosedAndTheGatewayKeepsServing(t *testing.T) {
 func TestManyClientsInParallel(t *testing.T) {
 	ua, ub := docsUpstream(t, "a"), docsUpstream(t, "b")
 	g := NewGateway(t)
-	g.AddServer(t, "a", ua, clamp, rule("tools/modify", "true", "description", "'Search the docs'"))
-	g.AddServer(t, "b", ub, rule("tools/result", "true", "content", rewriteText))
+	g.AddServer(t, "a", ua, clamp, rule("tools/list.post", "true", "description", "'Search the docs'"))
+	g.AddServer(t, "b", ub, rule("tools/call.post.result", "true", "content", rewriteText))
 	const clients, rounds = 12, 15
 	var wg sync.WaitGroup
 	errs := make(chan string, clients*rounds*4)
@@ -356,7 +356,7 @@ func read(t testing.TB, cs *mcp.ClientSession, uri string) (*mcp.ReadResourceRes
 }
 
 // Rules the concurrency test runs under.
-var clamp = rule("tools/call", "has(args.limit) && args.limit > 100", "args.limit", "100")
+var clamp = rule("tools/call.pre", "has(args.limit) && args.limit > 100", "args.limit", "100")
 
 const rewriteText = "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"
 
@@ -368,7 +368,7 @@ func TestClientCannotSetTheCLIFlag(t *testing.T) {
 	u.Tool(`{"name":"t","inputSchema":{"type":"object"}}`, Static(Reply{Result: Text("done")}))
 	g := NewGateway(t)
 	g.AddServer(t, "a", u,
-		hooks.Rule{Hook: "tools/call", When: "flags.cli", Then: map[string]string{"decision": "'deny'", "reason": "'cli flag seen'"}})
+		hooks.Rule{Hook: "tools/call.pre", When: "flags.cli", Then: map[string]string{"decision": "'deny'", "reason": "'cli flag seen'"}})
 	call := RawRequest{Method: "tools/call", Params: map[string]any{"name": "t", "arguments": map[string]any{}}}
 	text := func(rep *RawReply) string {
 		b, _ := json.Marshal(rep.Messages())

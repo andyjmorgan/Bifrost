@@ -40,7 +40,7 @@ func codexRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
 }
 
 func codexConfirm() Rule {
-	return Rule{Hook: "tools/call", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Continue?')"}}
+	return Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Continue?')"}}
 }
 
 func codexAccepted(t testing.TB) mcp.InputResponseMap {
@@ -102,7 +102,7 @@ func TestCodexExecuteToolAPIPreservesContinuation(t *testing.T) { // CX-G03; iso
 func TestCodexChangedToolPreservesUntouchedSchemaPointers(t *testing.T) { // CX-G04
 	orig := codexTool()
 	other := orig.InputSchema.(map[string]any)["properties"].(map[string]any)["tenant"]
-	s := codexSet(t, Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"params.q.description": "'query'"}})
+	s := codexSet(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.q.description": "'query'"}})
 	ls := s.ListTools(context.Background(), []*mcp.Tool{orig}, Context{}, 1)
 	if len(ls.Tools) != 1 {
 		t.Fatalf("listing failed: %+v", ls)
@@ -122,7 +122,7 @@ func TestCodexParallelEntitlementsPreserveCatalogAndReversal(t *testing.T) { // 
 	var servers [2]*Server
 	for i, slug := range []string{"a", "b"} {
 		servers[i] = &Server{Slug: slug, Rules: codexSet(t,
-			Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"params.q.name": fmt.Sprintf("'%squery'", slug), "params.tenant.pin": fmt.Sprintf("'%s'", slug)}},
+			Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.q.name": fmt.Sprintf("'%squery'", slug), "params.tenant.pin": fmt.Sprintf("'%s'", slug)}},
 		), Catalog: Catalog{Tools: []*mcp.Tool{orig}}}
 	}
 	var wg sync.WaitGroup
@@ -185,7 +185,7 @@ func TestCodexAuditBudgetNeverChangesCallOutcome(t *testing.T) { // CX-G06
 	if baseline.Forward == nil {
 		t.Fatalf("baseline did not forward: %+v", baseline)
 	}
-	r.Servers[0].Rules = codexSet(t, Rule{Mode: "audit", Hook: "tools/call", When: "lists.range(1000000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}})
+	r.Servers[0].Rules = codexSet(t, Rule{Mode: "audit", Hook: "tools/call.pre", When: "lists.range(1000000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}})
 	out := e.CallTool(context.Background(), r, p)
 	if out.Forward == nil {
 		b, _ := json.Marshal(out)
@@ -195,10 +195,10 @@ func TestCodexAuditBudgetNeverChangesCallOutcome(t *testing.T) { // CX-G06
 
 func TestCodexExpiredBudgetStopsOtherSurfaces(t *testing.T) { // CX-G07
 	e, r := codexRequest(t,
-		Rule{Hook: "prompts/get", When: "true", Then: map[string]string{"args.q": "'x'"}},
-		Rule{Hook: "resources/read", When: "false", Then: map[string]string{"decision": "'deny'"}},
-		Rule{Hook: "prompts/modify", When: "true", Then: map[string]string{"description": "'x'"}},
-		Rule{Hook: "resources/modify", When: "true", Then: map[string]string{"description": "'x'"}},
+		Rule{Hook: "prompts/get.pre", When: "true", Then: map[string]string{"args.q": "'x'"}},
+		Rule{Hook: "resources/read.pre", When: "false", Then: map[string]string{"decision": "'deny'"}},
+		Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"description": "'x'"}},
+		Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"description": "'x'"}},
 	)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
@@ -218,7 +218,7 @@ func TestCodexExpiredBudgetStopsOtherSurfaces(t *testing.T) { // CX-G07
 }
 
 func TestCodexHelperCostsScaleWithTraversal(t *testing.T) { // CX-G08
-	env, err := envFor(Hooks["tools/result"])
+	env, err := envFor(Hooks["tools/call.post.result"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,8 +259,8 @@ func TestCodexScenarioNumericAssertionsAreExact(t *testing.T) { // CX-G09
 
 func TestCodexHiddenRequiredArgumentCannotRelyOnAuditPatch(t *testing.T) { // CX-G10
 	e, r := codexRequest(t,
-		Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"params.tenant.hide": "true"}},
-		Rule{Mode: "audit", Hook: "tools/call", When: "true", Then: map[string]string{"args.tenant": "'A'"}},
+		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.tenant.hide": "true"}},
+		Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"args.tenant": "'A'"}},
 	)
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["required"] = []any{"tenant"}
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t"})
@@ -283,7 +283,7 @@ func TestCodexFrontmatterParserRejectsInvalidDescriptionAndFence(t *testing.T) {
 }
 
 func TestCodexResponseLargeIntegerSurvivesRuleEdits(t *testing.T) { // CX-G12
-	e, r := codexRequest(t, Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"description": "'changed'"}})
+	e, r := codexRequest(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"description": "'changed'"}})
 	// Native JSON Number is supported by JSON serialization and preserves
 	// the original upstream schema integer exactly.
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["id"] = map[string]any{"const": json.Number("9007199254740993")}
@@ -306,7 +306,7 @@ func TestCodexDecodeArgsRejectsTrailingJSON(t *testing.T) { // CX-G13
 }
 
 func TestCodexRuleParseRejectsTrailingJSON(t *testing.T) { // CX-G14
-	for _, raw := range []string{`[] [{"hook":"tools/filter","when":"true","then":{"decision":"'deny'"}}]`, `[] garbage`} {
+	for _, raw := range []string{`[] [{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]`, `[] garbage`} {
 		if got, err := Parse(json.RawMessage(raw)); err == nil {
 			t.Errorf("accepted malformed rule document %q as %v", raw, got)
 		}
@@ -351,7 +351,7 @@ func TestCodexJSONClientRepresentationsRemainInteroperable(t *testing.T) { // CX
 }
 
 func TestCodexIntegralJSONSpellingsHaveSamePolicyOutcome(t *testing.T) { // CX-G17
-	e, r := codexRequest(t, Rule{Hook: "tools/call", When: "true", Then: map[string]string{"args.n": "args.n + 1"}})
+	e, r := codexRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"args.n": "args.n + 1"}})
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["n"] = map[string]any{"type": "integer"}
 	for _, number := range []string{"1", "1.0", "1e0", "1E+0", "0.1e1"} {
 		t.Run(number, func(t *testing.T) {
@@ -387,7 +387,7 @@ func FuzzCodexDecodeArgs(f *testing.F) {
 }
 
 func FuzzCodexParse(f *testing.F) {
-	for _, s := range []string{`[]`, `null`, `[] garbage`, `[{"hook":"tools/filter","when":"true","then":{"decision":"'deny'"}}]`} {
+	for _, s := range []string{`[]`, `null`, `[] garbage`, `[{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {

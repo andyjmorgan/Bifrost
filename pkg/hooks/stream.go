@@ -17,9 +17,9 @@ import (
 //
 // Each event is routed by its type to the hook for the request's family:
 //
-//	notifications/progress  ->  tools/progress, prompts/progress, resources/progress
-//	the final response      ->  the existing reply path, which picks tools/result,
-//	                            tools/elicit and so on from the result's type
+//	notifications/progress  ->  tools/call.post.progress, prompts/get.post.progress, resources/read.post.progress
+//	the final response      ->  the existing reply path, which picks tools/call.post.result,
+//	                            tools/call.post.elicit and so on from the result's type
 //	anything else           ->  dropped
 //
 // Progress is the only notification type handled today. A new type is a new
@@ -76,7 +76,7 @@ func (e *Engine) ToolReplyStream(parent context.Context, r Request, call *CallCo
 		p = &mcp.CallToolParamsRaw{}
 	}
 	return e.replyStream(parent, r, call, replyKind{
-		op: "tools/call reply", ref: toolCallRef(p), hook: "tools/progress",
+		op: "tools/call reply", ref: toolCallRef(p), hook: "tools/call.post.progress",
 		resolve: func() func(string) (any, bool) { return replyResolve(call) },
 		final:   func(raw json.RawMessage) Outcome { return e.UpstreamToolReply(parent, r, call, p, raw) },
 	}, upstream)
@@ -89,7 +89,7 @@ func (e *Engine) PromptReplyStream(parent context.Context, r Request, call *Call
 		p = &mcp.GetPromptParams{}
 	}
 	return e.replyStream(parent, r, call, replyKind{
-		op: "prompts/get reply", ref: promptCallRef(p), hook: "prompts/progress",
+		op: "prompts/get reply", ref: promptCallRef(p), hook: "prompts/get.post.progress",
 		resolve: func() func(string) (any, bool) { return replyResolve(call) },
 		final:   func(raw json.RawMessage) Outcome { return e.UpstreamPromptReply(parent, r, call, p, raw) },
 	}, upstream)
@@ -102,7 +102,7 @@ func (e *Engine) ReadReplyStream(parent context.Context, r Request, call *CallCo
 		p = &mcp.ReadResourceParams{}
 	}
 	return e.replyStream(parent, r, call, replyKind{
-		op: "resources/read reply", ref: readCallRef("resources/read", p), hook: "resources/progress",
+		op: "resources/read reply", ref: readCallRef("resources/read", p), hook: "resources/read.post.progress",
 		resolve: func() func(string) (any, bool) { return replyResolve(call) },
 		final:   func(raw json.RawMessage) Outcome { return e.UpstreamReadReply(parent, r, call, p, raw) },
 	}, upstream)
@@ -210,7 +210,7 @@ type notifications struct {
 
 	ready     bool
 	ctx       context.Context // carries the progress allowance
-	on        bool            // the server/config progress switch
+	on        bool            // the server.settings progress switch
 	rules     bool            // the family's progress hook has rules
 	resolve   func(string) (any, bool)
 	exhausted bool // the allowance is spent; later events are dropped unseen
@@ -429,7 +429,7 @@ func replyResolve(call *CallContext) func(string) (any, bool) {
 // item exactly as the server sent it. Without it, a view built from the
 // exposed item would report the exposed values as the upstream ones, and a
 // rule written against the server's original name or title would miss after
-// any modify rule changed it.
+// any list rule changed it.
 func itemResolver(it *item, original map[string]any) func(string) (any, bool) {
 	if it.bare || original == nil {
 		return it.resolve

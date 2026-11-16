@@ -1,10 +1,10 @@
-# resources/result
+# resources/read.post.result
 
-`resources/result` changes the text of read results and skill files, or withholds them. It is opt-in: without rules in this hook, content passes through unchanged.
+`resources/read.post.result` changes the text of read results and skill files, or withholds them. It is opt-in: without rules in this hook, content passes through unchanged.
 
 ## When it runs
 
-`resources/result` runs in two places:
+`resources/read.post.result` runs in two places:
 
 - On each `resources/read` result, once for each content item, text or binary (`blob`). It runs after the gateway drops content items the caller cannot read, and before the mux URI prefix.
 - On `skills/list` and `skills/get`, once for each text file in each visible skill's manifest, as part of the skill's [rewrite plan](#skill-files).
@@ -68,7 +68,7 @@ For skills, the gateway builds one rewrite plan per skill. The same plan drives 
 ```json
 {
   "name": "Wiki wording",
-  "hook": "resources/result",
+  "hook": "resources/read.post.result",
   "when": "true",
   "then": { "text": "regex.replace(result.text, 'Confluence', 'the wiki')" }
 }
@@ -81,7 +81,7 @@ A read of `file:///guide.md` that returns `Search Confluence first.` reaches the
 ```json
 {
   "name": "Prefix own URIs",
-  "hook": "resources/result",
+  "hook": "resources/read.post.result",
   "when": "true",
   "then": { "text": "slugUris(result.text)" }
 }
@@ -94,7 +94,7 @@ On the mux route, with `file:///faq.md` listed by slug `docs`, the text `See fil
 ```json
 {
   "name": "Withhold keys",
-  "hook": "resources/result",
+  "hook": "resources/read.post.result",
   "when": "result.text.contains('BEGIN PRIVATE KEY')",
   "then": { "decision": "'deny'", "reason": "'This file contains a private key and was withheld.'" }
 }
@@ -110,5 +110,5 @@ The "Wiki wording" rule above also applies to skills. For a skill whose `SKILL.m
 
 - [Hooks and rules overview](overview.md)
 - [Mux URIs and fallback resolution](overview.md#mux-uris)
-- [skills/filter for skill visibility](skills-filter.md)
-- [resources/read for read decisions](resources-read.md)
+- [skills/list.post for skill visibility](skills-list-post.md)
+- [resources/read.pre for read decisions](resources-read-pre.md)

@@ -53,7 +53,7 @@ func (a adapter) discover(ctx context.Context, r hooks.Request, version string) 
 	return a.e.Discover(ctx, r, version)
 }
 
-// connect is server/connect for one server.
+// connect is server.session for one server.
 func (a adapter) connect(ctx context.Context, r hooks.Request, s *hooks.Server, version string) (hooks.ConnectInfo, []hooks.Hit) {
 	return a.e.Connect(ctx, r, s, version)
 }
@@ -74,7 +74,7 @@ func (a adapter) list(ctx context.Context, r hooks.Request, method string) (hook
 	return hooks.Outcome{}, false
 }
 
-// switches is server/config for one server.
+// switches is server.settings for one server.
 func (a adapter) switches(ctx context.Context, r hooks.Request, s *hooks.Server) (map[string]bool, []hooks.Hit) {
 	return a.e.Config(ctx, r, s)
 }

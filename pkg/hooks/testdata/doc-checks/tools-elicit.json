@@ -1,6 +1,6 @@
 [
  {
-  "name": "tools/elicit E1 reword the upstream prompt",
+  "name": "tools/call.post.elicit E1 reword the upstream prompt",
   "caller": {
    "userId": "u1"
   },
@@ -15,7 +15,7 @@
     "rules": [
      {
       "name": "Label Jira prompts",
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "true",
       "then": {
        "message": "'Jira asks: ' + request.message"
@@ -123,7 +123,7 @@
   ]
  },
  {
-  "name": "tools/elicit E2 refuse upstream prompts for API keys",
+  "name": "tools/call.post.elicit E2 refuse upstream prompts for API keys",
   "caller": {
    "userId": "k1",
    "type": "key"
@@ -134,7 +134,7 @@
     "rules": [
      {
       "name": "No prompts for keys",
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'",
@@ -203,7 +203,7 @@
   }
  },
  {
-  "name": "tools/elicit E3 refuse URL-mode requests",
+  "name": "tools/call.post.elicit E3 refuse URL-mode requests",
   "caller": {
    "userId": "u1"
   },
@@ -213,7 +213,7 @@
     "rules": [
      {
       "name": "No URL mode",
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "request.mode == 'url'",
       "then": {
        "decision": "'deny'"
@@ -298,7 +298,7 @@
   }
  },
  {
-  "name": "tools/elicit nuance: request.key and args under upstream names",
+  "name": "tools/call.post.elicit nuance: request.key and args under upstream names",
   "caller": {
    "userId": "u1"
   },
@@ -307,14 +307,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "params.cql.name": "'q'"
       }
      },
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "request.key == 'k' && args.cql == 'x'",
       "then": {
        "message": "'seen'"
@@ -381,7 +381,7 @@
   }
  },
  {
-  "name": "tools/elicit v2: args are the forwarded arguments; state-only replies are wrapped; answers forwarded without upstream state",
+  "name": "tools/call.post.elicit v2: args are the forwarded arguments; state-only replies are wrapped; answers forwarded without upstream state",
   "caller": {
    "userId": "u"
   },
@@ -395,14 +395,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "args.limit": "10"
       }
      },
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "args.limit == 10",
       "then": {
        "message": "'patched seen'"

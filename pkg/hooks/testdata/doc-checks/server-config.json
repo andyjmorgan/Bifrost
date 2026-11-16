@@ -1,13 +1,13 @@
 [
  {
-  "name": "server/config E1 tools only",
+  "name": "server.settings E1 tools only",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Tools only",
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "prompts": "false",
@@ -109,7 +109,7 @@
   ]
  },
  {
-  "name": "server/config E2 hide instructions from API keys",
+  "name": "server.settings E2 hide instructions from API keys",
   "servers": [
    {
     "slug": "wiki",
@@ -121,7 +121,7 @@
     "rules": [
      {
       "name": "No instructions for keys",
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "caller.type == 'key'",
       "then": {
        "instructions": "false"
@@ -163,14 +163,14 @@
   ]
  },
  {
-  "name": "server/config E3 switch tools off during a change freeze",
+  "name": "server.settings E3 switch tools off during a change freeze",
   "servers": [
    {
     "slug": "deploy",
     "rules": [
      {
       "name": "Holiday freeze",
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "now >= timestamp('2026-12-20T00:00:00Z') && now < timestamp('2027-01-04T00:00:00Z')",
       "then": {
        "tools": "false"
@@ -235,7 +235,7 @@
   ]
  },
  {
-  "name": "server/config E4 expose the upstream server name",
+  "name": "server.settings E4 expose the upstream server name",
   "servers": [
    {
     "slug": "wiki",
@@ -246,7 +246,7 @@
     "rules": [
      {
       "name": "Show upstream",
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "serverInfo": "true"
@@ -280,13 +280,13 @@
   ]
  },
  {
-  "name": "server/config nuance: an evaluation error switches every switch off",
+  "name": "server.settings nuance: an evaluation error switches every switch off",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "caller.team == 'ops'",
       "then": {
        "tools": "false"
@@ -297,7 +297,7 @@
    }
   ],
   "steps": [
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "config",
     "caller": {
      "type": "user"
@@ -325,13 +325,13 @@
   ]
  },
  {
-  "name": "server/config: skills extension only where skills are served",
+  "name": "server.settings: skills extension only where skills are served",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "caller.type == 'key'",
       "then": {
        "resources": "false"
@@ -380,7 +380,7 @@
   ]
  },
  {
-  "name": "server/config E4 on the mux route the gateway names itself",
+  "name": "server.settings E4 on the mux route the gateway names itself",
   "servers": [
    {
     "slug": "wiki",
@@ -391,7 +391,7 @@
     "rules": [
      {
       "name": "Show upstream",
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "serverInfo": "true"

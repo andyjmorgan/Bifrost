@@ -19,7 +19,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok','Go?')"
@@ -94,7 +94,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok','Go?')"
@@ -131,7 +131,7 @@
     "rules": {
      "a": [
       {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "when": "!has(input.ok)",
        "then": {
         "result": "elicit('ok','Really go?')"
@@ -193,7 +193,7 @@
     "rules": {
      "a": [
       {
-       "hook": "tools/filter",
+       "hook": "tools/list.post",
        "when": "name == 't'",
        "then": {
         "decision": "'deny'"
@@ -233,7 +233,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "outputSchema": "dropSchema(outputSchema, ['item.secret'])"
@@ -479,14 +479,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'strictadd'",
       "then": {
        "params.why.add": "{'type': 'string'}"
       }
      },
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'strict'",
       "then": {
        "params.q.description": "'blocked: patternProperties'"
@@ -731,7 +731,7 @@
     "slug": "warn",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "enabled": false,
       "when": "1 +",
       "then": {
@@ -754,7 +754,7 @@
     "slug": "closed",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "1 +",
       "then": {
        "decision": "'deny'"
@@ -823,7 +823,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok', 'Delete page {id}?', {'id': args.id})"
@@ -870,7 +870,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "limit": "{'key': 'k', 'rate': '1/m'}"
@@ -930,7 +930,7 @@
   ]
  },
  {
-  "name": "a server/config rule that fails switches every switch off",
+  "name": "a server.settings rule that fails switches every switch off",
   "ids": [
    "RH-SRV-03"
   ],
@@ -939,7 +939,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "caller.missing.field == 1",
       "then": {
        "tools": "true"
@@ -959,7 +959,7 @@
    }
   ],
   "steps": [
-   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
+   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."}], 
     "op": "config",
     "expect": [
      {
@@ -980,7 +980,7 @@
   ]
  },
  {
-  "name": "search mode uses server/modify titles and descriptions in the roster",
+  "name": "search mode uses server/discover.post titles and descriptions in the roster",
   "ids": [
    "RH-SRC-01"
   ],
@@ -994,7 +994,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "title": "'Jira'",
@@ -1042,7 +1042,7 @@
     "rules": [
      {
       "name": "Secret team policy",
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "args.missing.deep == 1",
       "then": {
        "decision": "'deny'"
@@ -1085,7 +1085,7 @@
   ]
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the case gives the engine one client and puts a different one in the request's _meta; over a wire the request's _meta is the client's only declaration, so the two cannot differ"}], 
-  "name": "server/connect is carried in every forward, with the _meta policy applied",
+  "name": "server.session is carried in every forward, with the _meta policy applied",
   "ids": [
    "RH-SRV-01",
    "RH-SRV-02"
@@ -1123,7 +1123,7 @@
     "slug": "pass",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "clientInfo": "client",
@@ -1218,7 +1218,7 @@
   ]
  },
  {
-  "name": "prompts/modify and resources/modify change text; templates keep their URIs",
+  "name": "prompts/list.post and resources/list.post change text; templates keep their URIs",
   "ids": [
    "RH-PRM-02",
    "RH-RSC-04"
@@ -1228,7 +1228,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "title": "'Prompt: ' + name",
@@ -1236,7 +1236,7 @@
       }
      },
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "true",
       "then": {
        "description": "'About ' + uri",
@@ -1244,7 +1244,7 @@
       }
      },
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "title": "'Template ' + name"
@@ -1317,7 +1317,7 @@
   ]
  },
  {
-  "name": "prompts/elicit and resources/elicit reword or deny upstream prompts","client":{"capabilities":{"elicitation":{}}},
+  "name": "prompts/get.post.elicit and resources/read.post.elicit reword or deny upstream prompts","client":{"capabilities":{"elicitation":{}}},
   "ids": [
    "RH-INP-02",
    "RH-INP-03"
@@ -1330,14 +1330,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
        "message": "'Prompt server asks: ' + request.message"
       }
      },
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "true",
       "then": {
        "decision": "'deny'",
@@ -1429,7 +1429,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "1 +",
       "then": {
        "decision": "'deny'"
@@ -1456,7 +1456,7 @@
     "slug": "b",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tools": "false",
@@ -1543,7 +1543,7 @@
   ]
  },
  {
-  "name": "resources/result deny keeps the administrator's reason; gateway version reaches upstream",
+  "name": "resources/read.post.result deny keeps the administrator's reason; gateway version reaches upstream",
   "ids": [
    "RH-RES-05",
    "RH-SRV-01"
@@ -1553,7 +1553,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "result.contents[0].text.contains('SSN')",
       "then": {
        "decision": "'deny'",

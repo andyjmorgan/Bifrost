@@ -93,8 +93,8 @@ type Gateway struct {
 	// would offer: a per-request caller and clock in the query string
 	// (?caller=<json>&now=<RFC 3339>), the /route/<name> endpoint, which runs
 	// every registered server under any route name, and the harness/connect
-	// and harness/config methods, which show server/connect and
-	// server/config for one server.
+	// and harness/config methods, which show server.session and
+	// server.settings for one server.
 	TestHooks bool
 	// DiscoverVersion is the gateway version server/discover reports.
 	DiscoverVersion string
@@ -327,7 +327,7 @@ func (g *Gateway) LastRecord(t testing.TB, method string) Record {
 	return Record{}
 }
 
-// Switches returns server/config for a server as the engine sees it on the
+// Switches returns server.settings for a server as the engine sees it on the
 // 1:1 route.
 func (g *Gateway) Switches(slug string) map[string]bool {
 	b := g.backend(slug)
@@ -603,7 +603,7 @@ func (g *Gateway) handle(ctx context.Context, st *stream, route string, servers 
 }
 
 // serverHook answers the two test-hook methods. harness/config returns the
-// server/config switches. harness/connect returns the server/connect
+// server.settings switches. harness/connect returns the server.session
 // decision and also reaches the upstream with that identity, so a test can
 // see what the server is told.
 func (g *Gateway) serverHook(ctx context.Context, req hooks.Request, msg rpcMessage) hooks.Outcome {

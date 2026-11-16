@@ -37,7 +37,7 @@ To add a case, add one JSON object to a file. To add a client, add one driver an
 ```json
 {"name": "hide a tool by name",
  "servers": [{"slug": "a",
-              "rules": [{"hook": "tools/filter", "when": "name == 'delete_page'", "then": {"decision": "'deny'"}}],
+              "rules": [{"hook": "tools/list.post", "when": "name == 'delete_page'", "then": {"decision": "'deny'"}}],
               "catalog": {"tools": [{"name": "echo", "inputSchema": {"type": "object"}},
                                     {"name": "delete_page", "inputSchema": {"type": "object"}}]}}],
  "steps": [
@@ -117,7 +117,7 @@ Operators:
 | `matches`, `notMatches` | a regular expression matches the string, or the value's JSON |
 | `keys` | an object has exactly these keys, in any order |
 | `set` | a list has exactly these elements, in any order |
-| `has` | a list holds an element with every field given: `{"path": "hits", "has": {"hook": "tools/call", "effect": "deny"}}` |
+| `has` | a list holds an element with every field given: `{"path": "hits", "has": {"hook": "tools/call.pre", "effect": "deny"}}` |
 | `hasText`, `lacksText` | the value's JSON holds, or does not hold, each text |
 | `refused` | on the path `client`: the request was refused (a JSON-RPC error with a code, or a result with `isError: true`). A client that only failed, with no error code from the gateway, was not refused. `false` needs a result that is not an error, so a client failure passes neither `true` nor `false` |
 
@@ -165,10 +165,10 @@ The engine harness runs `progress`, `notifications`, `noResponse` and `error` th
 `"upstream": "reference"` runs the case against the real reference servers in `pkg/hooks/harness/servers` (their tools, prompts and resources are listed in its `SPEC.md`), once per server language. Servers then carry a slug and rules only. On the mux, the first server is the column's language and each further server is another language.
 
 ```json
-{"name": "tools/modify rename: rename a tool and call it by the new name",
+{"name": "tools/list.post rename: rename a tool and call it by the new name",
  "upstream": "reference",
  "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/modify", "when": "upstream.name == 'echo'", "then": {"name": "'say'"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/list.post", "when": "upstream.name == 'echo'", "then": {"name": "'say'"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "say", "arguments": {"text": "hi"}},
    "expect": [{"path": "client.result.content[0].text", "equals": "hi"}]}

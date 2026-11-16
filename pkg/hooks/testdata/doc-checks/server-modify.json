@@ -1,6 +1,6 @@
 [
  {
-  "name": "server/modify E1 remove a section from the instructions",
+  "name": "server/discover.post E1 remove a section from the instructions",
   "servers": [
    {
     "slug": "wiki",
@@ -10,7 +10,7 @@
     "rules": [
      {
       "name": "Drop Confluence section",
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
@@ -37,7 +37,7 @@
   ]
  },
  {
-  "name": "server/modify E2 retitle the server",
+  "name": "server/discover.post E2 retitle the server",
   "servers": [
    {
     "slug": "jira",
@@ -49,7 +49,7 @@
     "rules": [
      {
       "name": "Retitle",
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "title": "'Jira (read only)'"
@@ -84,7 +84,7 @@
   ]
  },
  {
-  "name": "server/modify E3 changes chain: append a note after the rewrite",
+  "name": "server/discover.post E3 changes chain: append a note after the rewrite",
   "route": "mux",
   "servers": [
    {
@@ -95,7 +95,7 @@
     "rules": [
      {
       "name": "Drop Confluence section",
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
@@ -103,7 +103,7 @@
      },
      {
       "name": "Ticket note",
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "instructions": "instructions + 'All writes need a ticket ID.'"
@@ -142,7 +142,7 @@
   ]
  },
  {
-  "name": "server/modify: search ranks with the modified title and description when searchRoster is on",
+  "name": "server/discover.post: search ranks with the modified title and description when searchRoster is on",
   "route": "search",
   "servers": [
    {
@@ -153,7 +153,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "title": "'Jira'",
@@ -177,14 +177,14 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "searchRoster": "false"
       }
      },
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "description": "'Issue tracking'"

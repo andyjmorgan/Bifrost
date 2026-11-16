@@ -1,13 +1,13 @@
-# tools/result
+# tools/call.post.result
 
-`tools/result` shapes what an upstream tool returns before the client sees it, or withholds the result.
+`tools/call.post.result` shapes what an upstream tool returns before the client sees it, or withholds the result.
 
 ## When it runs
 
-`tools/result` runs once on each upstream `tools/call` result, after the upstream call and before the mux URI prefix. It does not run when the upstream replies with `input_required`. That reply goes to [tools/elicit](tools-elicit.md).
+`tools/call.post.result` runs once on each upstream `tools/call` result, after the upstream call and before the mux URI prefix. It does not run when the upstream replies with `input_required`. That reply goes to [tools/call.post.elicit](tools-call-post-elicit.md).
 
 1. The gateway rejects a reply over the size limit.
-2. `tools/result` rules run.
+2. `tools/call.post.result` rules run.
 3. On the mux route, `resource_link` and embedded `resource` blocks get the slug prefix. This runs last, so URIs that rules add are prefixed too.
 4. The gateway checks the size limit again.
 
@@ -56,7 +56,7 @@
 ## Nuances and limits
 
 - The MCP specification says servers should send structured output twice: as `structuredContent` and as JSON text in `content`. When a rule drops fields from `structuredContent`, drop or rebuild `content` too, or the text copy still carries them. Clients that read only `content` see nothing after `content: []`.
-- When a rule changes the shape of `structuredContent`, change `outputSchema` to match in [tools/modify](tools-modify.md). `dropSchema` takes the same paths as `drop`. The gateway does not validate results against the schema at runtime, and passes through an upstream that breaks its own schema.
+- When a rule changes the shape of `structuredContent`, change `outputSchema` to match in [tools/list.post](tools-list-post.md). `dropSchema` takes the same paths as `drop`. The gateway does not validate results against the schema at runtime, and passes through an upstream that breaks its own schema.
 - `slice(0, n)` fails to evaluate when the list is shorter than `n`, which withholds the result. Write `size(xs) > n ? xs.slice(0, n) : xs`.
 - `args` holds upstream parameter names, not the names the client sees. It shows what the upstream actually received, including patched and pinned values.
 - `structuredContent` keeps its JSON type. An array, a scalar or `null` passes through without being turned into an object.
@@ -70,7 +70,7 @@
 [
   {
     "name": "Drop issue noise",
-    "hook": "tools/result",
+    "hook": "tools/call.post.result",
     "when": "upstream.name == 'search_issues' && has(result.structuredContent)",
     "then": {
       "structuredContent": "drop(result.structuredContent, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])",
@@ -79,7 +79,7 @@
   },
   {
     "name": "Drop issue noise from schema",
-    "hook": "tools/modify",
+    "hook": "tools/list.post",
     "when": "upstream.name == 'search_issues'",
     "then": {
       "outputSchema": "dropSchema(outputSchema, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])"
@@ -95,7 +95,7 @@ An issue `{"key": "OPS-1", "self": "https://jira/1", "avatarUrls": {}, "fields":
 ```json
 {
   "name": "First 20 ids and titles",
-  "hook": "tools/result",
+  "hook": "tools/call.post.result",
   "when": "upstream.name == 'list_issues' && has(result.structuredContent.items)",
   "then": {
     "structuredContent": "cel.bind(items, result.structuredContent.items.map(i, {'number': i.number, 'title': i.title}), {'items': size(items) > 20 ? items.slice(0, 20) : items})"
@@ -110,7 +110,7 @@ Each item keeps only `number` and `title`. A result with 25 items returns the fi
 ```json
 {
   "name": "Generic error",
-  "hook": "tools/result",
+  "hook": "tools/call.post.result",
   "when": "result.isError",
   "then": { "content": "[{'type': 'text', 'text': 'The query failed. Check the table name and try again.'}]" }
 }
@@ -123,7 +123,7 @@ An upstream error that names an internal host reaches the client as `{"isError":
 ```json
 {
   "name": "Block keys",
-  "hook": "tools/result",
+  "hook": "tools/call.post.result",
   "when": "result.text.contains('BEGIN PRIVATE KEY')",
   "then": { "decision": "'deny'", "reason": "'The result contained a private key and was withheld.'" }
 }
@@ -134,5 +134,5 @@ A result whose text contains a PEM private key returns the error result `The res
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [tools/modify for outputSchema and dropSchema](tools-modify.md)
-- [tools/elicit for input_required replies](tools-elicit.md)
+- [tools/list.post for outputSchema and dropSchema](tools-list-post.md)
+- [tools/call.post.elicit for input_required replies](tools-call-post-elicit.md)

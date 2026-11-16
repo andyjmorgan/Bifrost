@@ -482,7 +482,7 @@ func (ts *toolState) setParam(name, op string, val any) error {
 	return nil
 }
 
-// set applies one tools/modify field.
+// set applies one tools/list.post field.
 func (ts *toolState) set(key string, val any) error {
 	ts.changed()
 	parts := splitPath(key)
@@ -776,7 +776,7 @@ func mustJSON(v any) string {
 
 // ---- listing --------------------------------------------------------------------------
 
-// ExposedTool is one tool after filter and modify.
+// ExposedTool is one tool after tools/list.post.
 type ExposedTool struct {
 	Tool      *mcp.Tool
 	Transform *ToolTransform
@@ -792,7 +792,7 @@ type ToolList struct {
 	Hits   []Hit
 }
 
-// ListTools runs tools/filter then tools/modify over a catalog, one item
+// ListTools runs tools/list.post then tools/list.post over a catalog, one item
 // per goroutine (each writes only its own slot), then reduces: collisions
 // hide every tool involved, output is sorted by exposed name.
 //
@@ -819,7 +819,7 @@ func (s *Set) listTools(ctx context.Context, cat []*mcp.Tool, c Context, workers
 		hits   []Hit
 		skip   bool
 	}
-	filledByCall := s.callFilled("tools/call")
+	filledByCall := s.callFilled("tools/call.pre")
 	results := make([]res, len(cat))
 	vars := c.vars()
 	prof := s.profile()
@@ -832,22 +832,14 @@ func (s *Set) listTools(ctx context.Context, cat []*mcp.Tool, c Context, workers
 		ph := prof.phase()
 		ts := newToolState(prepare(t))
 		ph.mark("convert")
-		fo := s.run(ctx, "tools/filter", t.Name, ts.resolve, vars, func(string, any) error { return nil })
-		ph.mark("filter")
-		results[i].hits = append(results[i].hits, fo.hits...)
-		if fo.denied {
+		o := s.run(ctx, "tools/list.post", t.Name, ts.resolve, vars, ts.set)
+		ph.mark("rules")
+		results[i].hits = append(results[i].hits, o.hits...)
+		if o.denied {
 			results[i].hidden = true
-			if fo.err != nil {
-				results[i].issue = fmt.Sprintf("%s: %v", t.Name, fo.err)
+			if o.err != nil {
+				results[i].issue = fmt.Sprintf("%s: %v", t.Name, o.err)
 			}
-			return
-		}
-		mo := s.run(ctx, "tools/modify", t.Name, ts.resolve, vars, ts.set)
-		ph.mark("modify")
-		results[i].hits = append(results[i].hits, mo.hits...)
-		if mo.denied {
-			results[i].hidden = true
-			results[i].issue = fmt.Sprintf("%s: %s", t.Name, errText(mo))
 			return
 		}
 		out, tr, err := ts.finish(t, filledByCall)
@@ -901,7 +893,7 @@ func (s *Set) renames() bool {
 	if s == nil {
 		return false
 	}
-	for _, r := range s.byHook["tools/modify"] {
+	for _, r := range s.byHook["tools/list.post"] {
 		if r.audit {
 			continue
 		}
@@ -912,13 +904,6 @@ func (s *Set) renames() bool {
 		}
 	}
 	return false
-}
-
-func errText(o outcome) string {
-	if o.err != nil {
-		return o.err.Error()
-	}
-	return o.reason
 }
 
 // callFilled lists parameter keys an enforce rule of a call hook sets.

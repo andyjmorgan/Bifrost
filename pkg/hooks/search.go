@@ -12,8 +12,8 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/toolsearch"
 )
 
-// exposedCatalog is every exposed tool on the route, after filter and
-// modify, ordered slug a-z then name a-z. Search mode reads only this, so it
+// exposedCatalog is every exposed tool on the route, after the list
+// hook, ordered slug a-z then name a-z. Search mode reads only this, so it
 // can never expose a tool the flat list would not.
 func (e *Engine) exposedCatalog(ctx context.Context, r Request) ([]toolsearch.Doc, []Hit) {
 	var docs []toolsearch.Doc

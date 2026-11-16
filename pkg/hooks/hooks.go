@@ -29,7 +29,8 @@ type Phase string
 
 // Phases.
 const (
-	PhaseFilter Phase = "filter" // decides visibility; deny is final
+	PhaseList   Phase = "list"   // hides an item or changes it, rule by rule in written order
+	PhaseFilter Phase = "filter" // decides visibility only; deny is final
 	PhaseModify Phase = "modify" // changes fields; no decisions
 	PhaseCall   Phase = "call"   // decides, elicits, patches arguments
 	PhaseElicit Phase = "elicit" // shapes a question the upstream asks the user
@@ -101,44 +102,50 @@ var (
 )
 
 // Hooks is the registry. A rule naming any other hook fails validation.
+//
+// A hook is named after where it runs: the method, then pre (the request) or
+// post (the reply), then, where a reply can be several things, which one
+// came back (progress, elicit or result). The two server hooks that belong
+// to no method are server.settings and server.session.
 var Hooks = map[string]*HookSpec{
-	"server/connect": {Name: "server/connect", Item: KindNone, Phase: PhaseServer,
+	"server.session": {Name: "server.session", Item: KindNone, Phase: PhaseServer,
 		Fields: []Field{{"clientInfo", TMap}, {"capabilities.elicitation", TBool}, {"meta", TBool}}},
-	"server/config": {Name: "server/config", Item: KindNone, Phase: PhaseServer,
+	"server.settings": {Name: "server.settings", Item: KindNone, Phase: PhaseServer,
 		Fields: []Field{{"tools", TBool}, {"prompts", TBool}, {"resources", TBool}, {"tasks", TBool}, {"instructions", TBool}, {"serverInfo", TBool}, {"searchRoster", TBool}, {"progress", TBool}}},
-	"server/modify": {Name: "server/modify", Item: KindServer, Phase: PhaseModify,
+	"server/discover.post": {Name: "server/discover.post", Item: KindServer, Phase: PhaseModify,
 		Fields: []Field{{"title", TText}, {"description", TText}, {"instructions", TText}}},
 
-	"tools/filter": {Name: "tools/filter", Item: KindTool, Phase: PhaseFilter, Fields: filterFields},
-	"tools/modify": {Name: "tools/modify", Item: KindTool, Phase: PhaseModify, Helpers: []string{"dropSchema"},
-		Fields: []Field{{"name", TText}, {"title", TText}, {"description", TText}, {"annotations.*", TAny}, {"meta.*", TAny},
-			{"params.*.name", TText}, {"params.*.description", TText}, {"params.*.hide", TBool}, {"params.*.pin", TAny},
-			{"params.*.default", TAny}, {"params.*.enum", TList}, {"params.*.minimum", TNumber}, {"params.*.maximum", TNumber},
-			{"params.*.add", TMap}, {"outputSchema", TAny}}},
-	"tools/call":   {Name: "tools/call", Item: KindTool, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: callFields, Helpers: []string{"elicit"}},
-	"tools/elicit": {Name: "tools/elicit", Item: KindTool, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
-	"tools/result": {Name: "tools/result", Item: KindTool, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"drop"},
+	"tools/list.post": {Name: "tools/list.post", Item: KindTool, Phase: PhaseList, Helpers: []string{"dropSchema"},
+		Fields: listFields(Field{"name", TText}, Field{"title", TText}, Field{"description", TText}, Field{"annotations.*", TAny}, Field{"meta.*", TAny},
+			Field{"params.*.name", TText}, Field{"params.*.description", TText}, Field{"params.*.hide", TBool}, Field{"params.*.pin", TAny},
+			Field{"params.*.default", TAny}, Field{"params.*.enum", TList}, Field{"params.*.minimum", TNumber}, Field{"params.*.maximum", TNumber},
+			Field{"params.*.add", TMap}, Field{"outputSchema", TAny})},
+	"tools/call.pre":         {Name: "tools/call.pre", Item: KindTool, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: callFields, Helpers: []string{"elicit"}},
+	"tools/call.post.elicit": {Name: "tools/call.post.elicit", Item: KindTool, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
+	"tools/call.post.result": {Name: "tools/call.post.result", Item: KindTool, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"drop"},
 		Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"content", TList}, {"structuredContent", TAny}}},
-	"tools/progress": {Name: "tools/progress", Item: KindTool, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
+	"tools/call.post.progress": {Name: "tools/call.post.progress", Item: KindTool, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
-	"prompts/filter": {Name: "prompts/filter", Item: KindPrompt, Phase: PhaseFilter, Fields: filterFields},
-	"prompts/modify": {Name: "prompts/modify", Item: KindPrompt, Phase: PhaseModify,
-		Fields: []Field{{"name", TText}, {"title", TText}, {"description", TText}, {"arguments.*.name", TText}, {"arguments.*.description", TText}, {"meta.*", TAny}}},
-	"prompts/get":      {Name: "prompts/get", Item: KindPrompt, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}, {"args.*", TAny}}, Helpers: []string{"elicit"}},
-	"prompts/elicit":   {Name: "prompts/elicit", Item: KindPrompt, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
-	"prompts/progress": {Name: "prompts/progress", Item: KindPrompt, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
+	"prompts/list.post": {Name: "prompts/list.post", Item: KindPrompt, Phase: PhaseList,
+		Fields: listFields(Field{"name", TText}, Field{"title", TText}, Field{"description", TText}, Field{"arguments.*.name", TText}, Field{"arguments.*.description", TText}, Field{"meta.*", TAny})},
+	"prompts/get.pre":           {Name: "prompts/get.pre", Item: KindPrompt, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}, {"args.*", TAny}}, Helpers: []string{"elicit"}},
+	"prompts/get.post.elicit":   {Name: "prompts/get.post.elicit", Item: KindPrompt, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
+	"prompts/get.post.progress": {Name: "prompts/get.post.progress", Item: KindPrompt, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
-	"resources/filter": {Name: "resources/filter", Item: KindResource, Phase: PhaseFilter, Fields: filterFields},
-	"resources/modify": {Name: "resources/modify", Item: KindResource, Phase: PhaseModify, Fields: textModify},
-	"templates/filter": {Name: "templates/filter", Item: KindTemplate, Phase: PhaseFilter, Fields: filterFields},
-	"templates/modify": {Name: "templates/modify", Item: KindTemplate, Phase: PhaseModify, Fields: textModify},
-	"resources/read":   {Name: "resources/read", Item: KindResource, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}}, Helpers: []string{"elicit"}},
-	"resources/elicit": {Name: "resources/elicit", Item: KindResource, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
-	"resources/result": {Name: "resources/result", Item: KindResource, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"slugUris"},
+	"resources/list.post":           {Name: "resources/list.post", Item: KindResource, Phase: PhaseList, Fields: listFields(textModify...)},
+	"resources/templates/list.post": {Name: "resources/templates/list.post", Item: KindTemplate, Phase: PhaseList, Fields: listFields(textModify...)},
+	"resources/read.pre":            {Name: "resources/read.pre", Item: KindResource, Phase: PhaseCall, Vars: []string{"args", "input"}, Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"result", TResult}}, Helpers: []string{"elicit"}},
+	"resources/read.post.elicit":    {Name: "resources/read.post.elicit", Item: KindResource, Phase: PhaseElicit, Vars: []string{"args", "request"}, Fields: elicitFields},
+	"resources/read.post.result": {Name: "resources/read.post.result", Item: KindResource, Phase: PhaseResult, Vars: []string{"args", "result"}, Helpers: []string{"slugUris"},
 		Fields: []Field{{"decision", TDecision}, {"reason", TText}, {"text", TText}}},
-	"resources/progress": {Name: "resources/progress", Item: KindResource, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
+	"resources/read.post.progress": {Name: "resources/read.post.progress", Item: KindResource, Phase: PhaseEvent, Vars: []string{"args", "progress"}, Fields: eventFields},
 
-	"skills/filter": {Name: "skills/filter", Item: KindSkill, Phase: PhaseFilter, Fields: filterFields},
+	"skills/list.post": {Name: "skills/list.post", Item: KindSkill, Phase: PhaseFilter, Fields: filterFields},
+}
+
+// listFields are what a list hook may set: a deny, and the item's fields.
+func listFields(change ...Field) []Field {
+	return append(append([]Field{}, filterFields...), change...)
 }
 
 // vars lists every variable a hook's rules may read.

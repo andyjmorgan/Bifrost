@@ -22,7 +22,7 @@ A rule is a JSON object:
   "name": "Hide delete tools",
   "enabled": true,
   "mode": "enforce",
-  "hook": "tools/filter",
+  "hook": "tools/list.post",
   "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
   "then": { "decision": "'deny'", "reason": "'Deleting is restricted.'" }
 }
@@ -43,13 +43,14 @@ Every value in `then` is a CEL expression, not a literal. A string value therefo
 A rule does not compile when:
 
 - the hook does not exist
-- `when` reads a variable the hook does not have, such as `args` in `tools/filter`
+- `when` reads a variable the hook does not have, such as `args` in `tools/list.post`
 - `then` sets a field the hook does not have
 - `when` does not produce a boolean
 - `decision` is anything other than the literal `'deny'`. There is no allow decision
-- a filter rule does not set `decision`
-- a pin or default in `tools/modify` reads a request variable, such as `caller`
-- a `tools/call` rule sets `limit`. Rate limits are not enforced yet, so the gateway refuses the field rather than accept a limit that does nothing
+- a `skills/list.post` rule does not set `decision`
+- a list rule sets `reason` without `decision`. A reason only has an effect beside a deny
+- a pin or default in `tools/list.post` reads a request variable, such as `caller`
+- a `tools/call.pre` rule sets `limit`. Rate limits are not enforced yet, so the gateway refuses the field rather than accept a limit that does nothing
 
 An enabled rule that does not compile fails the whole entitlement closed. The entitlement exposes nothing, and listings report the problem to administrators.
 
@@ -63,12 +64,26 @@ The gateway runs a hook's rules on each item separately, from top to bottom. An 
 
 | Hook kind | Changes that chain | Decisions that stop evaluation |
 | --- | --- | --- |
-| Filter | None | `decision: 'deny'` |
-| Modify | Every settable field | None |
-| Call (`tools/call`, `prompts/get`, `resources/read`) | `args.*`, `timeout` | `decision: 'deny'`, `result: elicit(...)` |
-| Elicit | `message` | `decision: 'deny'` |
-| Result | `content`, `structuredContent`, `text` | `decision: 'deny'` |
-| Server | Every settable field | None |
+| List (`tools/list.post`, `prompts/list.post`, `resources/list.post`, `resources/templates/list.post`) | Every settable field except `decision` and `reason` | `decision: 'deny'` |
+| Filter (`skills/list.post`) | None | `decision: 'deny'` |
+| Call (`tools/call.pre`, `prompts/get.pre`, `resources/read.pre`) | `args.*`, `timeout` | `decision: 'deny'`, `result: elicit(...)` |
+| Elicit (the `post.elicit` hooks) | `message` | `decision: 'deny'` |
+| Result (the `post.result` hooks) | `content`, `structuredContent`, `text` | `decision: 'deny'` |
+| Server (`server.settings`, `server.session`, `server/discover.post`) | Every settable field | None |
+
+### List hooks hide and change
+
+The four list hooks can both hide an item and change it. They are `tools/list.post`, `prompts/list.post`, `resources/list.post` and `resources/templates/list.post`.
+
+- The rules run from top to bottom, in the order you write them. A rule either hides the item, with `decision: 'deny'` and an optional `reason`, or changes it.
+- Changes chain into hide rules. A hide rule written after a rename sees the new `name`. `upstream.name` is always the server's own name.
+- The first deny hides the item and stops the enforce rules. Audit rules still run for the log.
+- A rule that sets both `decision` and other fields hides the item. Its other fields are discarded.
+- Writing hide rules first is cheaper, because a hidden item is never changed. It is not required.
+
+`skills/list.post` can only hide. Its rules must set `decision: 'deny'`.
+
+You can only call what you can list. A `tools/call`, `prompts/get` or `resources/read` first runs the matching list hook for the item it names, so a hidden item cannot be called, fetched or read. A `resources/read` of a URI that no listing contains is allowed unless something denies it. It still runs `resources/list.post`, but only its rules that deny, with only `uri` to read. See [resources/list.post](resources-list-post.md#uris-that-no-listing-contains).
 
 ### Changes chain
 
@@ -77,12 +92,12 @@ A later rule sees the values that earlier rules set. In this example, the second
 ```json
 [
   {
-    "hook": "tools/modify",
+    "hook": "tools/list.post",
     "when": "name.startsWith('confluence_')",
     "then": { "name": "regex.replace(name, '^confluence_', 'wiki_')" }
   },
   {
-    "hook": "tools/modify",
+    "hook": "tools/list.post",
     "when": "name.startsWith('wiki_')",
     "then": { "description": "'[' + upstream.name + '] ' + description" }
   }
@@ -99,7 +114,7 @@ The first deny stops evaluation for that item, and no later rule can undo it. Be
 
 ```json
 {
-  "hook": "tools/filter",
+  "hook": "tools/list.post",
   "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
   "then": { "decision": "'deny'" }
 }
@@ -123,12 +138,12 @@ What the failure means depends on the hook:
 
 | Hook kind | Effect of an evaluation error |
 | --- | --- |
-| Filter | The item is hidden |
-| Modify | The item is hidden and cannot be called or read. The listing reports the problem to administrators |
+| List | The item is hidden and cannot be called or read. The listing reports the problem to administrators |
+| Filter (`skills/list.post`) | The item is hidden |
 | Call, elicit and result | The request is refused with the hook's generic refusal, such as `The call to <tool> was refused by policy.` |
-| `server/config` | Every switch is off |
-| `server/connect` | The gateway uses its anonymous defaults |
-| `server/modify` | Title, description and instructions are empty |
+| `server.settings` | Every switch is off |
+| `server.session` | The gateway uses its anonymous defaults |
+| `server/discover.post` | Title, description and instructions are empty |
 
 ### Refusals never name rules
 
@@ -204,12 +219,12 @@ The gateway compares pins, `enum` values, `minimum` and `maximum` exactly, witho
 
 Rules run on every request over the cached catalog. The gateway does not cache rule output, results or content.
 
-Every upstream request the gateway forwards carries the result of [server/connect](server-connect.md): the client identity, the capabilities and whether `_meta` is forwarded.
+Every upstream request the gateway forwards carries the result of [server.session](server-session.md): the client identity, the capabilities and whether `_meta` is forwarded.
 
 ### Discover
 
-1. `server/config` sets the switches.
-2. `server/modify` rewrites title, description and instructions.
+1. `server.settings` sets the switches.
+2. `server/discover.post` rewrites title, description and instructions.
 
 The result always carries `supportedVersions: ["2026-07-28"]`, `ttlMs` and `cacheScope: "private"`. Display identity is in `_meta["io.modelcontextprotocol/serverInfo"]`, not in a top-level `serverInfo`. Where at least one server serves skills, `capabilities.extensions["io.modelcontextprotocol/skills"]` is `{"directoryRead": true}`.
 
@@ -217,32 +232,31 @@ On the direct route, the result is the gateway's own `server/discover` answer fo
 
 ### tools/list
 
-1. `server/config`. If `tools` is off, the server contributes nothing.
+1. `server.settings`. If `tools` is off, the server contributes nothing.
 2. The catalog, from cache or from the upstream.
-3. `tools/filter` on each upstream tool.
-4. `tools/modify` on each tool that passed.
-5. The gateway checks for name collisions. Tools that share a final name are all hidden.
-6. On the mux route, each name gets the prefix `<slug>__`, and the gateway adds its `get_server_instructions` tool.
+3. `tools/list.post` on each upstream tool. Its rules run in the order written, and each one hides the tool or changes it.
+4. The gateway checks for name collisions. Tools that share a final name are all hidden.
+5. On the mux route, each name gets the prefix `<slug>__`, and the gateway adds its `get_server_instructions` tool.
 
 Output is sorted by slug, then by name. The output is the same, byte for byte, whatever order the upstream sends.
 
 ### tools/call
 
-1. `server/config`. If `tools` is off, the call fails as an unknown tool.
-2. `tools/filter` and `tools/modify` run over the catalog, and the gateway looks up the exposed name. A missing name fails with `-32602`.
+1. `server.settings`. If `tools` is off, the call fails as an unknown tool.
+2. `tools/list.post` runs over the catalog, and the gateway looks up the exposed name. A missing name fails with `-32602`.
 3. The gateway builds the effective arguments under the exposed names. It rejects values for hidden parameters and for upstream names that were renamed, rejects undefined keys when the upstream schema sets `additionalProperties: false`, fills defaults, applies visible pins, and checks `enum`, `minimum` and `maximum`.
-4. `tools/call` rules run on the effective arguments. Patches chain. The first deny or `elicit()` stops evaluation.
+4. `tools/call.pre` rules run on the effective arguments. Patches chain. The first deny or `elicit()` stops evaluation.
 5. The gateway forces pinned values, checks constraints again, maps names and keys back to the upstream, and removes added parameters. A hidden required parameter that still has no value refuses the call.
 6. The gateway calls the upstream.
-7. If the upstream replies with `input_required`, `tools/elicit` runs on each input request. `tools/result` does not run.
-8. If the upstream replies with a result, `tools/result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
+7. If the upstream replies with `input_required`, `tools/call.post.elicit` runs on each input request. `tools/call.post.result` does not run.
+8. If the upstream replies with a result, `tools/call.post.result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
 
-`tools/elicit` and `tools/result` see the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the upstream never ask for input in the same round. See [effective arguments and elicitation](tools-call.md).
+`tools/call.post.elicit` and `tools/call.post.result` see the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the upstream never ask for input in the same round. See [effective arguments and elicitation](tools-call-pre.md).
 
 ### Prompts
 
-- `prompts/list`: `server/config`, the catalog, `prompts/filter`, `prompts/modify`, then the mux name prefix. Sorted by slug, then by name.
-- `prompts/get`: `server/config`, name lookup through the filter and modify rules, `prompts/get` rules, reversal of renames, the upstream call, then `prompts/elicit` for an `input_required` reply, or the mux prefix on structured URIs in the messages. `prompts/elicit` sees the arguments as they were sent upstream.
+- `prompts/list`: `server.settings`, the catalog, `prompts/list.post`, then the mux name prefix. Sorted by slug, then by name.
+- `prompts/get`: `server.settings`, name lookup through the `prompts/list.post` rules, `prompts/get.pre` rules, reversal of renames, the upstream call, then `prompts/get.post.elicit` for an `input_required` reply, or the mux prefix on structured URIs in the messages. `prompts/get.post.elicit` sees the arguments as they were sent upstream.
 
 ### Resources and templates
 
@@ -251,58 +265,58 @@ One visibility check decides every resource URI. Listings, reads, directory chil
 A read is allowed unless something denies it. That includes a URI the server never listed: servers hand out URIs they do not list, in tool results and through templates. A URI is hidden and unreadable when any of these is true:
 
 - it is under a denied skill folder
-- a template that covers it is denied, failed to modify, or collided
-- it is listed, but `resources/filter` denied it, `resources/modify` failed on it, or it collided with another resource
-- `resources/filter` denies it. The filter runs on every read URI, listed or not
+- a template that covers it is denied, failed in a `resources/templates/list.post` rule, or collided
+- it is listed, but a `resources/list.post` rule denied it or failed on it, or it collided with another resource
+- a `resources/list.post` deny rule denies it. The deny rules run on every read URI, listed or not. For a URI that no listing contains, they have only `uri` to read
 - it is not in canonical form
 
-To close a folder, deny its prefix in [resources/filter](resources-filter.md), for example `uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
+To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
 
 The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`; it is forwarded exactly as the client sent it, as its own resource.
 
 The listings use that check:
 
-- `resources/list`: `server/config`, then `skills/filter` to find denied skill folders, then `resources/filter`, `resources/modify` and the visibility check, then the mux URI prefix.
-- `resources/templates/list`: `server/config`, the catalog, `templates/filter`, `templates/modify`, then the mux URI prefix.
+- `resources/list`: `server.settings`, then `skills/list.post` to find denied skill folders, then `resources/list.post` and the visibility check, then the mux URI prefix.
+- `resources/templates/list`: `server.settings`, the catalog, `resources/templates/list.post`, then the mux URI prefix.
 
 Resources, templates and skills are sorted by slug, then by URI within each slug. The output is the same, byte for byte, whatever order the upstream sends.
 
 `resources/read`:
 
-1. `server/config`. If `resources` is off, the URI is not found.
+1. `server.settings`. If `resources` is off, the URI is not found.
 2. The gateway refuses a URI that is not in canonical form.
 3. On the mux route, the gateway removes the `<slug>+` prefix to find the upstream. A URI without a prefix goes through [fallback resolution](#fallback-resolution).
 4. The visibility check. A URI it rejects is unknown.
-5. `resources/read` rules.
+5. `resources/read.pre` rules.
 6. The gateway reads from the upstream, with the URI as the upstream knows it.
-7. `resources/elicit` for an `input_required` reply. Otherwise, the gateway drops content items with a non-canonical URI or a URI the caller cannot read, and `resources/result` runs on each remaining content item, text or binary.
+7. `resources/read.post.elicit` for an `input_required` reply. Otherwise, the gateway drops content items with a non-canonical URI or a URI the caller cannot read, and `resources/read.post.result` runs on each remaining content item, text or binary.
 8. On the mux route, structured URIs in the result get the slug prefix.
 
 The result carries the gateway's `ttlMs` and `cacheScope: "private"`, whatever the upstream sent.
 
 ### Directory reads
 
-`resources/directory/read` follows the same steps as `resources/read` up to the upstream call, including the `resources/read` rules. In the reply, the gateway:
+`resources/directory/read` follows the same steps as `resources/read` up to the upstream call, including the `resources/read.pre` rules. In the reply, the gateway:
 
 - drops children that are not under the requested URI, or that are not in canonical form
 - drops children that fail the visibility check, whatever their MIME type, and whether or not they are marked as directories
-- does not run `resources/result`
+- does not run `resources/read.post.result`
 - sets the gateway's `ttlMs` and `cacheScope: "private"`
 
 ### Skills
 
-- `skills/list` and `skills/get` follow the `resources` switch in `server/config`.
+- `skills/list` and `skills/get` follow the `resources` switch in `server.settings`.
 - On the mux route, the gateway removes the prefix from a `skills/get` URI.
-- `skills/filter` runs on each skill entry. Skills nested under a denied skill are denied with it.
+- `skills/list.post` runs on each skill entry. Skills nested under a denied skill are denied with it.
 - The gateway drops manifest entries that are outside the skill's folder.
-- If `resources/result` rules exist, the gateway builds one rewrite plan per skill and uses it for both the entry and every file read. See [resources/result](resources-result.md#skill-files).
+- If `resources/read.post.result` rules exist, the gateway builds one rewrite plan per skill and uses it for both the entry and every file read. See [resources/read.post.result](resources-read-post-result.md#skill-files).
 - On the mux route, every URI in the entry gets the slug prefix last.
 
 ### Search mode
 
 Search mode uses the same pipeline, so it can never expose a tool that the flat list would hide:
 
-- `tool_search`: the catalog, filter and modify rules, then ranking over the exposed tools. When the `searchRoster` switch is on, ranking also uses the server's title and description after `server/modify`.
+- `tool_search`: the catalog, `tools/list.post` rules, then ranking over the exposed tools. When the `searchRoster` switch is on, ranking also uses the server's title and description after `server/discover.post`.
 - `list_tools`: the exposed tools, grouped by slug, with names indented under each slug.
 - `get_tool_definition`: the exposed definition. Names match exactly, including case.
 - `execute_tool`: a `tools/call`, with every step listed above.
@@ -311,7 +325,7 @@ Tool names carry the `<slug>__` prefix only on the mux route. On the direct rout
 
 ### Notifications
 
-A server may answer a request with a stream: notifications first, then the result. The gateway relays progress notifications from that stream when the client sent a progress token, the `progress` switch in [server/config](server-config.md) is on, and the server speaks MCP 2026-07-28. Each progress event passes through the progress hook for its kind of request, [tools/progress](tools-progress.md), [prompts/progress](prompts-progress.md) or [resources/progress](resources-progress.md), which can drop it or reword its message.
+A server may answer a request with a stream: notifications first, then the result. The gateway relays progress notifications from that stream when the client sent a progress token, the `progress` switch in [server.settings](server-settings.md) is on, and the server speaks MCP 2026-07-28. Each progress event passes through the progress hook for its kind of request, [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) or [resources/read.post.progress](resources-read-post-progress.md), which can drop it or reword its message.
 
 Log messages and every other notification on the stream are dropped; no rule runs on them. The gateway sends no change notifications. Clients stay current through `ttlMs`.
 
@@ -340,7 +354,7 @@ Slugs match `[a-z][a-z0-9]*`. Slugs cannot contain `+`, so a mux URI splits at t
 
 A prefix that names a slug the caller does not hold returns `-32602` with `not found: <uri>`, before any upstream call.
 
-Text inside resources and skills is not rewritten. A URI written in text reaches the client without a prefix. The mux instructions explain the prefix to the model. To rewrite URIs in text, use `slugUris()` in a [resources/result](resources-result.md) rule.
+Text inside resources and skills is not rewritten. A URI written in text reaches the client without a prefix. The mux instructions explain the prefix to the model. To rewrite URIs in text, use `slugUris()` in a [resources/read.post.result](resources-read-post-result.md) rule.
 
 ### Fallback resolution
 
@@ -349,7 +363,7 @@ On the mux route, a URI without a prefix resolves only when exactly one of the c
 A URI that no server claims is not found on the mux, even though the same URI with a slug prefix is readable. A link in a tool result always carries the prefix, so this only affects URIs typed without one.
 
 1. An exact match is a visible listed resource, a skill URI, or a skill manifest URI.
-2. A match through a [template](templates-filter.md#how-templates-match-uris) counts only when no server has an exact match.
+2. A match through a [template](resources-templates-list-post.md#how-templates-match-uris) counts only when no server has an exact match.
 3. One match resolves. The response carries the prefixed URI, so the client uses the prefixed form from then on.
 4. Two or more matches return `-32602` with the candidates in the message and in `data`.
 5. No match returns `-32602` with `not found: <uri>`.
@@ -411,11 +425,11 @@ The gateway adds four helpers. Each helper is available only in the hooks listed
 
 | Helper | Hooks | Purpose |
 | --- | --- | --- |
-| `drop(value, paths)` | `tools/result` | Remove fields at dot-separated paths. `*` matches every key of a map or every element of a list |
-| `dropSchema(schema, paths)` | `tools/modify` | Remove the same properties from a JSON Schema, including from `required`. A trailing `*` removes every property. A path through `$ref` is an evaluation error |
-| `elicit(key, template, values)` and `elicit(key, template, values, error)` | `tools/call`, `prompts/get`, `resources/read` | Ask the user to confirm. Each `{name}` in the template is replaced by `values.name`, quoted and bounded. See [elicitation](tools-call.md#elicitation) |
-| `elicit(key, message)` and `elicit(key, message, error)` | `tools/call`, `prompts/get`, `resources/read` | Ask the user to confirm with fixed text. Returns an error result with `error` as the text when the client cannot elicit |
-| `slugUris(text)` | `resources/result` | Rewrite this upstream's URIs in text to the mux form. Changes nothing on the direct route |
+| `drop(value, paths)` | `tools/call.post.result` | Remove fields at dot-separated paths. `*` matches every key of a map or every element of a list |
+| `dropSchema(schema, paths)` | `tools/list.post` | Remove the same properties from a JSON Schema, including from `required`. A trailing `*` removes every property. A path through `$ref` is an evaluation error |
+| `elicit(key, template, values)` and `elicit(key, template, values, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm. Each `{name}` in the template is replaced by `values.name`, quoted and bounded. See [elicitation](tools-call-pre.md#elicitation) |
+| `elicit(key, message)` and `elicit(key, message, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm with fixed text. Returns an error result with `error` as the text when the client cannot elicit |
+| `slugUris(text)` | `resources/read.post.result` | Rewrite this upstream's URIs in text to the mux form. Changes nothing on the direct route |
 
 All helpers are pure: they have no side effects and give the same answer for the same input.
 
@@ -423,37 +437,64 @@ These are not available in CEL: rate limits, state across requests, external loo
 
 ## Hook reference pages
 
+A hook is named after where it runs in a request: the MCP method, then `pre` for the request or `post` for the reply. Where a reply can be several things, the name ends with what came back: `progress`, `elicit` or `result`. `server.settings` and `server.session` belong to no method. The name is the exact text of a rule's `hook` value. There are 19 hooks.
+
 Server hooks:
 
-- [server/connect](server-connect.md): what the gateway tells the upstream about itself
-- [server/config](server-config.md): switches for what a server exposes
-- [server/modify](server-modify.md): server title, description and instructions
+- [server.session](server-session.md): what the gateway tells the upstream about itself
+- [server.settings](server-settings.md): switches for what a server exposes
+- [server/discover.post](server-discover-post.md): server title, description and instructions
 
 Tool hooks:
 
-- [tools/filter](tools-filter.md): which tools are visible
-- [tools/modify](tools-modify.md): tool names, text, annotations and parameters
-- [tools/call](tools-call.md): call decisions, argument patches and confirmations
-- [tools/elicit](tools-elicit.md): upstream requests for user input during a call
-- [tools/progress](tools-progress.md): progress events during a call
-- [tools/result](tools-result.md): the shape of tool results
+- [tools/list.post](tools-list-post.md): which tools are visible, and their names, text, annotations and parameters
+- [tools/call.pre](tools-call-pre.md): call decisions, argument patches and confirmations
+- [tools/call.post.progress](tools-call-post-progress.md): progress events during a call
+- [tools/call.post.elicit](tools-call-post-elicit.md): upstream requests for user input during a call
+- [tools/call.post.result](tools-call-post-result.md): the shape of tool results
 
 Prompt hooks:
 
-- [prompts/filter](prompts-filter.md): which prompts are visible
-- [prompts/modify](prompts-modify.md): prompt names, text and arguments
-- [prompts/get](prompts-get.md): `prompts/get` decisions, argument patches and confirmations
-- [prompts/elicit](prompts-elicit.md): upstream requests for user input during `prompts/get`
-- [prompts/progress](prompts-progress.md): progress events during `prompts/get`
+- [prompts/list.post](prompts-list-post.md): which prompts are visible, and their names, text and arguments
+- [prompts/get.pre](prompts-get-pre.md): `prompts/get` decisions, argument patches and confirmations
+- [prompts/get.post.progress](prompts-get-post-progress.md): progress events during `prompts/get`
+- [prompts/get.post.elicit](prompts-get-post-elicit.md): upstream requests for user input during `prompts/get`
 
 Resource, template and skill hooks:
 
-- [resources/filter](resources-filter.md): which resources are visible and readable
-- [resources/modify](resources-modify.md): resource text and annotations
-- [templates/filter](templates-filter.md): which templates are visible and usable
-- [templates/modify](templates-modify.md): template text and annotations
-- [resources/read](resources-read.md): read decisions and confirmations
-- [resources/elicit](resources-elicit.md): upstream requests for user input during a read
-- [resources/progress](resources-progress.md): progress events during a read
-- [resources/result](resources-result.md): the content of read results and skill files
-- [skills/filter](skills-filter.md): which skills and skill folders are visible
+- [resources/list.post](resources-list-post.md): which resources are visible and readable, and their text and annotations
+- [resources/templates/list.post](resources-templates-list-post.md): which templates are visible and usable, and their text and annotations
+- [resources/read.pre](resources-read-pre.md): read decisions and confirmations
+- [resources/read.post.progress](resources-read-post-progress.md): progress events during a read
+- [resources/read.post.elicit](resources-read-post-elicit.md): upstream requests for user input during a read
+- [resources/read.post.result](resources-read-post-result.md): the content of read results and skill files
+- [skills/list.post](skills-list-post.md): which skills and skill folders are visible
+
+## Earlier names
+
+Hooks used to be named after a surface and a phase. This table maps each earlier name to the name now.
+
+| Earlier name | Name now |
+| --- | --- |
+| `server/config` | `server.settings` |
+| `server/connect` | `server.session` |
+| `server/modify` | `server/discover.post` |
+| `tools/filter` and `tools/modify` | `tools/list.post` (one hook) |
+| `tools/call` | `tools/call.pre` |
+| `tools/progress` | `tools/call.post.progress` |
+| `tools/elicit` | `tools/call.post.elicit` |
+| `tools/result` | `tools/call.post.result` |
+| `prompts/filter` and `prompts/modify` | `prompts/list.post` (one hook) |
+| `prompts/get` | `prompts/get.pre` |
+| `prompts/progress` | `prompts/get.post.progress` |
+| `prompts/elicit` | `prompts/get.post.elicit` |
+| `resources/filter` and `resources/modify` | `resources/list.post` (one hook) |
+| `templates/filter` and `templates/modify` | `resources/templates/list.post` (one hook) |
+| `resources/read` | `resources/read.pre` |
+| `resources/progress` | `resources/read.post.progress` |
+| `resources/elicit` | `resources/read.post.elicit` |
+| `resources/result` | `resources/read.post.result` |
+| `skills/filter` | `skills/list.post` |
+| `tools/input`, `prompts/input`, `resources/input` | The names before `tools/elicit`, `prompts/elicit` and `resources/elicit`. For example, `tools/input` became `tools/elicit`, which is now `tools/call.post.elicit` |
+
+Where a filter hook and a modify hook became one list hook, the rules now run in the order written. Before, every filter rule ran first, then every modify rule. See [list hooks hide and change](#list-hooks-hide-and-change).

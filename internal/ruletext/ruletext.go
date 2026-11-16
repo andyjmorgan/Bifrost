@@ -194,7 +194,7 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 			continue
 		}
 		then, lines := map[string]string{}, map[string]int{}
-		when, ok, hides, changes := p.when, true, false, false
+		when, ok := p.when, true
 		for _, a := range p.acts {
 			if !contains(s.Actions, a.kind) {
 				bad(a.line, "%s is not available at this stage; it takes %s", a.kind, strings.Join(s.Actions, ", "))
@@ -210,7 +210,6 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 			}
 			switch a.kind {
 			case "deny":
-				hides = true
 				put("decision", "'deny'")
 				if a.expr != "" {
 					put("reason", a.expr)
@@ -230,26 +229,13 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 					ok = false
 					continue
 				}
-				if a.path == "decision" || a.path == "reason" {
-					hides = true
-				} else {
-					changes = true
-				}
 				put(a.path, a.expr)
 			}
 		}
 		if !ok {
 			continue
 		}
-		hook := s.setHook
-		if hook == "" || (s.split() && hides) {
-			hook = s.denyHook
-		}
-		if s.split() && hides && changes {
-			bad(p.line, "a rule here either hides the item (deny) or changes it (set), not both; write two rules")
-			continue
-		}
-		r := hooks.Rule{Name: fmt.Sprintf("%s:%d", s.ID, p.line), Hook: hook, When: when, Then: then}
+		r := hooks.Rule{Name: fmt.Sprintf("%s:%d", s.ID, p.line), Hook: s.ID, When: when, Then: then}
 		if p.audit {
 			r.Mode = "audit"
 		}
@@ -409,7 +395,7 @@ func sorted(ps []Problem) []Problem {
 func Render(rules []hooks.Rule) map[string]string {
 	out := map[string]string{}
 	for _, r := range rules {
-		s, ok := byHook[r.Hook]
+		s, ok := byID[r.Hook]
 		if !ok {
 			continue
 		}

@@ -9,7 +9,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user'])"
@@ -70,7 +70,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.prefs.tz'])"
@@ -133,14 +133,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "args.order == 'child-first'",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email', 'user'])"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "args.order == 'parent-first'",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user', 'user.email'])"
@@ -237,7 +237,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['nope', 'id.deeper', 'items.*.nope', 'user.missing.leaf'])"
@@ -309,7 +309,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['issues.*.fields', 'issues.*.comments.*.author.email'])"
@@ -397,7 +397,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['labels.team\\\\.name'])"
@@ -458,7 +458,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email'])"
@@ -529,14 +529,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user'])"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent.user)",
       "then": {
        "decision": "'deny'",
@@ -596,7 +596,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email'])"
@@ -657,7 +657,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email'])"
@@ -713,7 +713,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email'])"
@@ -779,7 +779,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "content": "[]"
@@ -840,7 +840,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "structuredContent": "null"
@@ -900,7 +900,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "null"
@@ -972,14 +972,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['user.email'])"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+', '[redacted]')})"
@@ -1054,14 +1054,14 @@
     "slug": "dd",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent)",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['data.*.owner_email'])"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, '(?m)^\\\\s*owner_email:.*\\\\n', '')})"

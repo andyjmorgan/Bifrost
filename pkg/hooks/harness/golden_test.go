@@ -1129,7 +1129,7 @@ func checkForwardedMeta(client any, rec Recorded, engine *hooks.Forward) string 
 	return ""
 }
 
-// crossCheckConnect compares the server/connect decision with what the
+// crossCheckConnect compares the server.session decision with what the
 // upstream was actually told when the gateway reached it with that identity.
 func (p *goldenRun) crossCheckConnect(idx int, req ClientRequest, out map[string]any, seqMark int64, fails *[]string) {
 	res, ok := out["result"].(map[string]any)

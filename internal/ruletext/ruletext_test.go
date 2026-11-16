@@ -22,19 +22,21 @@ func TestEveryExampleCompiles(t *testing.T) {
 	}
 }
 
-// Every engine hook belongs to exactly one stage, so no rule is out of reach.
-func TestEveryHookHasAStage(t *testing.T) {
-	seen := map[string]string{}
+// A stage is an engine hook and every hook is a stage, so no rule is out of
+// reach and the editor shows the names the engine uses.
+func TestEveryHookIsAStage(t *testing.T) {
+	seen := map[string]bool{}
 	for _, s := range Stages() {
-		for _, h := range s.Hooks {
-			if was, dup := seen[h]; dup {
-				t.Errorf("%s is in %s and %s", h, was, s.ID)
-			}
-			seen[h] = s.ID
+		if seen[s.ID] {
+			t.Errorf("%s is listed twice", s.ID)
+		}
+		seen[s.ID] = true
+		if _, ok := hooks.Hooks[s.ID]; !ok {
+			t.Errorf("stage %s is not an engine hook", s.ID)
 		}
 	}
 	for _, h := range hooks.Schema() {
-		if seen[h.Hook] == "" {
+		if !seen[h.Hook] {
 			t.Errorf("hook %s has no stage", h.Hook)
 		}
 	}
@@ -54,13 +56,13 @@ func TestTextCompilesToTheEnginesRules(t *testing.T) {
 		t.Fatalf("problems: %+v", probs)
 	}
 	want := []hooks.Rule{
-		{Name: "server.settings:1", Hook: "server/config", When: "route == 'mux'", Then: map[string]string{"prompts": "false"}},
-		{Name: "tools/list.post:2", Hook: "tools/filter", When: "name.startsWith('delete_')", Then: map[string]string{"decision": "'deny'"}},
-		{Name: "tools/list.post:4", Hook: "tools/modify", When: "name == 'flip'", Then: map[string]string{"name": "'toss'", "description": "'Toss a coin.'"}},
-		{Name: "tools/call.pre:1", Hook: "tools/call", When: "name == 'echo'", Then: map[string]string{"decision": "'deny'", "reason": `"Not today."`}},
-		{Name: "tools/call.pre:2", Mode: "audit", Hook: "tools/call", When: "caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Admins: ' + name"}},
-		{Name: "tools/call.pre:3", Hook: "tools/call", When: "name == 'search' && !has(args.limit)", Then: map[string]string{"args.limit": "50", "timeout": "duration('30s')"}},
-		{Name: "tools/call.post.result:1", Hook: "tools/result", When: "true", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a'])"}},
+		{Name: "server.settings:1", Hook: "server.settings", When: "route == 'mux'", Then: map[string]string{"prompts": "false"}},
+		{Name: "tools/list.post:2", Hook: "tools/list.post", When: "name.startsWith('delete_')", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "tools/list.post:4", Hook: "tools/list.post", When: "name == 'flip'", Then: map[string]string{"name": "'toss'", "description": "'Toss a coin.'"}},
+		{Name: "tools/call.pre:1", Hook: "tools/call.pre", When: "name == 'echo'", Then: map[string]string{"decision": "'deny'", "reason": `"Not today."`}},
+		{Name: "tools/call.pre:2", Mode: "audit", Hook: "tools/call.pre", When: "caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Admins: ' + name"}},
+		{Name: "tools/call.pre:3", Hook: "tools/call.pre", When: "name == 'search' && !has(args.limit)", Then: map[string]string{"args.limit": "50", "timeout": "duration('30s')"}},
+		{Name: "tools/call.post.result:1", Hook: "tools/call.post.result", When: "true", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a'])"}},
 	}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules:\n got %+v\nwant %+v", rules, want)
@@ -103,7 +105,7 @@ func TestProblemsAreOnTheLineThatCausedThem(t *testing.T) {
 		{"no condition", "tools/call.pre", "when\n  deny", 1, "needs a condition"},
 		{"deny where there is none", "server.settings", "when true deny", 1, "not available"},
 		{"confirm where there is none", "tools/list.post", "when true confirm \"Sure?\"", 1, "not available"},
-		{"hide and change", "tools/list.post", "when true\n  deny\n  set name = 'x'", 1, "not both"},
+		{"reason with no deny", "tools/list.post", "when true\n  set reason = 'x'", 2, "beside decision"},
 		{"confirm unquoted", "tools/call.pre", "when true confirm Sure?", 1, "in quotes"},
 		{"set twice", "tools/call.pre", "when true\n  set args.a = 1\n  set args.a = 2", 3, "already sets"},
 		{"no such stage", "tools/call.during", "when true deny", 0, "no such stage"},
@@ -138,12 +140,12 @@ func TestAnActionWordInsideTheConditionIsNotAnAction(t *testing.T) {
 func TestRenderRoundTrips(t *testing.T) {
 	off := false
 	in := []hooks.Rule{
-		{Hook: "tools/filter", When: "name == 'a'", Then: map[string]string{"decision": "'deny'", "reason": "'no'"}},
-		{Hook: "tools/modify", When: "true", Then: map[string]string{"name": "'b'", "params.q.hide": "true"}},
-		{Hook: "tools/call", Mode: "audit", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Sure?')"}},
-		{Hook: "tools/call", When: "true", Enabled: &off, Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "server/connect", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true"}},
-		{Hook: "resources/result", When: "true", Then: map[string]string{"text": "result.text +\n ' (reviewed)'"}},
+		{Hook: "tools/list.post", When: "name == 'a'", Then: map[string]string{"decision": "'deny'", "reason": "'no'"}},
+		{Hook: "tools/list.post", When: "true", Then: map[string]string{"name": "'b'", "params.q.hide": "true"}},
+		{Hook: "tools/call.pre", Mode: "audit", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Sure?')"}},
+		{Hook: "tools/call.pre", When: "true", Enabled: &off, Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true"}},
+		{Hook: "resources/read.post.result", When: "true", Then: map[string]string{"text": "result.text +\n ' (reviewed)'"}},
 	}
 	text := Render(in)
 	if !strings.Contains(text["tools/call.pre"], "# Switched off:\n# when true\n#   deny\n") {
@@ -157,8 +159,9 @@ func TestRenderRoundTrips(t *testing.T) {
 		t.Fatalf("%d rules back, want 5 (the one that is off is a comment)", len(out))
 	}
 	find := func(hook string) hooks.Rule {
-		for _, r := range out {
+		for i, r := range out {
 			if r.Hook == hook {
+				out = append(out[:i:i], out[i+1:]...) // each rule is found once, in order
 				return r
 			}
 		}
@@ -171,7 +174,7 @@ func TestRenderRoundTrips(t *testing.T) {
 			t.Errorf("%s came back as %+v, want %+v", w.Hook, g, w)
 		}
 	}
-	if g := find("resources/result"); g.Then["text"] != "result.text + ' (reviewed)'" {
+	if g := find("resources/read.post.result"); g.Then["text"] != "result.text + ' (reviewed)'" {
 		t.Errorf("a value over two lines came back as %q", g.Then["text"])
 	}
 }

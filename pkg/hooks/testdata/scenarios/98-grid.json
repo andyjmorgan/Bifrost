@@ -1,6 +1,6 @@
 [
  {
-  "name": "GR-001 tools/filter: a rule that reads route fires on the mux",
+  "name": "GR-001 tools/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-001"
   ],
@@ -16,7 +16,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -166,7 +166,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/filter",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -175,7 +175,7 @@
   ]
  },
  {
-  "name": "GR-002 tools/filter: the same rule does not fire on the direct route",
+  "name": "GR-002 tools/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-002"
   ],
@@ -190,7 +190,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -269,7 +269,7 @@
       ]
      },
      {
-      "path": "hits[hook=tools/filter]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -277,7 +277,7 @@
   ]
  },
  {
-  "name": "GR-003 tools/filter: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-003 tools/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-003"
   ],
@@ -295,7 +295,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -375,7 +375,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/filter",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -384,7 +384,7 @@
   ]
  },
  {
-  "name": "GR-004 tools/filter: the same rule does not fire without the flag",
+  "name": "GR-004 tools/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-004"
   ],
@@ -399,7 +399,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -478,7 +478,7 @@
       ]
      },
      {
-      "path": "hits[hook=tools/filter]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -486,7 +486,7 @@
   ]
  },
  {
-  "name": "GR-005 tools/filter: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-005 tools/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-005"
   ],
@@ -506,7 +506,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -586,7 +586,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/filter",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -595,7 +595,7 @@
   ]
  },
  {
-  "name": "GR-006 tools/filter: the same rule does not fire for another entitlement",
+  "name": "GR-006 tools/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-006"
   ],
@@ -615,7 +615,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "decision": "'deny'"
@@ -694,7 +694,7 @@
       ]
      },
      {
-      "path": "hits[hook=tools/filter]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -702,7 +702,7 @@
   ]
  },
  {
-  "name": "GR-007 tools/filter: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-007 tools/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-007"
   ],
@@ -717,7 +717,7 @@
     },
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "name == 't'",
       "then": {
        "decision": "'deny'"
@@ -799,7 +799,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/filter",
+       "hook": "tools/list.post",
        "mode": "audit"
       }
      }
@@ -808,7 +808,7 @@
   ]
  },
  {
-  "name": "GR-008 tools/modify: a rule that reads route fires on the mux",
+  "name": "GR-008 tools/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-008"
   ],
@@ -824,7 +824,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "description": "'changed'"
@@ -973,7 +973,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/modify",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -982,7 +982,7 @@
   ]
  },
  {
-  "name": "GR-009 tools/modify: the same rule does not fire on the direct route",
+  "name": "GR-009 tools/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-009"
   ],
@@ -997,7 +997,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "description": "'changed'"
@@ -1073,7 +1073,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/modify]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -1081,7 +1081,7 @@
   ]
  },
  {
-  "name": "GR-010 tools/modify: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-010 tools/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-010"
   ],
@@ -1099,7 +1099,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "description": "'changed'"
@@ -1177,7 +1177,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/modify",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -1186,7 +1186,7 @@
   ]
  },
  {
-  "name": "GR-011 tools/modify: the same rule does not fire without the flag",
+  "name": "GR-011 tools/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-011"
   ],
@@ -1201,7 +1201,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "description": "'changed'"
@@ -1277,7 +1277,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/modify]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -1285,7 +1285,7 @@
   ]
  },
  {
-  "name": "GR-012 tools/modify: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-012 tools/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-012"
   ],
@@ -1305,7 +1305,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "description": "'changed'"
@@ -1383,7 +1383,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/modify",
+       "hook": "tools/list.post",
        "mode": "enforce"
       }
      }
@@ -1392,7 +1392,7 @@
   ]
  },
  {
-  "name": "GR-013 tools/modify: the same rule does not fire for another entitlement",
+  "name": "GR-013 tools/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-013"
   ],
@@ -1412,7 +1412,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "description": "'changed'"
@@ -1488,7 +1488,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/modify]",
+      "path": "hits[hook=tools/list.post]",
       "exists": false
      }
     ]
@@ -1496,7 +1496,7 @@
   ]
  },
  {
-  "name": "GR-014 tools/modify: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-014 tools/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-014"
   ],
@@ -1511,7 +1511,7 @@
     },
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "name == 't'",
       "then": {
        "description": "'changed'"
@@ -1590,7 +1590,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/modify",
+       "hook": "tools/list.post",
        "mode": "audit"
       }
      }
@@ -1615,7 +1615,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -1779,7 +1779,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "mode": "enforce"
       }
      }
@@ -1803,7 +1803,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -1902,7 +1902,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/call]",
+      "path": "hits[hook=tools/call.pre]",
       "exists": false
      }
     ]
@@ -1928,7 +1928,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -2025,7 +2025,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "mode": "enforce"
       }
      }
@@ -2049,7 +2049,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -2148,7 +2148,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/call]",
+      "path": "hits[hook=tools/call.pre]",
       "exists": false
      }
     ]
@@ -2176,7 +2176,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -2273,7 +2273,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "mode": "enforce"
       }
      }
@@ -2302,7 +2302,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "decision": "'deny'",
@@ -2401,7 +2401,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/call]",
+      "path": "hits[hook=tools/call.pre]",
       "exists": false
      }
     ]
@@ -2424,7 +2424,7 @@
     },
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "name == 't'",
       "then": {
        "decision": "'deny'",
@@ -2526,7 +2526,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/call",
+       "hook": "tools/call.pre",
        "mode": "audit"
       }
      }
@@ -2535,7 +2535,7 @@
   ]
  },
  {
-  "name": "GR-022 tools/result: a rule that reads route fires on the mux",
+  "name": "GR-022 tools/call.post.result: a rule that reads route fires on the mux",
   "ids": [
    "GR-022"
   ],
@@ -2551,7 +2551,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -2710,7 +2710,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/result",
+       "hook": "tools/call.post.result",
        "mode": "enforce"
       }
      }
@@ -2719,7 +2719,7 @@
   ]
  },
  {
-  "name": "GR-023 tools/result: the same rule does not fire on the direct route",
+  "name": "GR-023 tools/call.post.result: the same rule does not fire on the direct route",
   "ids": [
    "GR-023"
   ],
@@ -2734,7 +2734,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -2824,7 +2824,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/result]",
+      "path": "hits[hook=tools/call.post.result]",
       "exists": false
      }
     ]
@@ -2832,7 +2832,7 @@
   ]
  },
  {
-  "name": "GR-024 tools/result: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-024 tools/call.post.result: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-024"
   ],
@@ -2850,7 +2850,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -2942,7 +2942,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/result",
+       "hook": "tools/call.post.result",
        "mode": "enforce"
       }
      }
@@ -2951,7 +2951,7 @@
   ]
  },
  {
-  "name": "GR-025 tools/result: the same rule does not fire without the flag",
+  "name": "GR-025 tools/call.post.result: the same rule does not fire without the flag",
   "ids": [
    "GR-025"
   ],
@@ -2966,7 +2966,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -3056,7 +3056,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/result]",
+      "path": "hits[hook=tools/call.post.result]",
       "exists": false
      }
     ]
@@ -3064,7 +3064,7 @@
   ]
  },
  {
-  "name": "GR-026 tools/result: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-026 tools/call.post.result: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-026"
   ],
@@ -3084,7 +3084,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -3176,7 +3176,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/result",
+       "hook": "tools/call.post.result",
        "mode": "enforce"
       }
      }
@@ -3185,7 +3185,7 @@
   ]
  },
  {
-  "name": "GR-027 tools/result: the same rule does not fire for another entitlement",
+  "name": "GR-027 tools/call.post.result: the same rule does not fire for another entitlement",
   "ids": [
    "GR-027"
   ],
@@ -3205,7 +3205,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -3295,7 +3295,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/result]",
+      "path": "hits[hook=tools/call.post.result]",
       "exists": false
      }
     ]
@@ -3303,7 +3303,7 @@
   ]
  },
  {
-  "name": "GR-028 tools/result: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-028 tools/call.post.result: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-028"
   ],
@@ -3318,7 +3318,7 @@
     },
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "name == 't'",
       "then": {
        "content": "[{'type': 'text', 'text': 'changed'}]"
@@ -3411,7 +3411,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/result",
+       "hook": "tools/call.post.result",
        "mode": "audit"
       }
      }
@@ -3420,7 +3420,7 @@
   ]
  },
  {
-  "name": "GR-029 tools/elicit: a rule that reads route fires on the mux",
+  "name": "GR-029 tools/call.post.elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-029"
   ],
@@ -3444,7 +3444,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3626,7 +3626,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/elicit",
+       "hook": "tools/call.post.elicit",
        "mode": "enforce"
       }
      }
@@ -3635,7 +3635,7 @@
   ]
  },
  {
-  "name": "GR-030 tools/elicit: the same rule does not fire on the direct route",
+  "name": "GR-030 tools/call.post.elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-030"
   ],
@@ -3658,7 +3658,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3771,7 +3771,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/elicit]",
+      "path": "hits[hook=tools/call.post.elicit]",
       "exists": false
      }
     ]
@@ -3779,7 +3779,7 @@
   ]
  },
  {
-  "name": "GR-031 tools/elicit: a rule that reads flags.search fires in search mode",
+  "name": "GR-031 tools/call.post.elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-031"
   ],
@@ -3805,7 +3805,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(flags.search) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3920,7 +3920,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/elicit",
+       "hook": "tools/call.post.elicit",
        "mode": "enforce"
       }
      }
@@ -3929,7 +3929,7 @@
   ]
  },
  {
-  "name": "GR-032 tools/elicit: the same rule does not fire without the flag",
+  "name": "GR-032 tools/call.post.elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-032"
   ],
@@ -3952,7 +3952,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(flags.search) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4065,7 +4065,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/elicit]",
+      "path": "hits[hook=tools/call.post.elicit]",
       "exists": false
      }
     ]
@@ -4073,7 +4073,7 @@
   ]
  },
  {
-  "name": "GR-033 tools/elicit: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-033 tools/call.post.elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-033"
   ],
@@ -4101,7 +4101,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4216,7 +4216,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/elicit",
+       "hook": "tools/call.post.elicit",
        "mode": "enforce"
       }
      }
@@ -4225,7 +4225,7 @@
   ]
  },
  {
-  "name": "GR-034 tools/elicit: the same rule does not fire for another entitlement",
+  "name": "GR-034 tools/call.post.elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-034"
   ],
@@ -4253,7 +4253,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4366,7 +4366,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/elicit]",
+      "path": "hits[hook=tools/call.post.elicit]",
       "exists": false
      }
     ]
@@ -4374,7 +4374,7 @@
   ]
  },
  {
-  "name": "GR-035 tools/elicit: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-035 tools/call.post.elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-035"
   ],
@@ -4397,7 +4397,7 @@
     },
     "rules": [
      {
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "name == 't'",
       "then": {
        "message": "'changed'"
@@ -4513,7 +4513,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/elicit",
+       "hook": "tools/call.post.elicit",
        "mode": "audit"
       }
      }
@@ -4522,7 +4522,7 @@
   ]
  },
  {
-  "name": "GR-036 tools/progress: a rule that reads route fires on the mux",
+  "name": "GR-036 tools/call.post.progress: a rule that reads route fires on the mux",
   "ids": [
    "GR-036"
   ],
@@ -4538,7 +4538,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4713,7 +4713,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/progress",
+       "hook": "tools/call.post.progress",
        "mode": "enforce"
       }
      }
@@ -4722,7 +4722,7 @@
   ]
  },
  {
-  "name": "GR-037 tools/progress: the same rule does not fire on the direct route",
+  "name": "GR-037 tools/call.post.progress: the same rule does not fire on the direct route",
   "ids": [
    "GR-037"
   ],
@@ -4737,7 +4737,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4843,7 +4843,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/progress]",
+      "path": "hits[hook=tools/call.post.progress]",
       "exists": false
      }
     ]
@@ -4851,7 +4851,7 @@
   ]
  },
  {
-  "name": "GR-038 tools/progress: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-038 tools/call.post.progress: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-038"
   ],
@@ -4869,7 +4869,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4977,7 +4977,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/progress",
+       "hook": "tools/call.post.progress",
        "mode": "enforce"
       }
      }
@@ -4986,7 +4986,7 @@
   ]
  },
  {
-  "name": "GR-039 tools/progress: the same rule does not fire without the flag",
+  "name": "GR-039 tools/call.post.progress: the same rule does not fire without the flag",
   "ids": [
    "GR-039"
   ],
@@ -5001,7 +5001,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(flags.cli) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -5107,7 +5107,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/progress]",
+      "path": "hits[hook=tools/call.post.progress]",
       "exists": false
      }
     ]
@@ -5115,7 +5115,7 @@
   ]
  },
  {
-  "name": "GR-040 tools/progress: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-040 tools/call.post.progress: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-040"
   ],
@@ -5135,7 +5135,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -5243,7 +5243,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/progress",
+       "hook": "tools/call.post.progress",
        "mode": "enforce"
       }
      }
@@ -5252,7 +5252,7 @@
   ]
  },
  {
-  "name": "GR-041 tools/progress: the same rule does not fire for another entitlement",
+  "name": "GR-041 tools/call.post.progress: the same rule does not fire for another entitlement",
   "ids": [
    "GR-041"
   ],
@@ -5272,7 +5272,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -5378,7 +5378,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/progress]",
+      "path": "hits[hook=tools/call.post.progress]",
       "exists": false
      }
     ]
@@ -5386,7 +5386,7 @@
   ]
  },
  {
-  "name": "GR-042 tools/progress: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-042 tools/call.post.progress: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-042"
   ],
@@ -5401,7 +5401,7 @@
     },
     "rules": [
      {
-      "hook": "tools/progress",
+      "hook": "tools/call.post.progress",
       "when": "name == 't'",
       "then": {
        "message": "'changed'"
@@ -5510,7 +5510,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/progress",
+       "hook": "tools/call.post.progress",
        "mode": "audit"
       }
      }
@@ -5519,7 +5519,7 @@
   ]
  },
  {
-  "name": "GR-043 prompts/filter: a rule that reads route fires on the mux",
+  "name": "GR-043 prompts/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-043"
   ],
@@ -5535,7 +5535,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -5684,7 +5684,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/filter",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -5693,7 +5693,7 @@
   ]
  },
  {
-  "name": "GR-044 prompts/filter: the same rule does not fire on the direct route",
+  "name": "GR-044 prompts/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-044"
   ],
@@ -5708,7 +5708,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -5787,7 +5787,7 @@
       ]
      },
      {
-      "path": "hits[hook=prompts/filter]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -5795,7 +5795,7 @@
   ]
  },
  {
-  "name": "GR-045 prompts/filter: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-045 prompts/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-045"
   ],
@@ -5813,7 +5813,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -5893,7 +5893,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/filter",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -5902,7 +5902,7 @@
   ]
  },
  {
-  "name": "GR-046 prompts/filter: the same rule does not fire without the flag",
+  "name": "GR-046 prompts/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-046"
   ],
@@ -5917,7 +5917,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -5996,7 +5996,7 @@
       ]
      },
      {
-      "path": "hits[hook=prompts/filter]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -6004,7 +6004,7 @@
   ]
  },
  {
-  "name": "GR-047 prompts/filter: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-047 prompts/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-047"
   ],
@@ -6024,7 +6024,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -6104,7 +6104,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/filter",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -6113,7 +6113,7 @@
   ]
  },
  {
-  "name": "GR-048 prompts/filter: the same rule does not fire for another entitlement",
+  "name": "GR-048 prompts/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-048"
   ],
@@ -6133,7 +6133,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -6212,7 +6212,7 @@
       ]
      },
      {
-      "path": "hits[hook=prompts/filter]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -6220,7 +6220,7 @@
   ]
  },
  {
-  "name": "GR-049 prompts/filter: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-049 prompts/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-049"
   ],
@@ -6235,7 +6235,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "name == 'p'",
       "then": {
        "decision": "'deny'"
@@ -6317,7 +6317,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/filter",
+       "hook": "prompts/list.post",
        "mode": "audit"
       }
      }
@@ -6326,7 +6326,7 @@
   ]
  },
  {
-  "name": "GR-050 prompts/modify: a rule that reads route fires on the mux",
+  "name": "GR-050 prompts/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-050"
   ],
@@ -6342,7 +6342,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -6491,7 +6491,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/modify",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -6500,7 +6500,7 @@
   ]
  },
  {
-  "name": "GR-051 prompts/modify: the same rule does not fire on the direct route",
+  "name": "GR-051 prompts/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-051"
   ],
@@ -6515,7 +6515,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -6591,7 +6591,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/modify]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -6599,7 +6599,7 @@
   ]
  },
  {
-  "name": "GR-052 prompts/modify: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-052 prompts/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-052"
   ],
@@ -6617,7 +6617,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -6695,7 +6695,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/modify",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -6704,7 +6704,7 @@
   ]
  },
  {
-  "name": "GR-053 prompts/modify: the same rule does not fire without the flag",
+  "name": "GR-053 prompts/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-053"
   ],
@@ -6719,7 +6719,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -6795,7 +6795,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/modify]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -6803,7 +6803,7 @@
   ]
  },
  {
-  "name": "GR-054 prompts/modify: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-054 prompts/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-054"
   ],
@@ -6823,7 +6823,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -6901,7 +6901,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/modify",
+       "hook": "prompts/list.post",
        "mode": "enforce"
       }
      }
@@ -6910,7 +6910,7 @@
   ]
  },
  {
-  "name": "GR-055 prompts/modify: the same rule does not fire for another entitlement",
+  "name": "GR-055 prompts/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-055"
   ],
@@ -6930,7 +6930,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "description": "'changed'"
@@ -7006,7 +7006,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/modify]",
+      "path": "hits[hook=prompts/list.post]",
       "exists": false
      }
     ]
@@ -7014,7 +7014,7 @@
   ]
  },
  {
-  "name": "GR-056 prompts/modify: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-056 prompts/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-056"
   ],
@@ -7029,7 +7029,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "name == 'p'",
       "then": {
        "description": "'changed'"
@@ -7108,7 +7108,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/modify",
+       "hook": "prompts/list.post",
        "mode": "audit"
       }
      }
@@ -7133,7 +7133,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7297,7 +7297,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/get",
+       "hook": "prompts/get.pre",
        "mode": "enforce"
       }
      }
@@ -7321,7 +7321,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7420,7 +7420,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/get]",
+      "path": "hits[hook=prompts/get.pre]",
       "exists": false
      }
     ]
@@ -7446,7 +7446,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7543,7 +7543,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/get",
+       "hook": "prompts/get.pre",
        "mode": "enforce"
       }
      }
@@ -7567,7 +7567,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7666,7 +7666,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/get]",
+      "path": "hits[hook=prompts/get.pre]",
       "exists": false
      }
     ]
@@ -7694,7 +7694,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7791,7 +7791,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/get",
+       "hook": "prompts/get.pre",
        "mode": "enforce"
       }
      }
@@ -7820,7 +7820,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -7919,7 +7919,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/get]",
+      "path": "hits[hook=prompts/get.pre]",
       "exists": false
      }
     ]
@@ -7942,7 +7942,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "name == 'p'",
       "then": {
        "decision": "'deny'",
@@ -8044,7 +8044,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/get",
+       "hook": "prompts/get.pre",
        "mode": "audit"
       }
      }
@@ -8053,7 +8053,7 @@
   ]
  },
  {
-  "name": "GR-064 prompts/elicit: a rule that reads route fires on the mux",
+  "name": "GR-064 prompts/get.post.elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-064"
   ],
@@ -8077,7 +8077,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8256,7 +8256,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/elicit",
+       "hook": "prompts/get.post.elicit",
        "mode": "enforce"
       }
      }
@@ -8265,7 +8265,7 @@
   ]
  },
  {
-  "name": "GR-065 prompts/elicit: the same rule does not fire on the direct route",
+  "name": "GR-065 prompts/get.post.elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-065"
   ],
@@ -8288,7 +8288,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8398,7 +8398,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/elicit]",
+      "path": "hits[hook=prompts/get.post.elicit]",
       "exists": false
      }
     ]
@@ -8406,7 +8406,7 @@
   ]
  },
  {
-  "name": "GR-066 prompts/elicit: a rule that reads flags.search fires in search mode",
+  "name": "GR-066 prompts/get.post.elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-066"
   ],
@@ -8432,7 +8432,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(flags.search) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8544,7 +8544,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/elicit",
+       "hook": "prompts/get.post.elicit",
        "mode": "enforce"
       }
      }
@@ -8553,7 +8553,7 @@
   ]
  },
  {
-  "name": "GR-067 prompts/elicit: the same rule does not fire without the flag",
+  "name": "GR-067 prompts/get.post.elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-067"
   ],
@@ -8576,7 +8576,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(flags.search) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8686,7 +8686,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/elicit]",
+      "path": "hits[hook=prompts/get.post.elicit]",
       "exists": false
      }
     ]
@@ -8694,7 +8694,7 @@
   ]
  },
  {
-  "name": "GR-068 prompts/elicit: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-068 prompts/get.post.elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-068"
   ],
@@ -8722,7 +8722,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8834,7 +8834,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/elicit",
+       "hook": "prompts/get.post.elicit",
        "mode": "enforce"
       }
      }
@@ -8843,7 +8843,7 @@
   ]
  },
  {
-  "name": "GR-069 prompts/elicit: the same rule does not fire for another entitlement",
+  "name": "GR-069 prompts/get.post.elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-069"
   ],
@@ -8871,7 +8871,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8981,7 +8981,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/elicit]",
+      "path": "hits[hook=prompts/get.post.elicit]",
       "exists": false
      }
     ]
@@ -8989,7 +8989,7 @@
   ]
  },
  {
-  "name": "GR-070 prompts/elicit: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-070 prompts/get.post.elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-070"
   ],
@@ -9012,7 +9012,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9125,7 +9125,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/elicit",
+       "hook": "prompts/get.post.elicit",
        "mode": "audit"
       }
      }
@@ -9134,7 +9134,7 @@
   ]
  },
  {
-  "name": "GR-071 prompts/progress: a rule that reads route fires on the mux",
+  "name": "GR-071 prompts/get.post.progress: a rule that reads route fires on the mux",
   "ids": [
    "GR-071"
   ],
@@ -9150,7 +9150,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9331,7 +9331,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/progress",
+       "hook": "prompts/get.post.progress",
        "mode": "enforce"
       }
      }
@@ -9340,7 +9340,7 @@
   ]
  },
  {
-  "name": "GR-072 prompts/progress: the same rule does not fire on the direct route",
+  "name": "GR-072 prompts/get.post.progress: the same rule does not fire on the direct route",
   "ids": [
    "GR-072"
   ],
@@ -9355,7 +9355,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9467,7 +9467,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/progress]",
+      "path": "hits[hook=prompts/get.post.progress]",
       "exists": false
      }
     ]
@@ -9475,7 +9475,7 @@
   ]
  },
  {
-  "name": "GR-073 prompts/progress: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-073 prompts/get.post.progress: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-073"
   ],
@@ -9493,7 +9493,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9607,7 +9607,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/progress",
+       "hook": "prompts/get.post.progress",
        "mode": "enforce"
       }
      }
@@ -9616,7 +9616,7 @@
   ]
  },
  {
-  "name": "GR-074 prompts/progress: the same rule does not fire without the flag",
+  "name": "GR-074 prompts/get.post.progress: the same rule does not fire without the flag",
   "ids": [
    "GR-074"
   ],
@@ -9631,7 +9631,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(flags.cli) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9743,7 +9743,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/progress]",
+      "path": "hits[hook=prompts/get.post.progress]",
       "exists": false
      }
     ]
@@ -9751,7 +9751,7 @@
   ]
  },
  {
-  "name": "GR-075 prompts/progress: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-075 prompts/get.post.progress: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-075"
   ],
@@ -9771,7 +9771,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9885,7 +9885,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/progress",
+       "hook": "prompts/get.post.progress",
        "mode": "enforce"
       }
      }
@@ -9894,7 +9894,7 @@
   ]
  },
  {
-  "name": "GR-076 prompts/progress: the same rule does not fire for another entitlement",
+  "name": "GR-076 prompts/get.post.progress: the same rule does not fire for another entitlement",
   "ids": [
    "GR-076"
   ],
@@ -9914,7 +9914,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -10026,7 +10026,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/progress]",
+      "path": "hits[hook=prompts/get.post.progress]",
       "exists": false
      }
     ]
@@ -10034,7 +10034,7 @@
   ]
  },
  {
-  "name": "GR-077 prompts/progress: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-077 prompts/get.post.progress: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-077"
   ],
@@ -10049,7 +10049,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/progress",
+      "hook": "prompts/get.post.progress",
       "when": "name == 'p'",
       "then": {
        "message": "'changed'"
@@ -10164,7 +10164,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/progress",
+       "hook": "prompts/get.post.progress",
        "mode": "audit"
       }
      }
@@ -10173,7 +10173,7 @@
   ]
  },
  {
-  "name": "GR-078 resources/filter: a rule that reads route fires on the mux",
+  "name": "GR-078 resources/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-078"
   ],
@@ -10189,7 +10189,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10338,7 +10338,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/filter",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -10347,7 +10347,7 @@
   ]
  },
  {
-  "name": "GR-079 resources/filter: the same rule does not fire on the direct route",
+  "name": "GR-079 resources/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-079"
   ],
@@ -10362,7 +10362,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10441,7 +10441,7 @@
       ]
      },
      {
-      "path": "hits[hook=resources/filter]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -10449,7 +10449,7 @@
   ]
  },
  {
-  "name": "GR-080 resources/filter: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-080 resources/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-080"
   ],
@@ -10467,7 +10467,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10547,7 +10547,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/filter",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -10556,7 +10556,7 @@
   ]
  },
  {
-  "name": "GR-081 resources/filter: the same rule does not fire without the flag",
+  "name": "GR-081 resources/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-081"
   ],
@@ -10571,7 +10571,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10650,7 +10650,7 @@
       ]
      },
      {
-      "path": "hits[hook=resources/filter]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -10658,7 +10658,7 @@
   ]
  },
  {
-  "name": "GR-082 resources/filter: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-082 resources/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-082"
   ],
@@ -10678,7 +10678,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10758,7 +10758,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/filter",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -10767,7 +10767,7 @@
   ]
  },
  {
-  "name": "GR-083 resources/filter: the same rule does not fire for another entitlement",
+  "name": "GR-083 resources/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-083"
   ],
@@ -10787,7 +10787,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10866,7 +10866,7 @@
       ]
      },
      {
-      "path": "hits[hook=resources/filter]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -10874,7 +10874,7 @@
   ]
  },
  {
-  "name": "GR-084 resources/filter: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-084 resources/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-084"
   ],
@@ -10889,7 +10889,7 @@
     },
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri == 'docs://r'",
       "then": {
        "decision": "'deny'"
@@ -10971,7 +10971,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/filter",
+       "hook": "resources/list.post",
        "mode": "audit"
       }
      }
@@ -10980,7 +10980,7 @@
   ]
  },
  {
-  "name": "GR-085 resources/modify: a rule that reads route fires on the mux",
+  "name": "GR-085 resources/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-085"
   ],
@@ -10996,7 +10996,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11145,7 +11145,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/modify",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -11154,7 +11154,7 @@
   ]
  },
  {
-  "name": "GR-086 resources/modify: the same rule does not fire on the direct route",
+  "name": "GR-086 resources/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-086"
   ],
@@ -11169,7 +11169,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11245,7 +11245,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/modify]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -11253,7 +11253,7 @@
   ]
  },
  {
-  "name": "GR-087 resources/modify: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-087 resources/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-087"
   ],
@@ -11271,7 +11271,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11349,7 +11349,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/modify",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -11358,7 +11358,7 @@
   ]
  },
  {
-  "name": "GR-088 resources/modify: the same rule does not fire without the flag",
+  "name": "GR-088 resources/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-088"
   ],
@@ -11373,7 +11373,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11449,7 +11449,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/modify]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -11457,7 +11457,7 @@
   ]
  },
  {
-  "name": "GR-089 resources/modify: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-089 resources/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-089"
   ],
@@ -11477,7 +11477,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11555,7 +11555,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/modify",
+       "hook": "resources/list.post",
        "mode": "enforce"
       }
      }
@@ -11564,7 +11564,7 @@
   ]
  },
  {
-  "name": "GR-090 resources/modify: the same rule does not fire for another entitlement",
+  "name": "GR-090 resources/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-090"
   ],
@@ -11584,7 +11584,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11660,7 +11660,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/modify]",
+      "path": "hits[hook=resources/list.post]",
       "exists": false
      }
     ]
@@ -11668,7 +11668,7 @@
   ]
  },
  {
-  "name": "GR-091 resources/modify: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-091 resources/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-091"
   ],
@@ -11683,7 +11683,7 @@
     },
     "rules": [
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri == 'docs://r'",
       "then": {
        "description": "'changed'"
@@ -11762,7 +11762,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/modify",
+       "hook": "resources/list.post",
        "mode": "audit"
       }
      }
@@ -11787,7 +11787,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -11948,7 +11948,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/read",
+       "hook": "resources/read.pre",
        "mode": "enforce"
       }
      }
@@ -11972,7 +11972,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12068,7 +12068,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/read]",
+      "path": "hits[hook=resources/read.pre]",
       "exists": false
      }
     ]
@@ -12094,7 +12094,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12188,7 +12188,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/read",
+       "hook": "resources/read.pre",
        "mode": "enforce"
       }
      }
@@ -12212,7 +12212,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12308,7 +12308,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/read]",
+      "path": "hits[hook=resources/read.pre]",
       "exists": false
      }
     ]
@@ -12336,7 +12336,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12430,7 +12430,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/read",
+       "hook": "resources/read.pre",
        "mode": "enforce"
       }
      }
@@ -12459,7 +12459,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12555,7 +12555,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/read]",
+      "path": "hits[hook=resources/read.pre]",
       "exists": false
      }
     ]
@@ -12578,7 +12578,7 @@
     },
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri == 'docs://r'",
       "then": {
        "decision": "'deny'",
@@ -12677,7 +12677,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/read",
+       "hook": "resources/read.pre",
        "mode": "audit"
       }
      }
@@ -12686,7 +12686,7 @@
   ]
  },
  {
-  "name": "GR-099 resources/result: a rule that reads route fires on the mux",
+  "name": "GR-099 resources/read.post.result: a rule that reads route fires on the mux",
   "ids": [
    "GR-099"
   ],
@@ -12702,7 +12702,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -12858,7 +12858,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/result",
+       "hook": "resources/read.post.result",
        "mode": "enforce"
       }
      }
@@ -12867,7 +12867,7 @@
   ]
  },
  {
-  "name": "GR-100 resources/result: the same rule does not fire on the direct route",
+  "name": "GR-100 resources/read.post.result: the same rule does not fire on the direct route",
   "ids": [
    "GR-100"
   ],
@@ -12882,7 +12882,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -12969,7 +12969,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/result]",
+      "path": "hits[hook=resources/read.post.result]",
       "exists": false
      }
     ]
@@ -12977,7 +12977,7 @@
   ]
  },
  {
-  "name": "GR-101 resources/result: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-101 resources/read.post.result: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-101"
   ],
@@ -12995,7 +12995,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -13084,7 +13084,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/result",
+       "hook": "resources/read.post.result",
        "mode": "enforce"
       }
      }
@@ -13093,7 +13093,7 @@
   ]
  },
  {
-  "name": "GR-102 resources/result: the same rule does not fire without the flag",
+  "name": "GR-102 resources/read.post.result: the same rule does not fire without the flag",
   "ids": [
    "GR-102"
   ],
@@ -13108,7 +13108,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -13195,7 +13195,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/result]",
+      "path": "hits[hook=resources/read.post.result]",
       "exists": false
      }
     ]
@@ -13203,7 +13203,7 @@
   ]
  },
  {
-  "name": "GR-103 resources/result: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-103 resources/read.post.result: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-103"
   ],
@@ -13223,7 +13223,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -13312,7 +13312,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/result",
+       "hook": "resources/read.post.result",
        "mode": "enforce"
       }
      }
@@ -13321,7 +13321,7 @@
   ]
  },
  {
-  "name": "GR-104 resources/result: the same rule does not fire for another entitlement",
+  "name": "GR-104 resources/read.post.result: the same rule does not fire for another entitlement",
   "ids": [
    "GR-104"
   ],
@@ -13341,7 +13341,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -13428,7 +13428,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/result]",
+      "path": "hits[hook=resources/read.post.result]",
       "exists": false
      }
     ]
@@ -13436,7 +13436,7 @@
   ]
  },
  {
-  "name": "GR-105 resources/result: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-105 resources/read.post.result: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-105"
   ],
@@ -13451,7 +13451,7 @@
     },
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "uri == 'docs://r'",
       "then": {
        "text": "'changed'"
@@ -13541,7 +13541,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/result",
+       "hook": "resources/read.post.result",
        "mode": "audit"
       }
      }
@@ -13550,7 +13550,7 @@
   ]
  },
  {
-  "name": "GR-106 resources/elicit: a rule that reads route fires on the mux",
+  "name": "GR-106 resources/read.post.elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-106"
   ],
@@ -13574,7 +13574,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -13753,7 +13753,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/elicit",
+       "hook": "resources/read.post.elicit",
        "mode": "enforce"
       }
      }
@@ -13762,7 +13762,7 @@
   ]
  },
  {
-  "name": "GR-107 resources/elicit: the same rule does not fire on the direct route",
+  "name": "GR-107 resources/read.post.elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-107"
   ],
@@ -13785,7 +13785,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -13895,7 +13895,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/elicit]",
+      "path": "hits[hook=resources/read.post.elicit]",
       "exists": false
      }
     ]
@@ -13903,7 +13903,7 @@
   ]
  },
  {
-  "name": "GR-108 resources/elicit: a rule that reads flags.search fires in search mode",
+  "name": "GR-108 resources/read.post.elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-108"
   ],
@@ -13929,7 +13929,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(flags.search) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14041,7 +14041,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/elicit",
+       "hook": "resources/read.post.elicit",
        "mode": "enforce"
       }
      }
@@ -14050,7 +14050,7 @@
   ]
  },
  {
-  "name": "GR-109 resources/elicit: the same rule does not fire without the flag",
+  "name": "GR-109 resources/read.post.elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-109"
   ],
@@ -14073,7 +14073,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(flags.search) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14183,7 +14183,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/elicit]",
+      "path": "hits[hook=resources/read.post.elicit]",
       "exists": false
      }
     ]
@@ -14191,7 +14191,7 @@
   ]
  },
  {
-  "name": "GR-110 resources/elicit: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-110 resources/read.post.elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-110"
   ],
@@ -14219,7 +14219,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14331,7 +14331,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/elicit",
+       "hook": "resources/read.post.elicit",
        "mode": "enforce"
       }
      }
@@ -14340,7 +14340,7 @@
   ]
  },
  {
-  "name": "GR-111 resources/elicit: the same rule does not fire for another entitlement",
+  "name": "GR-111 resources/read.post.elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-111"
   ],
@@ -14368,7 +14368,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14478,7 +14478,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/elicit]",
+      "path": "hits[hook=resources/read.post.elicit]",
       "exists": false
      }
     ]
@@ -14486,7 +14486,7 @@
   ]
  },
  {
-  "name": "GR-112 resources/elicit: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-112 resources/read.post.elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-112"
   ],
@@ -14509,7 +14509,7 @@
     },
     "rules": [
      {
-      "hook": "resources/elicit",
+      "hook": "resources/read.post.elicit",
       "when": "uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14622,7 +14622,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/elicit",
+       "hook": "resources/read.post.elicit",
        "mode": "audit"
       }
      }
@@ -14631,7 +14631,7 @@
   ]
  },
  {
-  "name": "GR-113 resources/progress: a rule that reads route fires on the mux",
+  "name": "GR-113 resources/read.post.progress: a rule that reads route fires on the mux",
   "ids": [
    "GR-113"
   ],
@@ -14647,7 +14647,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14825,7 +14825,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/progress",
+       "hook": "resources/read.post.progress",
        "mode": "enforce"
       }
      }
@@ -14834,7 +14834,7 @@
   ]
  },
  {
-  "name": "GR-114 resources/progress: the same rule does not fire on the direct route",
+  "name": "GR-114 resources/read.post.progress: the same rule does not fire on the direct route",
   "ids": [
    "GR-114"
   ],
@@ -14849,7 +14849,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14958,7 +14958,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/progress]",
+      "path": "hits[hook=resources/read.post.progress]",
       "exists": false
      }
     ]
@@ -14966,7 +14966,7 @@
   ]
  },
  {
-  "name": "GR-115 resources/progress: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-115 resources/read.post.progress: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-115"
   ],
@@ -14984,7 +14984,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -15095,7 +15095,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/progress",
+       "hook": "resources/read.post.progress",
        "mode": "enforce"
       }
      }
@@ -15104,7 +15104,7 @@
   ]
  },
  {
-  "name": "GR-116 resources/progress: the same rule does not fire without the flag",
+  "name": "GR-116 resources/read.post.progress: the same rule does not fire without the flag",
   "ids": [
    "GR-116"
   ],
@@ -15119,7 +15119,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(flags.cli) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -15228,7 +15228,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/progress]",
+      "path": "hits[hook=resources/read.post.progress]",
       "exists": false
      }
     ]
@@ -15236,7 +15236,7 @@
   ]
  },
  {
-  "name": "GR-117 resources/progress: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-117 resources/read.post.progress: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-117"
   ],
@@ -15256,7 +15256,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -15367,7 +15367,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/progress",
+       "hook": "resources/read.post.progress",
        "mode": "enforce"
       }
      }
@@ -15376,7 +15376,7 @@
   ]
  },
  {
-  "name": "GR-118 resources/progress: the same rule does not fire for another entitlement",
+  "name": "GR-118 resources/read.post.progress: the same rule does not fire for another entitlement",
   "ids": [
    "GR-118"
   ],
@@ -15396,7 +15396,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -15505,7 +15505,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/progress]",
+      "path": "hits[hook=resources/read.post.progress]",
       "exists": false
      }
     ]
@@ -15513,7 +15513,7 @@
   ]
  },
  {
-  "name": "GR-119 resources/progress: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-119 resources/read.post.progress: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-119"
   ],
@@ -15528,7 +15528,7 @@
     },
     "rules": [
      {
-      "hook": "resources/progress",
+      "hook": "resources/read.post.progress",
       "when": "uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -15640,7 +15640,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/progress",
+       "hook": "resources/read.post.progress",
        "mode": "audit"
       }
      }
@@ -15649,7 +15649,7 @@
   ]
  },
  {
-  "name": "GR-120 templates/filter: a rule that reads route fires on the mux",
+  "name": "GR-120 resources/templates/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-120"
   ],
@@ -15665,7 +15665,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(route == 'mux') && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -15814,7 +15814,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/filter",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -15823,7 +15823,7 @@
   ]
  },
  {
-  "name": "GR-121 templates/filter: the same rule does not fire on the direct route",
+  "name": "GR-121 resources/templates/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-121"
   ],
@@ -15838,7 +15838,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(route == 'mux') && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -15917,7 +15917,7 @@
       ]
      },
      {
-      "path": "hits[hook=templates/filter]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -15925,7 +15925,7 @@
   ]
  },
  {
-  "name": "GR-122 templates/filter: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-122 resources/templates/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-122"
   ],
@@ -15943,7 +15943,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(flags.cli) && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -16023,7 +16023,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/filter",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -16032,7 +16032,7 @@
   ]
  },
  {
-  "name": "GR-123 templates/filter: the same rule does not fire without the flag",
+  "name": "GR-123 resources/templates/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-123"
   ],
@@ -16047,7 +16047,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(flags.cli) && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -16126,7 +16126,7 @@
       ]
      },
      {
-      "path": "hits[hook=templates/filter]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -16134,7 +16134,7 @@
   ]
  },
  {
-  "name": "GR-124 templates/filter: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-124 resources/templates/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-124"
   ],
@@ -16154,7 +16154,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -16234,7 +16234,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/filter",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -16243,7 +16243,7 @@
   ]
  },
  {
-  "name": "GR-125 templates/filter: the same rule does not fire for another entitlement",
+  "name": "GR-125 resources/templates/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-125"
   ],
@@ -16263,7 +16263,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -16342,7 +16342,7 @@
       ]
      },
      {
-      "path": "hits[hook=templates/filter]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -16350,7 +16350,7 @@
   ]
  },
  {
-  "name": "GR-126 templates/filter: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-126 resources/templates/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-126"
   ],
@@ -16365,7 +16365,7 @@
     },
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "name == 'tpl'",
       "then": {
        "decision": "'deny'"
@@ -16447,7 +16447,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/filter",
+       "hook": "resources/templates/list.post",
        "mode": "audit"
       }
      }
@@ -16456,7 +16456,7 @@
   ]
  },
  {
-  "name": "GR-127 templates/modify: a rule that reads route fires on the mux",
+  "name": "GR-127 resources/templates/list.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-127"
   ],
@@ -16472,7 +16472,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(route == 'mux') && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -16621,7 +16621,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/modify",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -16630,7 +16630,7 @@
   ]
  },
  {
-  "name": "GR-128 templates/modify: the same rule does not fire on the direct route",
+  "name": "GR-128 resources/templates/list.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-128"
   ],
@@ -16645,7 +16645,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(route == 'mux') && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -16721,7 +16721,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=templates/modify]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -16729,7 +16729,7 @@
   ]
  },
  {
-  "name": "GR-129 templates/modify: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-129 resources/templates/list.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-129"
   ],
@@ -16747,7 +16747,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(flags.cli) && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -16825,7 +16825,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/modify",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -16834,7 +16834,7 @@
   ]
  },
  {
-  "name": "GR-130 templates/modify: the same rule does not fire without the flag",
+  "name": "GR-130 resources/templates/list.post: the same rule does not fire without the flag",
   "ids": [
    "GR-130"
   ],
@@ -16849,7 +16849,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(flags.cli) && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -16925,7 +16925,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=templates/modify]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -16933,7 +16933,7 @@
   ]
  },
  {
-  "name": "GR-131 templates/modify: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-131 resources/templates/list.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-131"
   ],
@@ -16953,7 +16953,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -17031,7 +17031,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/modify",
+       "hook": "resources/templates/list.post",
        "mode": "enforce"
       }
      }
@@ -17040,7 +17040,7 @@
   ]
  },
  {
-  "name": "GR-132 templates/modify: the same rule does not fire for another entitlement",
+  "name": "GR-132 resources/templates/list.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-132"
   ],
@@ -17060,7 +17060,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "(entitlement.name == 'Readers') && name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -17136,7 +17136,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=templates/modify]",
+      "path": "hits[hook=resources/templates/list.post]",
       "exists": false
      }
     ]
@@ -17144,7 +17144,7 @@
   ]
  },
  {
-  "name": "GR-133 templates/modify: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-133 resources/templates/list.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-133"
   ],
@@ -17159,7 +17159,7 @@
     },
     "rules": [
      {
-      "hook": "templates/modify",
+      "hook": "resources/templates/list.post",
       "when": "name == 'tpl'",
       "then": {
        "description": "'changed'"
@@ -17238,7 +17238,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "templates/modify",
+       "hook": "resources/templates/list.post",
        "mode": "audit"
       }
      }
@@ -17247,7 +17247,7 @@
   ]
  },
  {
-  "name": "GR-134 server/config: a rule that reads route fires on the mux",
+  "name": "GR-134 server.settings: a rule that reads route fires on the mux",
   "ids": [
    "GR-134"
   ],
@@ -17263,7 +17263,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "route == 'mux'",
       "then": {
        "prompts": "false"
@@ -17411,7 +17411,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/config",
+       "hook": "server.settings",
        "mode": "enforce"
       }
      }
@@ -17420,7 +17420,7 @@
   ]
  },
  {
-  "name": "GR-135 server/config: the same rule does not fire on the direct route",
+  "name": "GR-135 server.settings: the same rule does not fire on the direct route",
   "ids": [
    "GR-135"
   ],
@@ -17435,7 +17435,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "route == 'mux'",
       "then": {
        "prompts": "false"
@@ -17514,7 +17514,7 @@
       ]
      },
      {
-      "path": "hits[hook=server/config]",
+      "path": "hits[hook=server.settings]",
       "exists": false
      }
     ]
@@ -17522,7 +17522,7 @@
   ]
  },
  {
-  "name": "GR-136 server/config: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-136 server.settings: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-136"
   ],
@@ -17540,7 +17540,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "flags.cli",
       "then": {
        "prompts": "false"
@@ -17624,7 +17624,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/config",
+       "hook": "server.settings",
        "mode": "enforce"
       }
      }
@@ -17633,7 +17633,7 @@
   ]
  },
  {
-  "name": "GR-137 server/config: the same rule does not fire without the flag",
+  "name": "GR-137 server.settings: the same rule does not fire without the flag",
   "ids": [
    "GR-137"
   ],
@@ -17648,7 +17648,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "flags.cli",
       "then": {
        "prompts": "false"
@@ -17727,7 +17727,7 @@
       ]
      },
      {
-      "path": "hits[hook=server/config]",
+      "path": "hits[hook=server.settings]",
       "exists": false
      }
     ]
@@ -17735,7 +17735,7 @@
   ]
  },
  {
-  "name": "GR-138 server/config: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-138 server.settings: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-138"
   ],
@@ -17755,7 +17755,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "prompts": "false"
@@ -17839,7 +17839,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/config",
+       "hook": "server.settings",
        "mode": "enforce"
       }
      }
@@ -17848,7 +17848,7 @@
   ]
  },
  {
-  "name": "GR-139 server/config: the same rule does not fire for another entitlement",
+  "name": "GR-139 server.settings: the same rule does not fire for another entitlement",
   "ids": [
    "GR-139"
   ],
@@ -17868,7 +17868,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "prompts": "false"
@@ -17947,7 +17947,7 @@
       ]
      },
      {
-      "path": "hits[hook=server/config]",
+      "path": "hits[hook=server.settings]",
       "exists": false
      }
     ]
@@ -17955,7 +17955,7 @@
   ]
  },
  {
-  "name": "GR-140 server/config: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-140 server.settings: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-140"
   ],
@@ -17970,7 +17970,7 @@
     },
     "rules": [
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "prompts": "false"
@@ -18052,7 +18052,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/config",
+       "hook": "server.settings",
        "mode": "audit"
       }
      }
@@ -18061,7 +18061,7 @@
   ]
  },
  {
-  "name": "GR-141 server/connect: a rule that reads route fires on the mux",
+  "name": "GR-141 server.session: a rule that reads route fires on the mux",
   "ids": [
    "GR-141"
   ],
@@ -18077,7 +18077,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "route == 'mux'",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18240,7 +18240,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/connect",
+       "hook": "server.session",
        "mode": "enforce"
       }
      }
@@ -18249,7 +18249,7 @@
   ]
  },
  {
-  "name": "GR-142 server/connect: the same rule does not fire on the direct route",
+  "name": "GR-142 server.session: the same rule does not fire on the direct route",
   "ids": [
    "GR-142"
   ],
@@ -18264,7 +18264,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "route == 'mux'",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18358,7 +18358,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=server/connect]",
+      "path": "hits[hook=server.session]",
       "exists": false
      }
     ]
@@ -18366,7 +18366,7 @@
   ]
  },
  {
-  "name": "GR-143 server/connect: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-143 server.session: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-143"
   ],
@@ -18384,7 +18384,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "flags.cli",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18480,7 +18480,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/connect",
+       "hook": "server.session",
        "mode": "enforce"
       }
      }
@@ -18489,7 +18489,7 @@
   ]
  },
  {
-  "name": "GR-144 server/connect: the same rule does not fire without the flag",
+  "name": "GR-144 server.session: the same rule does not fire without the flag",
   "ids": [
    "GR-144"
   ],
@@ -18504,7 +18504,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "flags.cli",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18598,7 +18598,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=server/connect]",
+      "path": "hits[hook=server.session]",
       "exists": false
      }
     ]
@@ -18606,7 +18606,7 @@
   ]
  },
  {
-  "name": "GR-145 server/connect: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-145 server.session: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-145"
   ],
@@ -18626,7 +18626,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18722,7 +18722,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/connect",
+       "hook": "server.session",
        "mode": "enforce"
       }
      }
@@ -18731,7 +18731,7 @@
   ]
  },
  {
-  "name": "GR-146 server/connect: the same rule does not fire for another entitlement",
+  "name": "GR-146 server.session: the same rule does not fire for another entitlement",
   "ids": [
    "GR-146"
   ],
@@ -18751,7 +18751,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18845,7 +18845,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=server/connect]",
+      "path": "hits[hook=server.session]",
       "exists": false
      }
     ]
@@ -18853,7 +18853,7 @@
   ]
  },
  {
-  "name": "GR-147 server/connect: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-147 server.session: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-147"
   ],
@@ -18868,7 +18868,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "clientInfo": "{'name': 'grid', 'version': '1'}"
@@ -18965,7 +18965,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/connect",
+       "hook": "server.session",
        "mode": "audit"
       }
      }
@@ -18974,7 +18974,7 @@
   ]
  },
  {
-  "name": "GR-148 server/modify: a rule that reads route fires on the mux",
+  "name": "GR-148 server/discover.post: a rule that reads route fires on the mux",
   "ids": [
    "GR-148"
   ],
@@ -18990,7 +18990,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "route == 'mux'",
       "then": {
        "instructions": "'changed instructions'"
@@ -19138,7 +19138,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/modify",
+       "hook": "server/discover.post",
        "mode": "enforce"
       }
      }
@@ -19147,7 +19147,7 @@
   ]
  },
  {
-  "name": "GR-149 server/modify: the same rule does not fire on the direct route",
+  "name": "GR-149 server/discover.post: the same rule does not fire on the direct route",
   "ids": [
    "GR-149"
   ],
@@ -19162,7 +19162,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "route == 'mux'",
       "then": {
        "instructions": "'changed instructions'"
@@ -19248,7 +19248,7 @@
       "equals": "orig instructions"
      },
      {
-      "path": "hits[hook=server/modify]",
+      "path": "hits[hook=server/discover.post]",
       "exists": false
      }
     ]
@@ -19256,7 +19256,7 @@
   ]
  },
  {
-  "name": "GR-150 server/modify: a rule that reads flags.cli fires for the command line client",
+  "name": "GR-150 server/discover.post: a rule that reads flags.cli fires for the command line client",
   "ids": [
    "GR-150"
   ],
@@ -19274,7 +19274,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "flags.cli",
       "then": {
        "instructions": "'changed instructions'"
@@ -19362,7 +19362,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/modify",
+       "hook": "server/discover.post",
        "mode": "enforce"
       }
      }
@@ -19371,7 +19371,7 @@
   ]
  },
  {
-  "name": "GR-151 server/modify: the same rule does not fire without the flag",
+  "name": "GR-151 server/discover.post: the same rule does not fire without the flag",
   "ids": [
    "GR-151"
   ],
@@ -19386,7 +19386,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "flags.cli",
       "then": {
        "instructions": "'changed instructions'"
@@ -19472,7 +19472,7 @@
       "equals": "orig instructions"
      },
      {
-      "path": "hits[hook=server/modify]",
+      "path": "hits[hook=server/discover.post]",
       "exists": false
      }
     ]
@@ -19480,7 +19480,7 @@
   ]
  },
  {
-  "name": "GR-152 server/modify: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-152 server/discover.post: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-152"
   ],
@@ -19500,7 +19500,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "instructions": "'changed instructions'"
@@ -19588,7 +19588,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/modify",
+       "hook": "server/discover.post",
        "mode": "enforce"
       }
      }
@@ -19597,7 +19597,7 @@
   ]
  },
  {
-  "name": "GR-153 server/modify: the same rule does not fire for another entitlement",
+  "name": "GR-153 server/discover.post: the same rule does not fire for another entitlement",
   "ids": [
    "GR-153"
   ],
@@ -19617,7 +19617,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "entitlement.name == 'Readers'",
       "then": {
        "instructions": "'changed instructions'"
@@ -19703,7 +19703,7 @@
       "equals": "orig instructions"
      },
      {
-      "path": "hits[hook=server/modify]",
+      "path": "hits[hook=server/discover.post]",
       "exists": false
      }
     ]
@@ -19711,7 +19711,7 @@
   ]
  },
  {
-  "name": "GR-154 server/modify: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-154 server/discover.post: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-154"
   ],
@@ -19726,7 +19726,7 @@
     },
     "rules": [
      {
-      "hook": "server/modify",
+      "hook": "server/discover.post",
       "when": "true",
       "then": {
        "instructions": "'changed instructions'"
@@ -19815,7 +19815,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "server/modify",
+       "hook": "server/discover.post",
        "mode": "audit"
       }
      }

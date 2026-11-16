@@ -44,13 +44,26 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
 | RH-HOOK-01 | Can a rule set a field its hook does not have? | No. Saving fails with a problem naming the field | unit |
-| RH-HOOK-02 | Can a rule read a variable its hook does not have, such as `args` in `tools/filter`? | No. Saving fails | unit |
+| RH-HOOK-02 | Can a rule read a variable its hook does not have, such as `args` in `tools/list.post`? | No. Saving fails | unit |
 | RH-HOOK-03 | Is an unknown hook name accepted? | No. Saving fails | unit |
-| RH-HOOK-04 | Can a modify hook decide visibility? | No. `decision` is not a modify field | unit |
+| RH-HOOK-04 | Can a hook that only changes things, such as `server/discover.post`, deny? | No. `decision` is not one of its fields | unit |
 | RH-HOOK-05 | Can any hook write `caller` or `client`? | No. Saving fails | unit |
 | RH-HOOK-06 | Is `completion/filter` a hook? | No. Completions are not supported | unit |
 | RH-HOOK-07 | Does a rule list that does not compile fail the entitlement closed? | Yes. Listings expose nothing for that slug and report the problem | e2e |
 | RH-HOOK-08 | Is a disabled rule skipped? | Yes | unit |
+
+## List hooks
+
+The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.post`, `resources/templates/list.post`) each hide items and change them. They replaced a filter hook and a modify hook on November 16, 2026.
+
+| ID | Question | Expected | Level |
+| --- | --- | --- | --- |
+| RH-LIST-01 | Do a list hook's rules run in the order written, with changes chaining? | Yes. A hide written after a rename matches the new name | e2e |
+| RH-LIST-02 | Does a hide written before a rename see the new name? | No. It sees the item as it was at that point | e2e |
+| RH-LIST-03 | What does a rule that both hides and changes do? | It hides. The change is discarded | e2e |
+| RH-LIST-04 | Does the first hide stop the rules below it, and does a failing change hide the item? | Yes to both. A failed change is reported and the item cannot be called | e2e |
+| RH-LIST-05 | Which rules run on a read of a URI that is in no list? | Only the deny rules of `resources/list.post`, with only `uri` to read. Rules that change a resource are skipped | e2e |
+| RH-LIST-06 | Can a list rule set `reason` without a deny? | No. Saving fails | unit |
 
 ## CEL language
 
@@ -121,7 +134,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | RH-REV-11 | Do two tools renamed to the same name fail closed? | Yes. Both are hidden and the listing reports it | unit |
 | RH-REV-12 | Do two parameters renamed to the same key fail closed? | Yes | unit |
 | RH-REV-13 | Upstream `a` is renamed onto the name of hidden upstream `b`. Is that a collision? | No. The client's `b` means `a`, and upstream `b` gets only gateway values. Proven by RH-REV-03 | e2e |
-| RH-REV-14 | Is a pin static, so `caller.email` cannot be pinned in modify? | Yes. Caller values go in `tools/call` as `args.<p>` | unit |
+| RH-REV-14 | Is a pin static, so `caller.email` cannot be pinned in `tools/list.post`? | Yes. Caller values go in `tools/call.pre` as `args.<p>` | unit |
 | RH-REV-15 | Does a pin to the caller work as two rules, hide plus `args.<p>: caller.email`? | Yes | e2e |
 | RH-REV-16 | Does the old exposed name fail after a rename? | Yes, with unknown tool | e2e |
 | RH-REV-17 | Do renamed prompt arguments map back on `prompts/get`? | Yes | e2e |
@@ -135,7 +148,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | RH-CALL-03 | Is a patch that moves a value out of range rejected? | Yes, by the check after the rules | unit |
 | RH-CALL-04 | Is a deny reason returned as `isError` text? | Yes | e2e |
 | RH-CALL-05 | Does a time-range rule with `timestamp` and `duration` work? | Yes | unit |
-| RH-CALL-06 | Is a tool hidden by a filter refused when called directly? | Yes, with -32004, the same as a tool that does not exist | e2e |
+| RH-CALL-06 | Is a tool hidden by a `tools/list.post` rule refused when called directly? | Yes, with -32004, the same as a tool that does not exist | e2e |
 | RH-CALL-07 | Does a call to a name missing from the cached catalog refresh once before failing? | Yes. A tool the upstream added since caching succeeds | integration |
 | RH-CALL-08 | Does a policy change take effect on the next call? | Yes. Rules are not cached | e2e |
 | RH-CALL-09 | Is the upstream called at all when a call rule denies? | No | e2e |
@@ -164,9 +177,9 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
 | RH-INP-01 | Does an upstream `input_required` reach the client? | Yes, with the upstream state wrapped | e2e |
-| RH-INP-02 | Can `tools/elicit` deny it? | Yes. The client receives an error result | e2e |
-| RH-INP-03 | Can `tools/elicit` reword the message? | Yes, for example "Jira asks: " prepended | e2e |
-| RH-INP-04 | Does `tools/result` run on an `input_required`? | No | e2e |
+| RH-INP-02 | Can `tools/call.post.elicit` deny it? | Yes. The client receives an error result | e2e |
+| RH-INP-03 | Can `tools/call.post.elicit` reword the message? | Yes, for example "Jira asks: " prepended | e2e |
+| RH-INP-04 | Does `tools/call.post.result` run on an `input_required`? | No | e2e |
 | RH-INP-05 | On the retry, does the upstream receive only its own answers and state? | Yes | e2e |
 
 ## Results
@@ -181,46 +194,46 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | RH-RES-06 | Is there runtime validation against `outputSchema`? | No. A mismatched shaped result passes | e2e |
 | RH-RES-07 | Does an upstream that breaks its own schema pass through? | Yes | e2e |
 | RH-RES-08 | Does a `resource_link` a result rule adds get the mux prefix? | Yes. The prefix runs last | e2e |
-| RH-RES-09 | Does a deny in `tools/result` return an error result? | Yes | e2e |
+| RH-RES-09 | Does a deny in `tools/call.post.result` return an error result? | Yes | e2e |
 
 ## Server hooks
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
 | RH-SRV-01 | Does the upstream see `bifrost` as the client by default? | Yes | e2e |
-| RH-SRV-02 | With elicitation off in `server/connect`, does the upstream see no elicitation capability? | Yes | e2e |
+| RH-SRV-02 | With elicitation off in `server.session`, does the upstream see no elicitation capability? | Yes | e2e |
 | RH-SRV-03 | With `tools` switched off, are tools absent from listings and calls unknown? | Yes | e2e |
 | RH-SRV-04 | With `prompts` or `resources` switched off, are they absent? | Yes | e2e |
 | RH-SRV-05 | With `instructions` off, are instructions hidden? | Yes | e2e |
-| RH-SRV-06 | Does `server/modify` rewrite instructions on 1:1? | Yes | e2e |
+| RH-SRV-06 | Does `server/discover.post` rewrite instructions on 1:1? | Yes | e2e |
 | RH-SRV-07 | Are instructions fetched live, so an upstream change shows at once? | Yes | e2e |
 | RH-SRV-08 | Does discover advertise `listChanged: false`? | Yes | e2e |
 | RH-SRV-09 | Are completions and logging left unadvertised? | Yes | e2e |
 | RH-SRV-10 | Does the `progress` switch control forwarding of upstream progress? | Yes | e2e |
-| RH-SRV-11 | Does `get_server_instructions(slug)` return the full text on the mux? | Yes, after `server/modify` | e2e |
+| RH-SRV-11 | Does `get_server_instructions(slug)` return the full text on the mux? | Yes, after `server/discover.post` | e2e |
 | RH-SRV-12 | Are mux instructions slug-labelled excerpts with a budget and a truncation mark? | Yes | e2e |
 
 ## Prompts
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
-| RH-PRM-01 | Does `prompts/filter` hide a prompt from the list and from `prompts/get`? | Yes | e2e |
+| RH-PRM-01 | Does `prompts/list.post` hide a prompt from the list and from `prompts/get`? | Yes | e2e |
 | RH-PRM-02 | Does a renamed prompt reach the upstream by its original name? | Yes | e2e |
-| RH-PRM-03 | Is a `prompts/get` deny a JSON-RPC error with the reason? | Yes | e2e |
+| RH-PRM-03 | Is a `prompts/get.pre` deny a JSON-RPC error with the reason? | Yes | e2e |
 
 ## Resources and templates
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
-| RH-RSC-01 | Does `resources/filter` hide a resource and refuse its read? | Yes | e2e |
-| RH-RSC-02 | Can `resources/modify` change a URI? | No. Saving fails | unit |
-| RH-RSC-03 | Can `templates/modify` change `uriTemplate`? | No. Saving fails | unit |
-| RH-RSC-04 | Can `resources/modify` change the title? | Yes | e2e |
-| RH-RSC-05 | Is a `resources/read` deny a JSON-RPC error? | Yes | e2e |
+| RH-RSC-01 | Does `resources/list.post` hide a resource and refuse its read? | Yes | e2e |
+| RH-RSC-02 | Can `resources/list.post` change a URI? | No. Saving fails | unit |
+| RH-RSC-03 | Can `resources/templates/list.post` change `uriTemplate`? | No. Saving fails | unit |
+| RH-RSC-04 | Can `resources/list.post` change the title? | Yes | e2e |
+| RH-RSC-05 | Is a `resources/read.pre` deny a JSON-RPC error? | Yes | e2e |
 | RH-RSC-06 | A template allows a URI that sits under a denied skill folder. Readable? | No. Any applicable deny wins | e2e |
 | RH-RSC-07 | Is a URI that no listing or template covers unknown? | Yes, -32602 | e2e |
 | RH-RSC-08 | Does a directory read drop hidden children? | Yes | e2e |
-| RH-RSC-09 | Does an opt-in `resources/result` rule rewrite text? | Yes | e2e |
+| RH-RSC-09 | Does an opt-in `resources/read.post.result` rule rewrite text? | Yes | e2e |
 | RH-RSC-10 | Is a read result never cached, so a second read reaches the upstream? | Yes | e2e |
 
 ## Skills
@@ -229,7 +242,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | --- | --- | --- | --- |
 | RH-SKL-01 | Does denying a skill by name block its whole folder? | Yes, every file under it | e2e |
 | RH-SKL-02 | Is a nested skill denied with its parent? | Yes | e2e |
-| RH-SKL-03 | Are `name` and `description` shortcuts available in `skills/filter`? | Yes | unit |
+| RH-SKL-03 | Are `name` and `description` shortcuts available in `skills/list.post`? | Yes | unit |
 | RH-SKL-04 | Two skills share a name. Does a `uri` rule deny only one? | Yes | e2e |
 | RH-SKL-05 | Is a file under a denied folder refused when read through a broad template? | Yes | e2e |
 | RH-SKL-06 | Does `resources/list` drop entries under a denied folder? | Yes | e2e |
@@ -238,7 +251,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | RH-SKL-09 | Is a rewrite that changes `name` rejected for that skill? | Yes. Upstream bytes are kept | e2e |
 | RH-SKL-10 | Is denying one file inside a skill allowed, leaving the manifest alone? | Yes | e2e |
 | RH-SKL-11 | Does the mux prefix leave digests unchanged? | Yes | e2e |
-| RH-SKL-12 | Does `skills/filter` deny a skill from `skills/list` and `skills/get`? | Yes | e2e |
+| RH-SKL-12 | Does `skills/list.post` deny a skill from `skills/list` and `skills/get`? | Yes | e2e |
 
 ## Mux URIs and fallback resolution
 
@@ -295,7 +308,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | --- | --- | --- | --- |
 | RH-PRF-01 | Is a rule reading `caller` classified dynamic, and one reading only item fields static? | Yes | unit |
 | RH-PRF-02 | Do rules over the real Datadog catalog (about 500 tools) and 20 rules run within the budget? | Yes | e2e |
-| RH-PRF-03 | Do all real Datadog and harness tool shapes pass through filter and modify with no changes intact? | Yes. Output equals input when no rule matches | e2e |
+| RH-PRF-03 | Do all real Datadog and harness tool shapes pass through `tools/list.post` with no changes intact? | Yes. Output equals input when no rule matches | e2e |
 
 ## Adversarial cases from the Codex review
 
@@ -312,7 +325,7 @@ Not applicable to the engine: ADV-48. Skill frontmatter is parsed by one parser,
 These came out of implementing the cases above and are now part of the design:
 
 - Listings are evaluated per item in parallel and then reduced in one step, which checks collisions and sorts output by slug a-z, then name a-z.
-- `resources/filter` runs on every URI that is read, listed or not, so a single file reachable only through a template or a skill can be denied.
+- `resources/list.post` runs on every URI that is read, listed or not, so a single file reachable only through a template or a skill can be denied.
 - URIs with dot segments, empty segments or percent-encoded unreserved characters are refused as not canonical, so an upstream cannot resolve a path differently from the gateway.
 - Skill rewriting is skipped for rules that read `caller`, `client` or `now`, because list time and read time would produce different bytes. It also skips files the caller cannot read, and drops manifest entries outside the skill's folder.
 - Upstream input requests use the spec's wire shape, `{method: "elicitation/create", params: {...}}`. Rules see `request.message` and the other params, plus `request.key` and `request.method`.

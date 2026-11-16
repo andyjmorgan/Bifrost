@@ -1,10 +1,10 @@
-# server/modify
+# server/discover.post
 
-`server/modify` changes a server's title, description and instructions before the client sees them.
+`server/discover.post` changes a server's title, description and instructions before the client sees them.
 
 ## When it runs
 
-`server/modify` runs after [server/config](server-config.md) whenever the gateway shows server details:
+`server/discover.post` runs after [server.settings](server-settings.md) whenever the gateway shows server details:
 
 - discover on the direct route
 - mux instruction excerpts in discover
@@ -55,7 +55,7 @@ If an enforce rule fails to evaluate, the title, description and instructions ar
 ```json
 {
   "name": "Drop Confluence section",
-  "hook": "server/modify",
+  "hook": "server/discover.post",
   "when": "true",
   "then": { "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')" }
 }
@@ -68,7 +68,7 @@ Upstream instructions `Use search first.\n## Confluence\nConfluence details.` be
 ```json
 {
   "name": "Retitle",
-  "hook": "server/modify",
+  "hook": "server/discover.post",
   "when": "true",
   "then": { "title": "'Jira (read only)'" }
 }
@@ -82,13 +82,13 @@ On the direct route, discover returns `_meta["io.modelcontextprotocol/serverInfo
 [
   {
     "name": "Drop Confluence section",
-    "hook": "server/modify",
+    "hook": "server/discover.post",
     "when": "true",
     "then": { "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')" }
   },
   {
     "name": "Ticket note",
-    "hook": "server/modify",
+    "hook": "server/discover.post",
     "when": "true",
     "then": { "instructions": "instructions + 'All writes need a ticket ID.'" }
   }
@@ -100,4 +100,4 @@ The second rule reads the output of the first. On the mux route, `get_server_ins
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [server/config switches](server-config.md)
+- [server.settings switches](server-settings.md)

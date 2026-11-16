@@ -128,7 +128,7 @@ const okResult = `{"resultType":"complete","content":[{"type":"text","text":"don
 // A single JSON body is a stream of one event, and gives the same outcome
 // as the single-message entry point.
 func TestStreamOfOneEventMatchesTheSingleReply(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}}}, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{resultEvent(okResult)}})
 	if got.err != nil || len(got.notes) != 0 || got.final == nil {
 		t.Fatalf("got %+v", got)
@@ -144,7 +144,7 @@ func TestStreamOfOneEventMatchesTheSingleReply(t *testing.T) {
 // With no progress rules, events are relayed in order, byte for byte, and
 // the final result still goes through the result rules.
 func TestProgressIsRelayedInOrderThenTheResult(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}}}, Limits{})
 	p1 := `{"progressToken":"gw-1","progress":0.1,"total":12345678901234567890,"message":"one"}`
 	p2 := `{"progressToken":"gw-1","progress":2}`
 	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(p1), progressEvent(p2), resultEvent(okResult)}}
@@ -167,9 +167,9 @@ func TestProgressIsRelayedInOrderThenTheResult(t *testing.T) {
 
 func TestProgressRulesDropAndReshape(t *testing.T) {
 	rules := []Rule{
-		{Name: "Drop card numbers", Hook: "tools/progress", When: "progress.message.matches('[0-9]{4} [0-9]{4}')", Then: map[string]string{"decision": "'deny'", "reason": "'card number'"}},
-		{Name: "Hide the host", Hook: "tools/progress", When: "progress.message.contains('db-internal')", Then: map[string]string{"message": "progress.message.replace('db-internal', 'the database')"}},
-		{Name: "Chain", Hook: "tools/progress", When: "progress.message.contains('the database')", Then: map[string]string{"message": "progress.message + '.'"}},
+		{Name: "Drop card numbers", Hook: "tools/call.post.progress", When: "progress.message.matches('[0-9]{4} [0-9]{4}')", Then: map[string]string{"decision": "'deny'", "reason": "'card number'"}},
+		{Name: "Hide the host", Hook: "tools/call.post.progress", When: "progress.message.contains('db-internal')", Then: map[string]string{"message": "progress.message.replace('db-internal', 'the database')"}},
+		{Name: "Chain", Hook: "tools/call.post.progress", When: "progress.message.contains('the database')", Then: map[string]string{"message": "progress.message + '.'"}},
 	}
 	c := newStreamCase(t, "direct", rules, Limits{})
 	u := &upstreamSeq{events: []UpstreamEvent{
@@ -201,7 +201,7 @@ func TestProgressRulesDropAndReshape(t *testing.T) {
 	// The final outcome carries the progress hits, for the audit trail.
 	var effects []string
 	for _, h := range got.final.Hits {
-		if h.Hook == "tools/progress" {
+		if h.Hook == "tools/call.post.progress" {
 			effects = append(effects, h.Rule+":"+h.Effect)
 		}
 	}
@@ -216,9 +216,9 @@ func TestProgressRulesDropAndReshape(t *testing.T) {
 // Progress rules read the call's arguments, the tool and the numbers.
 func TestProgressRulesSeeTheCallAndTheNumbers(t *testing.T) {
 	rules := []Rule{
-		{Hook: "tools/progress", When: "upstream.name == 't' && args.q == 'abc' && args.limit == 5 && caller.userId == 'u' && has(progress.total) && progress.progress >= progress.total",
+		{Hook: "tools/call.post.progress", When: "upstream.name == 't' && args.q == 'abc' && args.limit == 5 && caller.userId == 'u' && has(progress.total) && progress.progress >= progress.total",
 			Then: map[string]string{"message": "'complete'"}},
-		{Hook: "tools/progress", When: "!has(progress.total)", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.progress", When: "!has(progress.total)", Then: map[string]string{"decision": "'deny'"}},
 	}
 	c := newStreamCase(t, "mux", rules, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{
@@ -240,7 +240,7 @@ func TestProgressRulesSeeTheCallAndTheNumbers(t *testing.T) {
 
 // A rule that errors drops its own event. It never refuses the call.
 func TestProgressRuleErrorDropsOnlyThatEvent(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/progress", When: "progress.total > 1", Then: map[string]string{"message": "'x'"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "progress.total > 1", Then: map[string]string{"message": "'x'"}}}, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{
 		progressEvent(`{"progressToken":"p","progress":1}`), // no total: the rule errors
 		progressEvent(`{"progressToken":"p","progress":1,"total":1}`),
@@ -254,7 +254,7 @@ func TestProgressRuleErrorDropsOnlyThatEvent(t *testing.T) {
 	}
 	errs := 0
 	for _, h := range got.final.Hits {
-		if h.Hook == "tools/progress" && h.Effect == "error" {
+		if h.Hook == "tools/call.post.progress" && h.Effect == "error" {
 			errs++
 		}
 	}
@@ -265,7 +265,7 @@ func TestProgressRuleErrorDropsOnlyThatEvent(t *testing.T) {
 
 // An audit rule on progress changes nothing.
 func TestProgressAuditRuleChangesNothing(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Mode: ModeAudit, Hook: "tools/progress", When: "true", Then: map[string]string{"decision": "'deny'"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Mode: ModeAudit, Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"decision": "'deny'"}}}, Limits{})
 	p := `{"progressToken":"p","progress":1}`
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(p), resultEvent(okResult)}})
 	if len(got.notes) != 1 || string(got.notes[0].Params) != p {
@@ -276,9 +276,9 @@ func TestProgressAuditRuleChangesNothing(t *testing.T) {
 	}
 }
 
-// The server/config switch turns progress off for a server.
+// The server.settings switch turns progress off for a server.
 func TestProgressSwitchOffDropsEveryEvent(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "server/config", When: "true", Then: map[string]string{"progress": "false"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "server.settings", When: "true", Then: map[string]string{"progress": "false"}}}, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(okResult)}})
 	if len(got.notes) != 0 || textOf(t, got.final) != "done" {
 		t.Fatalf("got %+v", got)
@@ -289,8 +289,8 @@ func TestProgressSwitchOffDropsEveryEvent(t *testing.T) {
 // events are dropped, and the final response still gets its full budget.
 func TestProgressAllowanceSpentDropsEventsNotTheResult(t *testing.T) {
 	rules := []Rule{
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"message": "'x'"}},
-		{Hook: "tools/result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"message": "'x'"}},
+		{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped'}]"}},
 	}
 	c := newStreamCase(t, "direct", rules, Limits{ProgressBudget: time.Nanosecond})
 	var events []UpstreamEvent
@@ -344,7 +344,7 @@ func TestOtherNotificationsAreDropped(t *testing.T) {
 
 // A malformed progress event is dropped when a rule has to read it.
 func TestMalformedProgressIsDroppedUnderRules(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/progress", When: "false", Then: map[string]string{"message": "'x'"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "false", Then: map[string]string{"message": "'x'"}}}, Limits{})
 	for _, bad := range []string{`[1,2]`, `"text"`, `null`, `{`, ``, `{"progress":"x","message":5}`} {
 		got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(bad), resultEvent(okResult)}})
 		if got.final == nil || textOf(t, got.final) != "done" {
@@ -361,7 +361,7 @@ func TestMalformedProgressIsDroppedUnderRules(t *testing.T) {
 // Nothing sent can be taken back: a result refused at the end still follows
 // the progress that was relayed.
 func TestRefusedResultStillFollowsRelayedProgress(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/result", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'No results from this tool.'"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'No results from this tool.'"}}}, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(okResult)}})
 	if strings.Join(got.order, ",") != "note,final" {
 		t.Fatalf("order %v", got.order)
@@ -382,7 +382,7 @@ func TestUpstreamErrorPassesThrough(t *testing.T) {
 
 // An input request from the upstream is a final message like any other.
 func TestUpstreamInputRequestEndsTheStream(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}}}, Limits{})
 	ask := `{"resultType":"input_required","requestState":"up1","inputRequests":{"q":{"method":"elicitation/create","params":{"message":"Which?","requestedSchema":{"type":"object","properties":{}}}}}}`
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{resultEvent(ask)}})
 	ir, ok := got.final.Result.(InputRequired)
@@ -492,7 +492,7 @@ func TestPanicOnAStreamFailsClosed(t *testing.T) {
 	log := &faultLog{}
 	c := newStreamCase(t, "direct", nil, Limits{})
 	c.e.OnFault = log.add
-	c.call.Server.Rules = boomSet(t, "tools/result", false) // the result rule panics inside CEL
+	c.call.Server.Rules = boomSet(t, "tools/call.post.result", false) // the result rule panics inside CEL
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(okResult)}})
 	if got.final == nil || got.final.Fault == nil || got.final.Fault.Rule == nil || got.final.Fault.Rule.When != "boom()" {
 		t.Fatalf("no fault with the rule: %+v", got.final)
@@ -541,9 +541,9 @@ func TestConsumerPanicPassesThrough(t *testing.T) {
 
 func TestPromptAndReadStreamsUseTheirOwnProgressHook(t *testing.T) {
 	rules := []Rule{
-		{Hook: "prompts/progress", When: "name == 'summarize'", Then: map[string]string{"message": "'prompt: ' + progress.message"}},
-		{Hook: "resources/progress", When: "uri == 'file:///doc'", Then: map[string]string{"message": "'read: ' + progress.message"}},
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "prompts/get.post.progress", When: "name == 'summarize'", Then: map[string]string{"message": "'prompt: ' + progress.message"}},
+		{Hook: "resources/read.post.progress", When: "uri == 'file:///doc'", Then: map[string]string{"message": "'read: ' + progress.message"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"decision": "'deny'"}},
 	}
 	e := &Engine{Signer: Signer{Key: []byte("k")}}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{
@@ -579,20 +579,20 @@ func TestPromptAndReadStreamsUseTheirOwnProgressHook(t *testing.T) {
 
 func TestProgressRulesCompileOnlyWhatTheyMaySet(t *testing.T) {
 	ok := []Rule{
-		{Hook: "tools/progress", When: "progress.progress > 1", Then: map[string]string{"decision": "'deny'", "reason": "'noise'"}},
-		{Hook: "prompts/progress", When: "true", Then: map[string]string{"message": "''"}},
-		{Hook: "resources/progress", When: "has(progress.total)", Then: map[string]string{"message": "string(progress.progress)"}},
+		{Hook: "tools/call.post.progress", When: "progress.progress > 1", Then: map[string]string{"decision": "'deny'", "reason": "'noise'"}},
+		{Hook: "prompts/get.post.progress", When: "true", Then: map[string]string{"message": "''"}},
+		{Hook: "resources/read.post.progress", When: "has(progress.total)", Then: map[string]string{"message": "string(progress.progress)"}},
 	}
 	if _, probs := Compile(ok); probs != nil {
 		t.Fatalf("valid progress rules refused: %v", probs)
 	}
 	for _, bad := range []Rule{
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"progress": "1"}},
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"total": "1"}},
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"progressToken": "'x'"}},
-		{Hook: "tools/progress", When: "true", Then: map[string]string{"content": "[]"}},
-		{Hook: "tools/progress", When: "result.isError", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/result", When: "progress.progress > 1", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"progress": "1"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"total": "1"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"progressToken": "'x'"}},
+		{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"content": "[]"}},
+		{Hook: "tools/call.post.progress", When: "result.isError", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.result", When: "progress.progress > 1", Then: map[string]string{"decision": "'deny'"}},
 	} {
 		if _, probs := Compile([]Rule{bad}); probs == nil {
 			t.Errorf("compiled, but should not: %+v", bad)
@@ -602,7 +602,7 @@ func TestProgressRulesCompileOnlyWhatTheyMaySet(t *testing.T) {
 
 // A message of the wrong type is a rule error, so the event is dropped.
 func TestProgressMessageOfTheWrongTypeDropsTheEvent(t *testing.T) {
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/progress", When: "true", Then: map[string]string{"message": "5"}}}, Limits{})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"message": "5"}}}, Limits{})
 	got := c.run(&upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(okResult)}})
 	if len(got.notes) != 0 || textOf(t, got.final) != "done" {
 		t.Fatalf("got %+v", got)

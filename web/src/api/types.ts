@@ -521,7 +521,7 @@ export interface Rule {
   enabled?: boolean
   /** undefined = enforce. An audit rule records what it would do and changes nothing. */
   mode?: RuleMode
-  /** The hook the rule runs at, e.g. "tools/filter". */
+  /** The hook the rule runs at, e.g. "tools/list.post". */
   hook: string
   /** CEL boolean expression. */
   when: string
@@ -551,9 +551,9 @@ export interface RulesSchema {
   stages: RuleStage[]
 }
 
-/** One place where rules run: a method, a side of it and, for a reply, the event that came back. */
+/** One place where rules run, which is one engine hook: a method, a side of it and, for a reply, what came back. */
 export interface RuleStage {
-  /** e.g. "tools/call.post.result". */
+  /** The engine hook's name, e.g. "tools/call.post.result". */
   id: string
   /** Server, Tools, Prompts or Resources. */
   group: string
@@ -564,8 +564,6 @@ export interface RuleStage {
   item?: string
   summary: string
   notes?: string[]
-  /** The engine hooks the stage's rules compile to. */
-  hooks: string[]
   /** deny, confirm, set. */
   actions: string[]
   /** What deny does here, e.g. "hides the tool". */
@@ -595,7 +593,7 @@ export interface TextCheck {
 }
 
 export interface HookSchema {
-  /** e.g. "tools/filter". */
+  /** e.g. "tools/list.post". */
   hook: string
   /** tool, prompt, resource, template, skill or server; absent on hooks that work on the request alone. */
   item?: string

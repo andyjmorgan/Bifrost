@@ -1,15 +1,15 @@
 [
 {"name": "a rule written for a number clamps numbers and refuses a null, a string or a list",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/call", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.pre", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 250, "q": "x"}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100, "q": "x"}}, {"path": "hits", "has": {"hook": "tools/call", "effect": "set"}}]},
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 250, "q": "x"}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100, "q": "x"}}, {"path": "hits", "has": {"hook": "tools/call.pre", "effect": "set"}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 7}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 7}}]},
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": null}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call", "effect": "error"}}]},
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call", "effect": "error"}}]},
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": [1]}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call", "effect": "error"}}]}
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": null}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call.pre", "effect": "error"}}]},
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call.pre", "effect": "error"}}]},
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": [1]}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}, {"path": "hits", "has": {"hook": "tools/call.pre", "effect": "error"}}]}
  ]},
 {"name": "to accept text for a number, write two rules: convert, then clamp",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/call", "when": "has(args.limit) && type(args.limit) == string", "then": {"args.limit": "int(args.limit)"}}, {"hook": "tools/call", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.pre", "when": "has(args.limit) && type(args.limit) == string", "then": {"args.limit": "int(args.limit)"}}, {"hook": "tools/call.pre", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
  "steps": [
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "upstream": {"content": [{"type": "text", "text": "served"}]}, "expect": [{"path": "client", "refused": false}, {"path": "client.result.content[0].text", "equals": "served"}, {"path": "outcome.forward.params.arguments", "equals": {"limit": 50}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "250"}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100}}]},
@@ -18,27 +18,27 @@
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "abc"}}, "expect": [{"path": "client", "refused": true}, {"path": "outcome.forward", "exists": false}]}
  ]},
 {"name": "dropping from structured content leaves the text alone",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "upstream.name == 'find'", "then": {"structuredContent": "drop(result.structuredContent, ['owner.email', 'items.*.secret'])"}}], "catalog": {"tools": [{"name": "find", "inputSchema": {"type": "object", "properties": {}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'find'", "then": {"structuredContent": "drop(result.structuredContent, ['owner.email', 'items.*.secret'])"}}], "catalog": {"tools": [{"name": "find", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "find", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "{\"owner\":{\"email\":\"a@b.c\"}}"}], "structuredContent": {"owner": {"name": "ana", "email": "a@b.c"}, "items": [{"id": 1, "secret": "s1"}, {"id": 2, "secret": "s2"}]}}, "expect": [{"path": "client.result.structuredContent", "equals": {"owner": {"name": "ana"}, "items": [{"id": 1}, {"id": 2}]}}, {"path": "client.result.content[0].text", "equals": "{\"owner\":{\"email\":\"a@b.c\"}}"}, {"path": "hits", "has": {"hook": "tools/result", "effect": "set"}}]}
+  {"op": "tools/call", "params": {"name": "find", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "{\"owner\":{\"email\":\"a@b.c\"}}"}], "structuredContent": {"owner": {"name": "ana", "email": "a@b.c"}, "items": [{"id": 1, "secret": "s1"}, {"id": 2, "secret": "s2"}]}}, "expect": [{"path": "client.result.structuredContent", "equals": {"owner": {"name": "ana"}, "items": [{"id": 1}, {"id": 2}]}}, {"path": "client.result.content[0].text", "equals": "{\"owner\":{\"email\":\"a@b.c\"}}"}, {"path": "hits", "has": {"hook": "tools/call.post.result", "effect": "set"}}]}
  ]},
 {"name": "setting structured content to null removes it: plain output only",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "true", "then": {"structuredContent": "null"}}], "catalog": {"tools": [{"name": "find", "inputSchema": {"type": "object", "properties": {}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.post.result", "when": "true", "then": {"structuredContent": "null"}}], "catalog": {"tools": [{"name": "find", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
   {"op": "tools/call", "params": {"name": "find", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "{\"owner\":{\"email\":\"a@b.c\"}}"}], "structuredContent": {"owner": {"name": "ana", "email": "a@b.c"}, "items": [{"id": 1, "secret": "s1"}, {"id": 2, "secret": "s2"}]}}, "expect": [{"path": "client.result.structuredContent", "exists": false}, {"path": "client.result.content[0].text", "exists": true}]}
  ]},
 {"name": "the guarded text rewrite changes text blocks and passes an image through whole",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "true", "then": {"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.post.result", "when": "true", "then": {"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
   {"op": "tools/call", "params": {"name": "report", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "Datadog says hi. Datadog again."}, {"type": "image", "data": "aGVsbG8=", "mimeType": "image/png"}, {"type": "text", "text": "no change"}]}, "expect": [{"path": "client", "refused": false}, {"path": "client.result.content", "len": 3}, {"path": "client.result.content[0].text", "equals": "Bits says hi. Bits again."}, {"path": "client.result.content[1].type", "equals": "image"}, {"path": "client.result.content[1].data", "equals": "aGVsbG8="}, {"path": "client.result.content[1].mimeType", "equals": "image/png"}, {"path": "client.result.content[2].text", "equals": "no change"}]}
  ]},
 {"name": "the unguarded text rewrite errors on an image and the result is refused, not leaked",
- "servers": [{"slug": "a", "rules": [{"hook": "tools/result", "when": "true", "then": {"content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, 'secret', 'xxx')})"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
+ "servers": [{"slug": "a", "rules": [{"hook": "tools/call.post.result", "when": "true", "then": {"content": "result.content.map(c, {'type': 'text', 'text': regex.replace(c.text, 'secret', 'xxx')})"}}], "catalog": {"tools": [{"name": "report", "inputSchema": {"type": "object", "properties": {}}}]}}],
  "steps": [
   {"op": "tools/call", "params": {"name": "report", "arguments": {}}, "upstream": {"content": [{"type": "text", "text": "secret"}, {"type": "image", "data": "aGVsbG8=", "mimeType": "image/png"}]}, "expect": [{"path": "client", "refused": true}, {"path": "client", "lacksText": ["secret", "aGVsbG8="]}]}
  ]},
-{"name": "resource content is shaped by resources/result rules",
- "servers": [{"slug": "a", "rules": [{"hook": "resources/result", "when": "true", "then": {"text": "regex.replace(result.text, 'Confluence', 'the wiki')"}}], "catalog": {"resources": [{"uri": "docs://a", "name": "docs://a"}]}}],
+{"name": "resource content is shaped by resources/read.post.result rules",
+ "servers": [{"slug": "a", "rules": [{"hook": "resources/read.post.result", "when": "true", "then": {"text": "regex.replace(result.text, 'Confluence', 'the wiki')"}}], "catalog": {"resources": [{"uri": "docs://a", "name": "docs://a"}]}}],
  "steps": [
   {"op": "resources/read", "params": {"uri": "docs://a"}, "upstream": {"contents": [{"uri": "docs://a", "text": "Confluence page"}]}, "expect": [{"path": "client.result.contents[0].text", "equals": "the wiki page"}]}
  ]},

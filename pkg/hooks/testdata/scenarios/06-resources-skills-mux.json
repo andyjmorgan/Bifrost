@@ -12,21 +12,21 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri == 'file:///README.md'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/modify",
+      "hook": "resources/list.post",
       "when": "uri.startsWith('confluence://ENG/')",
       "then": {
        "title": "'ENG wiki: ' + title"
       }
      },
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri.startsWith('confluence://ENG/')",
       "then": {
        "decision": "'deny'",
@@ -237,7 +237,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
@@ -437,7 +437,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
@@ -810,14 +810,14 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.endsWith('advanced-analysis.md')",
       "then": {
        "decision": "'deny'"
@@ -1024,7 +1024,7 @@
   ]
  },
  {
-  "name": "RH-RSC-09 opt-in resources/result rewrites text; RH-RSC-10 reads are never cached (each read forwards)",
+  "name": "RH-RSC-09 opt-in resources/read.post.result rewrites text; RH-RSC-10 reads are never cached (each read forwards)",
   "ids": [
    "RH-RSC-09",
    "RH-RSC-10"
@@ -1035,7 +1035,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
@@ -1231,7 +1231,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
@@ -1424,7 +1424,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'widgets'",
       "then": {
        "decision": "'deny'"
@@ -1644,14 +1644,14 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "name == 'refunds' && uri.startsWith('skill://acme/support/')",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "skills/filter",
+      "hook": "skills/list.post",
       "when": "description == 'Dynamic.'",
       "then": {
        "decision": "'deny'"
@@ -1826,7 +1826,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "regex.replace(regex.replace(result.text, 'Confluence', 'the wiki'), 'Build Datadog notebooks.', 'Build notebooks.')"
@@ -2032,7 +2032,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "regex.replace(regex.replace(result.text, 'name: notebooks', 'name: evil'), 'Confluence', 'X')"
@@ -2212,7 +2212,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "result.text + string(now)"
@@ -2388,7 +2388,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.endsWith('advanced-analysis.md')",
       "then": {
        "decision": "'deny'"
@@ -3534,7 +3534,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -4020,7 +4020,7 @@
     "generation": "1",
     "rules": [
      {
-      "hook": "resources/result",
+      "hook": "resources/read.post.result",
       "when": "true",
       "then": {
        "text": "slugUris(result.text)"

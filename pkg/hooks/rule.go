@@ -104,6 +104,7 @@ type compiledRule struct {
 	then    []compiledThen
 	vars    map[string]bool
 	dynamic bool
+	denies  bool      // the rule sets decision
 	stat    *RuleStat // set while profiling
 }
 
@@ -237,7 +238,7 @@ func compileRule(i int, r Rule, o Options) (*compiledRule, Problems) {
 		bad("then", "then is required")
 	}
 	if len(r.Then) == 0 && spec.Phase == PhaseFilter {
-		bad("then", "a filter rule must set decision: \"deny\"")
+		bad("then", "a %s rule must set decision: \"deny\"", r.Hook)
 	}
 	keys := make([]string, 0, len(r.Then))
 	for k := range r.Then {
@@ -266,11 +267,11 @@ func compileRule(i int, r Rule, o Options) (*compiledRule, Problems) {
 				continue
 			}
 		}
-		if spec.Phase == PhaseModify {
+		if spec.Phase == PhaseList {
 			if parts := splitPath(k); len(parts) == 3 && parts[0] == "params" && (parts[2] == "pin" || parts[2] == "default") {
 				for _, v := range vars {
 					if DynamicVars[v] {
-						bad(k, "pin and default values must be static; set a value that depends on %s with args.%s in tools/call", v, parts[1])
+						bad(k, "pin and default values must be static; set a value that depends on %s with args.%s in tools/call.pre", v, parts[1])
 						break
 					}
 				}
@@ -287,7 +288,11 @@ func compileRule(i int, r Rule, o Options) (*compiledRule, Problems) {
 		}
 	}
 	if spec.Phase == PhaseFilter && !hasKey(r.Then, "decision") {
-		bad("then", "a filter rule must set decision: \"deny\"")
+		bad("then", "a %s rule must set decision: \"deny\"", r.Hook)
+	}
+	c.denies = hasKey(r.Then, "decision")
+	if (spec.Phase == PhaseList || spec.Phase == PhaseFilter) && hasKey(r.Then, "reason") && !c.denies {
+		bad("reason", "reason only has an effect beside decision: \"deny\"")
 	}
 	if len(probs) > 0 {
 		return nil, probs

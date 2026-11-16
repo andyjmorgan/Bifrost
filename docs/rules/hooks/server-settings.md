@@ -1,12 +1,12 @@
-# server/config
+# server.settings
 
-`server/config` sets switches that decide what kinds of items a server exposes and which server details pass to the client.
+`server.settings` sets switches that decide what kinds of items a server exposes and which server details pass to the client.
 
 ## When it runs
 
-`server/config` runs first on every request that touches a server: discover, every listing, every call, read and `skills/get`, and the search tools. Each switch starts at its default, and matching rules change it.
+`server.settings` runs first on every request that touches a server: discover, every listing, every call, read and `skills/get`, and the search tools. Each switch starts at its default, and matching rules change it.
 
-A switch that is off removes the whole kind. Its filter, modify and call hooks do not run.
+A switch that is off removes the whole kind. Its list and call hooks do not run.
 
 ## Variables
 
@@ -26,7 +26,7 @@ This hook has no item, so there is no `upstream` variable.
 | `tasks` | bool | `false` | Reserved. The gateway does not support the `io.modelcontextprotocol/tasks` extension yet, so this switch stays off whatever a rule sets, and a task handle a server returns is refused, for a tool call, a prompt or a read |
 | `instructions` | bool | `true` | Show the server's instructions in discover, mux excerpts and `get_server_instructions` |
 | `serverInfo` | bool | `false` | On the direct route, show the upstream's name and version in discover instead of the gateway's |
-| `searchRoster` | bool | `true` | Use the server's title, description and instructions, after [server/modify](server-modify.md), when search mode ranks tools |
+| `searchRoster` | bool | `true` | Use the server's title, description and instructions, after [server/discover.post](server-discover-post.md), when search mode ranks tools |
 | `progress` | bool | `true` | Relay upstream progress events on the request's own stream. Only servers that speak MCP 2026-07-28 can have it; for any other server it stays off whatever a rule sets |
 
 No field stops evaluation. Later rules override earlier ones.
@@ -48,7 +48,7 @@ Discover advertises a capability only when at least one server on the route has 
 - If the entitlement's enabled rules do not compile, every switch is off.
 - Switches are per server. On the mux route, each server's switches apply only to that server's items.
 - When a rule asks for `tasks`, or for `progress` on a server that cannot have it, the gateway turns the switch off and records why in the hits, under the rule label `(gateway)`.
-- Progress events pass through the progress hooks: [tools/progress](tools-progress.md), [prompts/progress](prompts-progress.md) and [resources/progress](resources-progress.md). No rule runs on any other notification.
+- Progress events pass through the progress hooks: [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) and [resources/read.post.progress](resources-read-post-progress.md). No rule runs on any other notification.
 
 ## Examples
 
@@ -57,7 +57,7 @@ Discover advertises a capability only when at least one server on the route has 
 ```json
 {
   "name": "Tools only",
-  "hook": "server/config",
+  "hook": "server.settings",
   "when": "true",
   "then": { "prompts": "false", "resources": "false" }
 }
@@ -70,7 +70,7 @@ Discover advertises only `{"tools": {"listChanged": false}}`. `prompts/get` for 
 ```json
 {
   "name": "No instructions for keys",
-  "hook": "server/config",
+  "hook": "server.settings",
   "when": "caller.type == 'key'",
   "then": { "instructions": "false" }
 }
@@ -83,7 +83,7 @@ Users see the server's instructions in discover. API keys see none.
 ```json
 {
   "name": "Holiday freeze",
-  "hook": "server/config",
+  "hook": "server.settings",
   "when": "now >= timestamp('2026-12-20T00:00:00Z') && now < timestamp('2027-01-04T00:00:00Z')",
   "then": { "tools": "false" }
 }
@@ -96,7 +96,7 @@ On December 10, 2026, `tools/list` shows the server's tools. On December 24, 202
 ```json
 {
   "name": "Show upstream",
-  "hook": "server/config",
+  "hook": "server.settings",
   "when": "true",
   "then": { "serverInfo": "true" }
 }
@@ -107,5 +107,5 @@ On the direct route, discover returns the upstream's name and version in `_meta[
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [server/modify for title, description and instructions](server-modify.md)
-- [server/connect for the gateway's outbound identity](server-connect.md)
+- [server/discover.post for title, description and instructions](server-discover-post.md)
+- [server.session for the gateway's outbound identity](server-session.md)

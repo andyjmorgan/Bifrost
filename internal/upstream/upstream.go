@@ -137,7 +137,7 @@ func (c *Connector) OpenWith(ctx context.Context, srv *store.Server, protocolVer
 }
 
 // SessionOptions is how the gateway presents itself to a server for one
-// forwarded request. The rules decide all of it (server/connect).
+// forwarded request. The rules decide all of it (server.session).
 type SessionOptions struct {
 	// Identity is the client name and version the server is told. Nil
 	// means the gateway's own.

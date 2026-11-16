@@ -1,10 +1,10 @@
-# prompts/progress
+# prompts/get.post.progress
 
-`prompts/progress` drops or rewords the progress events an upstream server sends while it builds a prompt.
+`prompts/get.post.progress` drops or rewords the progress events an upstream server sends while it builds a prompt.
 
 ## When it runs
 
-`prompts/progress` runs once for each progress event on the reply to a forwarded `prompts/get`, before the event reaches the client. It works the same way as [tools/progress](tools-progress.md): the same conditions for relaying progress, the same fields and the same limits.
+`prompts/get.post.progress` runs once for each progress event on the reply to a forwarded `prompts/get`, before the event reaches the client. It works the same way as [tools/call.post.progress](tools-call-post-progress.md): the same conditions for relaying progress, the same fields and the same limits.
 
 ## Variables
 
@@ -29,7 +29,7 @@
 ```json
 {
   "name": "Plain prompt progress",
-  "hook": "prompts/progress",
+  "hook": "prompts/get.post.progress",
   "when": "name == 'export_space'",
   "then": { "message": "'Building the prompt'" }
 }
@@ -39,6 +39,6 @@ Every progress event for `export_space` reaches the client with the message `Bui
 
 ## Related pages
 
-- [tools/progress, for the full description](tools-progress.md)
-- [prompts/get](prompts-get.md)
+- [tools/call.post.progress, for the full description](tools-call-post-progress.md)
+- [prompts/get.pre](prompts-get-pre.md)
 - [Hooks and rules overview](overview.md)

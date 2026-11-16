@@ -9,7 +9,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok','Delete it?')"
@@ -104,7 +104,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok','Delete it?')"
@@ -199,7 +199,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(input.ok)",
       "then": {
        "result": "elicit('ok','Delete it?')"
@@ -300,7 +300,7 @@
     },
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
@@ -418,14 +418,14 @@
     "slug": "old",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
       }
      },
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tasks": "true",
@@ -458,7 +458,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+      "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."
      }
     ],
     "op": "config",
@@ -513,14 +513,14 @@
     "slug": "nov",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
       }
      },
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tasks": "true",
@@ -553,7 +553,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+      "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."
      }
     ],
     "op": "config",
@@ -608,14 +608,14 @@
     "slug": "unknown",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
       }
      },
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tasks": "true",
@@ -648,7 +648,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+      "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."
      }
     ],
     "op": "config",
@@ -703,14 +703,14 @@
     "slug": "new",
     "rules": [
      {
-      "hook": "server/connect",
+      "hook": "server.session",
       "when": "true",
       "then": {
        "capabilities.elicitation": "true"
       }
      },
      {
-      "hook": "server/config",
+      "hook": "server.settings",
       "when": "true",
       "then": {
        "tasks": "true",
@@ -743,7 +743,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The config step asks the harness gateway for the server/config switches of the server, through a test-hook method. An SDK sends only protocol methods."
+      "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."
      }
     ],
     "op": "config",
@@ -835,7 +835,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'secret', '[x]')} : c)"
@@ -1070,7 +1070,7 @@
     "slug": "ghdeny",
     "rules": [
      {
-      "hook": "templates/filter",
+      "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -1263,7 +1263,7 @@
   ]
  },
  {
-  "name": "FR-06 closing a folder takes a prefix deny in resources/filter; it covers listed, templated, deeper and unlisted URIs alike",
+  "name": "FR-06 closing a folder takes a prefix deny in resources/list.post; it covers listed, templated, deeper and unlisted URIs alike",
   "ids": [
    "FR-06"
   ],
@@ -1272,7 +1272,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.startsWith('file:///secret/')",
       "then": {
        "decision": "'deny'"
@@ -1423,7 +1423,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "name.startsWith('internal')",
       "then": {
        "decision": "'deny'"
@@ -1700,7 +1700,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/read",
+      "hook": "resources/read.pre",
       "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
       "then": {
        "result": "elicit('ok', 'Share {uri}?', {'uri': uri})"
@@ -1870,7 +1870,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -1878,7 +1878,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -1886,7 +1886,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -1894,7 +1894,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -1948,7 +1948,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -1956,7 +1956,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -1964,7 +1964,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -1972,7 +1972,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2027,7 +2027,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2035,7 +2035,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2043,7 +2043,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2051,7 +2051,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2108,7 +2108,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2116,7 +2116,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2124,7 +2124,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2132,7 +2132,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2190,7 +2190,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2198,7 +2198,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2206,7 +2206,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2214,7 +2214,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2271,7 +2271,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2279,7 +2279,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2287,7 +2287,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2295,7 +2295,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2353,7 +2353,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2361,7 +2361,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2369,7 +2369,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2377,7 +2377,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2436,7 +2436,7 @@
     "rules": [
      {
       "name": "cli only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.cli && !flags.search",
       "then": {
        "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
@@ -2444,7 +2444,7 @@
      },
      {
       "name": "search only",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && !flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'search on ' + route}]"
@@ -2452,7 +2452,7 @@
      },
      {
       "name": "both",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "flags.search && flags.cli",
       "then": {
        "content": "[{'type': 'text', 'text': 'both on ' + route}]"
@@ -2460,7 +2460,7 @@
      },
      {
       "name": "never",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "route == 'search'",
       "then": {
        "decision": "'deny'"
@@ -2514,7 +2514,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "flags.serach",
       "then": {
        "decision": "'deny'"
@@ -2566,7 +2566,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "'search' in flags",
       "then": {
        "decision": "'deny'"

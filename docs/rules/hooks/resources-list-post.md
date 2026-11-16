@@ -1,0 +1,182 @@
+# resources/list.post
+
+`resources/list.post` decides which resources are visible and readable, and changes the title, description, annotations and metadata of a listed resource. It cannot change the URI or the name. Its deny rules also run on every URI a client reads, listed or not.
+
+## When it runs
+
+`resources/list.post` runs in two places:
+
+- On `resources/list`, on each listed upstream resource, after [server.settings](server-settings.md). On the mux route, the gateway adds the slug prefix to the URI after this hook.
+- On `resources/read`, on the requested URI, whether or not a listing contains it. It also runs on each child of a directory read, on each content item in a read result, on each skill file before rewriting, and on each candidate during [fallback resolution](overview.md#fallback-resolution) on the mux route.
+
+All of these places use one [visibility check](overview.md#resources-and-templates), so a listing and a read can never disagree. Every list hook that covers the URI applies: [skills/list.post](skills-list-post.md) for a containing skill folder, `resources/list.post` on the URI, and [resources/templates/list.post](resources-templates-list-post.md) for each template that covers it. Any deny wins.
+
+### URIs that no listing contains
+
+A read can name a URI that no listing contains, such as a file reached through a template or a link in a tool result. The hook still runs on that URI, with these differences:
+
+- Only the rules that deny run. Nothing is changed.
+- Only `uri` is available. Every other field, and every field of `upstream` except `uri`, is unavailable.
+- A deny rule that reads an unavailable field fails, and a rule that fails refuses the read.
+
+## Order of rules
+
+The rules run on each resource from top to bottom, in the order you write them. A rule can do one of two things:
+
+- hide the resource, by setting `decision: 'deny'`
+- change the resource, by setting any of the other [fields](#fields)
+
+Changes chain. A later rule reads the resource as earlier rules left it, so a hide rule written after a change to `title` sees the new title. `upstream` always holds the resource as the server sent it.
+
+The first deny hides the resource and stops the enforce rules. Audit rules still run, so the audit record is complete.
+
+Writing hide rules first is cheaper, because the gateway never changes a hidden resource. It is not required.
+
+A rule that fails to evaluate also hides the resource, and the listing reports the problem to administrators. The hidden resource is also unreadable: a read returns `-32602`, `not found: <uri>`, and fallback resolution does not offer it. A listed resource that collides with another resource is unreadable in the same way.
+
+## Hiding a resource
+
+A rule hides a resource by setting `decision` to `'deny'`. It can also set `reason`. A deny hides the resource and refuses reads of the URI.
+
+- `resources/list` omits the resource.
+- `resources/read` returns `-32602`, `not found: <uri>`. The upstream is not called, so the reply says nothing about whether the resource exists.
+- A directory read drops denied children, whatever their MIME type, and whether or not they are marked as directories.
+- A read result drops content items for other URIs that the caller cannot read, and content items whose URI is not in canonical form.
+- A rule that sets both `decision` and other fields hides the resource. Its other fields are discarded.
+
+## Changing a resource
+
+A rule changes a resource by setting any field other than `decision` and `reason`.
+
+- `resources/list` shows the changed resource with its original URI. On the mux route, the URI carries the slug prefix.
+- Text changes affect listings only. They do not change read results. To change content, use [resources/read.post.result](resources-read-post-result.md).
+
+## Variables
+
+Each variable holds the resource as earlier rules left it. Before any rule changes the resource, that is the resource as the upstream sent it.
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `uri` | string | The resource URI, as the upstream knows it. On the mux route, it has no slug prefix. It never changes |
+| `name` | string | The resource name, or `''`. It never changes |
+| `title` | string | The current resource title, or `''` |
+| `description` | string | The current resource description, or `''` |
+| `mimeType` | string | The MIME type, or `''` |
+| `annotations` | map | The current annotations, or `{}` |
+| `meta` | map | The current `_meta`, or `{}` |
+| `size` | int | The size in bytes, or `0` |
+| `icons` | list | The resource's icons, or `[]` |
+| `upstream` | map | The resource as the upstream sent it |
+| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
+
+For a URI that no listing contains, only `uri` is available. See [URIs that no listing contains](#uris-that-no-listing-contains).
+
+## Fields
+
+| Field | Type | Effect |
+| --- | --- | --- |
+| `decision` | `'deny'` | Hide the resource and refuse reads of the URI. Stops the enforce rules |
+| `reason` | string | Recorded in audit only |
+| `title` | string | Replace the title |
+| `description` | string | Replace the description |
+| `annotations` | map | Replace all annotations |
+| `annotations.<key>` | any | Set one annotation, such as `annotations.priority` |
+| `meta.<key>` | any | Set a `_meta` key. `null` removes the key |
+
+Only `decision` stops evaluation. Every other field chains.
+
+## Examples
+
+### Hide one resource
+
+```json
+{
+  "name": "Hide changelog",
+  "hook": "resources/list.post",
+  "when": "uri == 'file:///CHANGELOG.md'",
+  "then": { "decision": "'deny'" }
+}
+```
+
+`resources/list` shows only `file:///README.md`. A read of `file:///CHANGELOG.md` returns `-32602`, `not found: file:///CHANGELOG.md`.
+
+### Deny files reached through a template
+
+```json
+{
+  "name": "No env files",
+  "hook": "resources/list.post",
+  "when": "uri.endsWith('.env') || uri.contains('/.git/')",
+  "then": { "decision": "'deny'" }
+}
+```
+
+With the template `file:///repo/{+path}`, a read of `file:///repo/config/prod.env` returns `not found`. A read of `file:///repo/src/main.go` reaches the upstream.
+
+### Hide large binary resources
+
+```json
+{
+  "name": "No large binaries",
+  "hook": "resources/list.post",
+  "when": "!mimeType.startsWith('text/') && size > 1048576",
+  "then": { "decision": "'deny'" }
+}
+```
+
+A 50 MB `application/zip` resource is hidden. A 2 MB `text/markdown` resource stays.
+
+### Prefix titles for one space
+
+```json
+{
+  "name": "ENG titles",
+  "hook": "resources/list.post",
+  "when": "uri.startsWith('confluence://ENG/')",
+  "then": { "title": "'ENG wiki: ' + (title != '' ? title : name)" }
+}
+```
+
+`confluence://ENG/runbook` is listed with the title `ENG wiki: runbook`. `confluence://OPS/oncall` keeps its title.
+
+### Set audience and priority
+
+```json
+{
+  "name": "Assistant only",
+  "hook": "resources/list.post",
+  "when": "uri.endsWith('.json')",
+  "then": { "annotations.audience": "['assistant']", "annotations.priority": "0.2" }
+}
+```
+
+`file:///schema.json` is listed with `{"audience": ["assistant"], "priority": 0.2}`.
+
+### Rewrite descriptions
+
+```json
+{
+  "name": "Wiki wording",
+  "hook": "resources/list.post",
+  "when": "true",
+  "then": { "description": "regex.replace(description, '(?i)confluence', 'the wiki')" }
+}
+```
+
+`Exported from Confluence.` becomes `Exported from the wiki.`
+
+## Nuances and limits
+
+- Rules always see URIs without the mux prefix, so the same rule works on both routes.
+- Because the deny rules run on every read URI, the hook can deny a single file that is reachable only through a template or a skill.
+- A URI the server does not list has no name, MIME type or other fields, only `uri`. A deny rule that reads one of those fields fails on such a URI, and a rule that fails refuses the read. So a deny written on `name` also stops every unlisted read on that server. Put a `uri` condition first to avoid that, for example `uri.startsWith('docs://') && name.startsWith('internal')`.
+- A read is allowed unless a rule denies it, whether or not the server lists the URI. To close a folder, deny its prefix: `uri.startsWith('file:///secret/')`.
+- A directory read checks every child with the same check as a read, including `resources/list.post`. A read of a denied directory URI itself is refused.
+- URIs and names never change, and no rule can rewrite a resource URI. A rule that sets `uri` or `name` fails to save, with `resources/list.post cannot set "name"`.
+
+## Related pages
+
+- [Hooks and rules overview](overview.md)
+- [resources/templates/list.post](resources-templates-list-post.md) and [skills/list.post](skills-list-post.md), the other list hooks on a read
+- [resources/read.pre for decisions with a reason](resources-read-pre.md)
+- [resources/read.post.result for changing content](resources-read-post-result.md)

@@ -106,7 +106,7 @@ func newEngine(g *Gateway, version string) *hooks.Engine {
 // Both are empty unless set, so no _meta crosses the gateway either way.
 //
 // in is input: the keys of a client's request _meta that may go on to a
-// server. A server/connect rule still has to turn forwarding on for the
+// server. A server.session rule still has to turn forwarding on for the
 // server; the list bounds what that rule can forward.
 //
 // out is output: the keys of a server's _meta that may reach a client, on
@@ -997,7 +997,7 @@ func (g *Gateway) send(ctx context.Context, x *exposed, fwd *hooks.Forward, upTo
 	// An older one gets no progress and no questions, whatever they say.
 	current := x.init.ProtocolVersion == hooks.ProtocolCurrent
 	if meta, ok := params["_meta"].(map[string]any); ok {
-		// What is left of the client's _meta here is what a server/connect
+		// What is left of the client's _meta here is what a server.session
 		// rule chose to forward. Only keys on the input list go on. The
 		// client's progress token and the protocol's own keys never do.
 		kept := map[string]any{}

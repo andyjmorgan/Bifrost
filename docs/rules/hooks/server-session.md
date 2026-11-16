@@ -1,10 +1,10 @@
-# server/connect
+# server.session
 
-`server/connect` decides what the gateway tells an upstream server about itself when the gateway sends it a request.
+`server.session` decides what the gateway tells an upstream server about itself when the gateway sends it a request.
 
 ## When it runs
 
-`server/connect` runs for every request the gateway sends to an upstream server: each forwarded `tools/call`, `prompts/get`, `resources/read` and directory read, and the gateway's own requests, such as fetching instructions for discover. Every forward carries its result: `clientInfo`, `capabilities` and `forwardMeta`.
+`server.session` runs for every request the gateway sends to an upstream server: each forwarded `tools/call`, `prompts/get`, `resources/read` and directory read, and the gateway's own requests, such as fetching instructions for discover. Every forward carries its result: `clientInfo`, `capabilities` and `forwardMeta`.
 
 By default, the gateway is anonymous to the upstream: it names itself `bifrost`, advertises no elicitation capability and strips `_meta` from outbound requests.
 
@@ -28,7 +28,7 @@ No field stops evaluation. Later rules override earlier ones.
 
 ## What the upstream sees
 
-The fields change the outbound request only. The client sees no difference, except that an upstream without the elicitation capability does not ask for input, so [tools/elicit](tools-elicit.md), [prompts/elicit](prompts-elicit.md) and [resources/elicit](resources-elicit.md) do not run.
+The fields change the outbound request only. The client sees no difference, except that an upstream without the elicitation capability does not ask for input, so [tools/call.post.elicit](tools-call-post-elicit.md), [prompts/get.post.elicit](prompts-get-post-elicit.md) and [resources/read.post.elicit](resources-read-post-elicit.md) do not run.
 
 If an enforce rule fails to evaluate, the gateway uses its anonymous defaults for that request.
 
@@ -46,7 +46,7 @@ If an enforce rule fails to evaluate, the gateway uses its anonymous defaults fo
 ```json
 {
   "name": "Pass client identity",
-  "hook": "server/connect",
+  "hook": "server.session",
   "when": "true",
   "then": { "clientInfo": "{'name': client.name, 'version': client.version}" }
 }
@@ -59,7 +59,7 @@ A client that reports `claude-code` version `2.1` reaches the upstream as `{"nam
 ```json
 {
   "name": "Elicitation for users",
-  "hook": "server/connect",
+  "hook": "server.session",
   "when": "caller.type == 'user'",
   "then": { "capabilities.elicitation": "true" }
 }
@@ -72,7 +72,7 @@ Requests on behalf of users advertise `{"elicitation": {}}`. Requests on behalf 
 ```json
 {
   "name": "Forward meta",
-  "hook": "server/connect",
+  "hook": "server.session",
   "when": "server.slug == 'tracing'",
   "then": { "meta": "true" }
 }
@@ -83,5 +83,5 @@ A call that the client sends with `_meta` `{"trace": "x", "io.modelcontextprotoc
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [server/config switches](server-config.md)
-- [tools/elicit for upstream input requests](tools-elicit.md)
+- [server.settings switches](server-settings.md)
+- [tools/call.post.elicit for upstream input requests](tools-call-post-elicit.md)

@@ -10,7 +10,7 @@
       "name": "Hide delete tools",
       "enabled": true,
       "mode": "enforce",
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
       "then": {
        "decision": "'deny'",
@@ -21,7 +21,7 @@
       "id": "r2",
       "name": "Trial: hide write tools",
       "mode": "audit",
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "!annotations.readOnlyHint",
       "then": {
        "decision": "'deny'"
@@ -31,7 +31,7 @@
       "id": "r3",
       "name": "Old rule",
       "enabled": false,
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "decision": "'deny'"
@@ -102,14 +102,14 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "name.startsWith('confluence_')",
       "then": {
        "name": "regex.replace(name, '^confluence_', 'wiki_')"
       }
      },
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "name.startsWith('wiki_')",
       "then": {
        "description": "'[' + upstream.name + '] ' + description"
@@ -156,14 +156,14 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "name.startsWith('delete_')",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "caller.email == 'sre-lead@example.com' && name == 'never'",
       "then": {
        "decision": "'deny'"
@@ -208,7 +208,7 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "args.space == 'HR'",
       "then": {
        "decision": "'deny'"
@@ -254,21 +254,21 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/call.post.progress",
       "when": "true",
       "then": {
        "name": "'x'"
       }
      },
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "decision": "caller.email == 'sre-lead@example.com' ? 'allow' : 'deny'"
       }
      },
      {
-      "hook": "prompts/filter",
+      "hook": "skills/list.post",
       "when": "true",
       "then": {
        "reason": "'x'"
@@ -291,7 +291,7 @@
     "expect": [
      {
       "path": "problems.a[*].message",
-      "contains": "tools/filter cannot set \"name\""
+      "contains": "tools/call.post.progress cannot set \"name\""
      },
      {
       "path": "problems.a[*].message",
@@ -299,7 +299,7 @@
      },
      {
       "path": "problems.a[*].message",
-      "contains": "a filter rule must set decision: \"deny\""
+      "contains": "a skills/list.post rule must set decision: \"deny\""
      },
      {
       "path": "problems.a[*].message",
@@ -317,7 +317,7 @@
     "rules": [
      {
       "enabled": false,
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "args.x == 1",
       "then": {
        "decision": "'deny'"
@@ -339,7 +339,7 @@
     "slug": "b",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "args.x == 1",
       "then": {
        "decision": "'deny'"
@@ -390,14 +390,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "has(args.limit) && args.limit > 100",
       "then": {
        "args.limit": "100"
       }
      },
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "false && args.missing > 1",
       "then": {
        "decision": "'deny'"
@@ -443,7 +443,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "sets.contains(['a', 'b', 'c'], ['b']) && math.greatest(1, 5) == 5",
       "then": {
        "description": "'%s has %d parameters'.format([name, size(params)])",
@@ -728,14 +728,14 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "tools/filter",
+      "hook": "tools/list.post",
       "when": "name == 'delete_page'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "name == 'confluence_search'",
       "then": {
        "name": "'search_pages'"
@@ -878,7 +878,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "sets.intersects(['a'], ['a', 'b']) && sets.equivalent([1, 2], [2, 1]) && [[1], [2]].flatten() == [1, 2] && [3, 1].sortBy(x, x) == [1, 3] && regex.extract('ab12', '[0-9]+') == optional.of('12') && regex.extractAll('a1b2', '[0-9]') == ['1', '2'] && 'A-b'.lowerAscii().split('-') == ['a', 'b'] && 'x.y'.replace('.', '_') == 'x_y' && base64.decode('aGk=') == b'hi' && math.least(3, 1) == 1 && [1, 2].all(i, v, v > 0) && cel.bind(x, 2, x * x) == 4 && 1 < 1.5 && 2u > 1.5",
       "then": {
        "title": "'ok'"
@@ -920,7 +920,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "limit": "{'key': caller.userId, 'rate': '10/m'}"
@@ -962,7 +962,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "!has(client.capabilities.elicitation)",
       "then": {
        "decision": "'deny'",
@@ -1029,7 +1029,7 @@
     "rules": [
      {
       "name": "Secret policy",
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "args.missing.deep == 1",
       "then": {
        "decision": "'deny'"
@@ -1037,7 +1037,7 @@
      },
      {
       "name": "Input policy",
-      "hook": "tools/elicit",
+      "hook": "tools/call.post.elicit",
       "when": "request.missing.deep == 1",
       "then": {
        "decision": "'deny'"
@@ -1045,7 +1045,7 @@
      },
      {
       "name": "Result policy",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "result.missing.deep == 1",
       "then": {
        "decision": "'deny'"
@@ -1151,7 +1151,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "args.n == 1",
       "then": {
        "decision": "'deny'",
@@ -1385,7 +1385,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/filter",
+      "hook": "resources/list.post",
       "when": "uri.startsWith('file:///a/')",
       "then": {
        "decision": "'deny'"
@@ -1436,7 +1436,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(result.structuredContent.items)",
       "then": {
        "structuredContent": "{'items': size(result.structuredContent.items) > 2 ? result.structuredContent.items.slice(0, 2) : result.structuredContent.items}"

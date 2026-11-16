@@ -1,13 +1,13 @@
 [
  {
-  "name": "tools/result E1 drop fields, the text copy, and the matching schema",
+  "name": "tools/call.post.result E1 drop fields, the text copy, and the matching schema",
   "servers": [
    {
     "slug": "jira",
     "rules": [
      {
       "name": "Drop issue noise",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "upstream.name == 'search_issues' && has(result.structuredContent)",
       "then": {
        "structuredContent": "drop(result.structuredContent, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])",
@@ -16,7 +16,7 @@
      },
      {
       "name": "Drop issue noise from schema",
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "upstream.name == 'search_issues'",
       "then": {
        "outputSchema": "dropSchema(outputSchema, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])"
@@ -153,14 +153,14 @@
   ]
  },
  {
-  "name": "tools/result E2 keep chosen fields and cap the list",
+  "name": "tools/call.post.result E2 keep chosen fields and cap the list",
   "servers": [
    {
     "slug": "gh",
     "rules": [
      {
       "name": "First 20 ids and titles",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "upstream.name == 'list_issues' && has(result.structuredContent.items)",
       "then": {
        "structuredContent": "cel.bind(items, result.structuredContent.items.map(i, {'number': i.number, 'title': i.title}), {'items': size(items) > 20 ? items.slice(0, 20) : items})"
@@ -376,14 +376,14 @@
   ]
  },
  {
-  "name": "tools/result E3 replace upstream error details",
+  "name": "tools/call.post.result E3 replace upstream error details",
   "servers": [
    {
     "slug": "db",
     "rules": [
      {
       "name": "Generic error",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "result.isError",
       "then": {
        "content": "[{'type': 'text', 'text': 'The query failed. Check the table name and try again.'}]"
@@ -460,14 +460,14 @@
   ]
  },
  {
-  "name": "tools/result E4 deny a result by its text",
+  "name": "tools/call.post.result E4 deny a result by its text",
   "servers": [
    {
     "slug": "web",
     "rules": [
      {
       "name": "Block keys",
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "result.text.contains('BEGIN PRIVATE KEY')",
       "then": {
        "decision": "'deny'",
@@ -524,7 +524,7 @@
   ]
  },
  {
-  "name": "tools/result nuance: args under upstream names; mux prefix runs last; size cap",
+  "name": "tools/call.post.result nuance: args under upstream names; mux prefix runs last; size cap",
   "route": "mux",
   "limits": {
    "maxResponseBytes": 200
@@ -534,14 +534,14 @@
     "slug": "docs",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "params.cql.name": "'q'"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "args.cql == 'link'",
       "then": {
        "content": "[{'type': 'resource_link', 'uri': 'file:///a.md', 'name': 'a'}]"
@@ -613,13 +613,13 @@
   ]
  },
  {
-  "name": "tools/result nuance: slice past the end is an evaluation error, which denies",
+  "name": "tools/call.post.result nuance: slice past the end is an evaluation error, which denies",
   "servers": [
    {
     "slug": "gh",
     "rules": [
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "true",
       "then": {
        "structuredContent": "{'items': result.structuredContent.items.slice(0, 20)}"
@@ -670,27 +670,27 @@
   ]
  },
  {
-  "name": "tools/result v2: args are the forwarded arguments; result.meta; structuredContent keeps its type",
+  "name": "tools/call.post.result v2: args are the forwarded arguments; result.meta; structuredContent keeps its type",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/modify",
+      "hook": "tools/list.post",
       "when": "true",
       "then": {
        "params.env.pin": "'staging'"
       }
      },
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "has(args.limit) && args.limit > 10",
       "then": {
        "args.limit": "10"
       }
      },
      {
-      "hook": "tools/result",
+      "hook": "tools/call.post.result",
       "when": "has(args.limit) && args.limit == 10 && args.env == 'staging' && result.meta.k == 'v'",
       "then": {
        "content": "[{'type': 'text', 'text': 'seen'}]"

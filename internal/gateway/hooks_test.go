@@ -317,8 +317,8 @@ func TestDirectListAndCallGoThroughTheRules(t *testing.T) {
 	u.Tool(toolKeep, harness.Static(harness.Reply{Result: harness.Text("kept")}))
 	u.Tool(`{"name":"secret","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
 	r.entitle("a", u,
-		deny("tools/filter", "name == 'secret'"),
-		hooks.Rule{Hook: "tools/modify", When: "upstream.name == 't'", Then: map[string]string{"name": "'renamed'", "description": "'changed'"}})
+		deny("tools/list.post", "name == 'secret'"),
+		hooks.Rule{Hook: "tools/list.post", When: "upstream.name == 't'", Then: map[string]string{"name": "'renamed'", "description": "'changed'"}})
 
 	list := harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"})
 	if got := names(t, list, "tools", "name"); !same(got, "renamed", "keep") {
@@ -348,7 +348,7 @@ func TestSelectionCutsBeforeTheRules(t *testing.T) {
 	u.Tool(toolKeep, harness.Static(harness.Reply{Result: harness.Text("kept")}))
 	// A rule that would rename everything: it must never see a tool the
 	// entitlement's allow list left out.
-	s := r.entitle("a", u, hooks.Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"description": "'seen by rules'"}})
+	s := r.entitle("a", u, hooks.Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"description": "'seen by rules'"}})
 	r.store.mu.Lock()
 	s.Selection = store.Selection{store.SelTools: {"keep"}}
 	r.store.mu.Unlock()
@@ -367,7 +367,7 @@ func TestMuxPrefixesRoutesAndKeepsTheGatewayTools(t *testing.T) {
 	a, b := harness.NewUpstream(t, harness.V2026), harness.NewUpstream(t, harness.V2026)
 	a.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("from a")}))
 	b.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("from b")}))
-	r.entitle("a", a, deny("tools/call", "has(args.q) && args.q == 'no'"))
+	r.entitle("a", a, deny("tools/call.pre", "has(args.q) && args.q == 'no'"))
 	r.entitle("b", b)
 
 	got := names(t, harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"}), "tools", "name")
@@ -424,7 +424,7 @@ func TestResultRulesShapeTheReply(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{RawResult: `{"content":[{"type":"text","text":"hi"}],"structuredContent":{"keep":1,"internal":2}}`}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/result", When: "has(result.structuredContent)", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['internal'])"}})
+	r.entitle("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "has(result.structuredContent)", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['internal'])"}})
 	res := harness.Raw(t, r.direct("a"), call("t", nil)).Result()
 	if got := dump(res["structuredContent"]); got != `{"keep":1}` {
 		t.Fatalf("structuredContent = %s", got)
@@ -463,8 +463,8 @@ func TestProgressIsRelayedUnderTheClientsTokenAndShapedByRules(t *testing.T) {
 	u.Tool(toolT, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"),
 		Progress: []harness.Progress{{Progress: 1, Total: 3, Message: "step 1"}, {Progress: 2, Total: 3, Message: "reading /srv/secret"}, {Progress: 3, Total: 3, Message: "step 3"}}}))
 	r.entitle("a", u,
-		deny("tools/progress", "progress.message.contains('/srv')"),
-		hooks.Rule{Hook: "tools/progress", When: "progress.message.startsWith('step')", Then: map[string]string{"message": "'working: ' + progress.message"}})
+		deny("tools/call.post.progress", "progress.message.contains('/srv')"),
+		hooks.Rule{Hook: "tools/call.post.progress", When: "progress.message.startsWith('step')", Then: map[string]string{"message": "'working: ' + progress.message"}})
 
 	req := call("t", nil)
 	req.ProgressToken = "client-token"
@@ -527,7 +527,7 @@ func TestConfirmationRoundTripUsesTheSharedStoreOnce(t *testing.T) {
 	u.Tool(`{"name":"delete","inputSchema":{"type":"object","properties":{"id":{"type":"string"}}}}`, func(rec harness.Recorded) harness.Reply {
 		return harness.Reply{Result: harness.Text("deleted " + rec.Args()["id"].(string))}
 	})
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete {id}?', {'id': args.id})"}})
+	r.entitle("a", u, hooks.Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete {id}?', {'id': args.id})"}})
 
 	ask := call("delete", map[string]any{"id": "42"})
 	ask.Capabilities = elicits
@@ -575,7 +575,7 @@ func TestAClientThatCannotBeAskedIsRefusedNotAsked(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ran")}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Sure?')"}})
+	r.entitle("a", u, hooks.Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Sure?')"}})
 	rep := harness.Raw(t, r.direct("a"), call("t", nil)) // declares no elicitation
 	if res := rep.Result(); res != nil && res["resultType"] == "input_required" {
 		t.Fatalf("a client with no elicitation was asked: %v", res)
@@ -610,7 +610,7 @@ func TestTheServerSeesTheIdentityAndMetaTheRulesDecide(t *testing.T) {
 		t.Fatalf("the server was told capabilities %v by default", caps)
 	}
 
-	pol, _ := json.Marshal([]hooks.Rule{{Hook: "server/connect", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true", "clientInfo": "{'name': 'acme', 'version': '7'}"}}})
+	pol, _ := json.Marshal([]hooks.Rule{{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true", "clientInfo": "{'name': 'acme', 'version': '7'}"}}})
 	r.store.mu.Lock()
 	s.Policies, s.Generation = pol, 2
 	r.store.mu.Unlock()
@@ -624,7 +624,7 @@ func TestTheServerSeesTheIdentityAndMetaTheRulesDecide(t *testing.T) {
 	harness.Raw(t, r.direct("a"), req)
 	got = u.Last(t, "tools/call")
 	if got.Meta()["trace"] != "abc" {
-		t.Fatalf("server/connect meta with the key on the input list did not forward it: %v", got.Meta())
+		t.Fatalf("server.session meta with the key on the input list did not forward it: %v", got.Meta())
 	}
 	if _, ok := got.Capabilities()["elicitation"]; !ok {
 		t.Fatalf("the server was not told elicitation: %v", got.Capabilities())
@@ -638,7 +638,7 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2025)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("old ok"), ForceProgress: true, Progress: []harness.Progress{{Progress: 1, Message: "unasked"}}}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped ' + result.content[0].text}]"}})
+	r.entitle("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'shaped ' + result.content[0].text}]"}})
 	req := call("t", nil)
 	req.ProgressToken = "client-token"
 	rep := harness.Raw(t, r.direct("a"), req)
@@ -660,7 +660,7 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
 	for name, policies := range map[string]string{
 		"the retired format":   `[{"id":"r1","action":"deny","kinds":["tool"],"when":"tool.name == 'x'"}]`,
-		"a rule that is wrong": `[{"hook":"tools/filter","when":"nope ==","then":{"decision":"'deny'"}}]`,
+		"a rule that is wrong": `[{"hook":"tools/list.post","when":"nope ==","then":{"decision":"'deny'"}}]`,
 		"an unknown hook":      `[{"hook":"tools/nope","when":"true","then":{"decision":"'deny'"}}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -693,9 +693,9 @@ func TestPromptsAndResourcesGoThroughTheRules(t *testing.T) {
 	u.Resource("docs://hidden", harness.Static(harness.Reply{Result: harness.Contents("docs://hidden", "x")}))
 	u.Resource("other://b", harness.Static(harness.Reply{Result: harness.Contents("other://b", "x")}))
 	s := r.entitle("a", u,
-		deny("prompts/filter", "name == 'secret'"),
-		deny("resources/filter", "uri == 'docs://hidden'"),
-		hooks.Rule{Hook: "resources/result", When: "result.text.contains('token=')", Then: map[string]string{"text": "result.text.replace('token=abc', 'token=***')"}})
+		deny("prompts/list.post", "name == 'secret'"),
+		deny("resources/list.post", "uri == 'docs://hidden'"),
+		hooks.Rule{Hook: "resources/read.post.result", When: "result.text.contains('token=')", Then: map[string]string{"text": "result.text.replace('token=abc', 'token=***')"}})
 	s.Selection = store.Selection{store.SelResources: {"docs://**"}, store.SelTemplates: {}}
 
 	if got := names(t, harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "prompts/list"}), "prompts", "name"); !same(got, "greet") {
@@ -735,8 +735,8 @@ func TestDiscoveryIsShapedByTheRules(t *testing.T) {
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ok")}))
 	u.Prompt(`{"name":"greet"}`, harness.Static(harness.Reply{RawResult: `{"messages":[]}`}))
 	r.entitle("a", u,
-		hooks.Rule{Hook: "server/config", When: "true", Then: map[string]string{"prompts": "false"}},
-		hooks.Rule{Hook: "server/modify", When: "true", Then: map[string]string{"instructions": "'gateway instructions'"}})
+		hooks.Rule{Hook: "server.settings", When: "true", Then: map[string]string{"prompts": "false"}},
+		hooks.Rule{Hook: "server/discover.post", When: "true", Then: map[string]string{"instructions": "'gateway instructions'"}})
 	res := harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "server/discover"}).Result()
 	if res == nil {
 		t.Fatal("no discover result")
@@ -760,7 +760,7 @@ func TestSearchModeSearchesAndExecutesWhatTheRulesExpose(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(`{"name":"zebra_read","description":"zebra quartz reader","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("read ok")}))
 	u.Tool(`{"name":"zebra_admin","description":"zebra quartz admin","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("admin ran")}))
-	r.entitle("a", u, deny("tools/filter", "flags.search && name == 'zebra_admin'"))
+	r.entitle("a", u, deny("tools/list.post", "flags.search && name == 'zebra_admin'"))
 	search := r.mux() + "?search=true"
 
 	list := harness.Raw(t, search, harness.RawRequest{Method: "tools/list"})
@@ -811,8 +811,8 @@ func TestGoSDKClientThroughTheGateway(t *testing.T) {
 	u.Tool(toolT, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"), Progress: []harness.Progress{{Progress: 1, Total: 1, Message: "step 1"}}}))
 	u.Tool(`{"name":"delete","inputSchema":{"type":"object","properties":{"id":{"type":"string"}}}}`, harness.Static(harness.Reply{Result: harness.Text("deleted")}))
 	r.entitle("a", u,
-		hooks.Rule{Hook: "tools/modify", When: "upstream.name == 't'", Then: map[string]string{"name": "'work'"}},
-		hooks.Rule{Hook: "tools/call", When: "name == 'delete' && !has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete?')"}})
+		hooks.Rule{Hook: "tools/list.post", When: "upstream.name == 't'", Then: map[string]string{"name": "'work'"}},
+		hooks.Rule{Hook: "tools/call.pre", When: "name == 'delete' && !has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete?')"}})
 
 	var (
 		mu       sync.Mutex
@@ -910,11 +910,11 @@ func TestOfficialSDKClientsThroughTheGateway(t *testing.T) {
 			u.Prompt(`{"name":"greet"}`, harness.Static(harness.Reply{RawResult: `{"messages":[{"role":"user","content":{"type":"text","text":"hello"}}]}`}))
 			u.Resource("docs://a", harness.Static(harness.Reply{Result: harness.Contents("docs://a", "body token=abc")}))
 			r.entitle("a", u,
-				deny("tools/filter", "name == 'secret'"),
-				hooks.Rule{Hook: "tools/modify", When: "upstream.name == 't'", Then: map[string]string{"name": "'work'"}},
-				hooks.Rule{Hook: "tools/progress", When: "true", Then: map[string]string{"message": "'working: ' + progress.message"}},
-				hooks.Rule{Hook: "tools/call", When: "name == 'delete' && !has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete?')"}},
-				hooks.Rule{Hook: "resources/result", When: "true", Then: map[string]string{"text": "result.text.replace('token=abc', 'token=***')"}})
+				deny("tools/list.post", "name == 'secret'"),
+				hooks.Rule{Hook: "tools/list.post", When: "upstream.name == 't'", Then: map[string]string{"name": "'work'"}},
+				hooks.Rule{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"message": "'working: ' + progress.message"}},
+				hooks.Rule{Hook: "tools/call.pre", When: "name == 'delete' && !has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Delete?')"}},
+				hooks.Rule{Hook: "resources/read.post.result", When: "true", Then: map[string]string{"text": "result.text.replace('token=abc', 'token=***')"}})
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
@@ -995,8 +995,8 @@ func TestAServersOwnQuestionMakesTheRoundTrip(t *testing.T) {
 		return harness.Reply{RawResult: `{"resultType":"input_required","requestState":"S1","inputRequests":{"p":{"method":"elicitation/create","params":{"mode":"form","message":"Which project?","requestedSchema":{"type":"object","properties":{"project":{"type":"string"}}}}}}}`}
 	})
 	r.entitle("a", u,
-		hooks.Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-		hooks.Rule{Hook: "tools/elicit", When: "true", Then: map[string]string{"message": "'Gateway asks: ' + request.message"}})
+		hooks.Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+		hooks.Rule{Hook: "tools/call.post.elicit", When: "true", Then: map[string]string{"message": "'Gateway asks: ' + request.message"}})
 	ask := call("t", nil)
 	ask.Capabilities = elicits
 	first := harness.Raw(t, r.direct("a"), ask).Result()
@@ -1067,12 +1067,12 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 // engine runs. Both shapes of stored rules read back, and the retired
 // format is still refused inside the new shape.
 func TestStoredRulesKeepTheirText(t *testing.T) {
-	rules := []hooks.Rule{{Hook: "tools/filter", When: "true", Then: map[string]string{"decision": "'deny'"}}}
+	rules := []hooks.Rule{{Hook: "tools/list.post", When: "true", Then: map[string]string{"decision": "'deny'"}}}
 	bare, _ := json.Marshal(rules)
 	withText, _ := json.Marshal(gateway.StoredRules{Text: map[string]string{"tools/list.post": "when true deny"}, Rules: rules})
 	for name, raw := range map[string][]byte{"a bare list": bare, "text and rules": withText} {
 		rs, text, err := gateway.ParseStored(raw)
-		if err != nil || len(rs) != 1 || rs[0].Hook != "tools/filter" {
+		if err != nil || len(rs) != 1 || rs[0].Hook != "tools/list.post" {
 			t.Fatalf("%s: rules %+v, err %v", name, rs, err)
 		}
 		if name == "text and rules" && text["tools/list.post"] != "when true deny" {

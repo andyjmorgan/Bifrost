@@ -91,7 +91,7 @@ func TestPolicyCallOracle(t *testing.T) {
 }
 
 func FuzzScenarioLoader(f *testing.F) {
-	for _, s := range []string{`[]`, `{"name":"x","servers":[],"steps":[]}`, `{"name":"x"}{"name":"y"}`, `[{"servers":[{"slug":"a","rules":[{"hook":"tools/filter","when":"true","then":{"decision":"'deny'"}}]}],"steps":[{"op":"tools/list"}]}]`} {
+	for _, s := range []string{`[]`, `{"name":"x","servers":[],"steps":[]}`, `{"name":"x"}{"name":"y"}`, `[{"servers":[{"slug":"a","rules":[{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]}],"steps":[{"op":"tools/list"}]}]`} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
@@ -149,11 +149,11 @@ func TestCatalogIsNeverModified(t *testing.T) {
 			"limit": map[string]any{"type": "integer"}}, "required": []any{"cql"}}}
 	cat := append(append([]*mcp.Tool(nil), tools...), extra)
 	rules := append(realisticRules(),
-		Rule{Hook: "tools/modify", When: "name == 'confluence_search'", Then: map[string]string{
+		Rule{Hook: "tools/list.post", When: "name == 'confluence_search'", Then: map[string]string{
 			"name": "'wiki_search'", "description": "description + ' (wiki)'", "annotations.readOnlyHint": "false",
 			"params.cql.name": "'query'", "params.cql.description": "'CQL query'", "params.debug.hide": "true",
 			"params.space.pin": "'ENG'", "params.limit.maximum": "50", "params.why.add": "{'type': 'string'}"}},
-		Rule{Hook: "tools/call", When: "name == 'wiki_search'", Then: map[string]string{"args.query": "args.query + ' AND type=page'"}})
+		Rule{Hook: "tools/call.pre", When: "name == 'wiki_search'", Then: map[string]string{"args.query": "args.query + ' AND type=page'"}})
 	set, probs := Compile(rules)
 	if probs != nil {
 		t.Fatal(probs)
@@ -228,8 +228,8 @@ func TestRegexReplaceOnLargeNotebook(t *testing.T) {
 		t.Fatalf("built %d occurrences", n)
 	}
 	rules := []Rule{
-		{Hook: "tools/modify", When: "'telemetry' in params", Then: map[string]string{"params.telemetry.hide": "true", "params.telemetry.pin": "{'intent': 'mind your own business'}"}},
-		{Hook: "tools/call", When: "name == 'create_datadog_notebook'", Then: map[string]string{
+		{Hook: "tools/list.post", When: "'telemetry' in params", Then: map[string]string{"params.telemetry.hide": "true", "params.telemetry.pin": "{'intent': 'mind your own business'}"}},
+		{Hook: "tools/call.pre", When: "name == 'create_datadog_notebook'", Then: map[string]string{
 			"args.cells": "args.cells.map(c, {'type': c.type, 'attributes': {'definition': {'type': 'markdown', 'text': regex.replace(c.attributes.definition.text, '(?i)datadog', 'Bits')}}})"}},
 	}
 	// The default CEL cost limit (1,000,000) refuses this call: regex.replace

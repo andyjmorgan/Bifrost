@@ -12,7 +12,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "timeout": "duration('150ms')"
@@ -90,7 +90,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "timeout": "duration('150ms')"
@@ -169,7 +169,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "tools/call",
+      "hook": "tools/call.pre",
       "when": "true",
       "then": {
        "timeout": "duration('5s')"

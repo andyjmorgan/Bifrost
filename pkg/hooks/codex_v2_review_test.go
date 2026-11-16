@@ -58,9 +58,9 @@ func TestCodexV2PreparedCacheReleasesCatalog(t *testing.T) { // V2-CX-G01
 }
 
 func TestCodexV2InterleavedAuditCannotExpireEnforcement(t *testing.T) { // V2-CX-G02
-	before := Rule{Hook: "tools/filter", When: "false", Then: map[string]string{"decision": "'deny'"}}
-	audit := Rule{Mode: "audit", Hook: "tools/filter", When: "description == 'slow'", Then: map[string]string{"decision": "'deny'"}}
-	after := Rule{Hook: "tools/filter", When: "lists.range(1000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}}
+	before := Rule{Hook: "tools/list.post", When: "false", Then: map[string]string{"decision": "'deny'"}}
+	audit := Rule{Mode: "audit", Hook: "tools/list.post", When: "description == 'slow'", Then: map[string]string{"decision": "'deny'"}}
+	after := Rule{Hook: "tools/list.post", When: "lists.range(1000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}}
 	run := func(rs []Rule) outcome {
 		set := codexSet(t, rs...)
 		ctx := withBudget(context.Background(), 100*time.Millisecond, time.Second)
@@ -72,7 +72,7 @@ func TestCodexV2InterleavedAuditCannotExpireEnforcement(t *testing.T) { // V2-CX
 			}
 			return nil, false
 		}
-		return set.run(ctx, "tools/filter", "t", resolve, Context{}.vars(), nil)
+		return set.run(ctx, "tools/list.post", "t", resolve, Context{}.vars(), nil)
 	}
 	if o := run([]Rule{before, after}); o.denied || o.err != nil {
 		t.Fatalf("control failed: %+v", o)

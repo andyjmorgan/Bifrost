@@ -25,9 +25,6 @@ func Lint(text map[string]string, catalog map[string][]string) []Problem {
 	renamed := map[string]map[string]bool{}
 	for i := range stages {
 		s := &stages[i]
-		if !s.split() {
-			continue
-		}
 		for _, p := range parsedBy[s.ID] {
 			for _, a := range p.acts {
 				if v, ok := unquote(a.expr); ok && a.kind == "set" && a.path == "name" {

@@ -1,10 +1,10 @@
-# skills/filter
+# skills/list.post
 
-`skills/filter` decides which skills are visible. A deny always applies to the skill's whole folder, however a client reaches it.
+`skills/list.post` decides which skills are visible. A deny always applies to the skill's whole folder, however a client reaches it.
 
 ## When it runs
 
-`skills/filter` runs on each upstream skill entry, after [server/config](server-config.md). Skills follow the `resources` switch. The hook runs on:
+`skills/list.post` runs on each upstream skill entry, after [server.settings](server-settings.md). Skills follow the `resources` switch. The hook runs on:
 
 - `skills/list` and `skills/get`
 - `resources/list`, to drop resources under denied folders
@@ -30,7 +30,7 @@
 | `decision` | `'deny'` | Deny the skill's folder. Stops evaluation |
 | `reason` | string | Recorded in audit only |
 
-Every filter rule must set `decision`.
+This hook can only hide. Every `skills/list.post` rule must set `decision`.
 
 ## What the client sees
 
@@ -46,12 +46,12 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 
 ## Nuances and limits
 
-- A rule can match any field, but the effect is always the whole folder. To deny a single file, use [resources/filter](resources-filter.md).
+- A rule can match any field, but the effect is always the whole folder. To deny a single file, use [resources/list.post](resources-list-post.md).
 - Skills nested under a denied skill are denied with it.
 - A template allow cannot override a skill deny.
 - Skill names are not unique. A rule on `name` that matches two skills denies both folders. Match `uri` to target one.
 - Denying a single file inside a skill is allowed, but can break the skill, because its manifest and `SKILL.md` still reference the file.
-- Skill names never change. A `resources/result` rewrite of the skill's own root `SKILL.md` that changes `name` is rejected, and the whole skill keeps its upstream bytes.
+- Skill names never change. A `resources/read.post.result` rewrite of the skill's own root `SKILL.md` that changes `name` is rejected, and the whole skill keeps its upstream bytes.
 - `skills/list` is sorted by slug, then by skill URI, whatever order the upstream sends.
 
 ## Examples
@@ -61,7 +61,7 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 ```json
 {
   "name": "Allowed skills",
-  "hook": "skills/filter",
+  "hook": "skills/list.post",
   "when": "!(name in ['notebooks', 'widgets'])",
   "then": { "decision": "'deny'" }
 }
@@ -74,7 +74,7 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 ```json
 {
   "name": "Hide support refunds",
-  "hook": "skills/filter",
+  "hook": "skills/list.post",
   "when": "uri == 'skill://acme/support/refunds/SKILL.md'",
   "then": { "decision": "'deny'" }
 }
@@ -87,7 +87,7 @@ Two skills are named `refunds`. Only `skill://acme/billing/refunds/SKILL.md` sta
 ```json
 {
   "name": "Internal skills",
-  "hook": "skills/filter",
+  "hook": "skills/list.post",
   "when": "'internal' in frontmatter.?metadata.?tags.orValue([]) && caller.type == 'key'",
   "then": { "decision": "'deny'" }
 }
@@ -98,5 +98,5 @@ For API keys, a skill whose frontmatter has `metadata.tags: [internal]` is hidde
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [resources/filter for single files](resources-filter.md)
-- [resources/result for rewriting skill files](resources-result.md)
+- [resources/list.post for single files](resources-list-post.md)
+- [resources/read.post.result for rewriting skill files](resources-read-post-result.md)

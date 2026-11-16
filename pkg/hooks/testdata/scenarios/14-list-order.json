@@ -1,0 +1,515 @@
+[
+ {
+  "name": "RH-LIST-01 list rules run in written order: a hide written after a rename sees the new name",
+  "ids": [
+   "RH-LIST-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "rename",
+      "hook": "tools/list.post",
+      "when": "upstream.name == 'flip'",
+      "then": {
+       "name": "'toss'"
+      }
+     },
+     {
+      "name": "hide",
+      "hook": "tools/list.post",
+      "when": "name == 'toss'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "flip",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "echo"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "toss",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "flip",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-02 a hide written before a rename sees the name as it was then",
+  "ids": [
+   "RH-LIST-02"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "hide",
+      "hook": "tools/list.post",
+      "when": "name == 'toss'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "name": "rename",
+      "hook": "tools/list.post",
+      "when": "upstream.name == 'flip'",
+      "then": {
+       "name": "'toss'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "flip",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "echo",
+       "toss"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "toss",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.name",
+      "equals": "flip"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-03 a list rule that both hides and changes hides; the change is discarded",
+  "ids": [
+   "RH-LIST-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "both",
+      "hook": "tools/list.post",
+      "when": "name == 'flip'",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'Not offered.'",
+       "name": "'toss'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "flip",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "echo"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "toss",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-04 the first hide stops the rules below it, so a failing rule further down is never reached",
+  "ids": [
+   "RH-LIST-04"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "hide",
+      "hook": "tools/list.post",
+      "when": "name == 'flip'",
+      "then": {
+       "decision": "'deny'"
+      }
+     },
+     {
+      "name": "fails",
+      "hook": "tools/list.post",
+      "when": "name == 'flip'",
+      "then": {
+       "description": "upstream.nothing.here"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "flip",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "echo"
+      ]
+     },
+     {
+      "path": "outcome.issues",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-04 a change that fails hides the item, reports it, and the item cannot be called",
+  "ids": [
+   "RH-LIST-04"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "fails",
+      "hook": "tools/list.post",
+      "when": "name == 'flip'",
+      "then": {
+       "description": "upstream.nothing.here"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "echo",
+       "inputSchema": {
+        "type": "object"
+       }
+      },
+      {
+       "name": "flip",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "outcome.result.tools[*].name",
+      "equals": [
+       "echo"
+      ]
+     },
+     {
+      "path": "outcome.issues[0]",
+      "contains": "flip"
+     }
+    ]
+   },
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "flip",
+     "arguments": {}
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-05 a read of a URI in no list runs only the deny rules: a change rule that needs a listed field does not refuse it",
+  "ids": [
+   "RH-LIST-05"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "retitle",
+      "hook": "resources/list.post",
+      "when": "mimeType == 'text/markdown'",
+      "then": {
+       "title": "'Docs: ' + name"
+      }
+     },
+     {
+      "name": "closed",
+      "hook": "resources/list.post",
+      "when": "uri.startsWith('docs://closed/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a",
+       "mimeType": "text/markdown"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/list",
+    "expect": [
+     {
+      "path": "outcome.result.resources[0].title",
+      "equals": "Docs: a"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://unlisted"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "docs://unlisted"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://closed/x"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RH-LIST-01 prompts follow the same order: a hide after a rename sees the new name",
+  "ids": [
+   "RH-LIST-01"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "name": "rename",
+      "hook": "prompts/list.post",
+      "when": "upstream.name == 'wiki_summary'",
+      "then": {
+       "name": "'summary'"
+      }
+     },
+     {
+      "name": "hide",
+      "hook": "prompts/list.post",
+      "when": "name == 'summary' && caller.role != 'admin'",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "prompts": [
+      {
+       "name": "wiki_summary"
+      },
+      {
+       "name": "other"
+      }
+     ]
+    }
+   }
+  ],
+  "caller": {
+   "role": "user"
+  },
+  "steps": [
+   {
+    "op": "prompts/list",
+    "expect": [
+     {
+      "path": "outcome.result.prompts[*].name",
+      "equals": [
+       "other"
+      ]
+     }
+    ]
+   },
+   {
+    "op": "prompts/list",
+    "caller": {
+     "role": "admin"
+    },
+    "expect": [
+     {
+      "path": "outcome.result.prompts[*].name",
+      "equals": [
+       "other",
+       "summary"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

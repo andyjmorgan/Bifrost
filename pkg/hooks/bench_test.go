@@ -63,13 +63,13 @@ func BenchmarkToolMap(b *testing.B) {
 }
 
 func BenchmarkSingleRuleEval(b *testing.B) {
-	set, _ := Compile([]Rule{{Hook: "tools/filter", When: "name.startsWith('delete_') && caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}}})
+	set, _ := Compile([]Rule{{Hook: "tools/list.post", When: "name.startsWith('delete_') && caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}}})
 	ts := newToolState(prepare(&mcp.Tool{Name: "get_page", InputSchema: map[string]any{"type": "object"}}))
 	vars := Context{Caller: map[string]any{"role": "member"}}.vars()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		set.run(context.Background(), "tools/filter", "get_page", ts.resolve, vars, nil)
+		set.run(context.Background(), "tools/list.post", "get_page", ts.resolve, vars, nil)
 	}
 }
 

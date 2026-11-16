@@ -92,7 +92,7 @@ func TestCodexV3FixEmptySetNeedsAList(t *testing.T) { // V3F-G02
 }
 
 func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
-	for _, hook := range []string{"tools/result", "tools/elicit", "tools/progress"} {
+	for _, hook := range []string{"tools/call.post.result", "tools/call.post.elicit", "tools/call.post.progress"} {
 		for _, exposed := range []bool{false, true} {
 			name := hook + "/upstream_control"
 			when := "upstream.name == 't'"
@@ -105,8 +105,8 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 				}
 				c := newStreamCase(t, "direct", nil, Limits{})
 				c.r.Servers[0].Rules = codexSet(t,
-					Rule{Hook: "tools/modify", When: "true", Then: map[string]string{"name": "'public'"}},
-					Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+					Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"name": "'public'"}},
+					Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
 					Rule{Hook: hook, When: when, Then: map[string]string{"decision": "'deny'"}},
 				)
 				c.params.Name = "public"
@@ -115,7 +115,7 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 					t.Fatal("renamed tool must forward under its original name")
 				}
 				c.call = first.Call
-				if hook == "tools/progress" {
+				if hook == "tools/call.post.progress" {
 					got := c.run(&upstreamSeq{events: []UpstreamEvent{
 						progressEvent(`{"progressToken":"p","progress":1,"message":"sensitive"}`),
 						resultEvent(`{"content":[]}`),
@@ -126,7 +126,7 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 					return
 				}
 				raw := json.RawMessage(`{"content":[{"type":"text","text":"sensitive"}]}`)
-				if hook == "tools/elicit" {
+				if hook == "tools/call.post.elicit" {
 					raw = json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"sensitive","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`)
 				}
 				out := c.e.UpstreamToolReply(context.Background(), c.r, c.call, c.params, raw)
@@ -154,7 +154,7 @@ func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 		".flags['search']", "has(.flags.serach)",
 	} {
 		t.Run("reject/"+expr, func(t *testing.T) {
-			if _, problems := Compile([]Rule{{Hook: "tools/filter", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems == nil {
+			if _, problems := Compile([]Rule{{Hook: "tools/list.post", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems == nil {
 				t.Fatalf("non-named or unknown flag access compiled: %s", expr)
 			}
 		})
@@ -164,7 +164,7 @@ func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 		"[{'search': true}].exists(flags, flags.search)",
 	} {
 		t.Run("accept/"+expr, func(t *testing.T) {
-			if _, problems := Compile([]Rule{{Hook: "tools/filter", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems != nil {
+			if _, problems := Compile([]Rule{{Hook: "tools/list.post", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems != nil {
 				t.Fatalf("valid named selector did not compile: %v", problems)
 			}
 		})
@@ -172,13 +172,13 @@ func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 }
 
 func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
-	for _, hook := range []string{"prompts/elicit", "prompts/progress"} {
+	for _, hook := range []string{"prompts/get.post.elicit", "prompts/get.post.progress"} {
 		t.Run(hook, func(t *testing.T) {
 			s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent},
 				Catalog: Catalog{Prompts: []*mcp.Prompt{{Name: "original"}}},
 				Rules: codexSet(t,
-					Rule{Hook: "prompts/modify", When: "true", Then: map[string]string{"name": "'public'"}},
-					Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+					Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"name": "'public'"}},
+					Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
 					Rule{Hook: hook, When: "upstream.name == 'original'", Then: map[string]string{"decision": "'deny'"}},
 				),
 			}
@@ -189,7 +189,7 @@ func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
 			if first.Forward == nil || first.Call.Target != "original" {
 				t.Fatal("renamed prompt did not forward under its upstream name")
 			}
-			if hook == "prompts/progress" {
+			if hook == "prompts/get.post.progress" {
 				u := &upstreamSeq{events: []UpstreamEvent{
 					progressEvent(`{"progressToken":"p","progress":1,"message":"sensitive"}`),
 					resultEvent(`{"messages":[]}`),
@@ -210,25 +210,25 @@ func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
 }
 
 func TestCodexV3FixResourceHooksKeepUpstreamFields(t *testing.T) { // V3F-G05
-	for _, hook := range []string{"resources/read", "resources/result", "resources/elicit", "resources/progress"} {
+	for _, hook := range []string{"resources/read.pre", "resources/read.post.result", "resources/read.post.elicit", "resources/read.post.progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
-				Rule{Hook: "resources/modify", When: "true", Then: map[string]string{"title": "'Public'"}},
-				Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+				Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"title": "'Public'"}},
+				Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
 				Rule{Hook: hook, When: "upstream.title == 'Original'", Then: map[string]string{"decision": "'deny'"}},
 			)
 			r.Servers[0].Catalog.Resources = []*mcp.Resource{{Name: "secret", URI: p.URI, Title: "Original"}}
 			first := e.ReadResource(context.Background(), r, p)
-			if hook == "resources/read" {
+			if hook == "resources/read.pre" {
 				if first.Error == nil || first.Forward != nil {
-					t.Fatalf("upstream-title deny must survive resources/modify: error=%v forward=%v", first.Error, first.Forward != nil)
+					t.Fatalf("upstream-title deny must survive resources/list.post: error=%v forward=%v", first.Error, first.Forward != nil)
 				}
 				return
 			}
 			if first.Forward == nil {
 				t.Fatal("setup: resource did not forward")
 			}
-			if hook == "resources/progress" {
+			if hook == "resources/read.post.progress" {
 				u := &upstreamSeq{events: []UpstreamEvent{
 					progressEvent(`{"progressToken":"p","progress":1,"message":"sensitive"}`),
 					resultEvent(`{"contents":[]}`),
@@ -240,12 +240,12 @@ func TestCodexV3FixResourceHooksKeepUpstreamFields(t *testing.T) { // V3F-G05
 				return
 			}
 			raw := json.RawMessage(`{"contents":[{"uri":"file:///secret.txt","text":"sensitive"}]}`)
-			if hook == "resources/elicit" {
+			if hook == "resources/read.post.elicit" {
 				raw = json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"sensitive","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`)
 			}
 			out := e.UpstreamReadReply(context.Background(), r, first.Call, p, raw)
 			if out.Error == nil || out.Result != nil {
-				t.Fatalf("upstream-title deny must refuse the reply after resources/modify: error=%v result=%T", out.Error, out.Result)
+				t.Fatalf("upstream-title deny must refuse the reply after resources/list.post: error=%v result=%T", out.Error, out.Result)
 			}
 		})
 	}

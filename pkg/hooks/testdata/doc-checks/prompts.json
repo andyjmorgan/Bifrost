@@ -1,13 +1,13 @@
 [
  {
-  "name": "prompts/filter E1 hide a prompt by name",
+  "name": "prompts/list.post E1 hide a prompt by name",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Hide internal",
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "name.startsWith('internal_')",
       "then": {
        "decision": "'deny'"
@@ -64,14 +64,14 @@
   ]
  },
  {
-  "name": "prompts/filter E2 no prompts for API keys",
+  "name": "prompts/list.post E2 no prompts for API keys",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Users only",
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'"
@@ -119,14 +119,14 @@
   ]
  },
  {
-  "name": "prompts/filter E3 hide prompts that take a given argument",
+  "name": "prompts/list.post E3 hide prompts that take a given argument",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "No raw SQL",
-      "hook": "prompts/filter",
+      "hook": "prompts/list.post",
       "when": "arguments.exists(a, a.name == 'sql')",
       "then": {
        "decision": "'deny'"
@@ -174,14 +174,14 @@
   ]
  },
  {
-  "name": "prompts/modify E1 rename a prompt and an argument",
+  "name": "prompts/list.post E1 rename a prompt and an argument",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Rename summary",
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "upstream.name == 'confluence_summary'",
       "then": {
        "name": "'summary'",
@@ -271,14 +271,14 @@
   ]
  },
  {
-  "name": "prompts/modify E2 rewrite descriptions",
+  "name": "prompts/list.post E2 rewrite descriptions",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Neutral wording",
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
@@ -312,14 +312,14 @@
   ]
  },
  {
-  "name": "prompts/modify E3 title falls back to the name",
+  "name": "prompts/list.post E3 title falls back to the name",
   "servers": [
    {
     "slug": "wiki",
     "rules": [
      {
       "name": "Wiki titles",
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "title": "'Wiki: ' + (title != '' ? title : name)"
@@ -359,20 +359,20 @@
   ]
  },
  {
-  "name": "prompts/modify nuance: a rename onto an existing argument fails and hides the prompt; two prompts with one name are hidden",
+  "name": "prompts/list.post nuance: a rename onto an existing argument fails and hides the prompt; two prompts with one name are hidden",
   "servers": [
    {
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "name == 'p'",
       "then": {
        "arguments.a.name": "'b'"
       }
      },
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "name in ['x', 'y']",
       "then": {
        "name": "'same'"
@@ -435,7 +435,7 @@
     "rules": [
      {
       "name": "No HR",
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "has(args.space) && args.space == 'HR'",
       "then": {
        "decision": "'deny'",
@@ -511,7 +511,7 @@
     "rules": [
      {
       "name": "Default tone",
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "!has(args.tone)",
       "then": {
        "args.tone": "'neutral'"
@@ -593,7 +593,7 @@
     "rules": [
      {
       "name": "Confirm export",
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "upstream.name == 'export_space' && !has(input.ok)",
       "then": {
        "result": "elicit('ok', 'Export the whole {space} space?', {'space': args.space})"
@@ -763,21 +763,21 @@
     "slug": "wiki",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "arguments.space.name": "'area'"
       }
      },
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "args.area == 'up'",
       "then": {
        "args.space": "'x'"
       }
      },
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "args.area == 'no'",
       "then": {
        "decision": "'deny'"
@@ -884,7 +884,7 @@
   ]
  },
  {
-  "name": "prompts/elicit E1 reword",
+  "name": "prompts/get.post.elicit E1 reword",
   "caller": {
    "userId": "u1"
   },
@@ -894,7 +894,7 @@
     "rules": [
      {
       "name": "Label wiki prompts",
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
        "message": "'The wiki asks: ' + request.message"
@@ -996,7 +996,7 @@
   }
  },
  {
-  "name": "prompts/elicit E2 deny",
+  "name": "prompts/get.post.elicit E2 deny",
   "caller": {
    "userId": "k1",
    "type": "key"
@@ -1007,7 +1007,7 @@
     "rules": [
      {
       "name": "No prompts for keys",
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'",
@@ -1067,7 +1067,7 @@
   }
  },
  {
-  "name": "prompts v2: prompts/elicit sees upstream names and patches; eval errors are generic",
+  "name": "prompts v2: prompts/get.post.elicit sees upstream names and patches; eval errors are generic",
   "caller": {
    "userId": "u"
   },
@@ -1076,14 +1076,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/modify",
+      "hook": "prompts/list.post",
       "when": "true",
       "then": {
        "arguments.space.name": "'area'"
       }
      },
      {
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "!has(args.tone)",
       "then": {
        "args.tone": "'neutral'"
@@ -1091,14 +1091,14 @@
      },
      {
       "name": "Team check",
-      "hook": "prompts/get",
+      "hook": "prompts/get.pre",
       "when": "has(args.area) && args.area == 'X' && caller.team == 'x'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
-      "hook": "prompts/elicit",
+      "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
        "message": "request.message + ' ' + args.space + ' ' + args.tone"

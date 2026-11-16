@@ -11,13 +11,13 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// switchDefaults are the server/config defaults.
+// switchDefaults are the server.settings defaults.
 var switchDefaults = map[string]bool{"tools": true, "prompts": true, "resources": true, "tasks": false, "instructions": true, "serverInfo": false, "searchRoster": true, "progress": true}
 
-// Config evaluates server/config: each switch starts at its default and
+// Config evaluates server.settings: each switch starts at its default and
 // matching rules set it. Errors fail closed by switching the kind off.
 func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[string]bool, hits []Hit) {
-	defer e.recoveredDirect(ctx, "server/config", s, func(h Hit) {
+	defer e.recoveredDirect(ctx, "server.settings", s, func(h Hit) {
 		sw = map[string]bool{}
 		for k := range switchDefaults {
 			sw[k] = false // fail closed: every switch off
@@ -29,12 +29,12 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 		for k := range switchDefaults {
 			out[k] = false
 		}
-		return out, []Hit{{Hook: "server/config", Rule: "(entitlement)", Item: s.Slug, Mode: ModeEnforce, Effect: "deny", Error: "rules do not compile: " + s.Broken.Error()}}
+		return out, []Hit{{Hook: "server.settings", Rule: "(entitlement)", Item: s.Slug, Mode: ModeEnforce, Effect: "deny", Error: "rules do not compile: " + s.Broken.Error()}}
 	}
 	for k, v := range switchDefaults {
 		out[k] = v
 	}
-	o := s.Rules.run(ctx, "server/config", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server.settings", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
 		out[key] = val.(bool)
 		return nil
 	})
@@ -49,7 +49,7 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 	// stays off for every server until result rules also run on task results.
 	if out["tasks"] {
 		out["tasks"] = false
-		hits = append(hits, gateHit("server/config", s.Slug, "tasks", "tasks are not supported; the switch stays off"))
+		hits = append(hits, gateHit("server.settings", s.Slug, "tasks", "tasks are not supported; the switch stays off"))
 	}
 	if out["progress"] && !s.current() {
 		out["progress"] = false
@@ -57,7 +57,7 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 		for _, h := range o.hits {
 			for _, f := range h.Fields {
 				if f == "progress" {
-					hits = append(hits, gateHit("server/config", s.Slug, "progress", "progress is only relayed from servers on "+ProtocolCurrent))
+					hits = append(hits, gateHit("server.settings", s.Slug, "progress", "progress is only relayed from servers on "+ProtocolCurrent))
 				}
 			}
 		}
@@ -85,17 +85,17 @@ func (e *Engine) config(ctx context.Context, r Request, s *Server, name string, 
 }
 
 // ServerMeta is a server's title, description and instructions after
-// server/modify.
+// server/discover.post.
 type ServerMeta struct {
 	Title        string `json:"title"`
 	Description  string `json:"description"`
 	Instructions string `json:"instructions"`
 }
 
-// Modify evaluates server/modify.
+// Modify evaluates server/discover.post.
 func (e *Engine) Modify(ctx context.Context, r Request, s *Server) (meta ServerMeta, hits []Hit, err error) {
-	defer e.recoveredDirect(ctx, "server/modify", s, func(h Hit) {
-		meta, hits, err = ServerMeta{}, []Hit{h}, fmt.Errorf("server/modify could not be evaluated")
+	defer e.recoveredDirect(ctx, "server/discover.post", s, func(h Hit) {
+		meta, hits, err = ServerMeta{}, []Hit{h}, fmt.Errorf("server/discover.post could not be evaluated")
 	})
 	view := NewView(map[string]any{"title": s.Info.Title, "description": s.Info.Description, "instructions": s.Info.Instructions})
 	resolve := func(name string) (any, bool) {
@@ -107,7 +107,7 @@ func (e *Engine) Modify(ctx context.Context, r Request, s *Server) (meta ServerM
 		}
 		return nil, false
 	}
-	o := s.Rules.run(ctx, "server/modify", s.Slug, resolve, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server/discover.post", s.Slug, resolve, r.context(s).vars(), func(key string, val any) error {
 		view.Set([]string{key}, val)
 		return nil
 	})
@@ -122,7 +122,7 @@ func (e *Engine) Modify(ctx context.Context, r Request, s *Server) (meta ServerM
 	return meta, o.hits, nil
 }
 
-// Connect evaluates server/connect: what the gateway tells the upstream
+// Connect evaluates server.session: what the gateway tells the upstream
 // about itself. The default is anonymous: client "bifrost", no elicitation,
 // _meta stripped.
 type ConnectInfo struct {
@@ -133,13 +133,13 @@ type ConnectInfo struct {
 
 // Connect computes the outbound identity for a server.
 func (e *Engine) Connect(ctx context.Context, r Request, s *Server, version string) (info ConnectInfo, hits []Hit) {
-	defer e.recoveredDirect(ctx, "server/connect", s, func(h Hit) {
+	defer e.recoveredDirect(ctx, "server.session", s, func(h Hit) {
 		// Fail closed: the anonymous default, with nothing advertised.
 		info = ConnectInfo{ClientInfo: map[string]any{"name": "bifrost", "version": version}, Capabilities: map[string]any{}}
 		hits = []Hit{h}
 	})
 	ci := ConnectInfo{ClientInfo: map[string]any{"name": "bifrost", "version": version}, Capabilities: map[string]any{}}
-	o := s.Rules.run(ctx, "server/connect", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server.session", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
 		switch key {
 		case "clientInfo":
 			ci.ClientInfo = val.(map[string]any)
@@ -162,12 +162,12 @@ func (e *Engine) Connect(ctx context.Context, r Request, s *Server, version stri
 		switch {
 		case !s.current():
 			delete(ci.Capabilities, "elicitation")
-			hits = append(hits, gateHit("server/connect", s.Slug, "capabilities.elicitation", "elicitation is only offered to servers on "+ProtocolCurrent))
+			hits = append(hits, gateHit("server.session", s.Slug, "capabilities.elicitation", "elicitation is only offered to servers on "+ProtocolCurrent))
 		case !r.clientCan("elicitation"):
 			// Capabilities arrive with each request. A server must not be told
 			// about one this request's client did not declare.
 			delete(ci.Capabilities, "elicitation")
-			hits = append(hits, gateHit("server/connect", s.Slug, "capabilities.elicitation", "this request's client did not declare elicitation"))
+			hits = append(hits, gateHit("server.session", s.Slug, "capabilities.elicitation", "this request's client did not declare elicitation"))
 		}
 	}
 	return ci, hits
@@ -207,7 +207,7 @@ const MetaServerInfo = "io.modelcontextprotocol/serverInfo"
 const ExtSkills = "io.modelcontextprotocol/skills"
 
 // Discover answers server/discover. On 1:1 it reflects the one server after
-// server/config and server/modify; on the mux it combines slug-labelled
+// server.settings and server/discover.post; on the mux it combines slug-labelled
 // instruction excerpts within budgets. listChanged is always false: the
 // gateway sends no change notifications. Completions and logging are never
 // advertised.
@@ -250,7 +250,7 @@ func (e *Engine) Discover(parent context.Context, r Request, version string) (re
 		meta, hits, err := e.Modify(ctx, r, s)
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
-			o.Issues = append(o.Issues, s.Slug+": server/modify: "+err.Error())
+			o.Issues = append(o.Issues, s.Slug+": server/discover.post: "+err.Error())
 		}
 		if sw["instructions"] {
 			res.Instructions = meta.Instructions
@@ -346,8 +346,8 @@ func (e *Engine) ServerInstructions(parent context.Context, r Request, slug stri
 // UpstreamToolReply handles what the upstream answered to a forwarded
 // tools/call. call is the CallContext CallTool returned with the forward:
 // reply hooks see exactly the arguments that were sent. An input_required
-// (with input requests, state, or both) goes through tools/elicit and is
-// wrapped in gateway state; a result goes through tools/result and then,
+// (with input requests, state, or both) goes through tools/call.post.elicit and is
+// wrapped in gateway state; a result goes through tools/call.post.result and then,
 // on the mux, gets the slug prefix on structured URIs (last, so URIs rules
 // add are prefixed too). p is the client's call, for its request state.
 func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *CallContext, p *mcp.CallToolParamsRaw, raw json.RawMessage) (ret Outcome) {
@@ -392,7 +392,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 			o.Result = toolError(msg)
 			return e.finishOutcome(ctx, o)
 		}
-		reqs, hits, err := e.elicitHook(ctx, r, s, "tools/elicit", tr.Exposed, itemResolve, call.Args, rawRequests(result))
+		reqs, hits, err := e.elicitHook(ctx, r, s, "tools/call.post.elicit", tr.Exposed, itemResolve, call.Args, rawRequests(result))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Result = toolError(err.Error())
@@ -412,7 +412,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	vars["args"] = celArgs(call.Args)
 	vars["result"] = resultVar(result)
 	setKeys := map[string]bool{}
-	ro := s.Rules.run(ctx, "tools/result", tr.Exposed, itemResolve, vars, func(key string, val any) error {
+	ro := s.Rules.run(ctx, "tools/call.post.result", tr.Exposed, itemResolve, vars, func(key string, val any) error {
 		setKeys[key] = true
 		view.Set([]string{key}, val)
 		vars["result"] = resultVar(view.Materialize())

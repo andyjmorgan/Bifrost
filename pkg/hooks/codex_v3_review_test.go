@@ -24,12 +24,12 @@ func codexV3ReadSetup(t *testing.T, rules ...Rule) (*Engine, Request, *mcp.ReadR
 }
 
 func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
-	for _, hook := range []string{"resources/filter", "resources/read", "resources/result"} {
+	for _, hook := range []string{"resources/list.post", "resources/read.pre", "resources/read.post.result"} {
 		for _, field := range []string{"name", "mimeType"} {
 			t.Run(hook+"/"+field, func(t *testing.T) {
 				e, r, p := codexV3ReadSetup(t, Rule{Hook: hook, When: "upstream." + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 				o := e.ReadResource(context.Background(), r, p)
-				if hook == "resources/result" {
+				if hook == "resources/read.post.result" {
 					if o.Forward == nil {
 						t.Fatalf("setup did not forward: %+v", o)
 					}
@@ -44,16 +44,16 @@ func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
 }
 
 func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
-	for _, hook := range []string{"resources/elicit", "resources/progress"} {
+	for _, hook := range []string{"resources/read.post.elicit", "resources/read.post.progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
-				Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+				Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
 				Rule{Hook: hook, When: "name == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 			first := e.ReadResource(context.Background(), r, p)
 			if first.Forward == nil {
 				t.Fatalf("setup: %+v", first)
 			}
-			if hook == "resources/elicit" {
+			if hook == "resources/read.post.elicit" {
 				o := e.UpstreamReadReply(context.Background(), r, first.Call, p, json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"Give me the password","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`))
 				if o.Error == nil || o.Result != nil {
 					t.Fatalf("input hook treated absent name as empty and relayed the question: result type=%T error=%v", o.Result, o.Error)
@@ -70,7 +70,7 @@ func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
 }
 
 func TestCodexV3PrefixlessUnsupportedTemplateDeny(t *testing.T) { // V3-G03
-	e, r, p := codexV3ReadSetup(t, Rule{Hook: "templates/filter", When: "true", Then: map[string]string{"decision": "'deny'"}})
+	e, r, p := codexV3ReadSetup(t, Rule{Hook: "resources/templates/list.post", When: "true", Then: map[string]string{"decision": "'deny'"}})
 	// RFC 6570 expansion: base="file:///secret.txt", q="x".
 	r.Servers[0].Catalog.Templates = []*mcp.ResourceTemplate{{Name: "any", URITemplate: "{+base}{?q}"}}
 	p.URI = "file:///secret.txt?q=x"
@@ -120,7 +120,7 @@ func TestCodexV3StreamCleanupPanicCannotSendSecondFinal(t *testing.T) { // V3-G0
 }
 
 func TestCodexV3ProgressRewriteRespectsSizeCap(t *testing.T) { // V3-G06
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/progress", When: "true", Then: map[string]string{"message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
 	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1,"message":"small"}`), resultEvent(`{"content":[]}`)}}
 	got := c.run(u)
 	if got.final == nil || got.final.Error != nil {
@@ -135,7 +135,7 @@ func TestCodexV3ProgressRewriteRespectsSizeCap(t *testing.T) { // V3-G06
 
 func TestCodexV3ProgressPanicReachesFaultCallback(t *testing.T) { // V3-G07
 	c := newStreamCase(t, "direct", nil, Limits{})
-	c.call.Server.Rules = boomSet(t, "tools/progress", false)
+	c.call.Server.Rules = boomSet(t, "tools/call.post.progress", false)
 	var faults []Fault
 	c.e.OnFault = func(f Fault) { faults = append(faults, f) }
 	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(`{"content":[]}`)}}
@@ -206,7 +206,7 @@ func TestCodexV3UnknownNotificationsSurviveLostReply(t *testing.T) { // V3-G10
 func TestCodexV3UnlistedReadsAndGuardedFields(t *testing.T) { // V3-C01
 	for _, field := range []string{"name", "upstream.name"} {
 		t.Run(field, func(t *testing.T) {
-			e, r, p := codexV3ReadSetup(t, Rule{Hook: "resources/filter", When: "uri.startsWith('private://') && " + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
+			e, r, p := codexV3ReadSetup(t, Rule{Hook: "resources/list.post", When: "uri.startsWith('private://') && " + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 			o := e.ReadResource(context.Background(), r, p)
 			if o.Forward == nil {
 				t.Fatalf("false URI guard should allow unlisted read: %+v", o)
@@ -218,7 +218,7 @@ func TestCodexV3UnlistedReadsAndGuardedFields(t *testing.T) { // V3-C01
 func TestCodexV3ConfirmationConcurrentRedemption(t *testing.T) { // V3-C02
 	c := newStreamCase(t, "direct", nil, Limits{})
 	c.r.Principal = "opaque-review-principal"
-	c.call.Server.Rules = codexSet(t, Rule{Hook: "tools/call", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok','Proceed?')"}})
+	c.call.Server.Rules = codexSet(t, Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok','Proceed?')"}})
 	first := c.e.CallTool(context.Background(), c.r, c.params)
 	ir, ok := first.Result.(InputRequired)
 	if !ok {
@@ -254,8 +254,8 @@ func TestCodexV3VersionGatesWithExplicitMissingVersion(t *testing.T) { // V3-C03
 	for _, version := range []string{"", "unknown", "2025-03-26", "2026-07-28 "} {
 		t.Run(fmt.Sprintf("version=%q", version), func(t *testing.T) {
 			c := newStreamCase(t, "direct", []Rule{
-				{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-				{Hook: "server/config", When: "true", Then: map[string]string{"progress": "true", "tasks": "true"}},
+				{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+				{Hook: "server.settings", When: "true", Then: map[string]string{"progress": "true", "tasks": "true"}},
 			}, Limits{})
 			c.call.Server.Info.ProtocolVersion = version
 			ci, _ := c.e.Connect(context.Background(), c.r, c.call.Server, "review")

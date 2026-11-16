@@ -291,7 +291,7 @@ type Forward struct {
 	Params any    `json:"params"`
 	// Timeout set by a tools/call rule.
 	Timeout string `json:"timeout,omitempty"`
-	// Connect is what server/connect decided the gateway tells the
+	// Connect is what server.session decided the gateway tells the
 	// upstream: client identity, capabilities and whether _meta is forwarded.
 	Connect *ConnectInfo `json:"connect,omitempty"`
 }
@@ -341,10 +341,10 @@ type CallContext struct {
 	// `uri` and nothing else, on the reply side as on the request side.
 	Bare bool
 	// resolve gives rules this call's item: its fields as the client sees
-	// them, after every modify rule, and `upstream` as the server sent it.
+	// them, after every list rule, and `upstream` as the server sent it.
 	// It is built once, on the request side, and every reply hook reads the
 	// same one, so an item cannot mean one thing in tools/call and another
-	// in tools/result.
+	// in tools/call.post.result.
 	resolve func(name string) (any, bool)
 	Args    map[string]any // exactly what was sent upstream
 	Hash    string
@@ -500,7 +500,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	hash := argsHash(args)
 	st, answers, upResponses, serr := e.continuation(r, s, "tools/call", tr.Upstream, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit("tools/call", tr.Exposed))
+		o.Hits = append(o.Hits, declinedHit("tools/call.pre", tr.Exposed))
 		o.Result = toolError(errDeclined.Message)
 		return o
 	}
@@ -526,7 +526,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	vars["args"] = celArgs(args)
 	vars["input"] = answers
 	var timeout time.Duration
-	co := s.Rules.run(ctx, "tools/call", tr.Exposed, resolve, vars, func(key string, val any) error {
+	co := s.Rules.run(ctx, "tools/call.pre", tr.Exposed, resolve, vars, func(key string, val any) error {
 		parts := splitPath(key)
 		switch parts[0] {
 		case "args":
@@ -954,7 +954,7 @@ func entitlementID(s *Server) string {
 
 // forwardMeta keeps client metadata but drops the protocol-reserved request
 // keys: the upstream request carries its own version, identity and
-// capabilities, decided by server/connect.
+// capabilities, decided by server.session.
 func forwardMeta(in mcp.Meta) mcp.Meta {
 	var out mcp.Meta
 	for k, v := range in {
