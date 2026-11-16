@@ -14,10 +14,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
-	"github.com/andyjmorgan/Bifrost/internal/rules"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
@@ -194,40 +192,13 @@ func itemsOf(ns string, raw json.RawMessage) map[string]json.RawMessage {
 	return out
 }
 
-// ---- rules ----------------------------------------------------------------------
-
-type clientKey struct{}
-
-// withClient records the inbound session's initialize params so rules can
-// see the client's name and capabilities.
-func withClient(ctx context.Context, ip *mcp.InitializeParams) context.Context {
-	if ip == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, clientKey{}, ip)
-}
-
-func clientMap(ctx context.Context) map[string]any {
-	ip, _ := ctx.Value(clientKey{}).(*mcp.InitializeParams)
-	out := map[string]any{"name": "", "version": "", "protocolVersion": "", "capabilities": map[string]any{"elicitation": false, "sampling": false, "roots": false}}
-	if ip == nil {
-		return out
-	}
-	out["protocolVersion"] = ip.ProtocolVersion
-	if ip.ClientInfo != nil {
-		out["name"], out["version"] = ip.ClientInfo.Name, ip.ClientInfo.Version
-	}
-	if c := ip.Capabilities; c != nil {
-		out["capabilities"] = map[string]any{"elicitation": c.Elicitation != nil, "sampling": c.Sampling != nil, "roots": c.Roots.ListChanged || c.RootsV2 != nil}
-	}
-	return out
-}
+// ---- the selection cut ----------------------------------------------------------
 
 func callerMap(c *auth.Caller) map[string]any {
 	if c == nil {
 		return map[string]any{}
 	}
-	return map[string]any{"userId": c.UserID, "email": c.Email, "name": c.Name, "role": string(c.Role), "type": string(c.Type), "keyName": func() string {
+	return map[string]any{"userId": c.UserID, "orgId": c.OrgID, "email": c.Email, "name": c.Name, "role": string(c.Role), "type": string(c.Type), "keyName": func() string {
 		if c.Type == auth.ActorAPIKey {
 			return c.Subject
 		}
@@ -235,96 +206,44 @@ func callerMap(c *auth.Caller) map[string]any {
 	}()}
 }
 
-func serverMap(srv *store.Server, in cache.Init) map[string]any {
-	return map[string]any{"slug": srv.Slug, "name": srv.Name, "description": srv.Description, "url": srv.URL, "instructions": in.Instructions, "protocolVersion": in.ProtocolVersion}
-}
-
-type compiledRules struct {
-	key string
-	c   *rules.Compiled
-	err error
-}
-
-// rulesFor compiles an exposure's rules once per generation.
-func (g *Gateway) rulesFor(srv *store.Server) (*rules.Compiled, error) {
-	key := srv.EntitlementID.String() + "@" + fmt.Sprint(srv.Generation)
-	if v, ok := g.rules.Load(srv.EntitlementID); ok {
-		if cr := v.(compiledRules); cr.key == key {
-			return cr.c, cr.err
-		}
-	}
-	rs, err := rules.Parse(srv.Policies)
-	var c *rules.Compiled
-	if err == nil {
-		var probs rules.Problems
-		if c, probs = rules.Compile(rs); probs != nil {
-			err = probs
-		}
-	}
-	g.rules.Store(srv.EntitlementID, compiledRules{key: key, c: c, err: err})
-	return c, err
-}
-
-// cutter decides, for one exposure in one request, what is exposed: the
-// allow lists first, then the rules in order. Rules that do not compile
-// fail the exposure closed: nothing is exposed and the listing reports it.
+// cutter applies an exposure's allow lists: the entitlement's selection.
+// It decides what of a server's catalog the rules engine is given at all.
+// The entitlement's rules run afterwards, in the engine, on what is left.
 type cutter struct {
-	ctx    context.Context
-	srv    *store.Server
-	rules  *rules.Compiled
+	srv *store.Server
+	// broken is kept for callers that report a broken exposure; the
+	// selection alone cannot be broken.
 	broken error
-	server map[string]any
-	caller map[string]any
-	client map[string]any
-	route  string
 }
 
-func (g *Gateway) cutterFor(ctx context.Context, srv *store.Server, in cache.Init) *cutter {
-	c := &cutter{ctx: ctx, srv: srv, route: routeFrom(ctx), server: serverMap(srv, in), caller: callerMap(auth.CallerFrom(ctx)), client: clientMap(ctx)}
-	c.rules, c.broken = g.rulesFor(srv)
-	if c.broken != nil {
-		audit.AddIssue(ctx, srv.Slug+": rules do not compile: "+c.broken.Error())
-	}
-	return c
+func (g *Gateway) cutterFor(_ context.Context, srv *store.Server, _ cache.Init) *cutter {
+	return &cutter{srv: srv}
 }
 
-func routeFrom(ctx context.Context) string {
-	if r, ok := ctx.Value(routeKey{}).(string); ok {
-		return r
-	}
-	return ""
+// allows reports whether the allow list for a kind names the capability,
+// or there is no list for that kind.
+func (c *cutter) allows(kind, name string, _ any) bool {
+	return inList(c.srv, kind, name)
 }
 
-// allows decides one capability: in the allow list (or no list), then the
-// rules, last match winning.
-func (c *cutter) allows(kind, name string, def any) bool {
-	if c.broken != nil {
-		return false
-	}
-	base := inList(c.srv, kind, name)
-	if c.rules.Empty() {
-		return base
-	}
-	ok, _ := c.rules.Decide(c.ctx, base, rules.Subject{Kind: kind, Name: name, Def: def, Server: c.server, Caller: c.caller, Client: c.client, Route: c.route})
-	return ok
-}
-
-// allowsURI decides a resource read: an allowed resource, or an allowed
-// template whose literal prefix matches.
+// allowsURI decides whether a URI is inside the selection: a selected
+// resource, or a selected template whose literal prefix matches. A
+// selection that lists resources but not templates leaves templates open,
+// so a URI outside the resource list may still come from a template.
 func (c *cutter) allowsURI(uri string, def any) bool {
 	if c.allows(store.KindResource, uri, def) {
 		return true
 	}
 	tpls, ok := c.srv.Selection[store.SelTemplates]
 	if !ok {
-		return c.broken == nil
+		return true
 	}
 	for _, tpl := range tpls {
 		prefix := tpl
 		if i := strings.IndexByte(prefix, '{'); i >= 0 {
 			prefix = prefix[:i]
 		}
-		if prefix != "" && strings.HasPrefix(uri, prefix) && c.allows(store.KindTemplate, tpl, map[string]any{"uriTemplate": tpl}) {
+		if prefix != "" && strings.HasPrefix(uri, prefix) {
 			return true
 		}
 	}
@@ -361,17 +280,6 @@ func (c *cutter) raw(ns string, raw json.RawMessage) json.RawMessage {
 	}
 	b, _ := json.Marshal(out)
 	return b
-}
-
-// defOf finds an item's definition in a cached list, or a stub.
-func defOf(ns string, raw json.RawMessage, name string) any {
-	if it, ok := itemsOf(ns, raw)[name]; ok {
-		var m map[string]any
-		if json.Unmarshal(it, &m) == nil {
-			return m
-		}
-	}
-	return map[string]any{identityKey(ns): name}
 }
 
 // ---- the allow lists ----------------------------------------------------------

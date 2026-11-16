@@ -1,33 +1,21 @@
-import { useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, Check, GripVertical, Plus, ScrollText, X } from 'lucide-react'
+import { useId, useState } from 'react'
+import { ArrowDown, ArrowUp, Ban, BookOpen, GripVertical, Plus, RotateCw, ScrollText, X } from 'lucide-react'
 import { Button } from '../../ui/components/button'
 import { Input } from '../../ui/components/input'
 import { Switch } from '../../ui/components/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/components/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../../ui/components/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/components/dropdown-menu'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../ListCard'
-import type { CapabilityDTO, CapabilityKind, Rule } from '../../api'
-import { CelEditor } from './CelEditor'
+import { Callout } from '../Callout'
+import type { CapabilityDTO, HookSchema, HookSet, RuleMode, RuleProblem, RulesSchema } from '../../api'
+import { CelEditor, type CelCompletionData } from './CelEditor'
+import { catalogKeys } from './celCompletions'
+import { buildField, defaultExpr, denyRow, duplicateFields, groupHooks, hookOf, isFilter, matchSet, newRow, newRule, type RuleDraft, type RuleProblems, type ThenRow } from './rules'
 import { cn } from '../../lib'
-import { KINDS } from './selection'
-
-const PLACEHOLDER: Record<CapabilityKind | 'any', string> = {
-  tool: 'tool.name.startsWith("get_")',
-  prompt: 'prompt.name in ["summarise", "triage"]',
-  resource: 'resource.uri.startsWith("confluence://spaces/ENG/")',
-  template: 'template.uriTemplate.startsWith("confluence://")',
-  any: 'caller.role != "admin"',
-}
-
-/** Problems from POST /entitlements/validate, keyed by rule id so they survive a reorder. */
-export type RuleProblems = Record<string, string[]>
-
-export function newRule(partial: Partial<Rule> = {}): Rule {
-  return { id: crypto.randomUUID(), name: '', action: 'allow', when: '', ...partial }
-}
 
 /**
- * The advanced rules: evaluated top to bottom after the allow lists, last match wins. The editor
- * owns the list and the problems; this card edits them and asks for validation on blur.
+ * The hook rules: each runs at its hook, top to bottom. The editor page owns the list, the
+ * problems and the schema; this card edits the list and asks for validation as fields settle.
  */
 export function RulesCard({
   rules,
@@ -35,15 +23,25 @@ export function RulesCard({
   problems,
   onValidate,
   validating,
+  schema,
+  schemaError,
+  onReloadSchema,
+  rulesError,
   slug,
   caps,
 }: {
-  rules: Rule[]
-  onChange: (rules: Rule[]) => void
+  rules: RuleDraft[]
+  onChange: (rules: RuleDraft[]) => void
   problems: RuleProblems
   /** Re-run validation against the given list (defaults to the current one). */
-  onValidate: (rules?: Rule[]) => void
+  onValidate: (rules?: RuleDraft[]) => void
   validating: boolean
+  /** What each hook's rules may read and set; undefined while it loads. */
+  schema?: RulesSchema
+  schemaError?: string
+  onReloadSchema: () => void
+  /** Why the stored rules cannot be used, from the entitlement. */
+  rulesError?: string
   /** For completions: the entitlement's slug and the server's catalog. */
   slug: string
   caps: CapabilityDTO[]
@@ -51,8 +49,14 @@ export function RulesCard({
   const [dragFrom, setDragFrom] = useState<number>()
   const [dragOver, setDragOver] = useState<number>()
   const [armed, setArmed] = useState<number>()
+  const groups = groupHooks(schema)
 
-  const update = (i: number, patch: Partial<Rule>) => onChange(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  /** Applies a change to one rule. A change no blur will follow is validated at once, unless the rule has no condition yet. */
+  const update = (i: number, patch: Partial<RuleDraft>, settle = false) => {
+    const next = rules.map((r, j) => (j === i ? { ...r, ...patch } : r))
+    onChange(next)
+    if (settle && next[i].when.trim()) onValidate(next)
+  }
   const move = (from: number, to: number) => {
     if (to < 0 || to >= rules.length || from === to) return
     const next = [...rules]
@@ -65,16 +69,32 @@ export function RulesCard({
     onChange(next)
     if (Object.keys(problems).length) onValidate(next)
   }
-  const add = (r: Rule = newRule()) => onChange([...rules, r])
+  const general = problems[''] ?? []
   const problemCount = Object.values(problems).reduce((n, p) => n + p.length, 0)
 
   return (
     <section className="space-y-3">
+      {rulesError && (
+        <Callout tone="danger">
+          <p className="font-medium">This entitlement exposes nothing until its rules are rewritten and saved.</p>
+          <p className="break-words font-mono text-xs leading-5 text-muted-foreground">{rulesError}</p>
+        </Callout>
+      )}
+      {schemaError && (
+        <Callout tone="danger">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="min-w-0 break-words">Could not load the hooks: {schemaError}</span>
+            <Button variant="secondary" size="sm" onClick={onReloadSchema}>
+              <RotateCw /> Retry
+            </Button>
+          </div>
+        </Callout>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="max-w-2xl text-xs text-muted-foreground">
-          Allow lists first, then these rules top to bottom: each enabled rule that matches sets the outcome, and the last match wins.
+          Each rule runs at its hook, top to bottom. A later rule sees what earlier ones set, and the first deny is final.
         </p>
-        <Button variant="secondary" size="sm" onClick={() => add()}>
+        <Button variant="secondary" size="sm" onClick={() => onChange([...rules, newRule(schema)])} disabled={!schema}>
           <Plus /> Add rule
         </Button>
       </div>
@@ -86,225 +106,389 @@ export function RulesCard({
           </span>
           {validating && <span className="font-mono">validating…</span>}
         </ListBar>
+        {general.length > 0 && (
+          <div className="border-b border-border px-5 py-3">
+            <Problems items={general} />
+          </div>
+        )}
         {rules.length === 0 ? (
-          <ListEmpty icon={ScrollText} title="No rules" hint="No rules. The allow lists decide on their own." />
+          <ListEmpty icon={ScrollText} title="No rules" hint="The allow lists decide on their own." />
         ) : (
           <ListRows>
-            {rules.map((r, i) => {
-              const errs = problems[r.id] ?? []
-              const enabled = r.enabled !== false
-              return (
-                <div
-                  key={r.id}
-                  draggable={armed === i}
-                  onDragStart={(e) => {
-                    setDragFrom(i)
-                    e.dataTransfer.effectAllowed = 'move'
-                  }}
-                  onDragOver={(e) => {
-                    if (dragFrom === undefined) return
-                    e.preventDefault()
-                    setDragOver(i)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    if (dragFrom !== undefined) move(dragFrom, i)
-                    setDragFrom(undefined)
-                    setDragOver(undefined)
-                  }}
-                  onDragEnd={() => {
-                    setDragFrom(undefined)
-                    setDragOver(undefined)
-                    setArmed(undefined)
-                  }}
-                  className={cn(
-                    'space-y-3 px-5 py-4 transition-colors',
-                    !enabled && 'opacity-60',
-                    dragFrom === i && 'opacity-40',
-                    dragOver === i && dragFrom !== i && 'bg-elevated/60',
-                  )}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className="-ml-2 flex cursor-grab items-center text-faint-foreground hover:text-muted-foreground active:cursor-grabbing"
-                      onMouseDown={() => setArmed(i)}
-                      onMouseUp={() => setArmed(undefined)}
-                      aria-hidden
-                      title="Drag to reorder"
-                    >
-                      <GripVertical className="size-4" />
-                    </span>
-                    <span className="w-5 font-mono text-xs text-muted-foreground">{i + 1}</span>
-                    <Switch checked={enabled} onCheckedChange={(v) => update(i, { enabled: v ? undefined : false })} aria-label={`Rule ${i + 1} enabled`} />
-                    <Select value={r.action} onValueChange={(v) => update(i, { action: v as Rule['action'] })}>
-                      <SelectTrigger aria-label={`Rule ${i + 1} action`} className={cn('h-8 w-[92px] text-xs', r.action === 'deny' ? 'text-danger' : 'text-foreground')}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="allow">Allow</SelectItem>
-                        <SelectItem value="deny">Deny</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <KindChips kinds={r.kinds} onChange={(kinds) => update(i, { kinds: kinds.length ? kinds : undefined })} />
-                    <Input
-                      value={r.name}
-                      onChange={(e) => update(i, { name: e.target.value })}
-                      placeholder="Name this rule"
-                      aria-label={`Rule ${i + 1} name`}
-                      className="h-8 min-w-40 flex-1 text-xs"
-                    />
-                    <span className="flex items-center">
-                      <Button variant="ghost" size="iconSm" aria-label="Move up" title="Move up" disabled={i === 0} onClick={() => move(i, i - 1)}>
-                        <ArrowUp />
-                      </Button>
-                      <Button variant="ghost" size="iconSm" aria-label="Move down" title="Move down" disabled={i === rules.length - 1} onClick={() => move(i, i + 1)}>
-                        <ArrowDown />
-                      </Button>
-                      <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove rule" title="Remove rule" onClick={() => remove(i)}>
-                        <X />
-                      </Button>
-                    </span>
-                  </div>
-                  <CelEditor
-                    value={r.when}
-                    onChange={(when) => update(i, { when })}
-                    onBlur={() => onValidate()}
-                    placeholder={PLACEHOLDER[r.kinds?.length === 1 ? r.kinds[0] : 'any']}
-                    completions={{ slug, caps, kinds: r.kinds }}
-                    invalid={errs.length > 0}
-                    ariaLabel={`Rule ${i + 1} when`}
-                  />
-                  {errs.map((m, k) => (
-                    <p key={k} className="break-words font-mono text-xs text-danger">
-                      {m}
-                    </p>
-                  ))}
-                </div>
-              )
-            })}
+            {rules.map((r, i) => (
+              <div
+                key={r.key}
+                draggable={armed === i}
+                onDragStart={(e) => {
+                  setDragFrom(i)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(e) => {
+                  if (dragFrom === undefined) return
+                  e.preventDefault()
+                  setDragOver(i)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  if (dragFrom !== undefined) move(dragFrom, i)
+                  setDragFrom(undefined)
+                  setDragOver(undefined)
+                }}
+                onDragEnd={() => {
+                  setDragFrom(undefined)
+                  setDragOver(undefined)
+                  setArmed(undefined)
+                }}
+                className={cn('space-y-3 px-5 py-4 transition-colors', dragFrom === i && 'opacity-40', dragOver === i && dragFrom !== i && 'bg-elevated/60')}
+              >
+                <RuleEditor
+                  rule={r}
+                  index={i}
+                  count={rules.length}
+                  hook={hookOf(schema, r.hook)}
+                  groups={groups}
+                  problems={problems[r.key] ?? []}
+                  completions={{ hook: hookOf(schema, r.hook), flags: schema?.flags, slug, caps }}
+                  onChange={(patch, settle) => update(i, patch, settle)}
+                  onBlur={() => onValidate()}
+                  onMove={(to) => move(i, to)}
+                  onRemove={() => remove(i)}
+                  onArm={(on) => setArmed(on ? i : undefined)}
+                />
+              </div>
+            ))}
           </ListRows>
         )}
       </ListCard>
-      <Reference onUse={(r) => add(newRule(r))} />
     </section>
   )
 }
 
-function KindChips({ kinds, onChange }: { kinds?: CapabilityKind[]; onChange: (k: CapabilityKind[]) => void }) {
-  const set = kinds ?? []
+const FIELD_LABEL = 'pt-2.5 font-mono text-xs text-muted-foreground'
+
+function RuleEditor({
+  rule: r,
+  index: i,
+  count,
+  hook,
+  groups,
+  problems,
+  completions,
+  onChange,
+  onBlur,
+  onMove,
+  onRemove,
+  onArm,
+}: {
+  rule: RuleDraft
+  index: number
+  count: number
+  /** The schema of the rule's hook; undefined while the schema loads or when the hook is unknown. */
+  hook?: HookSchema
+  groups: ReturnType<typeof groupHooks>
+  problems: RuleProblem[]
+  completions: CelCompletionData
+  /** `settle` marks a change no blur will follow, so it is validated at once. */
+  onChange: (patch: Partial<RuleDraft>, settle?: boolean) => void
+  onBlur: () => void
+  onMove: (to: number) => void
+  onRemove: () => void
+  onArm: (on: boolean) => void
+}) {
+  const [reference, setReference] = useState(false)
+  const n = i + 1
+  const sets = hook?.sets ?? []
+  const dups = duplicateFields(r)
+  const at = (field: string) => problems.filter((p) => p.field === field)
+  const placed = new Set(['hook', 'mode', 'when', 'then', ...r.then.map((t) => t.field)])
+  const loose = problems.filter((p) => !p.field || !placed.has(p.field))
+  const taken = (s: HookSet) => !s.field.includes('*') && r.then.some((t) => t.field === s.field)
+  const canDeny = isFilter(hook, r.hook) && !r.then.some((t) => matchSet(sets, t.field)?.set.type === 'decision')
+
+  const setHook = (name: string) => {
+    // Fields the new hook cannot set would never compile, so they go with the old hook.
+    const next = groups.flatMap((g) => g.hooks).find((h) => h.hook === name)
+    onChange({ hook: name, then: next ? r.then.filter((t) => matchSet(next.sets, t.field)) : r.then }, true)
+  }
+  const setRow = (key: string, patch: Partial<ThenRow>, settle = false) => onChange({ then: r.then.map((t) => (t.key === key ? { ...t, ...patch } : t)) }, settle)
+  const addRow = (row: ThenRow | undefined) => row && onChange({ then: [...r.then, row] }, row.expr !== '')
+
   return (
-    <span className="flex flex-wrap items-center gap-1" role="group" aria-label="Kinds">
-      {KINDS.map((k) => {
-        const on = set.includes(k.kind)
-        return (
-          <button
-            key={k.kind}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(on ? set.filter((x) => x !== k.kind) : [...set, k.kind])}
-            className={cn(
-              'inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors',
-              on ? 'border-accent/20 bg-accent/10 text-accent' : 'bg-transparent text-muted-foreground hover:bg-elevated hover:text-foreground',
+    <>
+      <div className={cn('flex flex-wrap items-center gap-2', !r.enabled && 'opacity-60')}>
+        <span
+          className="-ml-2 flex cursor-grab items-center text-faint-foreground hover:text-muted-foreground active:cursor-grabbing"
+          onMouseDown={() => onArm(true)}
+          onMouseUp={() => onArm(false)}
+          aria-hidden
+          title="Drag to reorder"
+        >
+          <GripVertical className="size-4" />
+        </span>
+        <span className="w-5 font-mono text-xs text-muted-foreground">{n}</span>
+        <Switch checked={r.enabled} onCheckedChange={(v) => onChange({ enabled: v }, true)} aria-label={`Rule ${n} enabled`} />
+        <Select value={r.hook} onValueChange={setHook}>
+          <SelectTrigger aria-label={`Rule ${n} hook`} className={cn('h-8 w-[196px] font-mono text-xs', at('hook').length > 0 && 'ring-[3px] ring-danger/20')}>
+            <SelectValue placeholder="Hook" />
+          </SelectTrigger>
+          <SelectContent>
+            {r.hook && !hook && (
+              <SelectItem value={r.hook} className="font-mono text-xs">
+                {r.hook}
+              </SelectItem>
             )}
+            {groups.map((g) => (
+              <SelectGroup key={g.family}>
+                <SelectLabel>{g.family}</SelectLabel>
+                {g.hooks.map((h) => (
+                  <SelectItem key={h.hook} value={h.hook} className="font-mono text-xs">
+                    {h.hook}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={r.mode} onValueChange={(v) => onChange({ mode: v as RuleMode }, true)}>
+          <SelectTrigger
+            aria-label={`Rule ${n} mode`}
+            title={r.mode === 'audit' ? 'Records what the rule would do and changes nothing' : undefined}
+            className={cn('h-8 w-[104px] text-xs', r.mode === 'audit' && 'text-warning')}
           >
-            {on && <Check className="size-3.5" />}
-            {k.label}
-          </button>
-        )
-      })}
-      {set.length === 0 && <span className="px-1 text-[11px] text-faint-foreground">any kind</span>}
-    </span>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="enforce">Enforce</SelectItem>
+            <SelectItem value="audit">Audit</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          value={r.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Name this rule"
+          aria-label={`Rule ${n} name`}
+          className="h-8 min-w-40 flex-1 text-xs"
+        />
+        <span className="flex items-center">
+          <Button variant="ghost" size="iconSm" aria-label="Move up" title="Move up" disabled={i === 0} onClick={() => onMove(i - 1)}>
+            <ArrowUp />
+          </Button>
+          <Button variant="ghost" size="iconSm" aria-label="Move down" title="Move down" disabled={i === count - 1} onClick={() => onMove(i + 1)}>
+            <ArrowDown />
+          </Button>
+          <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove rule" title="Remove rule" onClick={onRemove}>
+            <X />
+          </Button>
+        </span>
+      </div>
+      <Problems items={[...at('hook'), ...at('mode')]} />
+
+      <div className={cn('grid gap-x-3 gap-y-1.5 sm:grid-cols-[36px_minmax(0,1fr)] sm:gap-y-3', !r.enabled && 'opacity-60')}>
+        <span className={FIELD_LABEL}>when</span>
+        <div className="min-w-0 space-y-1.5">
+          <CelEditor
+            value={r.when}
+            onChange={(when) => onChange({ when })}
+            onBlur={onBlur}
+            placeholder="A condition that is true or false"
+            completions={completions}
+            invalid={at('when').length > 0}
+            ariaLabel={`Rule ${n} when`}
+          />
+          <Problems items={at('when')} />
+        </div>
+
+        <span className={FIELD_LABEL}>then</span>
+        <div className="min-w-0 space-y-2">
+          {r.then.map((row) => (
+            <ThenRowEditor
+              key={row.key}
+              row={row}
+              label={`Rule ${n}`}
+              hook={hook}
+              caps={completions.caps}
+              completions={completions}
+              taken={taken}
+              problems={[...at(row.field), ...(dups.has(row.field) ? [{ rule: i, field: row.field, message: `${row.field} is set more than once` }] : [])]}
+              onChange={(patch, settle) => setRow(row.key, patch, settle)}
+              onBlur={onBlur}
+              onRemove={() => onChange({ then: r.then.filter((t) => t.key !== row.key) }, true)}
+            />
+          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm" disabled={!sets.some((s) => !taken(s))}>
+                  <Plus /> Set field
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+                {sets.map((s) => (
+                  <DropdownMenuItem key={s.field} disabled={taken(s)} onSelect={() => addRow(newRow(s))} className="font-mono text-xs">
+                    {s.field}
+                    <span className="ml-auto pl-6 text-[11px] text-muted-foreground">{s.type}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {canDeny && (
+              <Button variant="secondary" size="sm" title="Set decision to 'deny'" onClick={() => addRow(denyRow(hook))} disabled={!hook}>
+                <Ban /> Deny
+              </Button>
+            )}
+            {hook && (
+              <Button variant="ghost" size="sm" className="ml-auto" aria-expanded={reference} onClick={() => setReference(!reference)}>
+                <BookOpen /> Variables
+              </Button>
+            )}
+          </div>
+          <Problems items={at('then')} />
+        </div>
+      </div>
+      <Problems items={loose} />
+      {reference && hook && <VariableReference hook={hook} flags={completions.flags} />}
+    </>
   )
 }
 
-/* ---------- reference ---------- */
+function ThenRowEditor({
+  row,
+  label,
+  hook,
+  caps,
+  completions,
+  taken,
+  problems,
+  onChange,
+  onBlur,
+  onRemove,
+}: {
+  row: ThenRow
+  /** "Rule 2", for the controls' accessible names. */
+  label: string
+  hook?: HookSchema
+  caps: CapabilityDTO[]
+  completions: CelCompletionData
+  /** Whether another row already sets a field that can only be set once. */
+  taken: (s: HookSet) => boolean
+  problems: RuleProblem[]
+  onChange: (patch: Partial<ThenRow>, settle?: boolean) => void
+  onBlur: () => void
+  onRemove: () => void
+}) {
+  const listId = useId()
+  const sets = hook?.sets ?? []
+  const match = matchSet(sets, row.field)
+  const pattern = match?.set.field
+  const invalid = problems.length > 0
 
-const VARIABLES: { name: string; fields: string }[] = [
-  { name: 'capability', fields: 'kind, name, plus every field of the definition below' },
-  {
-    name: 'tool',
-    fields:
-      'name, title, description, annotations {readOnlyHint=false, destructiveHint=true, idempotentHint=false, openWorldHint=true by default, title}, annotationsRaw, inputSchema, outputSchema, meta',
-  },
-  { name: 'prompt', fields: 'name, title, description, arguments, meta' },
-  { name: 'resource', fields: 'uri, name, title, description, mimeType, meta' },
-  { name: 'template', fields: 'uriTemplate, name, title, description, mimeType, meta' },
-  { name: 'server', fields: 'slug, name, description, url, instructions, protocolVersion' },
-  { name: 'caller', fields: 'userId, email, name, role ("admin" | "member"), type ("oidc" | "apikey" | "dev"), keyName' },
-  { name: 'client', fields: 'name, version, protocolVersion, capabilities {elicitation, sampling, roots} (booleans)' },
-  { name: 'route', fields: '"mux" | "direct"' },
-]
+  const setPattern = (next: string) => {
+    const set = sets.find((s) => s.field === next)
+    if (!set) return
+    // An untouched starting value follows the field; anything typed stays.
+    const untouched = row.expr === '' || (match !== undefined && row.expr === defaultExpr(match.set))
+    onChange({ field: buildField(set.field, match?.names ?? []), expr: untouched ? defaultExpr(set) : row.expr }, true)
+  }
+  const setName = (at: number, value: string) => match && onChange({ field: buildField(match.set.field, match.names.map((x, j) => (j === at ? value : x))) })
+  const suggestions = pattern?.includes('*') ? catalogKeys(caps, hook?.item, pattern.split('.')[0]) : []
 
-const EXAMPLES: { name: string; action: Rule['action']; kinds?: CapabilityKind[]; when: string }[] = [
-  { name: 'Read-style tools', action: 'allow', kinds: ['tool'], when: 'tool.name.matches("^(get|list|read)_")' },
-  { name: 'No destructive tools', action: 'deny', kinds: ['tool'], when: 'tool.annotations.destructiveHint && !tool.annotations.readOnlyHint' },
-  { name: 'Admins only', action: 'deny', when: 'caller.role != "admin"' },
-  { name: 'Sending needs elicitation', action: 'deny', kinds: ['tool'], when: '!client.capabilities.elicitation && tool.name.startsWith("send_")' },
-  { name: 'ENG space only', action: 'allow', kinds: ['resource'], when: 'resource.uri.startsWith("confluence://spaces/ENG/")' },
-]
-
-function Reference({ onUse }: { onUse: (r: Partial<Rule>) => void }) {
   return (
-    <details className="group rounded-2xl border border-border bg-card text-sm">
-      <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-3.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        <BookOpen className="size-3.5" /> Reference
-      </summary>
-      <div className="space-y-5 border-t border-border px-5 py-4">
-        <div className="space-y-2 text-xs leading-5 text-muted-foreground">
-          <p>
-            Each enabled rule whose kinds include the capability and whose <code className="font-mono text-foreground">when</code> is true sets the outcome to
-            its action; the last match wins. An allow rule can re-enable something a list left out, and a later deny can cut again.
-          </p>
-          <p>
-            A rule that errors while evaluating (for example reading <code className="font-mono text-foreground">tool.annotations</code> on a prompt) counts as a
-            deny, so scope rules to kinds. A rule list that does not compile fails the whole entitlement closed, and listings report "rules do not compile".
-          </p>
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Variables</p>
-          <dl className="divide-y divide-border rounded-lg border border-border">
-            {VARIABLES.map((v) => (
-              <div key={v.name} className="grid gap-1 px-4 py-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:gap-4">
-                <dt className="font-mono text-xs text-foreground">{v.name}</dt>
-                <dd className="text-xs leading-5 text-muted-foreground">{v.fields}</dd>
-              </div>
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-start gap-2">
+        <Select value={pattern ?? row.field} onValueChange={setPattern}>
+          <SelectTrigger aria-label={`${label} field ${row.field}`} className={cn('order-1 min-w-0 flex-1 font-mono text-xs sm:w-[212px] sm:flex-none', !match && hook && 'text-danger')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {!match && row.field && (
+              <SelectItem value={row.field} className="font-mono text-xs">
+                {row.field}
+              </SelectItem>
+            )}
+            {sets.map((s) => (
+              <SelectItem key={s.field} value={s.field} disabled={s.field !== pattern && taken(s)} className="font-mono text-xs">
+                {s.field}
+              </SelectItem>
             ))}
-          </dl>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            <code className="font-mono text-foreground">tool</code>, <code className="font-mono text-foreground">prompt</code>,{' '}
-            <code className="font-mono text-foreground">resource</code> and <code className="font-mono text-foreground">template</code> are the same object as{' '}
-            <code className="font-mono text-foreground">capability</code>, populated only for the matching kind and an empty map otherwise.
-          </p>
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Functions</p>
-          <p className="font-mono text-xs leading-6 text-muted-foreground">
-            startsWith · endsWith · contains · matches (RE2) · lowerAscii() · in · has(x.y) · &amp;&amp; · || · ! · ? : · s.regexReplace(pattern, replacement)
-          </p>
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Examples</p>
-          <div className="divide-y divide-border rounded-lg border border-border">
-            {EXAMPLES.map((ex) => (
-              <div key={ex.name} className="flex items-start gap-3 px-4 py-2.5">
-                <span className={cn('w-10 shrink-0 pt-0.5 text-xs font-medium', ex.action === 'deny' ? 'text-danger' : 'text-foreground')}>
-                  {ex.action === 'deny' ? 'Deny' : 'Allow'}
-                </span>
-                <span className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">
-                  {ex.kinds ? ex.kinds.map((k) => KINDS.find((x) => x.kind === k)?.label).join(', ') : 'Any kind'}
-                </span>
-                <code className="min-w-0 flex-1 break-all pt-0.5 font-mono text-xs text-foreground">{ex.when}</code>
-                <Button variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => onUse({ name: ex.name, action: ex.action, kinds: ex.kinds, when: ex.when })}>
-                  <Plus /> Use
-                </Button>
-              </div>
+          </SelectContent>
+        </Select>
+        {match?.names.map((name, j) => (
+          <Input
+            key={j}
+            value={name}
+            onChange={(e) => setName(j, e.target.value)}
+            onBlur={onBlur}
+            placeholder="name"
+            list={suggestions.length ? listId : undefined}
+            title={`The name that stands for * in ${pattern}`}
+            aria-label={`${label} name for * in ${pattern}`}
+            spellCheck={false}
+            autoCapitalize="off"
+            className="order-3 w-full font-mono text-xs sm:w-36"
+          />
+        ))}
+        {suggestions.length > 0 && (
+          <datalist id={listId}>
+            {suggestions.map((k) => (
+              <option key={k} value={k} />
             ))}
-          </div>
-        </div>
+          </datalist>
+        )}
+        <CelEditor
+          value={row.expr}
+          onChange={(expr) => onChange({ expr })}
+          onBlur={onBlur}
+          placeholder={match ? `CEL (${match.set.type})` : 'CEL'}
+          completions={{ ...completions, setType: match?.set.type }}
+          invalid={invalid}
+          ariaLabel={`${label} value of ${row.field}`}
+          className="order-4 min-h-10 flex-1 basis-full sm:min-w-48 sm:basis-0"
+        />
+        <Button variant="ghost" size="iconSm" className="order-2 mt-1 hover:text-danger sm:order-5" aria-label={`Remove ${row.field}`} title="Remove field" onClick={onRemove}>
+          <X />
+        </Button>
       </div>
-    </details>
+      <Problems items={problems} />
+    </div>
+  )
+}
+
+function Problems({ items }: { items: RuleProblem[] }) {
+  if (!items.length) return null
+  return (
+    <div className="space-y-1">
+      {items.map((p, k) => (
+        <p key={k} className="break-words font-mono text-xs text-danger">
+          {p.message}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+/** What the rule's hook can read, straight from the schema: variables, struct fields, flags and helpers. */
+function VariableReference({ hook, flags }: { hook: HookSchema; flags?: Record<string, string> }) {
+  const rows = hook.variables.flatMap((v) => [
+    { name: v.name, type: v.type, doc: v.values ? `${v.doc} One of ${v.values.map((x) => `'${x}'`).join(', ')}.` : v.doc },
+    ...Object.entries(v.fields ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([f, type]) => ({ name: `${v.name}.${f}`, type, doc: (v.name === 'flags' && flags?.[f]) || '' })),
+  ])
+  return (
+    <dl className="divide-y divide-border rounded-lg border border-border">
+      {rows.map((v) => (
+        <div key={v.name} className="grid gap-x-4 gap-y-0.5 px-4 py-2 sm:grid-cols-[150px_76px_minmax(0,1fr)]">
+          <dt className="break-all font-mono text-xs leading-5 text-foreground">{v.name}</dt>
+          <dd className="font-mono text-xs leading-5 text-muted-foreground">{v.type}</dd>
+          <dd className="text-xs leading-5 text-muted-foreground">{v.doc}</dd>
+        </div>
+      ))}
+      {hook.helpers?.map((h) => (
+        <div key={h} className="grid gap-x-4 gap-y-0.5 px-4 py-2 sm:grid-cols-[150px_76px_minmax(0,1fr)]">
+          <dt className="break-all font-mono text-xs leading-5 text-foreground">{h}()</dt>
+          <dd className="font-mono text-xs leading-5 text-muted-foreground">helper</dd>
+        </div>
+      ))}
+    </dl>
   )
 }

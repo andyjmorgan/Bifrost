@@ -55,6 +55,21 @@ select $1, $2, $3, $4, now()+$5 from servers where id=$3 and updated_at=$6`+upse
 	return nil
 }
 
+// CacheTake returns the live value for (ns, key) and deletes the row in the
+// same statement, or ErrNotFound. Two callers racing for one key cannot both
+// get it.
+func (p *Postgres) CacheTake(ctx context.Context, ns, key string) (json.RawMessage, error) {
+	var v json.RawMessage
+	err := p.pool.QueryRow(ctx, `delete from cache where ns=$1 and key=$2 and expires_at > now() returning value`, ns, key).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	return v, nil
+}
+
 // CacheDelete removes one entry, or every entry in ns when key is "".
 func (p *Postgres) CacheDelete(ctx context.Context, ns, key string) error {
 	var err error

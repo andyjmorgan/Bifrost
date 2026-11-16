@@ -133,10 +133,36 @@ func (c *Connector) Open(ctx context.Context, srv *store.Server) (*Session, erro
 // the server now rejects that version, it retries once with latest. On
 // success OnInit, if set, is told what the server reported.
 func (c *Connector) OpenWith(ctx context.Context, srv *store.Server, protocolVersion string) (*Session, error) {
-	sess, err := c.open(ctx, srv, protocolVersion)
+	return c.OpenFor(ctx, srv, protocolVersion, SessionOptions{})
+}
+
+// SessionOptions is how the gateway presents itself to a server for one
+// forwarded request. The rules decide all of it (server/connect).
+type SessionOptions struct {
+	// Identity is the client name and version the server is told. Nil
+	// means the gateway's own.
+	Identity *mcp.Implementation
+	// Capabilities is what the server is told the client can do. Nil means
+	// the SDK's defaults, which is right for the gateway's own catalog
+	// fetches; a forwarded request always states them.
+	Capabilities *mcp.ClientCapabilities
+	// OnProgress receives each progress notification of a call on this
+	// session, in order, before the call returns.
+	OnProgress func(*mcp.ProgressNotificationParams)
+	// PassQuestions hands a server's own question back to the caller as the
+	// call's result. Without it the client library would try to answer the
+	// question itself, and the gateway has nobody to ask: the question is
+	// the end client's to answer.
+	PassQuestions bool
+}
+
+// OpenFor is OpenWith with the identity, capabilities and handlers of one
+// forwarded request.
+func (c *Connector) OpenFor(ctx context.Context, srv *store.Server, protocolVersion string, o SessionOptions) (*Session, error) {
+	sess, err := c.open(ctx, srv, protocolVersion, o)
 	if err != nil && protocolVersion != "" && strings.Contains(err.Error(), "unsupported protocol version") {
 		c.log.Info("upstream: cached protocol version rejected; retrying with latest", "slug", srv.Slug, "version", protocolVersion)
-		sess, err = c.open(ctx, srv, "")
+		sess, err = c.open(ctx, srv, "", o)
 	}
 	if err == nil && c.OnInit != nil {
 		if ir := sess.InitializeResult(); ir != nil {
@@ -146,14 +172,29 @@ func (c *Connector) OpenWith(ctx context.Context, srv *store.Server, protocolVer
 	return sess, err
 }
 
-func (c *Connector) open(ctx context.Context, srv *store.Server, protocolVersion string) (*Session, error) {
+func (c *Connector) open(ctx context.Context, srv *store.Server, protocolVersion string, o SessionOptions) (*Session, error) {
 	dctx, cancel := detach(ctx, targetFor(ctx, srv))
 	hc, err := c.HTTPClient(dctx, srv)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "bifrost", Version: c.version}, nil)
+	as := o.Identity
+	if as == nil {
+		as = &mcp.Implementation{Name: "bifrost", Version: c.version}
+	}
+	opts := &mcp.ClientOptions{Capabilities: o.Capabilities}
+	if o.PassQuestions {
+		opts.MultiRoundTrip = &mcp.MultiRoundTripOptions{Disabled: true}
+	}
+	if o.OnProgress != nil {
+		opts.ProgressNotificationHandler = func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
+			if req != nil && req.Params != nil {
+				o.OnProgress(req.Params)
+			}
+		}
+	}
+	client := mcp.NewClient(as, opts)
 	cs, err := client.Connect(dctx, &mcp.StreamableClientTransport{
 		Endpoint: srv.URL, HTTPClient: hc,
 		// Connections are opened per call and the gateway never consumes
@@ -176,11 +217,14 @@ func detach(ctx context.Context, t audit.Target) (context.Context, context.Cance
 	if dl, ok := ctx.Deadline(); ok {
 		nctx, cancel = context.WithDeadline(nctx, dl)
 	}
+	// The watcher keeps its own handle: nctx is rebound below, and the
+	// goroutine must not read a variable that is still being written.
+	done := nctx.Done()
 	go func() {
 		select {
 		case <-ctx.Done():
 			cancel()
-		case <-nctx.Done():
+		case <-done:
 		}
 	}()
 	if caller := auth.CallerFrom(ctx); caller != nil {

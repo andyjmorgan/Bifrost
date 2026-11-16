@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -77,17 +78,15 @@ func main() {
 	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
-		in := cache.Init{ProtocolVersion: ir.ProtocolVersion, Instructions: ir.Instructions, Caps: &cache.Caps{}}
-		if c := ir.Capabilities; c != nil {
-			in.Caps.Tools, in.Caps.Prompts, in.Caps.Resources = c.Tools != nil, c.Prompts != nil, c.Resources != nil
-		}
-		if ir.ServerInfo != nil {
-			in.ServerName, in.ServerVersion, in.Title = ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ServerInfo.Title
-		}
 		id := srv.ID
-		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, in, cfg.ToolsCacheTTL)
+		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, gateway.InitFrom(ir), cfg.ToolsCacheTTL)
 	}
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
+	// Every replica signs upstream questions with the same key, derived from
+	// the master key so there is nothing more to configure.
+	stateKey := sha256.Sum256(append([]byte("bifrost/hooks/state\x00"), cfg.MasterKey...))
+	gw.SetStateKey(stateKey[:])
+	gw.SetMetaAllow(cfg.MetaAllowIn, cfg.MetaAllowOut)
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr
 	if !strings.HasPrefix(cfg.ListenAddr, ":") {

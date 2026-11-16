@@ -14,7 +14,8 @@ import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
 import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
-import { RulesCard, type RuleProblems } from '../components/entitlements/RulesCard'
+import { RulesCard } from '../components/entitlements/RulesCard'
+import { duplicateFields, fromDrafts, keyProblems, toDrafts, type RuleDraft, type RuleProblems } from '../components/entitlements/rules'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import {
   api,
@@ -26,8 +27,8 @@ import {
   type GrantInput,
   type MemberDTO,
   type OrgRole,
-  type Rule,
   type RuleProblem,
+  type RulesSchema,
   type Selection,
 } from '../api'
 import { cn } from '../lib'
@@ -42,7 +43,7 @@ interface Draft {
   description: string
   /** Resource lists hold URI patterns, including exact URIs picked from the seen resources. */
   sel: DraftSelection
-  rules: Rule[]
+  rules: RuleDraft[]
   grants: GrantInput[]
 }
 
@@ -62,29 +63,9 @@ function toDraft(e: EntitlementDTO): Draft {
       resources: s.resources ?? null,
       templates: s.templates ?? null,
     },
-    rules: e.rules ?? [],
+    rules: toDrafts(e.rules ?? []),
     grants: e.grants.map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
   }
-}
-
-/** Rules as sent: trimmed names, enabled left undefined when on, kinds dropped when empty. */
-function cleanRules(rules: Rule[]): Rule[] {
-  return rules.map((r) => {
-    const out: Rule = { id: r.id, name: r.name.trim(), action: r.action, when: r.when }
-    if (r.enabled === false) out.enabled = false
-    if (r.kinds?.length) out.kinds = r.kinds
-    return out
-  })
-}
-
-/** Index-based problems from the API, re-keyed by the rule id they were reported against. */
-function keyProblems(rules: Rule[], problems: RuleProblem[]): RuleProblems {
-  const out: RuleProblems = {}
-  for (const p of problems) {
-    const id = rules[p.rule]?.id ?? `#${p.rule}`
-    ;(out[id] ??= []).push(p.message)
-  }
-  return out
 }
 
 function problemsFromError(e: unknown): RuleProblem[] | undefined {
@@ -117,7 +98,7 @@ function isDirty(a: Draft, b: Draft): boolean {
     a.name !== b.name ||
     a.description !== b.description ||
     KINDS.some((k) => !sameList(a.sel[k.key], b.sel[k.key], k.key === 'resources')) ||
-    JSON.stringify(cleanRules(a.rules)) !== JSON.stringify(cleanRules(b.rules)) ||
+    JSON.stringify(fromDrafts(a.rules)) !== JSON.stringify(fromDrafts(b.rules)) ||
     !sameSet(a.grants.map(grantKey), b.grants.map(grantKey))
   )
 }
@@ -140,31 +121,11 @@ export function EntitlementEditorPage() {
   const [validating, setValidating] = useState(false)
   // Only the latest validation may land; an older one racing it would show stale problems.
   const validateSeq = useRef(0)
-
-  const load = useCallback(async () => {
-    try {
-      const e = await api.entitlements.get(id)
-      setEnt(e)
-      setDraft(toDraft(e))
-      setLoadError(undefined)
-      const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
-      setCaps(c)
-      setMembers(org.members)
-    } catch (err) {
-      setLoadError(errorMessage(err))
-    } finally {
-      setLoaded(true)
-    }
-  }, [id])
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const dirty = useMemo(() => !!ent && !!draft && isDirty(draft, toDraft(ent)), [ent, draft])
-  const hasProblems = Object.keys(problems).length > 0
+  const [schema, setSchema] = useState<RulesSchema>()
+  const [schemaError, setSchemaError] = useState<string>()
 
   /** POST /entitlements/validate; returns true when the list compiles. */
-  const validate = useCallback(async (rules: Rule[]): Promise<boolean> => {
+  const validate = useCallback(async (rules: RuleDraft[]): Promise<boolean> => {
     const seq = ++validateSeq.current
     if (!rules.length) {
       setProblems({})
@@ -172,9 +133,8 @@ export function EntitlementEditorPage() {
     }
     setValidating(true)
     try {
-      const sent = cleanRules(rules)
-      const r = await api.entitlements.validate(sent)
-      if (seq === validateSeq.current) setProblems(keyProblems(sent, r.problems ?? []))
+      const r = await api.entitlements.validate(fromDrafts(rules))
+      if (seq === validateSeq.current) setProblems(keyProblems(rules, r.problems ?? []))
       return !(r.problems ?? []).length
     } catch (e) {
       // A failed validation call should not block editing; the save will report compile errors.
@@ -184,6 +144,44 @@ export function EntitlementEditorPage() {
       if (seq === validateSeq.current) setValidating(false)
     }
   }, [])
+
+  const loadSchema = useCallback(async () => {
+    try {
+      setSchema(await api.entitlements.rulesSchema())
+      setSchemaError(undefined)
+    } catch (err) {
+      setSchemaError(errorMessage(err))
+    }
+  }, [])
+  useEffect(() => {
+    void loadSchema()
+  }, [loadSchema])
+
+  const load = useCallback(async () => {
+    try {
+      const e = await api.entitlements.get(id)
+      const d = toDraft(e)
+      setEnt(e)
+      setDraft(d)
+      setLoadError(undefined)
+      // Stored rules that do not compile: place each problem on its rule.
+      if (e.rulesError && d.rules.length) void validate(d.rules)
+      const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
+      setCaps(c)
+      setMembers(org.members)
+    } catch (err) {
+      setLoadError(errorMessage(err))
+    } finally {
+      setLoaded(true)
+    }
+  }, [id, validate])
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // Unusable stored rules are rewritten by any save, including one that leaves the list as shown.
+  const dirty = useMemo(() => !!ent && !!draft && (isDirty(draft, toDraft(ent)) || !!ent.rulesError), [ent, draft])
+  const hasProblems = Object.keys(problems).length > 0 || !!draft?.rules.some((r) => duplicateFields(r).size > 0)
 
   if (!ent || !draft) {
     return (
@@ -199,13 +197,14 @@ export function EntitlementEditorPage() {
   }
 
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch })
-  const setRules = (rules: Rule[]) => {
-    // A rule whose expression changed is unvalidated until the next blur or save.
-    const before = new Map(draft.rules.map((r) => [r.id, r.when]))
-    const changed = rules.filter((r) => before.has(r.id) && before.get(r.id) !== r.when).map((r) => r.id)
-    const ids = new Set(rules.map((r) => r.id))
-    if (Object.keys(problems).some((id) => changed.includes(id) || !ids.has(id))) {
-      setProblems(Object.fromEntries(Object.entries(problems).filter(([id]) => ids.has(id) && !changed.includes(id))))
+  const setRules = (rules: RuleDraft[]) => {
+    // A rule that changed is unvalidated until the next blur or save; one that only moved or was renamed keeps its problems.
+    const before = new Map(draft.rules.map((r) => [r.key, r]))
+    const compiled = (r: RuleDraft) => JSON.stringify({ ...r, name: '' })
+    const same = (was: RuleDraft | undefined, r: RuleDraft) => !!was && (was === r || compiled(was) === compiled(r))
+    const kept = new Set(rules.filter((r) => same(before.get(r.key), r)).map((r) => r.key))
+    if (Object.keys(problems).some((key) => !kept.has(key))) {
+      setProblems(Object.fromEntries(Object.entries(problems).filter(([key]) => kept.has(key))))
     }
     set({ rules })
   }
@@ -215,14 +214,14 @@ export function EntitlementEditorPage() {
     if (!name) return setSaveError('Name is required.')
     setSaving(true)
     setSaveError(undefined)
-    const rules = cleanRules(draft.rules)
+    const rules = draft.rules
     if (!(await validate(rules))) {
       setSaving(false)
       setSaveError('Some rules do not compile. Fix the problems shown under them, then save.')
       return
     }
     try {
-      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rules })
+      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rules: fromDrafts(rules) })
       const updated = await api.entitlements.putGrants(ent.id, draft.grants)
       setEnt(updated)
       setDraft(toDraft(updated))
@@ -305,9 +304,21 @@ export function EntitlementEditorPage() {
         set={set}
         caps={caps}
         rules={
-          <RulesCard rules={draft.rules} onChange={setRules} problems={problems} validating={validating} onValidate={(r) => void validate(r ?? draft.rules)} slug={ent.slug} caps={caps} />
+          <RulesCard
+            rules={draft.rules}
+            onChange={setRules}
+            problems={problems}
+            validating={validating}
+            onValidate={(r) => void validate(r ?? draft.rules)}
+            schema={schema}
+            schemaError={schemaError}
+            onReloadSchema={() => void loadSchema()}
+            rulesError={ent.rulesError}
+            slug={ent.slug}
+            caps={caps}
+          />
         }
-        problems={Object.keys(problems).length}
+        rulesBroken={hasProblems || !!ent.rulesError}
       />
 
       <div className="flex items-center justify-end gap-3">
@@ -342,8 +353,21 @@ export function EntitlementEditorPage() {
 type EditorTab = CapabilityKind | 'rules'
 
 /** One tab per kind, then the rules last. Only the active panel is rendered. */
-function EditorTabs({ draft, set, caps, rules, problems }: { draft: Draft; set: (p: Partial<Draft>) => void; caps: CapabilityDTO[]; rules: ReactNode; problems: number }) {
-  const [tab, setTab] = useState<EditorTab>('tool')
+function EditorTabs({
+  draft,
+  set,
+  caps,
+  rules,
+  rulesBroken,
+}: {
+  draft: Draft
+  set: (p: Partial<Draft>) => void
+  caps: CapabilityDTO[]
+  rules: ReactNode
+  /** The rules have problems, or the stored ones cannot be used: the page opens on them. */
+  rulesBroken: boolean
+}) {
+  const [tab, setTab] = useState<EditorTab>(rulesBroken ? 'rules' : 'tool')
   const setKind = (key: SelKey, list: string[] | null) => set({ sel: { ...draft.sel, [key]: list } })
   const tabs: Tab<EditorTab>[] = [
     ...KINDS.map((k) => {
@@ -351,7 +375,7 @@ function EditorTabs({ draft, set, caps, rules, problems }: { draft: Draft; set: 
       const seen = caps.filter((c) => c.kind === k.kind).length
       return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
     }),
-    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: problems > 0 ? <span className="size-1.5 rounded-full bg-danger" aria-label={`${problems} problems`} /> : undefined },
+    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
   ]
   const kind = KINDS.find((k) => k.kind === tab)
 

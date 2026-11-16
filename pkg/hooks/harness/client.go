@@ -165,6 +165,18 @@ func (r *RawReply) Final() map[string]any {
 			return m
 		}
 	}
+	// A reply that is not a stream is one JSON body. An SDK server answers
+	// some errors that way, with an HTTP error status.
+	if !r.Stream() && len(r.Body) > 0 {
+		var m map[string]any
+		dec := json.NewDecoder(bytes.NewReader(r.Body))
+		dec.UseNumber()
+		if dec.Decode(&m) == nil {
+			if _, isNote := m["method"]; !isNote && m["jsonrpc"] != nil {
+				return m
+			}
+		}
+	}
 	return nil
 }
 
@@ -272,6 +284,18 @@ func RawDo(ctx context.Context, endpoint string, rr RawRequest) (*RawReply, erro
 	hr.Header.Set("Mcp-Protocol-Version", V2026)
 	if rr.Method != "" {
 		hr.Header.Set("Mcp-Method", rr.Method)
+	}
+	// The name a request is about travels in a header as well, as the
+	// protocol requires. An SDK server refuses a request without it.
+	switch rr.Method {
+	case "tools/call", "prompts/get":
+		if name, ok := rr.Params["name"].(string); ok && name != "" {
+			hr.Header.Set("Mcp-Name", name)
+		}
+	case "resources/read", "resources/directory/read":
+		if uri, ok := rr.Params["uri"].(string); ok && uri != "" {
+			hr.Header.Set("Mcp-Name", uri)
+		}
 	}
 	if rr.Token != "" {
 		hr.Header.Set("Authorization", "Bearer "+rr.Token)

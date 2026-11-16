@@ -111,10 +111,10 @@ const celTheme = EditorView.theme({
     color: 'var(--foreground)',
     borderRadius: '12px',
     boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)',
-    overflow: 'hidden',
   },
   '.cm-tooltip.cm-tooltip-autocomplete': { marginTop: '4px' },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: MONO, fontSize: '12px', maxHeight: '18rem', minWidth: '16rem', maxWidth: 'min(32rem, calc(100vw - 2rem))', padding: '4px' },
+  // The list clips to the rounded corners itself: the variable's description hangs beside it, outside the tooltip's box.
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': { borderRadius: '12px', fontFamily: MONO, fontSize: '12px', maxHeight: '18rem', minWidth: '16rem', maxWidth: 'min(32rem, calc(100vw - 2rem))', padding: '4px' },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     display: 'flex',
     alignItems: 'baseline',
@@ -149,6 +149,14 @@ const celTheme = EditorView.theme({
     textOverflow: 'ellipsis',
   },
   '.cm-completionIcon': { display: 'none' },
+  '.cm-tooltip.cm-completionInfo': {
+    padding: '8px 10px',
+    maxWidth: '20rem',
+    fontFamily: SANS,
+    fontSize: '12px',
+    lineHeight: '18px',
+    color: 'var(--muted-foreground)',
+  },
 })
 
 /* ---------- component ---------- */
@@ -180,7 +188,7 @@ export interface CelEditorProps {
   className?: string
 }
 
-/** A CodeMirror 6 input for a rule's CEL condition, dressed as the app's code textarea. */
+/** A CodeMirror 6 input for a rule's CEL (its condition, or a value it sets), dressed as the app's code textarea. */
 export function CelEditor({ value, onChange, onBlur, placeholder, singleLine: oneLine, completions, invalid, ariaLabel, className }: CelEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -232,7 +240,7 @@ export function CelEditor({ value, onChange, onBlur, placeholder, singleLine: on
     }
   }, [oneLine, placeholder, ariaLabel])
 
-  // Sync external value changes (the true/false toggle, a field switch) without echoing them.
+  // Sync external value changes (a field switch that resets the value) without echoing them.
   useEffect(() => {
     const ev = view.current
     if (!ev) return

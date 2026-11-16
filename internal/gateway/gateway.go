@@ -1,6 +1,11 @@
 // Package gateway is the front door: an MCP server (go-sdk, 2026-07-28 only)
-// that lists and calls tools on the caller's registered servers. /mcp
-// multiplexes every server with slug__tool names; /{slug}/mcp is 1:1.
+// in front of the caller's entitlements. /mcp multiplexes every entitlement
+// with slug__name names; /{slug}/mcp is 1:1.
+//
+// The gateway does transport, credentials, caching and the entitlement's
+// allow lists. Every listing, call and reply then goes through the rules
+// engine (pkg/hooks), which decides what a caller sees and may do. hooks.go
+// is where the two meet.
 package gateway
 
 import (
@@ -25,6 +30,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/cache"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
+	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
 
 // ProtocolVersion is the only version the front door accepts.
@@ -42,6 +48,9 @@ type Store interface {
 	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, items map[string]store.Seen) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
+	// CacheTake returns a live entry and removes it in one step, or
+	// ErrNotFound. It is how a confirmation is redeemed exactly once.
+	CacheTake(ctx context.Context, ns, key string) (json.RawMessage, error)
 }
 
 // Gateway serves the two MCP routes.
@@ -60,6 +69,12 @@ type Gateway struct {
 	flights singleflight.Group
 	// rules caches each entitlement's compiled rules by generation.
 	rules sync.Map
+	// engine is the rules engine: every listing, call and reply goes
+	// through it. See hooks.go.
+	engine *hooks.Engine
+	// metaIn and metaOut are the _meta keys allowed through to servers and
+	// back to clients; see SetMetaAllow.
+	metaIn, metaOut []string
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -68,7 +83,9 @@ const MetaKeyUnavailable = "ai.andrewmorgan.bifrost/unavailable"
 
 // New builds a gateway.
 func New(s Store, conn *upstream.Connector, rec *audit.Recorder, cw *cache.Writer, toolsTTL time.Duration, log *slog.Logger, version string) *Gateway {
-	return &Gateway{store: s, conn: conn, rec: rec, cache: cw, toolsTTL: toolsTTL, log: log, version: version}
+	g := &Gateway{store: s, conn: conn, rec: rec, cache: cw, toolsTTL: toolsTTL, log: log, version: version}
+	g.engine = newEngine(g, version)
+	return g
 }
 
 type routeKey struct{}
@@ -123,50 +140,40 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 			if caller == nil {
 				return nil, &jsonrpc.Error{Code: -32001, Message: "unauthenticated"}
 			}
-			if sess, ok := req.GetSession().(*mcp.ServerSession); ok {
-				ctx = withClient(ctx, sess.InitializeParams())
-			}
+			// Every method the gateway serves goes through the rules engine.
 			switch method {
-			case "tools/list":
-				if searchMode(ctx) {
-					return g.searchToolsList(ctx, caller, route, slug)
-				}
-				return g.listTools(ctx, caller, route, slug)
+			case "server/discover":
+				return g.hookDiscover(ctx, caller, route, slug, metaOf(req))
+			case "tools/list", "prompts/list", "resources/list", "resources/templates/list":
+				return g.hookList(ctx, caller, route, slug, method, metaOf(req))
 			case "tools/call":
-				// Server-side params arrive raw: arguments stay as JSON bytes and
-				// are forwarded untouched.
+				// Server-side params arrive raw: arguments stay as JSON bytes.
 				p, ok := req.GetParams().(*mcp.CallToolParamsRaw)
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid tools/call params"}
 				}
-				sess := req.GetSession().(*mcp.ServerSession)
-				if tok, ok := p.Meta["progressToken"]; ok && tok != nil {
-					ctx = withProgress(ctx, func(done, total float64, msg string) {
-						_ = sess.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: tok, Progress: done, Total: total, Message: msg})
-					})
+				if sess, ok := req.GetSession().(*mcp.ServerSession); ok {
+					if tok, ok := p.Meta["progressToken"]; ok && tok != nil {
+						// The gateway's own work (refreshing catalogs) reports
+						// progress under the client's token.
+						ctx = withProgress(ctx, func(done, total float64, msg string) {
+							_ = sess.NotifyProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: tok, Progress: done, Total: total, Message: msg})
+						})
+					}
 				}
-				if searchMode(ctx) && isSearchTool(p.Name) {
-					return g.searchCall(ctx, caller, route, slug, p)
-				}
-				return g.callTool(ctx, caller, route, slug, p)
-			case "prompts/list":
-				return g.listPrompts(ctx, caller, route, slug)
+				return g.hookCall(ctx, caller, route, slug, req, p)
 			case "prompts/get":
 				p, ok := req.GetParams().(*mcp.GetPromptParams)
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid prompts/get params"}
 				}
-				return g.getPrompt(ctx, caller, route, slug, p)
-			case "resources/list":
-				return g.listResources(ctx, caller, route, slug)
-			case "resources/templates/list":
-				return g.listResourceTemplates(ctx, caller, route, slug)
+				return g.hookPrompt(ctx, caller, route, slug, req, p)
 			case "resources/read":
 				p, ok := req.GetParams().(*mcp.ReadResourceParams)
 				if !ok {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid resources/read params"}
 				}
-				return g.readResource(ctx, caller, route, slug, p)
+				return g.hookRead(ctx, caller, route, slug, req, p)
 			}
 			return next(ctx, method, req)
 		}
@@ -174,21 +181,6 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 }
 
 // ---- tools/list -------------------------------------------------------------
-
-func (g *Gateway) listTools(ctx context.Context, caller *auth.Caller, route, slug string) (mcp.Result, error) {
-	if route == "direct" {
-		entries, err := g.catalog(ctx, caller, route, slug, false)
-		if err != nil {
-			return nil, err
-		}
-		e := entries[0]
-		if e.err != nil {
-			return nil, upstreamError(e.srv, e.err)
-		}
-		return &mcp.ListToolsResult{Tools: e.tools}, nil
-	}
-	return g.muxTools(ctx, caller, route, false)
-}
 
 // RefreshTool is the gateway's own tool on the mux route: re-read every
 // server's tools, prompts and resources bypassing the cache, refresh it,
@@ -315,31 +307,6 @@ func (g *Gateway) refreshServices(ctx context.Context, caller *auth.Caller, rout
 	}, false), nil
 }
 
-// muxTools lists tools across all enabled servers. With force, cached
-// entries are ignored and every server is asked afresh.
-func (g *Gateway) muxTools(ctx context.Context, caller *auth.Caller, route string, force bool) (*mcp.ListToolsResult, error) {
-	entries, err := g.catalog(ctx, caller, route, "", force)
-	if err != nil {
-		return nil, err
-	}
-	out := &mcp.ListToolsResult{Tools: []*mcp.Tool{refreshToolDef()}}
-	for _, e := range entries {
-		if e.err != nil {
-			continue
-		}
-		for _, t := range e.tools {
-			// Copy: cached tool objects must not be mutated with the prefix.
-			c := *t
-			c.Name = e.srv.Slug + Separator + t.Name
-			out.Tools = append(out.Tools, &c)
-		}
-	}
-	if u := unavailableOf(entries); len(u) > 0 {
-		out.Meta = mcp.Meta{MetaKeyUnavailable: u}
-	}
-	return out, nil
-}
-
 // toolsOf opens a session and pages through its tools.
 // decodeTools turns a cached tools/list back into tools; ok is false on a miss.
 func decodeTools(raw json.RawMessage) ([]*mcp.Tool, bool) {
@@ -354,31 +321,6 @@ func decodeTools(raw json.RawMessage) ([]*mcp.Tool, bool) {
 		tools = []*mcp.Tool{}
 	}
 	return tools, true
-}
-
-// canonicalToolName returns the cached tool whose name matches ignoring case,
-// or name unchanged when there is no such tool (or an exact match exists).
-func canonicalToolName(tools []*mcp.Tool, name string) string {
-	for _, t := range tools {
-		if t.Name == name {
-			return name
-		}
-	}
-	for _, t := range tools {
-		if strings.EqualFold(t.Name, name) {
-			return t.Name
-		}
-	}
-	return name
-}
-
-// initHint returns the cached negotiated protocol version, or "" (probe latest).
-func initHint(b store.CacheBundle) string {
-	var in cache.Init
-	if raw := b[cache.NSInit]; raw != nil && json.Unmarshal(raw, &in) == nil {
-		return in.ProtocolVersion
-	}
-	return ""
 }
 
 // plural renders "1 tool" / "3 tools".
@@ -513,76 +455,6 @@ func (g *Gateway) toolsOf(ctx context.Context, srv *store.Server, protocolVersio
 
 // ---- tools/call -------------------------------------------------------------
 
-func (g *Gateway) callTool(ctx context.Context, caller *auth.Caller, route, slug string, p *mcp.CallToolParamsRaw) (mcp.Result, error) {
-	name := p.Name
-	if route == "mux" && p.Name == RefreshTool {
-		return g.refreshServices(ctx, caller, route)
-	}
-	if route == "mux" {
-		var ok bool
-		slug, name, ok = strings.Cut(p.Name, Separator)
-		if !ok || slug == "" || name == "" {
-			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("tool name must be <slug>%s<tool>", Separator)}
-		}
-	}
-	// Slugs are lowercase by construction; models are not always.
-	slug = strings.ToLower(slug)
-	srv, cached, err := g.exposure(ctx, caller, slug, cache.NSInit, cache.NSTools)
-	if err != nil {
-		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
-	}
-	if !srv.Enabled {
-		return nil, &jsonrpc.Error{Code: -32004, Message: "server " + slug + " is disabled"}
-	}
-	// The same cut that decides the listing decides the call: a tool outside
-	// the ceiling or the selection does not exist on this slug. That needs
-	// the tool list, so a cold cache costs one listing here.
-	tools, ok := decodeTools(cached[cache.NSTools])
-	if !ok {
-		if tools, _, err = g.fetchTools(ctx, srv, initHint(cached), false, nil); err != nil {
-			return nil, upstreamError(srv, err)
-		}
-		g.observeTools(ctx, srv, tools)
-	}
-	var in cache.Init
-	if raw := cached[cache.NSInit]; raw != nil {
-		_ = json.Unmarshal(raw, &in)
-	}
-	cut := g.cutterFor(ctx, srv, in)
-	allowed := cut.tools(tools)
-	name = canonicalToolName(allowed, name)
-	if !containsTool(allowed, name) {
-		return nil, &jsonrpc.Error{Code: -32004, Message: "unknown tool " + p.Name}
-	}
-	audit.SetTarget(ctx, srv.ID, srv.Slug)
-	sess, err := g.conn.OpenWith(ctx, srv, initHint(cached))
-	if err != nil {
-		return nil, upstreamError(srv, err)
-	}
-	defer sess.Close()
-	var args any
-	if len(p.Arguments) > 0 {
-		args = json.RawMessage(p.Arguments)
-	}
-	// Forward client metadata (progress tokens and the like) but never the
-	// inbound protocol marker: the upstream session negotiated its own version.
-	var meta mcp.Meta
-	for k, v := range p.Meta {
-		if k == mcp.MetaKeyProtocolVersion {
-			continue
-		}
-		if meta == nil {
-			meta = mcp.Meta{}
-		}
-		meta[k] = v
-	}
-	res, err := sess.CallTool(sess.Ctx, &mcp.CallToolParams{Name: name, Arguments: args, Meta: meta})
-	if err != nil {
-		return nil, upstreamError(srv, err)
-	}
-	return res, nil
-}
-
 func upstreamError(srv *store.Server, err error) error {
 	var je *jsonrpc.Error
 	if errors.As(err, &je) {
@@ -596,13 +468,4 @@ func upstreamError(srv *store.Server, err error) error {
 		code = -32012
 	}
 	return &jsonrpc.Error{Code: code, Message: fmt.Sprintf("upstream %s: %v", srv.Slug, err)}
-}
-
-func containsTool(tools []*mcp.Tool, name string) bool {
-	for _, t := range tools {
-		if t.Name == name {
-			return true
-		}
-	}
-	return false
 }

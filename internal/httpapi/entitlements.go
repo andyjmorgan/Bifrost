@@ -11,9 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/andyjmorgan/Bifrost/internal/auth"
-	"github.com/andyjmorgan/Bifrost/internal/rules"
+	"github.com/andyjmorgan/Bifrost/internal/gateway"
 	"github.com/andyjmorgan/Bifrost/internal/slug"
 	"github.com/andyjmorgan/Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
 
 // Entitlements: the grantable views of a server, each under its own slug.
@@ -30,11 +31,15 @@ type EntitlementDTO struct {
 	Description string          `json:"description"`
 	MCPURL      string          `json:"mcpUrl"`
 	Selection   store.Selection `json:"selection"`
-	Rules       []rules.Rule    `json:"rules"`
-	Generation  int             `json:"generation"`
-	Grants      []GrantDTO      `json:"grants"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	Rules       []hooks.Rule    `json:"rules"`
+	// RulesError says why the stored rules cannot be used, for example
+	// because they are in the retired format. While it is set the
+	// entitlement exposes nothing.
+	RulesError string     `json:"rulesError,omitempty"`
+	Generation int        `json:"generation"`
+	Grants     []GrantDTO `json:"grants"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 // GrantDTO gives a user or a role the entitlement.
@@ -53,13 +58,13 @@ type EntitlementInput struct {
 	Slug        string           `json:"slug"`
 	Description string           `json:"description"`
 	Selection   *store.Selection `json:"selection"`
-	Rules       *[]rules.Rule    `json:"rules"`
+	Rules       *[]hooks.Rule    `json:"rules"`
 }
 
 // RulesProblems is the 400 body when rules do not compile.
 type RulesProblems struct {
 	Error    string         `json:"error"`
-	Problems rules.Problems `json:"problems"`
+	Problems hooks.Problems `json:"problems"`
 }
 
 // CapabilityDTO is one thing a server has been seen to offer, with the
@@ -92,9 +97,14 @@ type ExposureDTO struct {
 
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
 	d := EntitlementDTO{ID: e.ID.String(), ServerID: e.ServerID.String(), ServerName: serverName, Slug: e.Slug, Name: e.Name, Description: e.Description,
-		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Rules: []rules.Rule{}, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
-	if rs, err := rules.Parse(e.Policies); err == nil && rs != nil {
+		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Rules: []hooks.Rule{}, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	if rs, err := gateway.ParseRules(e.Policies); err != nil {
+		d.RulesError = err.Error()
+	} else if rs != nil {
 		d.Rules = rs
+		if _, probs := hooks.Compile(rs); len(probs) > 0 {
+			d.RulesError = probs.Error()
+		}
 	}
 	members := map[string]*store.Member{}
 	if ms, err := a.store.ListMembers(r.Context(), uuid.MustParse(e.OrgID)); err == nil {
@@ -190,7 +200,7 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 		e.Selection = *in.Selection
 	}
 	if in.Rules != nil {
-		if _, probs := rules.Compile(*in.Rules); probs != nil {
+		if _, probs := hooks.Compile(*in.Rules); probs != nil {
 			writeJSON(w, http.StatusBadRequest, RulesProblems{Error: "rules do not compile", Problems: probs})
 			return
 		}
@@ -255,7 +265,7 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 		e.Selection = *in.Selection
 	}
 	if in.Rules != nil {
-		if _, probs := rules.Compile(*in.Rules); probs != nil {
+		if _, probs := hooks.Compile(*in.Rules); probs != nil {
 			writeJSON(w, http.StatusBadRequest, RulesProblems{Error: "rules do not compile", Problems: probs})
 			return
 		}
@@ -271,17 +281,25 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 // validateRules compiles a rule list without saving it.
 func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Rules []rules.Rule `json:"rules"`
+		Rules []hooks.Rule `json:"rules"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_, probs := rules.Compile(in.Rules)
+	_, probs := hooks.Compile(in.Rules)
 	if probs == nil {
-		probs = rules.Problems{}
+		probs = hooks.Problems{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"problems": probs})
+}
+
+// rulesSchema describes, for every hook, the variables a rule can read and
+// the fields it can set, with the request flags. The rule editor builds its
+// reference and its completions from this, so it cannot drift from the
+// engine.
+func (a *API) rulesSchema(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"flags": hooks.FlagDocs, "hooks": hooks.Schema()})
 }
 
 func (a *API) deleteEntitlement(w http.ResponseWriter, r *http.Request) {
@@ -372,7 +390,7 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 			Enabled: s.Enabled, Selection: s.Selection, Via: []string{}, Capabilities: []string{}}
 		if e, err := a.store.GetEntitlement(r.Context(), c.OrgID, s.EntitlementID); err == nil {
 			d.Description = e.Description
-			if rs, err := rules.Parse(e.Policies); err == nil {
+			if rs, err := gateway.ParseRules(e.Policies); err == nil {
 				d.Rules = len(rs)
 			}
 			for _, g := range e.Grants {

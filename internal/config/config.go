@@ -34,6 +34,11 @@ type Config struct {
 	UpstreamTimeout time.Duration
 	ToolsCacheTTL   time.Duration // how long a server's tools/list is served from cache; 0 disables
 	Version         string
+	// MetaAllowIn is the request _meta keys a client may send on to a
+	// server (MCPGW_META_ALLOW_IN). MetaAllowOut is the _meta keys a server
+	// may send back, on catalog items and results (MCPGW_META_ALLOW_OUT).
+	// Both are comma separated, and empty lets nothing through.
+	MetaAllowIn, MetaAllowOut []string
 }
 
 // FromEnv builds a Config from MCPGW_* variables, failing on anything unusable.
@@ -55,6 +60,15 @@ func FromEnv() (Config, error) {
 	if c.DSN == "" {
 		return c, fmt.Errorf("MCPGW_DSN is required")
 	}
+	list := func(env string) (out []string) {
+		for _, k := range strings.Split(os.Getenv(env), ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				out = append(out, k)
+			}
+		}
+		return out
+	}
+	c.MetaAllowIn, c.MetaAllowOut = list("MCPGW_META_ALLOW_IN"), list("MCPGW_META_ALLOW_OUT")
 	var err error
 	if c.RefreshInterval, err = durationEnv("MCPGW_REFRESH_INTERVAL", 4*time.Hour); err != nil {
 		return c, err

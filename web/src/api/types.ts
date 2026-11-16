@@ -476,8 +476,10 @@ export interface EntitlementDTO {
   description: string
   mcpUrl: string
   selection: Selection
-  /** Advanced rules, evaluated top to bottom after the allow lists. Always an array. */
+  /** Hook rules, run top to bottom at their hook. Always an array. */
   rules: Rule[]
+  /** Why the stored rules cannot be used. While set, the entitlement exposes nothing. */
+  rulesError?: string
   generation: number
   grants: GrantDTO[]
   createdAt: string
@@ -506,24 +508,72 @@ export interface CapabilityDTO {
   definition?: unknown
 }
 
-/** A call-time rule. The last enabled rule whose kinds and `when` match sets the outcome. */
+/** A hook rule: a CEL condition on one hook, and the fields it sets when the condition is true. */
 export interface Rule {
-  /** Client-generated and stable (crypto.randomUUID()). */
-  id: string
-  name: string
+  id?: string
+  /** A label for audit records; clients never see it. */
+  name?: string
   /** undefined = enabled. */
   enabled?: boolean
-  action: 'allow' | 'deny'
-  /** Empty or undefined = any kind. */
-  kinds?: CapabilityKind[]
+  /** undefined = enforce. An audit rule records what it would do and changes nothing. */
+  mode?: RuleMode
+  /** The hook the rule runs at, e.g. "tools/filter". */
+  hook: string
   /** CEL boolean expression. */
   when: string
+  /** Field name -> CEL expression, e.g. {"decision": "'deny'"}. */
+  then?: Record<string, string>
 }
 
-/** A compile problem; `rule` is the 0-based index into the submitted list. */
+export type RuleMode = 'enforce' | 'audit'
+
+/**
+ * A compile problem. `rule` is the 0-based index into the submitted list (-1 when the list as a
+ * whole failed); `field` is "hook", "when", "then", "mode" or a key of `then`.
+ */
 export interface RuleProblem {
   rule: number
+  field?: string
   message: string
+}
+
+/** GET /entitlements/rules-schema: what a rule on each hook may read and set. */
+export interface RulesSchema {
+  /** Flag name -> what it means; read in a rule as flags.<name>. */
+  flags: Record<string, string>
+  /** Ordered by hook name. */
+  hooks: HookSchema[]
+}
+
+export interface HookSchema {
+  /** e.g. "tools/filter". */
+  hook: string
+  /** tool, prompt, resource, template, skill or server; absent on hooks that work on the request alone. */
+  item?: string
+  /** filter, modify, call, input, event, result or server. */
+  phase: string
+  variables: HookVariable[]
+  sets: HookSet[]
+  /** Functions only this hook's rules can call, e.g. elicit. */
+  helpers?: string[]
+}
+
+export interface HookVariable {
+  name: string
+  /** string, bool, number, timestamp, list, map, struct or any. */
+  type: string
+  /** The values of an enumerated string. */
+  values?: string[]
+  /** The fields of a struct, each with its type. Reading any other is refused. */
+  fields?: Record<string, string>
+  doc: string
+}
+
+export interface HookSet {
+  /** A dotted path; "*" stands for any one name (args.*, params.*.name). */
+  field: string
+  /** decision, string, bool, number, duration, list, map, result or any. */
+  type: string
 }
 
 /** One slug the caller holds (the member portal). */
