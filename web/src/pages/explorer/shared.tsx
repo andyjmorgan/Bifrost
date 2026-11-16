@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type React from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '../../ui/components/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/components/select'
 import { StatusPill } from '../../components/StatusPill'
@@ -92,41 +93,55 @@ export function TargetFields({
   )
 }
 
-/** The e2e stream as it arrived: progress and log notifications, then the result, each event rendered like the audit SSE viewer. */
+/**
+ * The e2e stream as it arrived: progress and log notifications, then the result, each event rendered like the audit SSE viewer.
+ * It is for troubleshooting, so it starts collapsed to one line (state, event count, progress) and leaves the room to the result.
+ */
 export function StreamPanel({ events, busy, label, className }: { events: StreamEvent[]; busy: boolean; label?: string; className?: string }) {
+  const [open, setOpen] = useState(false)
   const [rawView, setRawView] = useState(false)
   const last = [...events].reverse().find((e): e is Extract<StreamEvent, { kind: 'progress' }> => e.kind === 'progress')
   const pct = last && last.total ? Math.min(100, Math.round((last.progress / last.total) * 100)) : undefined
   const rawText = events.map((e) => e.raw).join('\n\n')
   const parsed = useMemo(() => parseSse(rawText), [rawText])
   return (
-    <div className={cn('rounded-2xl border border-border bg-card p-4', className)}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <StatusPill tone={busy ? 'info' : 'muted'}>{busy ? 'Streaming' : 'Stream'}</StatusPill>
-        {label && <span className="font-mono text-foreground">{label}</span>}
-        <span className="font-mono">
-          {events.length} {events.length === 1 ? 'event' : 'events'}
-        </span>
-        {last && (
+    <div className={cn('rounded-2xl border border-border bg-card', open ? 'p-4' : 'px-4 py-2', className)}>
+      <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="-ml-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-1 py-0.5 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+        >
+          <ChevronRight className={cn('size-3.5 shrink-0 transition-transform duration-150', open && 'rotate-90')} aria-hidden />
+          <StatusPill tone={busy ? 'info' : 'muted'}>{busy ? 'Streaming' : 'Stream'}</StatusPill>
+          {label && <span className="font-mono text-foreground">{label}</span>}
           <span className="font-mono">
-            {last.progress}
-            {last.total ? ` / ${last.total}` : ''}
+            {events.length} {events.length === 1 ? 'event' : 'events'}
           </span>
+          {last && (
+            <span className="font-mono">
+              {last.progress}
+              {last.total ? ` / ${last.total}` : ''}
+            </span>
+          )}
+          {busy && events.length === 0 && <span>Waiting for the upstream…</span>}
+        </button>
+        {open && (
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setRawView((v) => !v)} aria-pressed={rawView}>
+              {rawView ? 'Tree' : 'Raw'}
+            </Button>
+            <CopyButton value={rawText} label="Copy raw stream" className="size-7" />
+          </div>
         )}
-        <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7 px-2 font-mono text-[11px]" onClick={() => setRawView((v) => !v)} aria-pressed={rawView}>
-            {rawView ? 'Tree' : 'Raw'}
-          </Button>
-          <CopyButton value={rawText} label="Copy raw stream" className="size-7" />
-        </div>
       </div>
-      {pct !== undefined && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-elevated">
+      {pct !== undefined && (busy || open) && (
+        <div className={cn('h-1.5 overflow-hidden rounded-full bg-elevated', open ? 'mt-3' : 'mb-1 mt-2')}>
           <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
         </div>
       )}
-      {busy && events.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Waiting for the upstream…</p>}
-      {events.length > 0 && (
+      {open && events.length > 0 && (
         <div className="mt-3 max-h-[32rem] overflow-auto">
           {rawView ? <CodeBlock wrap>{rawText}</CodeBlock> : <SseList events={parsed} />}
         </div>

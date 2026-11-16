@@ -2,7 +2,7 @@
 
 Written November 16, 2026. Branch `rules-hooks`, on top of the checkpoint tag `hooks-core-v3-checkpoint` (`63635d6`).
 
-The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every listing, call and reply goes through it. The old allow/deny rules (`internal/rules`) are gone. This is not deployed.
+The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every listing, call and reply goes through it. The old allow/deny rules (`internal/rules`) are gone. Deployed to the lab gateway on November 16, 2026, as image `87a05e1`, built from this branch and not from `main`.
 
 ## How a request flows
 
@@ -64,7 +64,7 @@ All Go tests pass under the race detector. The race detector found one old bug, 
 - The upstream timeout bounds a whole streamed reply.
 - A listing's `_meta` names an unreachable server with the transport's error text, which includes its address. That was already so, and suits an operator's own gateway; the Datadog gateway should not copy it.
 - On a direct route with the `serverInfo` switch on, discovery names the upstream but every other result names the gateway.
-- Nothing is deployed, and no real host application has been tried.
+- No real host application has been tried. On the live gateway, only a smoke test with a raw client has run: discovery, listings, calls on both routes, search mode, and one rename rule and one deny rule, since removed.
 
 ## Run it
 
