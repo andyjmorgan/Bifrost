@@ -553,14 +553,14 @@ export interface RulesSchema {
 
 /** One place where rules run: a method, a side of it and, for a reply, the event that came back. */
 export interface RuleStage {
-  /** e.g. "tools/call.post.complete". */
+  /** e.g. "tools/call.post.result". */
   id: string
   /** Server, Tools, Prompts or Resources. */
   group: string
   /** e.g. "tools/call"; "server" for the two that are not a method. */
   method: string
   side: 'pre' | 'post' | 'settings' | 'session'
-  event?: 'complete' | 'input_required' | 'progress'
+  event?: 'progress' | 'elicit' | 'result'
   item?: string
   summary: string
   notes?: string[]

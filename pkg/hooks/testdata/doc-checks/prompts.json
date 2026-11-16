@@ -884,7 +884,7 @@
   ]
  },
  {
-  "name": "prompts/input E1 reword",
+  "name": "prompts/elicit E1 reword",
   "caller": {
    "userId": "u1"
   },
@@ -894,7 +894,7 @@
     "rules": [
      {
       "name": "Label wiki prompts",
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "true",
       "then": {
        "message": "'The wiki asks: ' + request.message"
@@ -996,7 +996,7 @@
   }
  },
  {
-  "name": "prompts/input E2 deny",
+  "name": "prompts/elicit E2 deny",
   "caller": {
    "userId": "k1",
    "type": "key"
@@ -1007,7 +1007,7 @@
     "rules": [
      {
       "name": "No prompts for keys",
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'",
@@ -1067,7 +1067,7 @@
   }
  },
  {
-  "name": "prompts v2: prompts/input sees upstream names and patches; eval errors are generic",
+  "name": "prompts v2: prompts/elicit sees upstream names and patches; eval errors are generic",
   "caller": {
    "userId": "u"
   },
@@ -1098,7 +1098,7 @@
       }
      },
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "true",
       "then": {
        "message": "request.message + ' ' + args.space + ' ' + args.tone"

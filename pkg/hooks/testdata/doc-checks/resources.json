@@ -1048,7 +1048,7 @@
   ]
  },
  {
-  "name": "resources/input E1 reword",
+  "name": "resources/elicit E1 reword",
   "caller": {
    "userId": "u1"
   },
@@ -1058,7 +1058,7 @@
     "rules": [
      {
       "name": "Label drive prompts",
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "true",
       "then": {
        "message": "'Drive asks: ' + request.message"
@@ -1142,7 +1142,7 @@
   }
  },
  {
-  "name": "resources/input E2 deny",
+  "name": "resources/elicit E2 deny",
   "caller": {
    "userId": "u1"
   },
@@ -1152,7 +1152,7 @@
     "rules": [
      {
       "name": "No upstream prompts on reads",
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "true",
       "then": {
        "decision": "'deny'",
@@ -2115,7 +2115,7 @@
   ]
  },
  {
-  "name": "resources/input v2: eval error generic; state-only reply wrapped",
+  "name": "resources/elicit v2: eval error generic; state-only reply wrapped",
   "caller": {
    "userId": "u"
   },
@@ -2124,7 +2124,7 @@
     "slug": "d",
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "request.missing.deep == 1",
       "then": {
        "decision": "'deny'"

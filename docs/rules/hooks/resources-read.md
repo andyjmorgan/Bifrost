@@ -11,7 +11,7 @@
 3. On the mux route, the gateway removes the slug prefix, or resolves an unprefixed URI through [fallback resolution](overview.md#fallback-resolution).
 4. [skills/filter](skills-filter.md), [resources/filter](resources-filter.md) and [templates/filter](templates-filter.md) check the URI. Any deny makes it unknown.
 5. `resources/read` rules run.
-6. The upstream read. An `input_required` reply goes to [resources/input](resources-input.md). Text content goes to [resources/result](resources-result.md).
+6. The upstream read. An `input_required` reply goes to [resources/elicit](resources-elicit.md). Text content goes to [resources/result](resources-result.md).
 
 ## Variables
 

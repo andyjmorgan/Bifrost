@@ -10,7 +10,7 @@
 2. The gateway builds the effective arguments.
 3. `tools/call` rules run.
 4. The gateway forces pins, checks constraints again, maps names and keys back to the upstream, and checks that every hidden required parameter has a value.
-5. The upstream call. Its reply goes to [tools/input](tools-input.md) or [tools/result](tools-result.md), which see the exact arguments that were forwarded.
+5. The upstream call. Its reply goes to [tools/elicit](tools-elicit.md) or [tools/result](tools-result.md), which see the exact arguments that were forwarded.
 
 ### Effective arguments
 
@@ -258,5 +258,5 @@ A client without the elicitation capability receives the error result `This requ
 
 - [Hooks and rules overview](overview.md)
 - [tools/modify for parameters, pins and defaults](tools-modify.md)
-- [tools/input for input requests from the upstream](tools-input.md)
+- [tools/elicit for input requests from the upstream](tools-elicit.md)
 - [tools/result for shaping the reply](tools-result.md)

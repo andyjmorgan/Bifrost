@@ -11,7 +11,7 @@
 3. The gateway rejects arguments that use a renamed argument's upstream name.
 4. `prompts/get` rules run.
 5. The gateway maps the prompt name and argument names back to the upstream.
-6. The upstream call. An `input_required` reply goes to [prompts/input](prompts-input.md), which sees the arguments as sent upstream. On the mux route, structured URIs in the returned messages get the slug prefix.
+6. The upstream call. An `input_required` reply goes to [prompts/elicit](prompts-elicit.md), which sees the arguments as sent upstream. On the mux route, structured URIs in the returned messages get the slug prefix.
 
 ## Variables
 
@@ -105,5 +105,5 @@ The first request returns `input_required` with the message `Export the whole "E
 
 - [Hooks and rules overview](overview.md)
 - [prompts/modify for argument renames](prompts-modify.md)
-- [prompts/input for input requests from the upstream](prompts-input.md)
+- [prompts/elicit for input requests from the upstream](prompts-elicit.md)
 - [Elicitation in tools/call](tools-call.md#elicitation)

@@ -1,6 +1,6 @@
 [
  {
-  "name": "tools/input E1 reword the upstream prompt",
+  "name": "tools/elicit E1 reword the upstream prompt",
   "caller": {
    "userId": "u1"
   },
@@ -15,7 +15,7 @@
     "rules": [
      {
       "name": "Label Jira prompts",
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "true",
       "then": {
        "message": "'Jira asks: ' + request.message"
@@ -123,7 +123,7 @@
   ]
  },
  {
-  "name": "tools/input E2 refuse upstream prompts for API keys",
+  "name": "tools/elicit E2 refuse upstream prompts for API keys",
   "caller": {
    "userId": "k1",
    "type": "key"
@@ -134,7 +134,7 @@
     "rules": [
      {
       "name": "No prompts for keys",
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "caller.type == 'key'",
       "then": {
        "decision": "'deny'",
@@ -203,7 +203,7 @@
   }
  },
  {
-  "name": "tools/input E3 refuse URL-mode requests",
+  "name": "tools/elicit E3 refuse URL-mode requests",
   "caller": {
    "userId": "u1"
   },
@@ -213,7 +213,7 @@
     "rules": [
      {
       "name": "No URL mode",
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "request.mode == 'url'",
       "then": {
        "decision": "'deny'"
@@ -298,7 +298,7 @@
   }
  },
  {
-  "name": "tools/input nuance: request.key and args under upstream names",
+  "name": "tools/elicit nuance: request.key and args under upstream names",
   "caller": {
    "userId": "u1"
   },
@@ -314,7 +314,7 @@
       }
      },
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "request.key == 'k' && args.cql == 'x'",
       "then": {
        "message": "'seen'"
@@ -381,7 +381,7 @@
   }
  },
  {
-  "name": "tools/input v2: args are the forwarded arguments; state-only replies are wrapped; answers forwarded without upstream state",
+  "name": "tools/elicit v2: args are the forwarded arguments; state-only replies are wrapped; answers forwarded without upstream state",
   "caller": {
    "userId": "u"
   },
@@ -402,7 +402,7 @@
       }
      },
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "args.limit == 10",
       "then": {
        "message": "'patched seen'"

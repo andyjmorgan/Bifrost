@@ -106,8 +106,8 @@
           196
         ]
       ],
-      "contract": "tools/input and tools/result receive args as sent upstream. Prompt input has the corresponding request context.",
-      "actual": "A call patch changes n from 1 to 2, and forwarding sends 2, but result/input rules read 1. prompts/input receives an empty argument map, even after argument renames and patches.",
+      "contract": "tools/elicit and tools/result receive args as sent upstream. Prompt input has the corresponding request context.",
+      "actual": "A call patch changes n from 1 to 2, and forwarding sends 2, but result/input rules read 1. prompts/elicit receives an empty argument map, even after argument renames and patches.",
       "proof": [
         "CX-09",
         "CX-10",

@@ -46,8 +46,8 @@ func TestTextCompilesToTheEnginesRules(t *testing.T) {
 		"tools/call.pre": "when name == 'echo' deny \"Not today.\"\n" +
 			"audit when caller.role != 'admin'  deny 'Admins: ' + name\n" +
 			"when name == 'search' &&\n    !has(args.limit)\n  set args.limit = 50\n  set timeout = duration('30s')\n",
-		"tools/call.post.complete": "when true set structuredContent = drop(result.structuredContent, ['a'])",
-		"server.settings":          "when route == 'mux' set prompts = false",
+		"tools/call.post.result": "when true set structuredContent = drop(result.structuredContent, ['a'])",
+		"server.settings":        "when route == 'mux' set prompts = false",
 	}
 	rules, probs := Compile(text)
 	if len(probs) > 0 {
@@ -60,7 +60,7 @@ func TestTextCompilesToTheEnginesRules(t *testing.T) {
 		{Name: "tools/call.pre:1", Hook: "tools/call", When: "name == 'echo'", Then: map[string]string{"decision": "'deny'", "reason": `"Not today."`}},
 		{Name: "tools/call.pre:2", Mode: "audit", Hook: "tools/call", When: "caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Admins: ' + name"}},
 		{Name: "tools/call.pre:3", Hook: "tools/call", When: "name == 'search' && !has(args.limit)", Then: map[string]string{"args.limit": "50", "timeout": "duration('30s')"}},
-		{Name: "tools/call.post.complete:1", Hook: "tools/result", When: "true", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a'])"}},
+		{Name: "tools/call.post.result:1", Hook: "tools/result", When: "true", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a'])"}},
 	}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules:\n got %+v\nwant %+v", rules, want)

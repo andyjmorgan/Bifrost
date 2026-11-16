@@ -164,8 +164,8 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
 | RH-INP-01 | Does an upstream `input_required` reach the client? | Yes, with the upstream state wrapped | e2e |
-| RH-INP-02 | Can `tools/input` deny it? | Yes. The client receives an error result | e2e |
-| RH-INP-03 | Can `tools/input` reword the message? | Yes, for example "Jira asks: " prepended | e2e |
+| RH-INP-02 | Can `tools/elicit` deny it? | Yes. The client receives an error result | e2e |
+| RH-INP-03 | Can `tools/elicit` reword the message? | Yes, for example "Jira asks: " prepended | e2e |
 | RH-INP-04 | Does `tools/result` run on an `input_required`? | No | e2e |
 | RH-INP-05 | On the retry, does the upstream receive only its own answers and state? | Yes | e2e |
 

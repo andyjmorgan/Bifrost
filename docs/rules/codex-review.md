@@ -52,9 +52,9 @@ F04 · High · Reply hooks inspect different arguments from those sent upstream
 
 Source: [server.go:299](</home/localuser/source/bifrost/pkg/hooks/server.go:299>), [resources.go:196](</home/localuser/source/bifrost/pkg/hooks/resources.go:196>).
 
-Required behavior: tools/input and tools/result receive args as sent upstream. Prompt input has the corresponding request context.
+Required behavior: tools/elicit and tools/result receive args as sent upstream. Prompt input has the corresponding request context.
 
-Verified behavior: A call patch changes n from 1 to 2, and forwarding sends 2, but result/input rules read 1. prompts/input receives an empty argument map, even after argument renames and patches. Proof: [CX-09](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:498>), [CX-10](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:569>), [CX-11](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:653>).
+Verified behavior: A call patch changes n from 1 to 2, and forwarding sends 2, but result/input rules read 1. prompts/elicit receives an empty argument map, even after argument renames and patches. Proof: [CX-09](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:498>), [CX-10](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:569>), [CX-11](</home/localuser/source/bifrost/pkg/hooks/testdata/scenarios/90-codex-adversarial.json:653>).
 
 Suggested fix: Return an immutable call execution context alongside Forward, containing the exact upstream args, original item identity, exposed view and policy snapshot. Pass that context into reply handlers. Do not recompute arguments from the client request or rerun non-idempotent patches.
 

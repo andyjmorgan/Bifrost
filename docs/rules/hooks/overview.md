@@ -66,7 +66,7 @@ The gateway runs a hook's rules on each item separately, from top to bottom. An 
 | Filter | None | `decision: 'deny'` |
 | Modify | Every settable field | None |
 | Call (`tools/call`, `prompts/get`, `resources/read`) | `args.*`, `timeout` | `decision: 'deny'`, `result: elicit(...)` |
-| Input | `message` | `decision: 'deny'` |
+| Elicit | `message` | `decision: 'deny'` |
 | Result | `content`, `structuredContent`, `text` | `decision: 'deny'` |
 | Server | Every settable field | None |
 
@@ -125,7 +125,7 @@ What the failure means depends on the hook:
 | --- | --- |
 | Filter | The item is hidden |
 | Modify | The item is hidden and cannot be called or read. The listing reports the problem to administrators |
-| Call, input and result | The request is refused with the hook's generic refusal, such as `The call to <tool> was refused by policy.` |
+| Call, elicit and result | The request is refused with the hook's generic refusal, such as `The call to <tool> was refused by policy.` |
 | `server/config` | Every switch is off |
 | `server/connect` | The gateway uses its anonymous defaults |
 | `server/modify` | Title, description and instructions are empty |
@@ -234,15 +234,15 @@ Output is sorted by slug, then by name. The output is the same, byte for byte, w
 4. `tools/call` rules run on the effective arguments. Patches chain. The first deny or `elicit()` stops evaluation.
 5. The gateway forces pinned values, checks constraints again, maps names and keys back to the upstream, and removes added parameters. A hidden required parameter that still has no value refuses the call.
 6. The gateway calls the upstream.
-7. If the upstream replies with `input_required`, `tools/input` runs on each input request. `tools/result` does not run.
+7. If the upstream replies with `input_required`, `tools/elicit` runs on each input request. `tools/result` does not run.
 8. If the upstream replies with a result, `tools/result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
 
-`tools/input` and `tools/result` see the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the upstream never ask for input in the same round. See [effective arguments and elicitation](tools-call.md).
+`tools/elicit` and `tools/result` see the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the upstream never ask for input in the same round. See [effective arguments and elicitation](tools-call.md).
 
 ### Prompts
 
 - `prompts/list`: `server/config`, the catalog, `prompts/filter`, `prompts/modify`, then the mux name prefix. Sorted by slug, then by name.
-- `prompts/get`: `server/config`, name lookup through the filter and modify rules, `prompts/get` rules, reversal of renames, the upstream call, then `prompts/input` for an `input_required` reply, or the mux prefix on structured URIs in the messages. `prompts/input` sees the arguments as they were sent upstream.
+- `prompts/get`: `server/config`, name lookup through the filter and modify rules, `prompts/get` rules, reversal of renames, the upstream call, then `prompts/elicit` for an `input_required` reply, or the mux prefix on structured URIs in the messages. `prompts/elicit` sees the arguments as they were sent upstream.
 
 ### Resources and templates
 
@@ -275,7 +275,7 @@ Resources, templates and skills are sorted by slug, then by URI within each slug
 4. The visibility check. A URI it rejects is unknown.
 5. `resources/read` rules.
 6. The gateway reads from the upstream, with the URI as the upstream knows it.
-7. `resources/input` for an `input_required` reply. Otherwise, the gateway drops content items with a non-canonical URI or a URI the caller cannot read, and `resources/result` runs on each remaining content item, text or binary.
+7. `resources/elicit` for an `input_required` reply. Otherwise, the gateway drops content items with a non-canonical URI or a URI the caller cannot read, and `resources/result` runs on each remaining content item, text or binary.
 8. On the mux route, structured URIs in the result get the slug prefix.
 
 The result carries the gateway's `ttlMs` and `cacheScope: "private"`, whatever the upstream sent.
@@ -434,7 +434,7 @@ Tool hooks:
 - [tools/filter](tools-filter.md): which tools are visible
 - [tools/modify](tools-modify.md): tool names, text, annotations and parameters
 - [tools/call](tools-call.md): call decisions, argument patches and confirmations
-- [tools/input](tools-input.md): upstream requests for user input during a call
+- [tools/elicit](tools-elicit.md): upstream requests for user input during a call
 - [tools/progress](tools-progress.md): progress events during a call
 - [tools/result](tools-result.md): the shape of tool results
 
@@ -443,7 +443,7 @@ Prompt hooks:
 - [prompts/filter](prompts-filter.md): which prompts are visible
 - [prompts/modify](prompts-modify.md): prompt names, text and arguments
 - [prompts/get](prompts-get.md): `prompts/get` decisions, argument patches and confirmations
-- [prompts/input](prompts-input.md): upstream requests for user input during `prompts/get`
+- [prompts/elicit](prompts-elicit.md): upstream requests for user input during `prompts/get`
 - [prompts/progress](prompts-progress.md): progress events during `prompts/get`
 
 Resource, template and skill hooks:
@@ -453,7 +453,7 @@ Resource, template and skill hooks:
 - [templates/filter](templates-filter.md): which templates are visible and usable
 - [templates/modify](templates-modify.md): template text and annotations
 - [resources/read](resources-read.md): read decisions and confirmations
-- [resources/input](resources-input.md): upstream requests for user input during a read
+- [resources/elicit](resources-elicit.md): upstream requests for user input during a read
 - [resources/progress](resources-progress.md): progress events during a read
 - [resources/result](resources-result.md): the content of read results and skill files
 - [skills/filter](skills-filter.md): which skills and skill folders are visible

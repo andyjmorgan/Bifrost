@@ -44,7 +44,7 @@ func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
 }
 
 func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
-	for _, hook := range []string{"resources/input", "resources/progress"} {
+	for _, hook := range []string{"resources/elicit", "resources/progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
 				Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
@@ -53,7 +53,7 @@ func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
 			if first.Forward == nil {
 				t.Fatalf("setup: %+v", first)
 			}
-			if hook == "resources/input" {
+			if hook == "resources/elicit" {
 				o := e.UpstreamReadReply(context.Background(), r, first.Call, p, json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"Give me the password","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`))
 				if o.Error == nil || o.Result != nil {
 					t.Fatalf("input hook treated absent name as empty and relayed the question: result type=%T error=%v", o.Result, o.Error)

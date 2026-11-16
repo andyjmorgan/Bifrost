@@ -6,7 +6,7 @@ November 15, 2026. Branch `rules-hooks` at `ef55dcc`. Independent review of the 
 
 The tests are broad for the tool path on the direct route and thin almost everywhere else. Line coverage of the engine files is high (93% once every source is combined), but coverage hides that most hooks are exercised with one route, one mode and a handful of variables. Writing the missing cases found two real engine bugs and one unenforced design promise. The three gaps that matter most:
 
-1. Reply-side tool rules read the upstream tool, not the exposed one. `tools/result`, `tools/input` and `tools/progress` rules that test `name`, `description` or any other item field see the tool as the upstream sent it, before `tools/modify`. The docs say "the exposed tool". A deny written against a renamed tool silently never fires. No test combined a rename with a reply-side rule on the item. Cases GA-01 to GA-04 fail.
+1. Reply-side tool rules read the upstream tool, not the exposed one. `tools/result`, `tools/elicit` and `tools/progress` rules that test `name`, `description` or any other item field see the tool as the upstream sent it, before `tools/modify`. The docs say "the exposed tool". A deny written against a renamed tool silently never fires. No test combined a rename with a reply-side rule on the item. Cases GA-01 to GA-04 fail.
 2. A task handle passes through `prompts/get` and `resources/read` replies. Only `tools/call` refuses it. The design says a task handle is refused, because its later result would skip every result rule. Cases GA-13 and GA-14 fail.
 3. The dynamic variables and audit mode are untested outside a few tool hooks. No rule in the golden set reads `route` or `flags` in any hook but `tools/result`, and none reads `entitlement` anywhere. Audit mode appears only on four tool hooks. `flags.cli`, which the design says "can be relied on" because the gateway sets it, is accepted from any client's query string by the reference gateway, and the engine still offers confirmation on a `cli` request (GA-22 fails).
 
@@ -14,13 +14,13 @@ The tests are broad for the tool path on the direct route and thin almost everyw
 
 ### 1. Reply-side tool rules see the upstream tool (bug)
 
-Not tested: any `tools/result`, `tools/input` or `tools/progress` rule that reads an item field of a tool that `tools/modify` changed.
+Not tested: any `tools/result`, `tools/elicit` or `tools/progress` rule that reads an item field of a tool that `tools/modify` changed.
 
-Code: `pkg/hooks/server.go:369` builds the reply-side item as `prepare(upstreamTool(s, tr.Upstream))` and resolves `name`, `description` and the rest from it (`server.go:379`). The same resolver feeds `tools/input` (`server.go:414`). `pkg/hooks/stream.go:409` does the same for `tools/progress`. The docs (`docs/rules/hooks/tools-result.md` line 20, `tools-input.md` line 21, `tools-progress.md` line 23) say these fields are the exposed tool. Prompts and resources get this right: GA-27 and GA-28 pass.
+Code: `pkg/hooks/server.go:369` builds the reply-side item as `prepare(upstreamTool(s, tr.Upstream))` and resolves `name`, `description` and the rest from it (`server.go:379`). The same resolver feeds `tools/elicit` (`server.go:414`). `pkg/hooks/stream.go:409` does the same for `tools/progress`. The docs (`docs/rules/hooks/tools-result.md` line 20, `tools-elicit.md` line 21, `tools-progress.md` line 23) say these fields are the exposed tool. Prompts and resources get this right: GA-27 and GA-28 pass.
 
 Bug that slips through today: an administrator renames `echo` to `say` and writes `tools/result: name == 'say' -> decision: deny` to withhold its output. The rule evaluates false and leaves no hit. Results flow unredacted.
 
-Evidence: GA-01 (rename, `tools/result` on `name`), GA-02 (`description`), GA-03 (`tools/progress`), GA-04 (`tools/input`). All four fail on the engine and on every client over the wire.
+Evidence: GA-01 (rename, `tools/result` on `name`), GA-02 (`description`), GA-03 (`tools/progress`), GA-04 (`tools/elicit`). All four fail on the engine and on every client over the wire.
 
 Fix the test set: keep GA-01 to GA-04, and add the same pairing to the `tools/result` doc-checks.
 
@@ -54,7 +54,7 @@ Built from every rule in the golden set (script over all case files) plus a grep
 | `flags.search`, `flags.cli` read | `tools/result` only |
 | `entitlement` | none (`grep -rn 'entitlement\.' pkg/hooks/testdata pkg/hooks/*_test.go` is empty) |
 | audit mode | `tools/call` (3), `tools/filter` (3), `tools/modify` (1), `tools/result` (1), `tools/progress` (Go only) |
-| `mux` route | zero cases for `prompts/filter`, `prompts/input`, `prompts/progress`, `resources/input`, `resources/modify`, `resources/progress`, `tools/input`, `skills/filter` |
+| `mux` route | zero cases for `prompts/filter`, `prompts/elicit`, `prompts/progress`, `resources/elicit`, `resources/modify`, `resources/progress`, `tools/elicit`, `skills/filter` |
 | `prompts/progress`, `resources/progress` | one case each, `message` only; deny never tested |
 
 Why it matters: rules reading `route` or `flags` in a filter or modify hook change listings per request, and the planner's dynamic checks are hand-written per variable. One already disagrees: `planSkill` (`resources.go:395`) skips rules that read `caller`, `client` or `now`, but not `flags` or `route`, though both are in `DynamicVars`. Skills are deferred, so this is low severity today, but the pattern will recur.

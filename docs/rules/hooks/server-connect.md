@@ -28,7 +28,7 @@ No field stops evaluation. Later rules override earlier ones.
 
 ## What the upstream sees
 
-The fields change the outbound request only. The client sees no difference, except that an upstream without the elicitation capability does not ask for input, so [tools/input](tools-input.md), [prompts/input](prompts-input.md) and [resources/input](resources-input.md) do not run.
+The fields change the outbound request only. The client sees no difference, except that an upstream without the elicitation capability does not ask for input, so [tools/elicit](tools-elicit.md), [prompts/elicit](prompts-elicit.md) and [resources/elicit](resources-elicit.md) do not run.
 
 If an enforce rule fails to evaluate, the gateway uses its anonymous defaults for that request.
 
@@ -84,4 +84,4 @@ A call that the client sends with `_meta` `{"trace": "x", "io.modelcontextprotoc
 
 - [Hooks and rules overview](overview.md)
 - [server/config switches](server-config.md)
-- [tools/input for upstream input requests](tools-input.md)
+- [tools/elicit for upstream input requests](tools-elicit.md)

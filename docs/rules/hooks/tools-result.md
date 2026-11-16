@@ -4,7 +4,7 @@
 
 ## When it runs
 
-`tools/result` runs once on each upstream `tools/call` result, after the upstream call and before the mux URI prefix. It does not run when the upstream replies with `input_required`. That reply goes to [tools/input](tools-input.md).
+`tools/result` runs once on each upstream `tools/call` result, after the upstream call and before the mux URI prefix. It does not run when the upstream replies with `input_required`. That reply goes to [tools/elicit](tools-elicit.md).
 
 1. The gateway rejects a reply over the size limit.
 2. `tools/result` rules run.
@@ -135,4 +135,4 @@ A result whose text contains a PEM private key returns the error result `The res
 
 - [Hooks and rules overview](overview.md)
 - [tools/modify for outputSchema and dropSchema](tools-modify.md)
-- [tools/input for input_required replies](tools-input.md)
+- [tools/elicit for input_required replies](tools-elicit.md)

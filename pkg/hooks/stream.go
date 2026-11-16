@@ -19,7 +19,7 @@ import (
 //
 //	notifications/progress  ->  tools/progress, prompts/progress, resources/progress
 //	the final response      ->  the existing reply path, which picks tools/result,
-//	                            tools/input and so on from the result's type
+//	                            tools/elicit and so on from the result's type
 //	anything else           ->  dropped
 //
 // Progress is the only notification type handled today. A new type is a new

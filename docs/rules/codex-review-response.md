@@ -27,7 +27,7 @@ These stand as written. Fixes follow the review's suggestions unless noted:
 
 - F02: build one effective argument map, with defaults and visible pins, before call rules run.
 - F03: track each parameter's origin, visibility and current name separately. Strip added parameters even after a rename or hide.
-- F04: return the exact forwarded arguments with the forward, and pass them to reply hooks. `prompts/input` gets the arguments as sent upstream.
+- F04: return the exact forwarded arguments with the forward, and pass them to reply hooks. `prompts/elicit` gets the arguments as sent upstream.
 - F05, F07, F16, F17: one visibility check, used for listings, direct reads, directory children, returned content items and fallback candidates. It includes filter denies, modify failures, identity collisions, folder denies and the canonical-URI check.
 - F06: replace prefix matching with real URI template matching for the forms in use: simple `{x}` (no `/`), reserved `{+x}`, and literal segments before, between and after expressions. The same predicate is used for reads, fallback and `slugUris`. A template the matcher cannot invert does not grant ownership.
 - F08: result rules run for every content item, text or binary. A deny blocks the whole result.

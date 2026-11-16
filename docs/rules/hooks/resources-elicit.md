@@ -1,10 +1,10 @@
-# resources/input
+# resources/elicit
 
-`resources/input` decides whether an upstream server may ask the user for input during a read, and can reword what it asks.
+`resources/elicit` decides whether an upstream server may ask the user for input during a read, and can reword what it asks.
 
 ## When it runs
 
-`resources/input` runs when the upstream answers a forwarded `resources/read` or directory read with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [resources/result](resources-result.md) does not run on that reply. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
+`resources/elicit` runs when the upstream answers a forwarded `resources/read` or directory read with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [resources/result](resources-result.md) does not run on that reply. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
 
 An upstream asks for input only if the gateway advertised elicitation to it, which [server/connect](server-connect.md) controls. Gateway confirmations from [resources/read](resources-read.md) always resolve before the upstream is called.
 
@@ -49,7 +49,7 @@ The gateway wraps the upstream's `requestState`, if any, in its own signed state
 ```json
 {
   "name": "Label drive prompts",
-  "hook": "resources/input",
+  "hook": "resources/elicit",
   "when": "true",
   "then": { "message": "'Drive asks: ' + request.message" }
 }
@@ -62,7 +62,7 @@ An upstream request with the message `Why do you need this file?` reaches the cl
 ```json
 {
   "name": "No upstream prompts on reads",
-  "hook": "resources/input",
+  "hook": "resources/elicit",
   "when": "true",
   "then": { "decision": "'deny'", "reason": "'This server may not ask for input during reads.'" }
 }
@@ -73,5 +73,5 @@ The client receives `{"code": -32602, "message": "This server may not ask for in
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [tools/input, the matching hook for tool calls](tools-input.md)
+- [tools/elicit, the matching hook for tool calls](tools-elicit.md)
 - [server/connect for advertising elicitation upstream](server-connect.md)

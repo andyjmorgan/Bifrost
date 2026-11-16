@@ -1037,7 +1037,7 @@
      },
      {
       "name": "Input policy",
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "request.missing.deep == 1",
       "then": {
        "decision": "'deny'"

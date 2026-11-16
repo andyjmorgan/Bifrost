@@ -203,7 +203,7 @@
   ]
  },
  {
-  "name": "GA-04 tools/input reads the exposed tool: a rule on the renamed name rewords the question",
+  "name": "GA-04 tools/elicit reads the exposed tool: a rule on the renamed name rewords the question",
   "ids": [
    "GA-04"
   ],
@@ -227,7 +227,7 @@
       }
      },
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "name == 'new_issue'",
       "then": {
        "message": "'Reworded'"
@@ -1804,7 +1804,7 @@
   ]
  },
  {
-  "name": "GA-27 prompts/progress and prompts/input read the exposed prompt after a rename",
+  "name": "GA-27 prompts/progress and prompts/elicit read the exposed prompt after a rename",
   "ids": [
    "GA-27"
   ],
@@ -1835,7 +1835,7 @@
       }
      },
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "name == 'hello'",
       "then": {
        "message": "'Reworded'"
@@ -2403,7 +2403,7 @@
   ]
  },
  {
-  "name": "GA-34 prompts on the mux: prompts/get and prompts/input rules read the unprefixed exposed name",
+  "name": "GA-34 prompts on the mux: prompts/get and prompts/elicit rules read the unprefixed exposed name",
   "ids": [
    "GA-34"
   ],
@@ -2428,7 +2428,7 @@
       }
      },
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "name == 'greet'",
       "then": {
        "message": "'Reworded'"
@@ -2514,7 +2514,7 @@
   ]
  },
  {
-  "name": "GA-35 resources/input on a URI the server does not list: a rule that reads name refuses, it is not skipped",
+  "name": "GA-35 resources/elicit on a URI the server does not list: a rule that reads name refuses, it is not skipped",
   "ids": [
    "GA-35"
   ],
@@ -2531,7 +2531,7 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "name == 'other'",
       "then": {
        "message": "'x'"

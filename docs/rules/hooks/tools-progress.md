@@ -12,7 +12,7 @@ The gateway relays progress only when all of these are true:
 - the `progress` switch in [server/config](server-config.md) is on, which is the default
 - the upstream speaks MCP 2026-07-28
 
-When no `tools/progress` rule exists, events are relayed exactly as the upstream sent them. The result at the end of the stream is handled by [tools/result](tools-result.md), or by [tools/input](tools-input.md) when the upstream asks for input.
+When no `tools/progress` rule exists, events are relayed exactly as the upstream sent them. The result at the end of the stream is handled by [tools/result](tools-result.md), or by [tools/elicit](tools-elicit.md) when the upstream asks for input.
 
 ## Variables
 

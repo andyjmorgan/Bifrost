@@ -62,7 +62,7 @@ What changed:
 | F01 exact numbers | Fixed, narrow | Pin, enum and range comparisons use exact values. Schema constants are no longer rounded, because tools are no longer converted through float64 |
 | F02 effective arguments | Fixed | Visible pins and defaults of added parameters are present when call rules run |
 | F03 hidden added parameters | Fixed | Origin, name and visibility are tracked separately. Hidden added parameters are refused and always stripped |
-| F04 reply arguments | Fixed | `CallContext` carries the exact forwarded arguments to every reply hook. `prompts/input` gets the arguments as sent upstream |
+| F04 reply arguments | Fixed | `CallContext` carries the exact forwarded arguments to every reply hook. `prompts/elicit` gets the arguments as sent upstream |
 | F05, F07, F16, F17 visibility | Fixed | One per-request view is used by listings, reads, directory children, returned content and fallback candidates. Template denies now also apply to listings |
 | F06 template matching | Fixed | `{var}` and `{+var}` with exact literals, empty expansions allowed. Unsupported forms never grant, and their denies cover their literal prefix |
 | F08 binary results | Fixed | Result rules run for every content item. A deny blocks the whole result |

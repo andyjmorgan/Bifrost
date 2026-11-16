@@ -227,7 +227,7 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.inputHook(ctx, r, s, "prompts/input", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, s, "prompts/elicit", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -920,7 +920,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.inputHook(ctx, r, s, "resources/input", up, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, s, "resources/elicit", up, replyResolve(call), call.Args, rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}

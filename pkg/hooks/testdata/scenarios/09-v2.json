@@ -1317,7 +1317,7 @@
   ]
  },
  {
-  "name": "prompts/input and resources/input reword or deny upstream prompts","client":{"capabilities":{"elicitation":{}}},
+  "name": "prompts/elicit and resources/elicit reword or deny upstream prompts","client":{"capabilities":{"elicitation":{}}},
   "ids": [
    "RH-INP-02",
    "RH-INP-03"
@@ -1330,14 +1330,14 @@
     "slug": "a",
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "true",
       "then": {
        "message": "'Prompt server asks: ' + request.message"
       }
      },
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "true",
       "then": {
        "decision": "'deny'",

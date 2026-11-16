@@ -414,7 +414,7 @@
       }
      },
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "name == 'secret'",
       "then": {
        "decision": "'deny'"

@@ -1,10 +1,10 @@
-# tools/input
+# tools/elicit
 
-`tools/input` decides whether an upstream server may ask the user for input during a tool call, and can reword what it asks.
+`tools/elicit` decides whether an upstream server may ask the user for input during a tool call, and can reword what it asks.
 
 ## When it runs
 
-`tools/input` runs when the upstream answers a forwarded `tools/call` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [tools/result](tools-result.md) does not run on that reply.
+`tools/elicit` runs when the upstream answers a forwarded `tools/call` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. [tools/result](tools-result.md) does not run on that reply.
 
 The gateway recognizes an `input_required` reply that carries input requests, a `requestState`, or both. A reply with only a `requestState` has no requests for rules to check, so the gateway wraps the state and returns it to the client.
 
@@ -57,7 +57,7 @@ The gateway wraps the upstream's `requestState`, if any, inside its own signed s
 ```json
 {
   "name": "Label Jira prompts",
-  "hook": "tools/input",
+  "hook": "tools/elicit",
   "when": "true",
   "then": { "message": "'Jira asks: ' + request.message" }
 }
@@ -70,7 +70,7 @@ An upstream request with the message `Which project?` reaches the client as `Jir
 ```json
 {
   "name": "No prompts for keys",
-  "hook": "tools/input",
+  "hook": "tools/elicit",
   "when": "caller.type == 'key'",
   "then": { "decision": "'deny'", "reason": "'This tool needs user input, which API keys cannot give.'" }
 }
@@ -83,7 +83,7 @@ For an API key, the client receives `{"isError": true, "content": [{"type": "tex
 ```json
 {
   "name": "No URL mode",
-  "hook": "tools/input",
+  "hook": "tools/elicit",
   "when": "request.mode == 'url'",
   "then": { "decision": "'deny'" }
 }
@@ -96,4 +96,4 @@ An upstream request that sends the user to a URL returns the error result `The u
 - [Hooks and rules overview](overview.md)
 - [server/connect for advertising elicitation upstream](server-connect.md)
 - [tools/call for gateway confirmations](tools-call.md)
-- [prompts/input](prompts-input.md) and [resources/input](resources-input.md), the matching hooks for prompts and reads
+- [prompts/elicit](prompts-elicit.md) and [resources/elicit](resources-elicit.md), the matching hooks for prompts and reads

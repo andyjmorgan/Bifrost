@@ -996,7 +996,7 @@ func TestAServersOwnQuestionMakesTheRoundTrip(t *testing.T) {
 	})
 	r.entitle("a", u,
 		hooks.Rule{Hook: "server/connect", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-		hooks.Rule{Hook: "tools/input", When: "true", Then: map[string]string{"message": "'Gateway asks: ' + request.message"}})
+		hooks.Rule{Hook: "tools/elicit", When: "true", Then: map[string]string{"message": "'Gateway asks: ' + request.message"}})
 	ask := call("t", nil)
 	ask.Capabilities = elicits
 	first := harness.Raw(t, r.direct("a"), ask).Result()

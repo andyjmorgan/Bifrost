@@ -346,7 +346,7 @@ func (e *Engine) ServerInstructions(parent context.Context, r Request, slug stri
 // UpstreamToolReply handles what the upstream answered to a forwarded
 // tools/call. call is the CallContext CallTool returned with the forward:
 // reply hooks see exactly the arguments that were sent. An input_required
-// (with input requests, state, or both) goes through tools/input and is
+// (with input requests, state, or both) goes through tools/elicit and is
 // wrapped in gateway state; a result goes through tools/result and then,
 // on the mux, gets the slug prefix on structured URIs (last, so URIs rules
 // add are prefixed too). p is the client's call, for its request state.
@@ -392,7 +392,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 			o.Result = toolError(msg)
 			return e.finishOutcome(ctx, o)
 		}
-		reqs, hits, err := e.inputHook(ctx, r, s, "tools/input", tr.Exposed, itemResolve, call.Args, rawRequests(result))
+		reqs, hits, err := e.elicitHook(ctx, r, s, "tools/elicit", tr.Exposed, itemResolve, call.Args, rawRequests(result))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Result = toolError(err.Error())
@@ -510,9 +510,9 @@ func resultVar(m map[string]any) map[string]any {
 	return out
 }
 
-// inputHook runs an input hook over each upstream input request. A deny
+// elicitHook runs an elicit hook over each question the upstream asks. A deny
 // refuses the whole round; message changes apply to the request.
-func (e *Engine) inputHook(ctx context.Context, r Request, s *Server, hook, label string, resolve func(string) (any, bool), upArgs map[string]any, in map[string]json.RawMessage) (mcp.InputRequestMap, []Hit, error) {
+func (e *Engine) elicitHook(ctx context.Context, r Request, s *Server, hook, label string, resolve func(string) (any, bool), upArgs map[string]any, in map[string]json.RawMessage) (mcp.InputRequestMap, []Hit, error) {
 	out := mcp.InputRequestMap{}
 	var hits []Hit
 	for _, key := range sortedKeys(in) {

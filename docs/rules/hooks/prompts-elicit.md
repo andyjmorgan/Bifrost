@@ -1,10 +1,10 @@
-# prompts/input
+# prompts/elicit
 
-`prompts/input` decides whether an upstream server may ask the user for input during `prompts/get`, and can reword what it asks.
+`prompts/elicit` decides whether an upstream server may ask the user for input during `prompts/get`, and can reword what it asks.
 
 ## When it runs
 
-`prompts/input` runs when the upstream answers a forwarded `prompts/get` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
+`prompts/elicit` runs when the upstream answers a forwarded `prompts/get` with `resultType: "input_required"`. It runs once for each input request in the reply, in key order. A reply with only a `requestState` and no requests is wrapped and returned without running rules.
 
 An upstream asks for input only if the gateway advertised elicitation to it, which [server/connect](server-connect.md) controls. Gateway confirmations from [prompts/get](prompts-get.md) always resolve before the upstream is called.
 
@@ -49,7 +49,7 @@ The gateway wraps the upstream's `requestState`, if any, in its own signed state
 ```json
 {
   "name": "Label wiki prompts",
-  "hook": "prompts/input",
+  "hook": "prompts/elicit",
   "when": "true",
   "then": { "message": "'The wiki asks: ' + request.message" }
 }
@@ -62,7 +62,7 @@ An upstream request with the message `How detailed?` reaches the client as `The 
 ```json
 {
   "name": "No prompts for keys",
-  "hook": "prompts/input",
+  "hook": "prompts/elicit",
   "when": "caller.type == 'key'",
   "then": { "decision": "'deny'", "reason": "'This prompt needs user input, which API keys cannot give.'" }
 }
@@ -73,5 +73,5 @@ For an API key, the client receives `{"code": -32602, "message": "This prompt ne
 ## Related pages
 
 - [Hooks and rules overview](overview.md)
-- [tools/input, the matching hook for tool calls](tools-input.md)
+- [tools/elicit, the matching hook for tool calls](tools-elicit.md)
 - [server/connect for advertising elicitation upstream](server-connect.md)

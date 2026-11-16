@@ -3420,7 +3420,7 @@
   ]
  },
  {
-  "name": "GR-029 tools/input: a rule that reads route fires on the mux",
+  "name": "GR-029 tools/elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-029"
   ],
@@ -3444,7 +3444,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3615,7 +3615,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -3626,7 +3626,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/input",
+       "hook": "tools/elicit",
        "mode": "enforce"
       }
      }
@@ -3635,7 +3635,7 @@
   ]
  },
  {
-  "name": "GR-030 tools/input: the same rule does not fire on the direct route",
+  "name": "GR-030 tools/elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-030"
   ],
@@ -3658,7 +3658,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(route == 'mux') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3762,7 +3762,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -3771,7 +3771,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/input]",
+      "path": "hits[hook=tools/elicit]",
       "exists": false
      }
     ]
@@ -3779,7 +3779,7 @@
   ]
  },
  {
-  "name": "GR-031 tools/input: a rule that reads flags.search fires in search mode",
+  "name": "GR-031 tools/elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-031"
   ],
@@ -3805,7 +3805,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(flags.search) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -3909,7 +3909,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -3920,7 +3920,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/input",
+       "hook": "tools/elicit",
        "mode": "enforce"
       }
      }
@@ -3929,7 +3929,7 @@
   ]
  },
  {
-  "name": "GR-032 tools/input: the same rule does not fire without the flag",
+  "name": "GR-032 tools/elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-032"
   ],
@@ -3952,7 +3952,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(flags.search) && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4056,7 +4056,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -4065,7 +4065,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/input]",
+      "path": "hits[hook=tools/elicit]",
       "exists": false
      }
     ]
@@ -4073,7 +4073,7 @@
   ]
  },
  {
-  "name": "GR-033 tools/input: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-033 tools/elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-033"
   ],
@@ -4101,7 +4101,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4205,7 +4205,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -4216,7 +4216,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/input",
+       "hook": "tools/elicit",
        "mode": "enforce"
       }
      }
@@ -4225,7 +4225,7 @@
   ]
  },
  {
-  "name": "GR-034 tools/input: the same rule does not fire for another entitlement",
+  "name": "GR-034 tools/elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-034"
   ],
@@ -4253,7 +4253,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "(entitlement.name == 'Readers') && name == 't'",
       "then": {
        "message": "'changed'"
@@ -4357,7 +4357,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -4366,7 +4366,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=tools/input]",
+      "path": "hits[hook=tools/elicit]",
       "exists": false
      }
     ]
@@ -4374,7 +4374,7 @@
   ]
  },
  {
-  "name": "GR-035 tools/input: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-035 tools/elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-035"
   ],
@@ -4397,7 +4397,7 @@
     },
     "rules": [
      {
-      "hook": "tools/input",
+      "hook": "tools/elicit",
       "when": "name == 't'",
       "then": {
        "message": "'changed'"
@@ -4502,7 +4502,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -4513,7 +4513,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "tools/input",
+       "hook": "tools/elicit",
        "mode": "audit"
       }
      }
@@ -8053,7 +8053,7 @@
   ]
  },
  {
-  "name": "GR-064 prompts/input: a rule that reads route fires on the mux",
+  "name": "GR-064 prompts/elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-064"
   ],
@@ -8077,7 +8077,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8245,7 +8245,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8256,7 +8256,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/input",
+       "hook": "prompts/elicit",
        "mode": "enforce"
       }
      }
@@ -8265,7 +8265,7 @@
   ]
  },
  {
-  "name": "GR-065 prompts/input: the same rule does not fire on the direct route",
+  "name": "GR-065 prompts/elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-065"
   ],
@@ -8288,7 +8288,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(route == 'mux') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8389,7 +8389,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8398,7 +8398,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/input]",
+      "path": "hits[hook=prompts/elicit]",
       "exists": false
      }
     ]
@@ -8406,7 +8406,7 @@
   ]
  },
  {
-  "name": "GR-066 prompts/input: a rule that reads flags.search fires in search mode",
+  "name": "GR-066 prompts/elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-066"
   ],
@@ -8432,7 +8432,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(flags.search) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8533,7 +8533,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8544,7 +8544,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/input",
+       "hook": "prompts/elicit",
        "mode": "enforce"
       }
      }
@@ -8553,7 +8553,7 @@
   ]
  },
  {
-  "name": "GR-067 prompts/input: the same rule does not fire without the flag",
+  "name": "GR-067 prompts/elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-067"
   ],
@@ -8576,7 +8576,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(flags.search) && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8677,7 +8677,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8686,7 +8686,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/input]",
+      "path": "hits[hook=prompts/elicit]",
       "exists": false
      }
     ]
@@ -8694,7 +8694,7 @@
   ]
  },
  {
-  "name": "GR-068 prompts/input: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-068 prompts/elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-068"
   ],
@@ -8722,7 +8722,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8823,7 +8823,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8834,7 +8834,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/input",
+       "hook": "prompts/elicit",
        "mode": "enforce"
       }
      }
@@ -8843,7 +8843,7 @@
   ]
  },
  {
-  "name": "GR-069 prompts/input: the same rule does not fire for another entitlement",
+  "name": "GR-069 prompts/elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-069"
   ],
@@ -8871,7 +8871,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "(entitlement.name == 'Readers') && name == 'p'",
       "then": {
        "message": "'changed'"
@@ -8972,7 +8972,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -8981,7 +8981,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=prompts/input]",
+      "path": "hits[hook=prompts/elicit]",
       "exists": false
      }
     ]
@@ -8989,7 +8989,7 @@
   ]
  },
  {
-  "name": "GR-070 prompts/input: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-070 prompts/elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-070"
   ],
@@ -9012,7 +9012,7 @@
     },
     "rules": [
      {
-      "hook": "prompts/input",
+      "hook": "prompts/elicit",
       "when": "name == 'p'",
       "then": {
        "message": "'changed'"
@@ -9114,7 +9114,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -9125,7 +9125,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "prompts/input",
+       "hook": "prompts/elicit",
        "mode": "audit"
       }
      }
@@ -13550,7 +13550,7 @@
   ]
  },
  {
-  "name": "GR-106 resources/input: a rule that reads route fires on the mux",
+  "name": "GR-106 resources/elicit: a rule that reads route fires on the mux",
   "ids": [
    "GR-106"
   ],
@@ -13574,7 +13574,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -13742,7 +13742,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -13753,7 +13753,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/input",
+       "hook": "resources/elicit",
        "mode": "enforce"
       }
      }
@@ -13762,7 +13762,7 @@
   ]
  },
  {
-  "name": "GR-107 resources/input: the same rule does not fire on the direct route",
+  "name": "GR-107 resources/elicit: the same rule does not fire on the direct route",
   "ids": [
    "GR-107"
   ],
@@ -13785,7 +13785,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(route == 'mux') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -13886,7 +13886,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -13895,7 +13895,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/input]",
+      "path": "hits[hook=resources/elicit]",
       "exists": false
      }
     ]
@@ -13903,7 +13903,7 @@
   ]
  },
  {
-  "name": "GR-108 resources/input: a rule that reads flags.search fires in search mode",
+  "name": "GR-108 resources/elicit: a rule that reads flags.search fires in search mode",
   "ids": [
    "GR-108"
   ],
@@ -13929,7 +13929,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(flags.search) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14030,7 +14030,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -14041,7 +14041,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/input",
+       "hook": "resources/elicit",
        "mode": "enforce"
       }
      }
@@ -14050,7 +14050,7 @@
   ]
  },
  {
-  "name": "GR-109 resources/input: the same rule does not fire without the flag",
+  "name": "GR-109 resources/elicit: the same rule does not fire without the flag",
   "ids": [
    "GR-109"
   ],
@@ -14073,7 +14073,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(flags.search) && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14174,7 +14174,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -14183,7 +14183,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/input]",
+      "path": "hits[hook=resources/elicit]",
       "exists": false
      }
     ]
@@ -14191,7 +14191,7 @@
   ]
  },
  {
-  "name": "GR-110 resources/input: a rule that reads the entitlement fires for that entitlement",
+  "name": "GR-110 resources/elicit: a rule that reads the entitlement fires for that entitlement",
   "ids": [
    "GR-110"
   ],
@@ -14219,7 +14219,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14320,7 +14320,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -14331,7 +14331,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/input",
+       "hook": "resources/elicit",
        "mode": "enforce"
       }
      }
@@ -14340,7 +14340,7 @@
   ]
  },
  {
-  "name": "GR-111 resources/input: the same rule does not fire for another entitlement",
+  "name": "GR-111 resources/elicit: the same rule does not fire for another entitlement",
   "ids": [
    "GR-111"
   ],
@@ -14368,7 +14368,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "(entitlement.name == 'Readers') && uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14469,7 +14469,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -14478,7 +14478,7 @@
       "equals": "orig"
      },
      {
-      "path": "hits[hook=resources/input]",
+      "path": "hits[hook=resources/elicit]",
       "exists": false
      }
     ]
@@ -14486,7 +14486,7 @@
   ]
  },
  {
-  "name": "GR-112 resources/input: a rule in audit mode changes nothing and records what it would have done",
+  "name": "GR-112 resources/elicit: a rule in audit mode changes nothing and records what it would have done",
   "ids": [
    "GR-112"
   ],
@@ -14509,7 +14509,7 @@
     },
     "rules": [
      {
-      "hook": "resources/input",
+      "hook": "resources/elicit",
       "when": "uri == 'docs://r'",
       "then": {
        "message": "'changed'"
@@ -14611,7 +14611,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/input.json."
+      "reason": "The reply is input_required. An SDK answers it through its own handler and never hands the intermediate reply (reply.result.inputRequests) to its caller; SDK question flows are covered in e2e/elicit.json."
      }
     ],
     "expect": [
@@ -14622,7 +14622,7 @@
      {
       "path": "hits",
       "has": {
-       "hook": "resources/input",
+       "hook": "resources/elicit",
        "mode": "audit"
       }
      }

@@ -22,11 +22,11 @@ import (
 
 // Stage is one place where rules run.
 type Stage struct {
-	ID     string `json:"id"`              // tools/call.post.complete
+	ID     string `json:"id"`              // tools/call.post.result
 	Group  string `json:"group"`           // Server, Tools, Prompts, Resources
 	Method string `json:"method"`          // tools/call; "server" for the two that are not a method
 	Side   string `json:"side"`            // pre, post, settings or session
-	Event  string `json:"event,omitempty"` // complete, input_required or progress
+	Event  string `json:"event,omitempty"` // progress, elicit or result
 	// Item is what a rule here is about: tool, prompt, resource, template,
 	// skill or server.
 	Item string `json:"item,omitempty"`
@@ -86,14 +86,14 @@ when caller.role == 'admin'         set capabilities.elicitation = true
 # Forward the client's _meta (only keys on the gateway's input list pass).
 when true                           set meta = true
 `},
-	{ID: "server/discover.post", Group: "Server", Method: "server/discover", Side: "post", Event: "complete", setHook: "server/modify",
+	{ID: "server/discover.post", Group: "Server", Method: "server/discover", Side: "post", Event: "result", setHook: "server/modify",
 		Summary: "How this server describes itself to the client.",
 		Example: `when true                           set title = 'Team wiki'
 when true                           set description = 'The team wiki, read only.'
 when route == 'mux'                 set instructions = 'Search before you write. ' + upstream.instructions
 `},
 
-	{ID: "tools/list.post", Group: "Tools", Method: "tools/list", Side: "post", Event: "complete", denyHook: "tools/filter", setHook: "tools/modify",
+	{ID: "tools/list.post", Group: "Tools", Method: "tools/list", Side: "post", Event: "result", denyHook: "tools/filter", setHook: "tools/modify",
 		Summary: "Which tools are listed, and how each one looks.", Deny: "hides the tool", Notes: []string{listNote, "A rule either hides a tool or changes it. Hiding rules run first."},
 		Example: `# Hide tools.
 when name.startsWith('delete_')                     deny
@@ -139,14 +139,14 @@ audit when caller.role != 'admin'                   deny "Would block non-admins
 		Example: `when progress.message.contains('internal')          deny
 when true                                           set message = 'Working: ' + progress.message
 `},
-	{ID: "tools/call.post.input_required", Group: "Tools", Method: "tools/call", Side: "post", Event: "input_required", denyHook: "tools/input", setHook: "tools/input",
+	{ID: "tools/call.post.elicit", Group: "Tools", Method: "tools/call", Side: "post", Event: "elicit", denyHook: "tools/elicit", setHook: "tools/elicit",
 		Summary: "A question the server asks the user in place of a result.", Deny: "refuses the question and ends the call",
-		Notes: []string{"This is the server's own question. A confirm rule in pre is the gateway's question and does not pass through here."},
+		Notes: []string{"This is the server's own question. A confirm rule in pre is the gateway's question and does not pass through here.", "Only a question (an elicitation) reaches this stage. A request for sampling or roots is refused before any rule runs."},
 		Example: `when request.key == 'password'                      deny "The server asked for a password."
 when upstream.name == 'create_issue'                deny "This server may not ask users questions."
 when true                                           set message = 'The server asks: ' + request.message
 `},
-	{ID: "tools/call.post.complete", Group: "Tools", Method: "tools/call", Side: "post", Event: "complete", denyHook: "tools/result", setHook: "tools/result",
+	{ID: "tools/call.post.result", Group: "Tools", Method: "tools/call", Side: "post", Event: "result", denyHook: "tools/result", setHook: "tools/result",
 		Summary: "The result before the client sees it.", Deny: "blocks the result",
 		Notes: []string{"An error the server returns as a JSON-RPC error passes through untouched: no rule sees it."},
 		Example: `# Block a result.
@@ -161,7 +161,7 @@ when upstream.name == 'get_user'
 when has(result.structuredContent)                  set content = []
 `},
 
-	{ID: "prompts/list.post", Group: "Prompts", Method: "prompts/list", Side: "post", Event: "complete", denyHook: "prompts/filter", setHook: "prompts/modify",
+	{ID: "prompts/list.post", Group: "Prompts", Method: "prompts/list", Side: "post", Event: "result", denyHook: "prompts/filter", setHook: "prompts/modify",
 		Summary: "Which prompts are listed, and how each one looks.", Deny: "hides the prompt", Notes: []string{listNote, "A rule either hides a prompt or changes it. Hiding rules run first."},
 		Example: `when name.startsWith('internal_')                   deny
 when name == 'confluence_summary'
@@ -180,13 +180,13 @@ when !has(args.tone)                                set args.tone = 'neutral'
 		Summary: "Each progress message the server sends while it builds the prompt.", Deny: "drops the message",
 		Example: `when true                                           set message = 'Preparing: ' + progress.message
 `},
-	{ID: "prompts/get.post.input_required", Group: "Prompts", Method: "prompts/get", Side: "post", Event: "input_required", denyHook: "prompts/input", setHook: "prompts/input",
+	{ID: "prompts/get.post.elicit", Group: "Prompts", Method: "prompts/get", Side: "post", Event: "elicit", denyHook: "prompts/elicit", setHook: "prompts/elicit",
 		Summary: "A question the server asks the user in place of the prompt.", Deny: "refuses the question and ends the request",
-		Notes: []string{"There is no stage for the prompt itself yet: what the server returns passes through."},
+		Notes: []string{"Only a question (an elicitation) reaches this stage. A request for sampling or roots is refused before any rule runs.", "There is no result stage for prompts yet: the prompt the server returns passes through."},
 		Example: `when true                                           deny "This server may not ask users questions."
 `},
 
-	{ID: "resources/list.post", Group: "Resources", Method: "resources/list", Side: "post", Event: "complete", denyHook: "resources/filter", setHook: "resources/modify",
+	{ID: "resources/list.post", Group: "Resources", Method: "resources/list", Side: "post", Event: "result", denyHook: "resources/filter", setHook: "resources/modify",
 		Summary: "Which resources are listed, and how each one looks.", Deny: "hides the resource",
 		Notes: []string{listNote, "A read of a URI that is in no list still runs the hiding rules, with only uri to read.", "A rule either hides a resource or changes it. Hiding rules run first."},
 		Example: `when uri.startsWith('file:///secrets/')             deny
@@ -195,7 +195,7 @@ when uri.endsWith('.log')
   set annotations.audience = ['assistant']
 when mimeType == 'text/markdown'                    set description = 'Docs: ' + name
 `},
-	{ID: "resources/templates/list.post", Group: "Resources", Method: "resources/templates/list", Side: "post", Event: "complete", denyHook: "templates/filter", setHook: "templates/modify",
+	{ID: "resources/templates/list.post", Group: "Resources", Method: "resources/templates/list", Side: "post", Event: "result", denyHook: "templates/filter", setHook: "templates/modify",
 		Summary: "Which resource templates are listed, and how each one looks.", Deny: "hides the template", Notes: []string{"A rule either hides a template or changes it. Hiding rules run first."},
 		Example: `when uriTemplate.startsWith('file:///private/')     deny
 when uriTemplate.startsWith('file:///logs/')        set description = 'Log files'
@@ -210,16 +210,17 @@ when uri.endsWith('.key')                           confirm "Read {uri}?"
 		Summary: "Each progress message the server sends while the read runs.", Deny: "drops the message",
 		Example: `when true                                           deny
 `},
-	{ID: "resources/read.post.input_required", Group: "Resources", Method: "resources/read", Side: "post", Event: "input_required", denyHook: "resources/input", setHook: "resources/input",
+	{ID: "resources/read.post.elicit", Group: "Resources", Method: "resources/read", Side: "post", Event: "elicit", denyHook: "resources/elicit", setHook: "resources/elicit",
 		Summary: "A question the server asks the user in place of the contents.", Deny: "refuses the question and ends the read",
+		Notes: []string{"Only a question (an elicitation) reaches this stage. A request for sampling or roots is refused before any rule runs."},
 		Example: `when true                                           deny "This server may not ask users questions."
 `},
-	{ID: "resources/read.post.complete", Group: "Resources", Method: "resources/read", Side: "post", Event: "complete", denyHook: "resources/result", setHook: "resources/result",
+	{ID: "resources/read.post.result", Group: "Resources", Method: "resources/read", Side: "post", Event: "result", denyHook: "resources/result", setHook: "resources/result",
 		Summary: "The contents before the client sees them, one text item at a time.", Deny: "blocks the contents",
 		Example: `when result.text.contains('BEGIN PRIVATE KEY')      deny "The file holds a private key."
 when uri.endsWith('.md')                            set text = result.text + '\n\n(reviewed)'
 `},
-	{ID: "skills/list.post", Group: "Resources", Method: "skills/list", Side: "post", Event: "complete", denyHook: "skills/filter",
+	{ID: "skills/list.post", Group: "Resources", Method: "skills/list", Side: "post", Event: "result", denyHook: "skills/filter",
 		Summary: "Which skills are listed.", Deny: "hides the skill",
 		Example: `when name.startsWith('internal-')                   deny
 `},

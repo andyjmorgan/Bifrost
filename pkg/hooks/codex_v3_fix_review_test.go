@@ -92,7 +92,7 @@ func TestCodexV3FixEmptySetNeedsAList(t *testing.T) { // V3F-G02
 }
 
 func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
-	for _, hook := range []string{"tools/result", "tools/input", "tools/progress"} {
+	for _, hook := range []string{"tools/result", "tools/elicit", "tools/progress"} {
 		for _, exposed := range []bool{false, true} {
 			name := hook + "/upstream_control"
 			when := "upstream.name == 't'"
@@ -126,7 +126,7 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 					return
 				}
 				raw := json.RawMessage(`{"content":[{"type":"text","text":"sensitive"}]}`)
-				if hook == "tools/input" {
+				if hook == "tools/elicit" {
 					raw = json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"sensitive","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`)
 				}
 				out := c.e.UpstreamToolReply(context.Background(), c.r, c.call, c.params, raw)
@@ -172,7 +172,7 @@ func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 }
 
 func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
-	for _, hook := range []string{"prompts/input", "prompts/progress"} {
+	for _, hook := range []string{"prompts/elicit", "prompts/progress"} {
 		t.Run(hook, func(t *testing.T) {
 			s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent},
 				Catalog: Catalog{Prompts: []*mcp.Prompt{{Name: "original"}}},
@@ -210,7 +210,7 @@ func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
 }
 
 func TestCodexV3FixResourceHooksKeepUpstreamFields(t *testing.T) { // V3F-G05
-	for _, hook := range []string{"resources/read", "resources/result", "resources/input", "resources/progress"} {
+	for _, hook := range []string{"resources/read", "resources/result", "resources/elicit", "resources/progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
 				Rule{Hook: "resources/modify", When: "true", Then: map[string]string{"title": "'Public'"}},
@@ -240,7 +240,7 @@ func TestCodexV3FixResourceHooksKeepUpstreamFields(t *testing.T) { // V3F-G05
 				return
 			}
 			raw := json.RawMessage(`{"contents":[{"uri":"file:///secret.txt","text":"sensitive"}]}`)
-			if hook == "resources/input" {
+			if hook == "resources/elicit" {
 				raw = json.RawMessage(`{"resultType":"input_required","inputRequests":{"q":{"method":"elicitation/create","params":{"mode":"form","message":"sensitive","requestedSchema":{"type":"object","properties":{"answer":{"type":"string"}}}}}}}`)
 			}
 			out := e.UpstreamReadReply(context.Background(), r, first.Call, p, raw)

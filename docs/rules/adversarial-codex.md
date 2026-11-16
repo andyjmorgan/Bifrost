@@ -146,7 +146,7 @@ Severity is ranked by potential consequence; “Critical” means the stated con
     **Attacker/condition:** Malicious upstream returns mixed input requests.  
     **Setup:** Return three requests: allowed key `a`, denied key `b`, allowed key `c`. Add input rule `request.key=="b" → decision:"deny"`. Repeat with duplicate keys and a key named `bifrost.confirm`.  
     **Expected:** A deny must produce an error for the operation, not a partial challenge that upstream interprets differently. Design should additionally define duplicate-key rejection and enforce gateway namespace separation.  
-    **Target:** `tools/input`; input batch validation; state wrapping.
+    **Target:** `tools/elicit`; input batch validation; state wrapping.
 
 25. **ADV-25 — High: Snapshot changes redirect a name to a different upstream tool.**  
     **Attacker/condition:** Catalog refresh races with reversal.  
