@@ -11,7 +11,7 @@
 {"name": "to accept text for a number, write two rules: convert, then clamp",
  "servers": [{"slug": "a", "rules": [{"hook": "tools/call", "when": "has(args.limit) && type(args.limit) == string", "then": {"args.limit": "int(args.limit)"}}, {"hook": "tools/call", "when": "has(args.limit) && args.limit > 100", "then": {"args.limit": "100"}}], "catalog": {"tools": [{"name": "list", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "q": {"type": "string"}}}}]}}],
  "steps": [
-  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "expect": [{"path": "client", "refused": false}, {"path": "outcome.forward.params.arguments", "equals": {"limit": 50}}]},
+  {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "50"}}, "upstream": {"content": [{"type": "text", "text": "served"}]}, "expect": [{"path": "client", "refused": false}, {"path": "client.result.content[0].text", "equals": "served"}, {"path": "outcome.forward.params.arguments", "equals": {"limit": 50}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": "250"}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 250}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 100}}]},
   {"op": "tools/call", "params": {"name": "list", "arguments": {"limit": 7}}, "expect": [{"path": "outcome.forward.params.arguments", "equals": {"limit": 7}}]},

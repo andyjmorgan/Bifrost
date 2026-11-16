@@ -1039,8 +1039,14 @@ func (ex Expect) checkMore(v any, exists bool) string {
 			code := fmt.Sprint(em["code"])
 			failed = code != "" && code != "0" && code != "<nil>"
 		}
-		res, _ := m["result"].(map[string]any)
+		res, hasResult := m["result"].(map[string]any)
 		isErr, _ := res["isError"].(bool)
+		if !*ex.Refused && !hasResult {
+			// "Not refused" means the client got a result. A client that
+			// failed with no result was not refused, but it did not
+			// succeed either, and must not pass for success.
+			return fmt.Sprintf("%s: refused=false needs a result, and there is none (value %s)", ex.Path, short(v))
+		}
 		if got := failed || isErr; got != *ex.Refused {
 			return fmt.Sprintf("%s: refused=%v, want %v (value %s)", ex.Path, got, *ex.Refused, short(v))
 		}

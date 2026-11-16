@@ -159,7 +159,7 @@ Added November 15, 2026, by the engine's author, after the audit. Uncommitted wh
 | Lost replies under the full wire run (GA-15, GA-16, GA-36) | Not an engine defect. The mock upstream wrote a multi-line result as one SSE `data:` line, so an indented case file ended the event at the first line break. The mock now writes one `data:` line for each line |
 | The case loader ignores unknown keys | Fixed. The loader refuses a key the format does not define. It found one stray key in 600 cases, an empty `limits` on a server, which changed nothing |
 | Negative operators pass on a missing path | Fixed. `notEquals`, `notMatches` and `lacksText` need a present value. 58 checks were restated as positive ones |
-| `refused: true` passes on a client failure | Fixed. A refusal needs a JSON-RPC error with a code, or a tool error |
+| `refused: true` passes on a client failure | Fixed. A refusal needs a JSON-RPC error with a code, or a tool error. After Codex's state review, `refused: false` also needs a result, so a client failure passes neither; the three steps it named now assert the result the client received |
 | The engine runner applies the progress switch itself | Fixed. The runner models only the gateway's token mapping; the engine's own gate decides |
 | Post-rule budget checks, compile checks, name filters untested | Covered in `pkg/hooks/gap_audit_test.go`. The budget test was checked by disabling the checks: every subtest then fails |
 | A read-result rule that fails to evaluate (`resources.go:996`) | The rule failure is a deny before that line; covered by GA-37. Line 996 itself stays a defensive branch with no test |
@@ -175,6 +175,22 @@ Second pass, later on November 15, 2026:
 | An upstream that fails before replying (found while writing the timeout cases) | Fixed in the test gateway. It sent the client `-32603` with the transport's own error text, which names the upstream's address. It now hands the failure to the engine, so the client gets the one lost-reply answer (`-32014`) and the cause goes to the record |
 | Wildcard checks (raised by Codex) | Fixed. A `[*]` path that collects nothing needs the list it collects from to be present, and an empty collection now compares as `[]` |
 | Soak | The soak gained two operations: a streamed reply through progress and result rules, and a confirmation that is asked and never answered |
+
+### Soak result
+
+Run November 15 to 16, 2026, 20:51 to 02:51 UTC, on 10 cores, with `HOOKS_SOAK=6h`. The test binary was built from the tree that became commit `94fcf43`; a rebuild at that commit has the same SHA-256 (`94d4e8d7…7d25e`).
+
+| Measure | Result |
+| --- | --- |
+| Outcome | Passed, 0 failures, leak check passed |
+| Operations | 987,483, about 46 a second |
+| Mix | 324,045 calls, 246,306 listings, 98,849 streamed replies, 98,661 confirmation round trips, 98,033 fallback reads, 49,255 catalog refreshes, 39,774 searches, 19,840 abandoned confirmations, 9,828 runs of the whole scenario suite |
+| Live heap | 82 to 165 MiB. The first quarter averaged 123 MiB and the last quarter 126 MiB, so no growth |
+| Goroutines | 42 to 112, no growth |
+| Pending confirmations | 240 to 380 after the first 10 minutes. Abandoned ones expire and are dropped |
+| Garbage collection | 107 seconds of pause in 6 hours, 0.5% of the run |
+
+This is the engine alone, with no network. It says nothing about the gateway's transport, and it is not a throughput benchmark: one operation in a hundred runs the whole scenario suite.
 
 Not done:
 

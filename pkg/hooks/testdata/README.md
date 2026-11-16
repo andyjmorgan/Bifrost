@@ -119,7 +119,7 @@ Operators:
 | `set` | a list has exactly these elements, in any order |
 | `has` | a list holds an element with every field given: `{"path": "hits", "has": {"hook": "tools/call", "effect": "deny"}}` |
 | `hasText`, `lacksText` | the value's JSON holds, or does not hold, each text |
-| `refused` | on the path `client`: the request was refused (a JSON-RPC error with a code, or a result with `isError: true`). A client that only failed, with no error code from the gateway, was not refused |
+| `refused` | on the path `client`: the request was refused (a JSON-RPC error with a code, or a result with `isError: true`). A client that only failed, with no error code from the gateway, was not refused. `false` needs a result that is not an error, so a client failure passes neither `true` nor `false` |
 
 A check needs something to check:
 
