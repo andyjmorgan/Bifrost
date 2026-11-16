@@ -94,6 +94,16 @@ func (a *Authenticator) dev(ctx context.Context, r *http.Request) (*Caller, erro
 	return a.place(ctx, &Caller{UserID: id, Subject: id, Type: ActorDev, Email: id + "@localhost", Name: strings.ToUpper(id[:1]) + id[1:]}, claim)
 }
 
+// bearerToken returns the token from an Authorization header value. The scheme
+// name is case-insensitive (RFC 9110 §11.1), so "bearer" and "BEARER" count.
+func bearerToken(h string) (string, bool) {
+	scheme, tok, ok := strings.Cut(strings.TrimSpace(h), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return strings.TrimSpace(tok), true
+}
+
 // Resource is the canonical resource URL for a request path.
 func (a *Authenticator) Resource(path string) string { return a.PublicBase + path }
 
@@ -107,11 +117,10 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 		}
 		return nil, errors.New("auth: missing bearer token")
 	}
-	tok, ok := strings.CutPrefix(h, "Bearer ")
+	tok, ok := bearerToken(h)
 	if !ok {
 		return nil, errors.New("auth: unsupported authorization scheme")
 	}
-	tok = strings.TrimSpace(tok)
 	if strings.HasPrefix(tok, KeyPrefix) {
 		c, err := a.Keys.Verify(ctx, tok)
 		if err != nil {
