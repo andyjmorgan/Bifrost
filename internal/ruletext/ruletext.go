@@ -16,6 +16,9 @@ type Problem struct {
 	Stage   string `json:"stage"`
 	Line    int    `json:"line"` // 1-based; 0 is the stage as a whole
 	Message string `json:"message"`
+	// Level is "warning" for something that compiles but looks wrong. A
+	// warning never stops a save. Empty means the rules cannot be used.
+	Level string `json:"level,omitempty"`
 }
 
 type action struct {

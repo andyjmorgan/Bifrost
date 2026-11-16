@@ -37,7 +37,7 @@ import type {
   ExposureDTO,
   Rule,
   RuleProblem,
-  TextProblem,
+  TextCheck,
   RulesSchema,
   UpdateServerInput,
 } from './types'
@@ -145,7 +145,7 @@ export const api = {
     update: (id: string, input: EntitlementInput) => http.patch<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`, input),
     remove: (id: string) => http.delete(`/entitlements/${encodeURIComponent(id)}`),
     validate: (rules: Rule[]) => http.post<{ problems: RuleProblem[] }>('/entitlements/validate', { rules }),
-    validateText: (text: Record<string, string>) => http.post<{ textProblems: TextProblem[]; rules: number }>('/entitlements/validate', { text }),
+    validateText: (text: Record<string, string>, catalog?: Record<string, string[]>) => http.post<TextCheck>('/entitlements/validate', { text, catalog }),
     rulesSchema: () => http.get<RulesSchema>('/entitlements/rules-schema'),
     putGrants: (id: string, grants: GrantInput[]) => http.put<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}/grants`, { grants }),
   },

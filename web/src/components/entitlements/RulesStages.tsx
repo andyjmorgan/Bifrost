@@ -57,8 +57,11 @@ export function RulesStages({
   text,
   onChange,
   problems,
+  warnings,
   validating,
   onValidate,
+  onCheck,
+  checked,
   rulesError,
   slug,
   caps,
@@ -69,15 +72,25 @@ export function RulesStages({
   text: Record<string, string>
   onChange: (text: Record<string, string>) => void
   problems: TextProblem[]
+  /** Rules that compile but look wrong. They do not stop a save. */
+  warnings: TextProblem[]
   validating: boolean
+  /** The quiet check, run when an editor loses focus. */
   onValidate: () => void
+  /** The check the admin asks for with the button. */
+  onCheck: () => void
+  /** How many rules the last check asked for compiled to; undefined when none was asked for, or the text changed since. */
+  checked?: number
   rulesError?: string
   slug: string
   caps: CapabilityDTO[]
 }) {
-  // The server's own stages (settings, session, discover) are left out of the list to keep it to
-  // the methods. One that already holds text is still shown, so no rule in force is out of sight.
-  const stages = useMemo(() => (schema?.stages ?? []).filter((s) => s.group !== 'Server' || (text[s.id] ?? '').trim() !== ''), [schema, text])
+  // The methods come first. The server's own stages (settings, session, discover) are not about
+  // any one method, so they sit at the bottom of the list.
+  const stages = useMemo(() => {
+    const all = schema?.stages ?? []
+    return [...all.filter((s) => s.group !== 'Server'), ...all.filter((s) => s.group === 'Server')]
+  }, [schema])
   // Open on the first stage that has rules, or on the call's pre stage: the one most rules go in.
   const [picked, setPicked] = useState<string>()
   const current = stages.find((s) => s.id === picked) ?? stages.find((s) => countRules(text[s.id]) > 0) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
@@ -108,7 +121,12 @@ export function RulesStages({
   }, [current, schema, slug, caps])
 
   const general = problems.filter((p) => !stages.some((s) => s.id === p.stage))
-  const here = current ? problems.filter((p) => p.stage === current.id) : []
+  const findings = [...problems, ...warnings]
+  const here = current ? findings.filter((p) => p.stage === current.id) : []
+  const title = (id: string) => {
+    const s = stages.find((x) => x.id === id)
+    return s ? `${s.method} · ${sideLabel(s, stages)}` : id
+  }
   const value = current ? (text[current.id] ?? '') : ''
   const setValue = (v: string) => current && onChange({ ...text, [current.id]: v })
   const add = (rule: string) => setValue((value.trimEnd() ? value.trimEnd() + '\n\n' : '') + tighten(rule) + '\n')
@@ -136,10 +154,44 @@ export function RulesStages({
           {p.message}
         </Callout>
       ))}
-      <p className="max-w-3xl text-xs leading-5 text-muted-foreground">
-        A rule runs where you write it: on a method, either before the request is sent (pre) or on what comes back (post). Within a stage, rules run top to
-        bottom and a later rule sees what an earlier one set.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-xs leading-5 text-muted-foreground">
+          A rule runs where you write it: on a method, either before the request is sent (pre) or on what comes back (post). Within a stage, rules run top
+          to bottom and a later rule sees what an earlier one set.
+        </p>
+        {/* Never disabled: leaving the editor to press it starts the quiet check, and a button that
+            disabled itself then would swallow the click. */}
+        <Button variant="secondary" size="sm" onClick={onCheck} aria-busy={validating}>
+          Check rules
+        </Button>
+      </div>
+
+      {checked !== undefined &&
+        (findings.length === 0 ? (
+          <p className="text-xs text-accent">
+            {checked === 0 ? 'There are no rules to check.' : `${checked === 1 ? 'The rule passes' : `All ${checked} rules pass`} the engine's checks.`}
+          </p>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-2">
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              {problems.length > 0
+                ? `${problems.length} ${problems.length === 1 ? 'problem stops' : 'problems stop'} these rules being saved.`
+                : `The rules compile. ${warnings.length} ${warnings.length === 1 ? 'warning' : 'warnings'} to look at.`}
+            </p>
+            {findings.map((p, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setPicked(p.stage)}
+                className="grid w-full cursor-pointer grid-cols-[13rem_4rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-1 text-left font-mono text-xs leading-5 transition-colors hover:bg-elevated"
+              >
+                <span className="truncate text-muted-foreground">{title(p.stage)}</span>
+                <span className={p.level === 'warning' ? 'text-warning' : 'text-danger'}>{p.line ? `line ${p.line}` : 'stage'}</span>
+                <span className={cn('min-w-0 break-words', p.level === 'warning' ? 'text-warning' : 'text-danger')}>{p.message}</span>
+              </button>
+            ))}
+          </div>
+        ))}
 
       {current && (
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
@@ -154,6 +206,7 @@ export function RulesStages({
                       {m.stages.map((s) => {
                         const n = countRules(text[s.id])
                         const bad = problems.some((p) => p.stage === s.id)
+                        const warned = !bad && warnings.some((p) => p.stage === s.id)
                         const active = s.id === current.id
                         return (
                           <button
@@ -168,8 +221,13 @@ export function RulesStages({
                           >
                             <span className="truncate">{sideLabel(s, stages)}</span>
                             {(n > 0 || bad) && (
-                              <span className={cn('shrink-0 rounded px-1.5 text-[11px] leading-5', bad ? 'bg-danger/15 text-danger' : 'bg-accent/10 text-accent')}>
-                                {bad ? `${n} !` : n}
+                              <span
+                                className={cn(
+                                  'shrink-0 rounded px-1.5 text-[11px] leading-5',
+                                  bad ? 'bg-danger/15 text-danger' : warned ? 'bg-warning/15 text-warning' : 'bg-accent/10 text-accent',
+                                )}
+                              >
+                                {bad ? `${n} !` : warned ? `${n} ?` : n}
                               </span>
                             )}
                           </button>
@@ -200,7 +258,8 @@ export function RulesStages({
               value={value}
               onChange={setValue}
               onBlur={onValidate}
-              problemLines={here.map((p) => p.line)}
+              problemLines={here.filter((p) => p.level !== 'warning').map((p) => p.line)}
+              warningLines={here.filter((p) => p.level === 'warning').map((p) => p.line)}
               completions={completions}
               placeholder={`when <condition>   ${current.actions.join(' | ')}`}
               ariaLabel={`Rules for ${current.id}`}
@@ -209,7 +268,7 @@ export function RulesStages({
             {here.length > 0 ? (
               <ul className="space-y-1">
                 {here.map((p, i) => (
-                  <li key={i} className="flex gap-3 font-mono text-xs leading-5 text-danger">
+                  <li key={i} className={cn('flex gap-3 font-mono text-xs leading-5', p.level === 'warning' ? 'text-warning' : 'text-danger')}>
                     <span className="shrink-0">{p.line ? `line ${p.line}` : 'stage'}</span>
                     <span className="min-w-0 break-words">{p.message}</span>
                   </li>

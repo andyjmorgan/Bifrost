@@ -1,6 +1,7 @@
 package ruletext
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -172,5 +173,44 @@ func TestRenderRoundTrips(t *testing.T) {
 	}
 	if g := find("resources/result"); g.Then["text"] != "result.text + ' (reviewed)'" {
 		t.Errorf("a value over two lines came back as %q", g.Then["text"])
+	}
+}
+
+// Lint warns about rules that compile but look wrong, and stays quiet about
+// rules that are fine.
+func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
+	catalog := map[string][]string{"tool": {"echo", "flip", "search"}}
+	text := map[string]string{
+		"tools/list.post": "when name == 'flip'  set name = 'toss'\nwhen upstream.name == 'toss'  deny",
+		"tools/call.pre": "when name == 'ecoh'  deny \"typo\"\n" + // 1: unknown, near echo
+			"when name == 'toss'  deny \"renamed, so fine\"\n" + // 2: fine
+			"when name in ['echo', 'serch']  deny\n" + // 3: unknown in a list
+			"when false  deny\n" + // 4: never applies
+			"audit when true  deny \"an audit rule stops nothing\"\n" + // 5: fine
+			"when true  deny \"closed\"\n" + // 6: stops everything
+			"when name == 'echo'  set args.x = 1\n", // 7: never runs
+		"prompts/get.pre": "when name == 'anything'  deny", // prompts were never listed: not checked
+	}
+	got := map[string]string{}
+	for _, p := range Lint(text, catalog) {
+		if p.Level != "warning" {
+			t.Errorf("%+v is not a warning", p)
+		}
+		got[fmt.Sprintf("%s:%d", p.Stage, p.Line)] = p.Message
+	}
+	want := map[string]string{
+		"tools/list.post:2": `no tool named "toss"`, // upstream.name is the server's name, which a rename does not change
+		"tools/call.pre:1":  `did you mean "echo"?`,
+		"tools/call.pre:3":  `no tool named "serch"; did you mean "search"?`,
+		"tools/call.pre:4":  "never applies",
+		"tools/call.pre:7":  "line 6 denies everything",
+	}
+	for at, has := range want {
+		if !strings.Contains(got[at], has) {
+			t.Errorf("%s: got %q, want it to hold %q", at, got[at], has)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("warnings: %v", got)
 	}
 }

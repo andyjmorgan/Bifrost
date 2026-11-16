@@ -326,12 +326,18 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.entitlementDTO(r, e, a.serverNames(r, c.OrgID)[e.ServerID]))
 }
 
-// validateRules compiles rules without saving them: text by stage, or a
-// rule list.
+// validateRules checks rules without saving them: text by stage, or a rule
+// list. Text is compiled by the engine's compiler, which is what decides
+// whether it can be saved, and then looked over for rules that compile but
+// look wrong; those come back as warnings.
 func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Rules []hooks.Rule       `json:"rules"`
 		Text  *map[string]string `json:"text"`
+		// Catalog is the names the server is known to offer, by kind. With
+		// it, a rule that names something the server does not have is
+		// warned about.
+		Catalog map[string][]string `json:"catalog"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -342,7 +348,11 @@ func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 		if probs == nil {
 			probs = []ruletext.Problem{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"textProblems": probs, "rules": len(rules)})
+		warnings := ruletext.Lint(*in.Text, in.Catalog)
+		if warnings == nil {
+			warnings = []ruletext.Problem{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"textProblems": probs, "warnings": warnings, "rules": len(rules)})
 		return
 	}
 	_, probs := hooks.Compile(in.Rules)

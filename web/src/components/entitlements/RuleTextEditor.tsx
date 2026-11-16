@@ -57,14 +57,19 @@ const ruleTheme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'transparent', border: 'none', color: 'var(--faint-foreground)' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 12px', minWidth: '2.25rem', fontSize: '11px' },
   '.cm-problemLine': { backgroundColor: 'color-mix(in srgb, var(--danger) 12%, transparent)', boxShadow: 'inset 2px 0 0 var(--danger)' },
+  '.cm-warningLine': { backgroundColor: 'color-mix(in srgb, var(--warning) 10%, transparent)', boxShadow: 'inset 2px 0 0 var(--warning)' },
 })
 
 const External = Annotation.define<boolean>()
 const problemMark = Decoration.line({ class: 'cm-problemLine' })
+const warningMark = Decoration.line({ class: 'cm-warningLine' })
 
-function problemLines(state: EditorState, lines: number[]) {
-  const ok = [...new Set(lines)].filter((n) => n >= 1 && n <= state.doc.lines).sort((a, b) => a - b)
-  return Decoration.set(ok.map((n) => problemMark.range(state.doc.line(n).from)))
+/** Marks the lines with a problem, and those with only a warning. */
+function markedLines(state: EditorState, problems: number[], warnings: number[]) {
+  const inDoc = (n: number) => n >= 1 && n <= state.doc.lines
+  const bad = new Set(problems.filter(inDoc))
+  const all = [...new Set([...bad, ...warnings.filter(inDoc)])].sort((a, b) => a - b)
+  return Decoration.set(all.map((n) => (bad.has(n) ? problemMark : warningMark).range(state.doc.line(n).from)))
 }
 
 const WORDS: Completion[] = [
@@ -113,6 +118,8 @@ export interface RuleTextEditorProps {
   onBlur?: () => void
   /** 1-based lines that have a problem. */
   problemLines?: number[]
+  /** 1-based lines that have a warning. */
+  warningLines?: number[]
   completions?: RuleCompletionData
   placeholder?: string
   ariaLabel: string
@@ -120,7 +127,7 @@ export interface RuleTextEditorProps {
 }
 
 /** A multi-line CodeMirror editor for one stage's rules, with line numbers and the lines that have problems marked. */
-export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, completions, placeholder, ariaLabel, className }: RuleTextEditorProps) {
+export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, warningLines, completions, placeholder, ariaLabel, className }: RuleTextEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const marks = useRef(new Compartment())
@@ -128,7 +135,7 @@ export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, c
   latest.current = { onChange, onBlur, completions }
   const initial = useRef(value)
   initial.current = value
-  const lineKey = (lines ?? []).join(',')
+  const lineKey = (lines ?? []).join(',') + '|' + (warningLines ?? []).join(',')
 
   useEffect(() => {
     const extensions: Extension[] = [
@@ -171,8 +178,8 @@ export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, c
   useEffect(() => {
     const ev = view.current
     if (!ev) return
-    const nums = lineKey ? lineKey.split(',').map(Number) : []
-    ev.dispatch({ effects: marks.current.reconfigure(EditorView.decorations.of(problemLines(ev.state, nums))) })
+    const [bad, warn] = lineKey.split('|').map((part) => (part ? part.split(',').map(Number) : []))
+    ev.dispatch({ effects: marks.current.reconfigure(EditorView.decorations.of(markedLines(ev.state, bad, warn))) })
   }, [lineKey, value])
 
   return (

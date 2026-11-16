@@ -582,6 +582,16 @@ export interface TextProblem {
   stage: string
   line: number
   message: string
+  /** "warning": the rule compiles but looks wrong, and does not stop a save. Absent: the rules cannot be used. */
+  level?: 'warning'
+}
+
+/** POST /entitlements/validate with text: what the engine's compiler and the sanity checks found. */
+export interface TextCheck {
+  textProblems: TextProblem[]
+  warnings: TextProblem[]
+  /** How many engine rules the text compiled to; 0 when it has problems. */
+  rules: number
 }
 
 export interface HookSchema {

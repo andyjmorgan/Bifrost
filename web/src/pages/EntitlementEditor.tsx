@@ -128,6 +128,11 @@ export function EntitlementEditorPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
   const [problems, setProblems] = useState<TextProblem[]>([])
+  const [warnings, setWarnings] = useState<TextProblem[]>([])
+  // How many rules the last check the admin asked for compiled to; undefined once the text changes.
+  const [checked, setChecked] = useState<number>()
+  // The server's catalog by kind, for the check that a rule names something the server has.
+  const catalog = useRef<Record<string, string[]>>({})
   const [validating, setValidating] = useState(false)
   // Only the latest validation may land; an older one racing it would show stale problems.
   const validateSeq = useRef(0)
@@ -135,18 +140,27 @@ export function EntitlementEditorPage() {
   const [schemaError, setSchemaError] = useState<string>()
   const [tab, setTab] = useState<PageTab>('general')
 
-  /** POST /entitlements/validate; returns true when the text compiles. */
-  const validate = useCallback(async (text: Record<string, string>): Promise<boolean> => {
+  /**
+   * POST /entitlements/validate: the engine's compiler, then the sanity checks. Returns true when
+   * the text compiles; warnings do not count against it. `asked` marks a check the admin asked for.
+   */
+  const validate = useCallback(async (text: Record<string, string>, asked = false): Promise<boolean> => {
     const seq = ++validateSeq.current
     const sent = cleanText(text)
     if (!Object.keys(sent).length) {
       setProblems([])
+      setWarnings([])
+      if (asked) setChecked(0)
       return true
     }
     setValidating(true)
     try {
-      const r = await api.entitlements.validateText(sent)
-      if (seq === validateSeq.current) setProblems(r.textProblems ?? [])
+      const r = await api.entitlements.validateText(sent, catalog.current)
+      if (seq === validateSeq.current) {
+        setProblems(r.textProblems ?? [])
+        setWarnings(r.warnings ?? [])
+        if (asked) setChecked(r.rules)
+      }
       return !(r.textProblems ?? []).length
     } catch (e) {
       // A failed validation call should not block editing; the save will report compile errors.
@@ -182,6 +196,7 @@ export function EntitlementEditorPage() {
       if (e.rulesError) setTab('rules')
       const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
       setCaps(c)
+      catalog.current = c.reduce<Record<string, string[]>>((by, cap) => ({ ...by, [cap.kind]: [...(by[cap.kind] ?? []), cap.name] }), {})
       setMembers(org.members)
     } catch (err) {
       setLoadError(errorMessage(err))
@@ -215,6 +230,8 @@ export function EntitlementEditorPage() {
     // A stage whose text changed is unchecked until the next blur or save.
     const changed = new Set(Object.keys({ ...draft.text, ...text }).filter((id) => (draft.text[id] ?? '') !== (text[id] ?? '')))
     if (problems.some((p) => changed.has(p.stage))) setProblems(problems.filter((p) => !changed.has(p.stage)))
+    if (warnings.some((p) => changed.has(p.stage))) setWarnings(warnings.filter((p) => !changed.has(p.stage)))
+    if (changed.size) setChecked(undefined)
     set({ text })
   }
 
@@ -360,8 +377,11 @@ export function EntitlementEditorPage() {
             text={draft.text}
             onChange={setText}
             problems={problems}
+            warnings={warnings}
             validating={validating}
             onValidate={() => void validate(draft.text)}
+            onCheck={() => void validate(draft.text, true)}
+            checked={checked}
             rulesError={ent.rulesError}
             slug={ent.slug}
             caps={caps}
