@@ -478,6 +478,8 @@ export interface EntitlementDTO {
   selection: Selection
   /** Hook rules, run top to bottom at their hook. Always an array. */
   rules: Rule[]
+  /** The rules as text, by stage id. Rules saved as JSON are rendered into it. Always an object. */
+  rulesText: Record<string, string>
   /** Why the stored rules cannot be used. While set, the entitlement exposes nothing. */
   rulesError?: string
   generation: number
@@ -494,6 +496,8 @@ export interface EntitlementInput {
   selection?: Selection
   /** Omit to leave unchanged; PATCH sends the full list. */
   rules?: Rule[]
+  /** The rules as text, by stage id; wins over `rules`. Omit to leave unchanged. */
+  rulesText?: Record<string, string>
 }
 
 export type CapabilityKind = 'tool' | 'prompt' | 'resource' | 'template'
@@ -543,6 +547,41 @@ export interface RulesSchema {
   flags: Record<string, string>
   /** Ordered by hook name. */
   hooks: HookSchema[]
+  /** Where rules run, in the order a request meets them. */
+  stages: RuleStage[]
+}
+
+/** One place where rules run: a method, a side of it and, for a reply, the event that came back. */
+export interface RuleStage {
+  /** e.g. "tools/call.post.complete". */
+  id: string
+  /** Server, Tools, Prompts or Resources. */
+  group: string
+  /** e.g. "tools/call"; "server" for the two that are not a method. */
+  method: string
+  side: 'pre' | 'post' | 'settings' | 'session'
+  event?: 'complete' | 'input_required' | 'progress'
+  item?: string
+  summary: string
+  notes?: string[]
+  /** The engine hooks the stage's rules compile to. */
+  hooks: string[]
+  /** deny, confirm, set. */
+  actions: string[]
+  /** What deny does here, e.g. "hides the tool". */
+  deny?: string
+  reads: HookVariable[]
+  sets: HookSet[]
+  helpers?: string[]
+  /** A full set of rules for the stage, to copy from. Every line compiles. */
+  example: string
+}
+
+/** A problem in rule text. `line` is 1-based; 0 is the stage as a whole. `stage` is empty for a problem with the rules as a whole. */
+export interface TextProblem {
+  stage: string
+  line: number
+  message: string
 }
 
 export interface HookSchema {

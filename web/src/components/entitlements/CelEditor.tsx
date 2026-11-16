@@ -12,14 +12,12 @@ export type { CelCompletionData } from './celCompletions'
 
 /* ---------- CEL tokenizer ---------- */
 
-interface CelState {
+export interface CelState {
   afterDot: boolean
 }
 
-const celLanguage = StreamLanguage.define<CelState>({
-  name: 'cel',
-  startState: () => ({ afterDot: false }),
-  token(stream: StringStream, state: CelState) {
+/** One CEL token. The rule text editor calls it for everything that is not one of its own words. */
+export function celToken(stream: StringStream, state: CelState): string | null {
     if (stream.eatSpace()) return null
     const afterDot = state.afterDot
     state.afterDot = false
@@ -63,8 +61,9 @@ const celLanguage = StreamLanguage.define<CelState>({
     const c = stream.next()
     if (c === '.') state.afterDot = true
     return 'punctuation'
-  },
-  tokenTable: {
+}
+
+export const celTokenTable = {
     string: t.string,
     number: t.number,
     bool: t.bool,
@@ -75,12 +74,18 @@ const celLanguage = StreamLanguage.define<CelState>({
     variable: t.variableName,
     operator: t.operator,
     punctuation: t.punctuation,
-  },
+}
+
+const celLanguage = StreamLanguage.define<CelState>({
+  name: 'cel',
+  startState: () => ({ afterDot: false }),
+  token: celToken,
+  tokenTable: celTokenTable,
 })
 
 // Same hues as the JSON tree in PayloadViewer: strings warning, numbers info, booleans plum,
 // null faint italic, punctuation muted, names in the code foreground.
-const celHighlight = HighlightStyle.define([
+export const celHighlight = HighlightStyle.define([
   { tag: t.string, color: 'var(--warning)' },
   { tag: t.number, color: 'var(--info)' },
   { tag: t.bool, color: 'var(--plum)' },
@@ -92,10 +97,10 @@ const celHighlight = HighlightStyle.define([
 
 /* ---------- theme ---------- */
 
-const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+export const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 const SANS = "'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
-const celTheme = EditorView.theme({
+export const celTheme = EditorView.theme({
   '&': { color: 'var(--code-foreground)', backgroundColor: 'transparent', fontSize: '12px' },
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': { fontFamily: MONO, lineHeight: '20px', overflowX: 'auto' },

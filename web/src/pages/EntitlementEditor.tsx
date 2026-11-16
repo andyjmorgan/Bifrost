@@ -14,8 +14,7 @@ import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
 import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
-import { RulesCard } from '../components/entitlements/RulesCard'
-import { duplicateFields, fromDrafts, keyProblems, toDrafts, type RuleDraft, type RuleProblems } from '../components/entitlements/rules'
+import { RulesStages, countRules } from '../components/entitlements/RulesStages'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import {
   api,
@@ -27,8 +26,8 @@ import {
   type GrantInput,
   type MemberDTO,
   type OrgRole,
-  type RuleProblem,
   type RulesSchema,
+  type TextProblem,
   type Selection,
 } from '../api'
 import { cn } from '../lib'
@@ -46,7 +45,8 @@ interface Draft {
   description: string
   /** Resource lists hold URI patterns, including exact URIs picked from the seen resources. */
   sel: DraftSelection
-  rules: RuleDraft[]
+  /** The rules as text, by stage id. */
+  text: Record<string, string>
   grants: GrantInput[]
 }
 
@@ -66,16 +66,23 @@ function toDraft(e: EntitlementDTO): Draft {
       resources: s.resources ?? null,
       templates: s.templates ?? null,
     },
-    rules: toDrafts(e.rules ?? []),
+    text: { ...(e.rulesText ?? {}) },
     grants: e.grants.map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
   }
 }
 
-function problemsFromError(e: unknown): RuleProblem[] | undefined {
+function problemsFromError(e: unknown): TextProblem[] | undefined {
   if (!(e instanceof ApiError) || e.status !== 400) return undefined
-  const body = e.body as { problems?: RuleProblem[] } | undefined
-  return Array.isArray(body?.problems) ? body.problems : undefined
+  const body = e.body as { textProblems?: TextProblem[] } | undefined
+  return Array.isArray(body?.textProblems) ? body.textProblems : undefined
 }
+
+/** Only stages that hold something are sent and compared. */
+function cleanText(text: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(text).filter(([, t]) => t.trim() !== ''))
+}
+
+const ruleCount = (text: Record<string, string>) => Object.values(text).reduce((n, t) => n + countRules(t), 0)
 
 /** Only the narrowed kinds become keys; an "Only selected" kind with nothing ticked is []. */
 function toSelection(d: Draft): Selection {
@@ -101,7 +108,7 @@ function isDirty(a: Draft, b: Draft): boolean {
     a.name !== b.name ||
     a.description !== b.description ||
     KINDS.some((k) => !sameList(a.sel[k.key], b.sel[k.key], k.key === 'resources')) ||
-    JSON.stringify(fromDrafts(a.rules)) !== JSON.stringify(fromDrafts(b.rules)) ||
+    JSON.stringify(Object.entries(cleanText(a.text)).sort()) !== JSON.stringify(Object.entries(cleanText(b.text)).sort()) ||
     !sameSet(a.grants.map(grantKey), b.grants.map(grantKey))
   )
 }
@@ -120,7 +127,7 @@ export function EntitlementEditorPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
-  const [problems, setProblems] = useState<RuleProblems>({})
+  const [problems, setProblems] = useState<TextProblem[]>([])
   const [validating, setValidating] = useState(false)
   // Only the latest validation may land; an older one racing it would show stale problems.
   const validateSeq = useRef(0)
@@ -128,21 +135,22 @@ export function EntitlementEditorPage() {
   const [schemaError, setSchemaError] = useState<string>()
   const [tab, setTab] = useState<PageTab>('general')
 
-  /** POST /entitlements/validate; returns true when the list compiles. */
-  const validate = useCallback(async (rules: RuleDraft[]): Promise<boolean> => {
+  /** POST /entitlements/validate; returns true when the text compiles. */
+  const validate = useCallback(async (text: Record<string, string>): Promise<boolean> => {
     const seq = ++validateSeq.current
-    if (!rules.length) {
-      setProblems({})
+    const sent = cleanText(text)
+    if (!Object.keys(sent).length) {
+      setProblems([])
       return true
     }
     setValidating(true)
     try {
-      const r = await api.entitlements.validate(fromDrafts(rules))
-      if (seq === validateSeq.current) setProblems(keyProblems(rules, r.problems ?? []))
-      return !(r.problems ?? []).length
+      const r = await api.entitlements.validateText(sent)
+      if (seq === validateSeq.current) setProblems(r.textProblems ?? [])
+      return !(r.textProblems ?? []).length
     } catch (e) {
       // A failed validation call should not block editing; the save will report compile errors.
-      toast.error('Could not validate rules', { description: errorMessage(e) })
+      toast.error('Could not check the rules', { description: errorMessage(e) })
       return true
     } finally {
       if (seq === validateSeq.current) setValidating(false)
@@ -168,8 +176,8 @@ export function EntitlementEditorPage() {
       setEnt(e)
       setDraft(d)
       setLoadError(undefined)
-      // Stored rules that do not compile: place each problem on its rule.
-      if (e.rulesError && d.rules.length) void validate(d.rules)
+      // Stored rules that do not compile: place each problem on its line.
+      if (e.rulesError && ruleCount(d.text)) void validate(d.text)
       // Stored rules that cannot be used are the thing to fix: open on them.
       if (e.rulesError) setTab('rules')
       const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
@@ -187,7 +195,7 @@ export function EntitlementEditorPage() {
 
   // Unusable stored rules are rewritten by any save, including one that leaves the list as shown.
   const dirty = useMemo(() => !!ent && !!draft && (isDirty(draft, toDraft(ent)) || !!ent.rulesError), [ent, draft])
-  const hasProblems = Object.keys(problems).length > 0 || !!draft?.rules.some((r) => duplicateFields(r).size > 0)
+  const hasProblems = problems.length > 0
 
   if (!ent || !draft) {
     return (
@@ -203,16 +211,11 @@ export function EntitlementEditorPage() {
   }
 
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch })
-  const setRules = (rules: RuleDraft[]) => {
-    // A rule that changed is unvalidated until the next blur or save; one that only moved or was renamed keeps its problems.
-    const before = new Map(draft.rules.map((r) => [r.key, r]))
-    const compiled = (r: RuleDraft) => JSON.stringify({ ...r, name: '' })
-    const same = (was: RuleDraft | undefined, r: RuleDraft) => !!was && (was === r || compiled(was) === compiled(r))
-    const kept = new Set(rules.filter((r) => same(before.get(r.key), r)).map((r) => r.key))
-    if (Object.keys(problems).some((key) => !kept.has(key))) {
-      setProblems(Object.fromEntries(Object.entries(problems).filter(([key]) => kept.has(key))))
-    }
-    set({ rules })
+  const setText = (text: Record<string, string>) => {
+    // A stage whose text changed is unchecked until the next blur or save.
+    const changed = new Set(Object.keys({ ...draft.text, ...text }).filter((id) => (draft.text[id] ?? '') !== (text[id] ?? '')))
+    if (problems.some((p) => changed.has(p.stage))) setProblems(problems.filter((p) => !changed.has(p.stage)))
+    set({ text })
   }
 
   const save = async () => {
@@ -220,21 +223,22 @@ export function EntitlementEditorPage() {
     if (!name) return setSaveError('Name is required.')
     setSaving(true)
     setSaveError(undefined)
-    const rules = draft.rules
-    if (!(await validate(rules))) {
+    const text = cleanText(draft.text)
+    if (!(await validate(text))) {
       setSaving(false)
-      setSaveError('Some rules do not compile. Fix the problems shown under them, then save.')
+      setTab('rules')
+      setSaveError('Some rules do not compile. Fix the lines marked on the Rules tab, then save.')
       return
     }
     try {
-      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rules: fromDrafts(rules) })
+      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rulesText: text })
       const updated = await api.entitlements.putGrants(ent.id, draft.grants)
       setEnt(updated)
       setDraft(toDraft(updated))
       toast.success(`Saved ${updated.slug}`)
     } catch (e) {
       const p = problemsFromError(e)
-      if (p) setProblems(keyProblems(rules, p))
+      if (p) setProblems(p)
       setSaveError(errorMessage(e))
       toast.error('Could not save', { description: errorMessage(e) })
     } finally {
@@ -264,7 +268,7 @@ export function EntitlementEditorPage() {
       const seen = caps.filter((c) => c.kind === k.kind).length
       return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
     }),
-    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
+    { key: 'rules', label: 'Rules', count: ruleCount(draft.text), icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
   ]
   const kind = KINDS.find((k) => k.kind === tab)
 
@@ -349,15 +353,15 @@ export function EntitlementEditorPage() {
 
       {tab === 'rules' && (
         <TabPanel tabKey="rules">
-          <RulesCard
-            rules={draft.rules}
-            onChange={setRules}
-            problems={problems}
-            validating={validating}
-            onValidate={(r) => void validate(r ?? draft.rules)}
+          <RulesStages
             schema={schema}
             schemaError={schemaError}
             onReloadSchema={() => void loadSchema()}
+            text={draft.text}
+            onChange={setText}
+            problems={problems}
+            validating={validating}
+            onValidate={() => void validate(draft.text)}
             rulesError={ent.rulesError}
             slug={ent.slug}
             caps={caps}

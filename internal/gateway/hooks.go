@@ -204,27 +204,56 @@ func (s *cacheStates) Take(key string) (hooks.State, bool) {
 // ---- rules ----------------------------------------------------------------------
 
 // ParseRules reads an entitlement's stored rules. Rules written for the
-// retired allow/deny format have no hook; they are refused, which fails the
-// entitlement closed until they are rewritten.
+// retired allow/deny engine are refused: the entitlement then exposes
+// nothing until an admin rewrites them.
 func ParseRules(raw json.RawMessage) ([]hooks.Rule, error) {
+	rs, _, err := ParseStored(raw)
+	return rs, err
+}
+
+// StoredRules is how an entitlement's rules are kept when they were written
+// as text: the text, by stage, beside the engine rules it compiled to. The
+// engine runs Rules; Text is what the admin sees again.
+type StoredRules struct {
+	Text  map[string]string `json:"text"`
+	Rules []hooks.Rule      `json:"rules"`
+}
+
+// ParseStored reads an entitlement's stored rules and, when they were
+// written as text, the text. Rules saved as a bare list have no text.
+func ParseStored(raw json.RawMessage) ([]hooks.Rule, map[string]string, error) {
 	t := bytes.TrimSpace(raw)
 	if len(t) == 0 || string(t) == "null" || string(t) == "[]" || string(t) == "{}" {
-		return nil, nil
+		return nil, nil, nil
+	}
+	var text map[string]string
+	if t[0] == '{' {
+		var st struct {
+			Text  map[string]string `json:"text"`
+			Rules json.RawMessage   `json:"rules"`
+		}
+		if err := json.Unmarshal(t, &st); err != nil {
+			return nil, nil, fmt.Errorf("rules: %w", err)
+		}
+		text, t = st.Text, bytes.TrimSpace(st.Rules)
+		if len(t) == 0 || string(t) == "null" {
+			return nil, text, nil
+		}
 	}
 	var items []map[string]json.RawMessage
 	if err := json.Unmarshal(t, &items); err != nil {
-		return nil, fmt.Errorf("rules are not a list: %w", err)
+		return nil, text, fmt.Errorf("rules are not a list: %w", err)
 	}
 	for i, it := range items {
 		if _, ok := it["hook"]; !ok {
-			return nil, fmt.Errorf("rule %d is in the retired allow/deny format; rewrite it as a hook rule", i+1)
+			return nil, text, fmt.Errorf("rule %d is in the retired allow/deny format; rewrite it as a hook rule", i+1)
 		}
 	}
 	var rs []hooks.Rule
 	if err := json.Unmarshal(t, &rs); err != nil {
-		return nil, fmt.Errorf("rules: %w", err)
+		return nil, text, fmt.Errorf("rules: %w", err)
 	}
-	return rs, nil
+	return rs, text, nil
 }
 
 type compiledHooks struct {

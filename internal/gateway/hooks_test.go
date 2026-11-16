@@ -1062,3 +1062,27 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 		check(t, []string{"io.modelcontextprotocol/serverInfo"}, "null", "{"+us+"}")
 	})
 }
+
+// Rules written as text are stored with the text beside the rules the
+// engine runs. Both shapes of stored rules read back, and the retired
+// format is still refused inside the new shape.
+func TestStoredRulesKeepTheirText(t *testing.T) {
+	rules := []hooks.Rule{{Hook: "tools/filter", When: "true", Then: map[string]string{"decision": "'deny'"}}}
+	bare, _ := json.Marshal(rules)
+	withText, _ := json.Marshal(gateway.StoredRules{Text: map[string]string{"tools/list.post": "when true deny"}, Rules: rules})
+	for name, raw := range map[string][]byte{"a bare list": bare, "text and rules": withText} {
+		rs, text, err := gateway.ParseStored(raw)
+		if err != nil || len(rs) != 1 || rs[0].Hook != "tools/filter" {
+			t.Fatalf("%s: rules %+v, err %v", name, rs, err)
+		}
+		if name == "text and rules" && text["tools/list.post"] != "when true deny" {
+			t.Fatalf("the text was lost: %v", text)
+		}
+	}
+	if _, _, err := gateway.ParseStored([]byte(`{"text":{},"rules":[{"allow":["x"]}]}`)); err == nil {
+		t.Fatal("rules in the retired format were accepted")
+	}
+	if rs, text, err := gateway.ParseStored([]byte(`{"text":{"tools/call.pre":"# nothing yet"},"rules":[]}`)); err != nil || len(rs) != 0 || len(text) != 1 {
+		t.Fatalf("text with no rules: %v %v %v", rs, text, err)
+	}
+}

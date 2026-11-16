@@ -23,6 +23,8 @@ export interface CelCompletionData {
 
 export interface CelCompleterOptions {
   data: () => CelCompletionData | undefined
+  /** Where the expression under the cursor starts; 0 (the whole document) when absent. */
+  from?: (ctx: CompletionContext) => number
 }
 
 /* ---------- the CEL language ---------- */
@@ -214,7 +216,8 @@ export function celCompletionSource(opts: CelCompleterOptions): CompletionSource
   return (ctx: CompletionContext): CompletionResult | null => {
     const data = opts.data()
     if (!data) return null
-    const before = ctx.state.doc.sliceString(0, ctx.pos)
+    const base = opts.from?.(ctx) ?? 0
+    const before = ctx.state.doc.sliceString(base, ctx.pos)
 
     // Inside a string literal: only live values, and only right after a comparison.
     const str = openString(before, 0)
@@ -225,7 +228,7 @@ export function celCompletionSource(opts: CelCompleterOptions): CompletionSource
       const values = literalValues(hit[1], data)
       if (!values.length) return null
       return {
-        from: str.start,
+        from: base + str.start,
         options: values.map((x) => ({ label: x.label, detail: x.detail, type: 'constant', apply: quotedApply(x.label, str.quote) })),
         validFor: /^[^"']*$/,
       }
