@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, Check, Plus, Save, Trash2, UserRound, X } from 'lucide-react'
@@ -34,6 +34,9 @@ import {
 import { cn } from '../lib'
 
 type SelKey = keyof Selection
+
+/** The page's tabs: the entitlement itself, who holds it, one per kind of capability, then the rules. */
+type PageTab = 'general' | 'grants' | CapabilityKind | 'rules'
 
 /** Per kind: null is everything of that kind (key absent), an array is only what it names. */
 type DraftSelection = Record<SelKey, string[] | null>
@@ -123,6 +126,7 @@ export function EntitlementEditorPage() {
   const validateSeq = useRef(0)
   const [schema, setSchema] = useState<RulesSchema>()
   const [schemaError, setSchemaError] = useState<string>()
+  const [tab, setTab] = useState<PageTab>('general')
 
   /** POST /entitlements/validate; returns true when the list compiles. */
   const validate = useCallback(async (rules: RuleDraft[]): Promise<boolean> => {
@@ -166,6 +170,8 @@ export function EntitlementEditorPage() {
       setLoadError(undefined)
       // Stored rules that do not compile: place each problem on its rule.
       if (e.rulesError && d.rules.length) void validate(d.rules)
+      // Stored rules that cannot be used are the thing to fix: open on them.
+      if (e.rulesError) setTab('rules')
       const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
       setCaps(c)
       setMembers(org.members)
@@ -249,6 +255,19 @@ export function EntitlementEditorPage() {
     }
   }
 
+  const rulesBroken = hasProblems || !!ent.rulesError
+  const tabs: Tab<PageTab>[] = [
+    { key: 'general', label: 'General' },
+    { key: 'grants', label: 'Grants', count: draft.grants.length },
+    ...KINDS.map((k) => {
+      const list = draft.sel[k.key]
+      const seen = caps.filter((c) => c.kind === k.kind).length
+      return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
+    }),
+    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
+  ]
+  const kind = KINDS.find((k) => k.kind === tab)
+
   return (
     <div className="space-y-6">
       <Button variant="link" asChild>
@@ -274,36 +293,62 @@ export function EntitlementEditorPage() {
 
       {saveError && <Callout tone="danger">{saveError}</Callout>}
 
-      <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Name" required>
-            <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
-          </FormField>
-          <FormField label="Slug" hint="Fixed at creation.">
-            <div className="flex h-10 items-center gap-1">
-              <code className="min-w-0 truncate rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{ent.slug}</code>
-              <CopyButton value={ent.slug} label="Copy slug" />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} label="Entitlement" className="flex-wrap" />
+
+      {tab === 'general' && (
+        <TabPanel tabKey="general">
+          <div className="space-y-4 rounded-2xl border border-border bg-card p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Name" required>
+                <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+              </FormField>
+              <FormField label="Slug" hint="Fixed at creation.">
+                <div className="flex h-10 items-center gap-1">
+                  <code className="min-w-0 truncate rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{ent.slug}</code>
+                  <CopyButton value={ent.slug} label="Copy slug" />
+                </div>
+              </FormField>
             </div>
-          </FormField>
-        </div>
-        <FormField label="MCP URL">
-          <div className="flex items-center gap-1">
-            <code className="min-w-0 break-all rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{ent.mcpUrl}</code>
-            <CopyButton value={ent.mcpUrl} label="Copy MCP URL" />
+            <FormField label="MCP URL">
+              <div className="flex items-center gap-1">
+                <code className="min-w-0 break-all rounded-md bg-code px-2 py-1 font-mono text-xs text-code-foreground">{ent.mcpUrl}</code>
+                <CopyButton value={ent.mcpUrl} label="Copy MCP URL" />
+              </div>
+            </FormField>
+            <FormField label="Description">
+              <Textarea value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder="Who this is for" rows={2} />
+            </FormField>
           </div>
-        </FormField>
-        <FormField label="Description">
-          <Textarea value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder="Who this is for" rows={2} />
-        </FormField>
-      </div>
+        </TabPanel>
+      )}
 
-      <GrantsCard draft={draft} set={set} members={members} />
+      {tab === 'grants' && (
+        <TabPanel tabKey="grants">
+          <GrantsCard draft={draft} set={set} members={members} />
+        </TabPanel>
+      )}
 
-      <EditorTabs
-        draft={draft}
-        set={set}
-        caps={caps}
-        rules={
+      {kind && (
+        <TabPanel tabKey={kind.kind} className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <p className="max-w-2xl text-xs text-muted-foreground">
+              The selection decides both what is listed and what can be called. Each kind is set on its own, then the rules run over the result.
+            </p>
+            <span className="text-xs text-muted-foreground" title={selectionDetail(toSelection(draft))}>
+              {selectionSummary(toSelection(draft))}
+            </span>
+          </div>
+          <KindSection
+            kind={kind}
+            list={draft.sel[kind.key]}
+            caps={caps.filter((c) => c.kind === kind.kind)}
+            onChange={(l) => set({ sel: { ...draft.sel, [kind.key]: l } })}
+          />
+        </TabPanel>
+      )}
+
+      {tab === 'rules' && (
+        <TabPanel tabKey="rules">
           <RulesCard
             rules={draft.rules}
             onChange={setRules}
@@ -317,9 +362,8 @@ export function EntitlementEditorPage() {
             slug={ent.slug}
             caps={caps}
           />
-        }
-        rulesBroken={hasProblems || !!ent.rulesError}
-      />
+        </TabPanel>
+      )}
 
       <div className="flex items-center justify-end gap-3">
         {hasProblems ? (
@@ -349,60 +393,6 @@ export function EntitlementEditorPage() {
 }
 
 /* ---------- selection ---------- */
-
-type EditorTab = CapabilityKind | 'rules'
-
-/** One tab per kind, then the rules last. Only the active panel is rendered. */
-function EditorTabs({
-  draft,
-  set,
-  caps,
-  rules,
-  rulesBroken,
-}: {
-  draft: Draft
-  set: (p: Partial<Draft>) => void
-  caps: CapabilityDTO[]
-  rules: ReactNode
-  /** The rules have problems, or the stored ones cannot be used: the page opens on them. */
-  rulesBroken: boolean
-}) {
-  const [tab, setTab] = useState<EditorTab>(rulesBroken ? 'rules' : 'tool')
-  const setKind = (key: SelKey, list: string[] | null) => set({ sel: { ...draft.sel, [key]: list } })
-  const tabs: Tab<EditorTab>[] = [
-    ...KINDS.map((k) => {
-      const list = draft.sel[k.key]
-      const seen = caps.filter((c) => c.kind === k.kind).length
-      return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
-    }),
-    { key: 'rules', label: 'Rules', count: draft.rules.length, icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
-  ]
-  const kind = KINDS.find((k) => k.kind === tab)
-
-  return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">Selection</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Decides both what is listed and what can be called. Each kind is set on its own, then the rules run over the result.
-          </p>
-        </div>
-        <span className="text-xs text-muted-foreground" title={selectionDetail(toSelection(draft))}>
-          {selectionSummary(toSelection(draft))}
-        </span>
-      </div>
-      <Tabs tabs={tabs} value={tab} onChange={setTab} label="Selection and rules" />
-      {kind ? (
-        <TabPanel tabKey={kind.kind}>
-          <KindSection kind={kind} list={draft.sel[kind.key]} caps={caps.filter((c) => c.kind === kind.kind)} onChange={(l) => setKind(kind.key, l)} />
-        </TabPanel>
-      ) : (
-        <TabPanel tabKey="rules">{rules}</TabPanel>
-      )}
-    </section>
-  )
-}
 
 function KindSection({
   kind: k,
@@ -553,12 +543,9 @@ function GrantsCard({ draft, set, members }: { draft: Draft; set: (p: Partial<Dr
 
   return (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Grants</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          A caller holds the union of their grants. On an exclusive server, holding two entitlements blocks both.
-        </p>
-      </div>
+      <p className="max-w-2xl text-xs text-muted-foreground">
+        A caller holds the union of their grants. On an exclusive server, holding two entitlements blocks both.
+      </p>
       <ListCard>
         <ListBar>
           <span className="flex flex-wrap items-center gap-2">
