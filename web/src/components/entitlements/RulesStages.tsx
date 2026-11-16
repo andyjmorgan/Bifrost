@@ -75,7 +75,9 @@ export function RulesStages({
   slug: string
   caps: CapabilityDTO[]
 }) {
-  const stages = useMemo(() => schema?.stages ?? [], [schema])
+  // The server's own stages (settings, session, discover) are left out of the list to keep it to
+  // the methods. One that already holds text is still shown, so no rule in force is out of sight.
+  const stages = useMemo(() => (schema?.stages ?? []).filter((s) => s.group !== 'Server' || (text[s.id] ?? '').trim() !== ''), [schema, text])
   // Open on the first stage that has rules, or on the call's pre stage: the one most rules go in.
   const [picked, setPicked] = useState<string>()
   const current = stages.find((s) => s.id === picked) ?? stages.find((s) => countRules(text[s.id]) > 0) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
