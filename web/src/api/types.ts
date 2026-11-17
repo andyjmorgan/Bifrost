@@ -597,7 +597,9 @@ export interface HookInfo {
   actions: string[]
   /** What deny does here, e.g. "hides the tool". */
   deny?: string
-  reads: HookVariable[]
+  /** Everything a rule here can read, with what it may set marked writable. */
+  tree: TreeNode
+  /** The paths a rule here may set: the tree's writable nodes. */
   sets: HookSet[]
   /** Functions only this hook's rules can call. */
   helpers?: string[]
@@ -623,38 +625,38 @@ export interface RulesCheck {
   hasRules: boolean
 }
 
-export interface HookVariable {
-  name: string
-  /** string, bool, number, timestamp, list, map, struct or any. */
+/**
+ * One place in a hook's tree: what a rule can read there, to any depth. A hook's tree has the item
+ * (tool, prompt, resource, ...), the request, what came back, the server and the entitlement.
+ */
+export interface TreeNode {
+  /** string, bool, number, timestamp, duration, list, map or any. */
   type: string
-  /** The values of an enumerated string. */
-  values?: string[]
-  /** The fields of a struct, each with its type. Reading any other is refused. */
-  fields?: Record<string, string>
-  /** The form of a map, a list or an any, as far as it is known. */
-  shape?: Shape
-  doc: string
-}
-
-/** The form of a value a rule reads. A hint: a map may hold keys the shape does not list. */
-export interface Shape {
-  /** string, bool, number, list, map or any. */
-  type: string
-  /** The keys a map is known to hold. */
-  keys?: Record<string, Shape>
-  /** The form of each element of a list. */
-  items?: Shape
-  /** The map's keys are names from the server's catalog: "parameters", "output" or "meta". */
+  doc?: string
+  /** The value may be absent. A rule reads it with .? or has(). */
+  optional?: boolean
+  /** A rule on this hook may set it. */
+  writable?: boolean
+  /** A rule sets it and cannot read it. */
+  writeOnly?: boolean
+  /** The values of a string that has a fixed set. */
+  enum?: string[]
+  /** The keys a map holds. */
+  keys?: Record<string, TreeNode>
+  /** The map may hold keys beyond `keys`; `values` is the form of each. */
+  open?: boolean
+  values?: TreeNode
+  /** The open map's keys are names from the server's catalog: "parameters", "output" or "meta". */
   names?: string
-  /** The form of the value under each of those names. */
-  values?: Shape
   /** The value takes its form from one of the item's JSON Schemas: "inputSchema" or "outputSchema". */
   follows?: string
+  /** The form of each element of a list. */
+  items?: TreeNode
 }
 
 export interface HookSet {
-  /** A dotted path; "*" stands for any one name (args.*, params.*.name). */
-  field: string
+  /** A path in the tree; "*" stands for any one name (tool.params.*.default). */
+  path: string
   /** decision, string, bool, number, duration, list, map, result or any. */
   type: string
 }

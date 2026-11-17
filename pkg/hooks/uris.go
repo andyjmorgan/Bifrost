@@ -118,11 +118,19 @@ func normalizeURI(u string) string {
 	return strings.ToLower(scheme) + "://" + host + p + tail
 }
 
-// nonCanonical reports URIs whose path a careless upstream could resolve
-// differently from the gateway: dot segments, empty segments, or
+// nonCanonical reports URIs a server could resolve differently from the
+// gateway: a scheme that is not lower case, dot segments, empty segments, or
 // percent-encoded unreserved characters. The gateway refuses them rather
 // than guess.
+//
+// A scheme is not case sensitive, so FILE:///secrets/key and
+// file:///secrets/key name the same thing to a server. A rule reads the URI
+// as text, and a deny written against file:///secrets/ would not match the
+// first. Refusing it keeps one spelling for a rule to match.
 func nonCanonical(u string) bool {
+	if i := strings.IndexAny(u, ":/?#"); i > 0 && u[i] == ':' && u[:i] != strings.ToLower(u[:i]) {
+		return true
+	}
 	_, rest, ok := strings.Cut(u, "://")
 	if !ok {
 		return false

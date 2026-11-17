@@ -21,8 +21,13 @@ import (
 )
 
 // muxVar carries what slugUris needs; the slugUris(text) macro expands to
-// __slugUris(text, __mux) so the helper stays a pure function of its inputs.
-const muxVar = "__mux"
+// @slugUris(text, @mux) so the helper stays a pure function of its inputs.
+// Both names start with "@", which a rule cannot write: CEL's own grammar
+// does not let an identifier begin with it.
+const (
+	muxVar      = "@mux"
+	slugUrisFun = "@slugUris"
+)
 
 var (
 	envMu   sync.Mutex
@@ -44,17 +49,8 @@ func envFor(spec *HookSpec) (*cel.Env, error) {
 		ext.Strings(), ext.Lists(), ext.Sets(), ext.TwoVarComprehensions(), ext.Regex(), ext.Bindings(), ext.Encoders(), ext.Math(),
 		cel.CrossTypeNumericComparisons(true),
 	}
-	for _, v := range spec.vars() {
-		switch v {
-		case "route":
-			opts = append(opts, cel.Variable(v, cel.StringType))
-		case "flags":
-			opts = append(opts, cel.Variable(v, cel.MapType(cel.StringType, cel.BoolType)))
-		case "now":
-			opts = append(opts, cel.Variable(v, cel.TimestampType))
-		default:
-			opts = append(opts, cel.Variable(v, cel.DynType))
-		}
+	for _, root := range spec.Roots() {
+		opts = append(opts, cel.Variable(root, cel.DynType))
 	}
 	for _, h := range spec.Helpers {
 		opts = append(opts, helpers[h]...)
@@ -64,29 +60,70 @@ func envFor(spec *HookSpec) (*cel.Env, error) {
 	return e, err
 }
 
-// compileExpr compiles one expression, checks its output type, and returns
-// the program plus the variables it references (for static/dynamic
-// classification).
-func compileExpr(env *cel.Env, expr string, want *cel.Type, o Options) (cel.Program, []string, error) {
+// compiled is one expression, ready to run, with what compiling it found.
+type compiled struct {
+	prg cel.Program
+	// roots are the tree's branches the expression reads, which say whether
+	// the rule depends on the request.
+	roots []string
+	// unguarded are the optional values it reads with a plain "."; tested
+	// are the values it asks about with has().
+	unguarded, tested []string
+	// out is the type the expression gives, when the checker can tell.
+	out *cel.Type
+}
+
+// fits reports whether a value of the type the checker found can be set on
+// a field. A type the checker cannot tell fits: it is checked when the rule
+// runs. Null fits everything: setting a key to null removes it.
+func fits(want ValueType, out *cel.Type) bool {
+	if out == nil {
+		return true
+	}
+	switch out.Kind() {
+	case types.DynKind, types.AnyKind, types.TypeParamKind, types.OpaqueKind, types.NullTypeKind, types.ErrorKind:
+		return true
+	}
+	switch want {
+	case TText:
+		return out.Kind() == types.StringKind
+	case TBool:
+		return out.Kind() == types.BoolKind
+	case TNumber:
+		return out.Kind() == types.IntKind || out.Kind() == types.UintKind || out.Kind() == types.DoubleKind
+	case TList:
+		return out.Kind() == types.ListKind
+	case TMap:
+		return out.Kind() == types.MapKind
+	case TDuration:
+		return out.Kind() == types.DurationKind
+	}
+	return true
+}
+
+// compileExpr compiles one expression against a hook: it checks every path
+// the expression reads against the hook's tree, and its output type.
+func compileExpr(env *cel.Env, spec *HookSpec, expr string, want *cel.Type, o Options) (c compiled, err error) {
 	a, iss := env.Compile(expr)
 	if iss != nil && iss.Err() != nil {
-		return nil, nil, errors.New(firstLine(iss.Err().Error()))
+		return c, errors.New(firstLine(iss.Err().Error()))
 	}
-	if err := checkFlags(a); err != nil {
-		return nil, nil, err
+	if c.unguarded, c.tested, err = checkPaths(a, spec); err != nil {
+		return c, err
 	}
 	if want != nil {
 		out := a.OutputType()
 		if !out.IsExactType(want) && !out.IsExactType(cel.DynType) {
-			return nil, nil, fmt.Errorf("expression must be %s, got %s", want, out)
+			return c, fmt.Errorf("expression must be %s, got %s", want, out)
 		}
 	}
-	prg, err := env.Program(a, cel.CostLimit(o.CostLimit), cel.InterruptCheckFrequency(64), cel.EvalOptions(cel.OptOptimize),
+	c.prg, err = env.Program(a, cel.CostLimit(o.CostLimit), cel.InterruptCheckFrequency(64), cel.EvalOptions(cel.OptOptimize),
 		cel.CostTrackerOptions(helperCosts...))
 	if err != nil {
-		return nil, nil, err
+		return c, err
 	}
-	return prg, referenced(a), nil
+	c.roots, c.out = referenced(a), a.OutputType()
+	return c, nil
 }
 
 func referenced(a *cel.Ast) []string {
@@ -138,7 +175,7 @@ var helpers = map[string][]cel.EnvOption{
 				return celAdapter.NativeToValue(out)
 			})),
 		cel.FunctionDocs("drop(value, paths) removes the fields at each path. A path is dot-separated; * matches every key of a map or every element of a list.",
-			`drop(result.structuredContent, ["issues.*.self", "meta"])`))},
+			`drop(response.result.structuredContent, ["issues.*.self", "meta"])`))},
 	"dropSchema": {cel.Function("dropSchema",
 		cel.Overload("dropSchema_dyn_list", []*cel.Type{cel.DynType, cel.ListType(cel.StringType)}, cel.DynType,
 			cel.BinaryBinding(func(v, paths ref.Val) ref.Val {
@@ -159,7 +196,7 @@ var helpers = map[string][]cel.EnvOption{
 				return celAdapter.NativeToValue(out)
 			})),
 		cel.FunctionDocs("dropSchema(schema, paths) removes from a JSON Schema the properties drop() removes from matching values, including from required lists.",
-			`dropSchema(outputSchema, ["issues.*.self"])`))},
+			`dropSchema(tool.outputSchema, ["issues.*.self"])`))},
 	"elicit": {cel.Function("elicit",
 		cel.Overload("elicit_string_string", []*cel.Type{cel.StringType, cel.StringType}, cel.DynType,
 			cel.BinaryBinding(func(k, m ref.Val) ref.Val { return elicitMarker(k, m, nil) })),
@@ -170,13 +207,13 @@ var helpers = map[string][]cel.EnvOption{
 		cel.Overload("elicit_string_string_map_string", []*cel.Type{cel.StringType, cel.StringType, cel.MapType(cel.StringType, cel.DynType), cel.StringType}, cel.DynType,
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val { return elicitTemplate(args[0], args[1], args[2], args[3]) })),
 		cel.FunctionDocs("elicit(key, message, error?) or elicit(key, template, values, error?) asks the user to confirm. With values, each {name} in the template is replaced by the value quoted, truncated to 80 characters and with control characters escaped, so argument text cannot pose as the gateway's own wording. The gateway returns input_required when the client supports elicitation, and an error result with the optional message otherwise.",
-			`elicit("confirm", "Delete page {id}?", {"id": args.id})`))},
+			`elicit("confirm", "Delete page {id}?", {"id": request.params.arguments.id})`))},
 	"slugUris": {
 		cel.Variable(muxVar, cel.DynType),
 		cel.Macros(cel.GlobalMacro("slugUris", 1, func(eh cel.MacroExprFactory, _ ast.Expr, args []ast.Expr) (ast.Expr, *common.Error) {
-			return eh.NewCall("__slugUris", args[0], eh.NewIdent(muxVar)), nil
+			return eh.NewCall(slugUrisFun, args[0], eh.NewIdent(muxVar)), nil
 		})),
-		cel.Function("__slugUris",
+		cel.Function(slugUrisFun,
 			cel.Overload("slugUris_string_dyn", []*cel.Type{cel.StringType, cel.DynType}, cel.StringType,
 				cel.BinaryBinding(func(text, mux ref.Val) ref.Val {
 					s, _ := text.Value().(string)
@@ -262,18 +299,35 @@ func native(v ref.Val) any {
 
 // ---- activation -----------------------------------------------------------------------
 
-// activation resolves names lazily: item fields come from the item's view
-// (so untouched fields are never copied), everything else from vars.
+// activation resolves the tree's branches. The item's branch is built when a
+// rule reads it, from the item's current fields, so a rule sees what the
+// rules before it changed; everything else comes from roots.
 type activation struct {
 	vars map[string]any
+	kind ItemKind
 	item func(name string) (any, bool)
 }
 
 func (a *activation) ResolveName(name string) (any, bool) {
-	if a.item != nil {
-		if v, ok := a.item(name); ok {
-			return v, true
+	if a.item != nil && name == string(a.kind) {
+		if a.kind != KindServer {
+			return subject(a.kind, a.item), true
 		}
+		// The server's own hook changes the server branch: its fields as
+		// rules have left them, over what every hook is told about it.
+		base, _ := a.vars["server"].(map[string]any)
+		out := make(map[string]any, len(base)+4)
+		for k, v := range base {
+			out[k] = v
+		}
+		for _, f := range []string{"title", "description", "instructions", "upstream"} {
+			if v, ok := a.item(f); ok {
+				out[f] = v
+			} else {
+				delete(out, f)
+			}
+		}
+		return out, true
 	}
 	v, ok := a.vars[name]
 	return v, ok

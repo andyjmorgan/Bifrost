@@ -8,15 +8,15 @@
      {
       "name": "Default space",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'search_pages'",
+      "when": "tool.upstream.name == 'search_pages'",
       "then": {
-       "params.space.default": "'HR'"
+       "tool.params.space.default": "'HR'"
       }
      },
      {
       "name": "No HR",
       "hook": "tools/call.pre",
-      "when": "upstream.name == 'search_pages' && args.space == 'HR'",
+      "when": "tool.upstream.name == 'search_pages' && request.params.arguments.space == 'HR'",
       "then": {
        "decision": "'deny'",
        "reason": "'The HR space is restricted. Use ENG or OPS.'"
@@ -106,7 +106,7 @@
      {
       "name": "Seven days",
       "hook": "tools/call.pre",
-      "when": "has(args.from) && has(args.to) && timestamp(args.to) - timestamp(args.from) > duration('168h')",
+      "when": "has(request.params.arguments.from) && has(request.params.arguments.to) && timestamp(request.params.arguments.to) - timestamp(request.params.arguments.from) > duration('168h')",
       "then": {
        "decision": "'deny'",
        "reason": "'The time range is over 7 days.'"
@@ -181,15 +181,15 @@
      {
       "name": "Clamp limit",
       "hook": "tools/call.pre",
-      "when": "has(args.limit) && args.limit > 100",
+      "when": "has(request.params.arguments.limit) && request.params.arguments.limit > 100",
       "then": {
-       "args.limit": "100"
+       "request.params.arguments.limit": "100"
       }
      },
      {
       "name": "Search timeout",
       "hook": "tools/call.pre",
-      "when": "upstream.name == 'search_logs'",
+      "when": "tool.upstream.name == 'search_logs'",
       "then": {
        "timeout": "duration('30s')"
       }
@@ -254,17 +254,17 @@
      {
       "name": "Hide assignee",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'create_issue'",
+      "when": "tool.upstream.name == 'create_issue'",
       "then": {
-       "params.assignee.hide": "true"
+       "tool.params.assignee.hide": "true"
       }
      },
      {
       "name": "Assign to caller",
       "hook": "tools/call.pre",
-      "when": "upstream.name == 'create_issue' && caller.type == 'user'",
+      "when": "tool.upstream.name == 'create_issue' && request.caller.type == 'user'",
       "then": {
-       "args.assignee": "caller.email"
+       "request.params.arguments.assignee": "request.caller.email"
       }
      }
     ],
@@ -395,9 +395,9 @@
      {
       "name": "Confirm delete",
       "hook": "tools/call.pre",
-      "when": "upstream.name == 'delete_page' && !has(input.confirm)",
+      "when": "tool.upstream.name == 'delete_page'",
       "then": {
-       "result": "elicit('confirm', 'Delete page {id}?', {'id': args.id})"
+       "confirm": "elicit('confirm', 'Delete page {id}?', {'id': request.params.arguments.id})"
       }
      }
     ],
@@ -700,35 +700,35 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.env.pin": "'staging'",
-       "params.limit.maximum": "10",
-       "params.cql.name": "'q'"
+       "tool.params.env.pin": "'staging'",
+       "tool.params.limit.maximum": "10",
+       "tool.params.cql.name": "'q'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.mode) && args.mode == 'pin'",
+      "when": "has(request.params.arguments.mode) && request.params.arguments.mode == 'pin'",
       "then": {
-       "args.env": "'prod'"
+       "request.params.arguments.env": "'prod'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.mode) && args.mode == 'range'",
+      "when": "has(request.params.arguments.mode) && request.params.arguments.mode == 'range'",
       "then": {
-       "args.limit": "50"
+       "request.params.arguments.limit": "50"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.mode) && args.mode == 'upkey'",
+      "when": "has(request.params.arguments.mode) && request.params.arguments.mode == 'upkey'",
       "then": {
-       "args.cql": "'x'"
+       "request.params.arguments.cql": "'x'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.mode) && args.mode == 'deny'",
+      "when": "has(request.params.arguments.mode) && request.params.arguments.mode == 'deny'",
       "then": {
        "decision": "'deny'"
       }
@@ -736,7 +736,7 @@
      {
       "name": "Team check",
       "hook": "tools/call.pre",
-      "when": "has(args.mode) && args.mode == 'err' && caller.team == 'ops'",
+      "when": "has(request.params.arguments.mode) && request.params.arguments.mode == 'err' && request.caller.team == 'ops'",
       "then": {
        "decision": "'deny'"
       }
@@ -874,17 +874,17 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.limit.maximum": "500",
-       "params.space.pin": "'ENG'",
-       "params.dry.add": "{'type': 'boolean'}",
-       "params.dry.default": "true"
+       "tool.params.limit.maximum": "500",
+       "tool.params.space.pin": "'ENG'",
+       "tool.params.dry.add": "{'type': 'boolean'}",
+       "tool.params.dry.default": "true"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "args.space == 'ENG' && args.dry == true && args.limit > 100",
+      "when": "request.params.arguments.space == 'ENG' && request.params.arguments.dry == true && request.params.arguments.limit > 100",
       "then": {
-       "args.limit": "100"
+       "request.params.arguments.limit": "100"
       }
      }
     ],
@@ -981,9 +981,9 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'strictadd'",
+      "when": "tool.upstream.name == 'strictadd'",
       "then": {
-       "params.why.add": "{'type': 'string'}"
+       "tool.params.why.add": "{'type': 'string'}"
       }
      }
     ],
@@ -1163,9 +1163,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Delete {id} in {space}?', {'id': args.id}, 'Use a client that supports confirmation.')"
+       "confirm": "elicit('ok', 'Delete {id} in {space}?', {'id': request.params.arguments.id}, 'Use a client that supports confirmation.')"
       }
      }
     ],

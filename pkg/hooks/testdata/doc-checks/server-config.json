@@ -10,8 +10,8 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "prompts": "false",
-       "resources": "false"
+       "settings.prompts": "false",
+       "settings.resources": "false"
       }
      }
     ],
@@ -122,9 +122,9 @@
      {
       "name": "No instructions for keys",
       "hook": "server.settings",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
-       "instructions": "false"
+       "settings.instructions": "false"
       }
      }
     ],
@@ -171,9 +171,9 @@
      {
       "name": "Holiday freeze",
       "hook": "server.settings",
-      "when": "now >= timestamp('2026-12-20T00:00:00Z') && now < timestamp('2027-01-04T00:00:00Z')",
+      "when": "request.time >= timestamp('2026-12-20T00:00:00Z') && request.time < timestamp('2027-01-04T00:00:00Z')",
       "then": {
-       "tools": "false"
+       "settings.tools": "false"
       }
      }
     ],
@@ -249,7 +249,7 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "serverInfo": "true"
+       "settings.serverInfo": "true"
       }
      }
     ],
@@ -287,9 +287,9 @@
     "rules": [
      {
       "hook": "server.settings",
-      "when": "caller.team == 'ops'",
+      "when": "request.caller.team == 'ops'",
       "then": {
-       "tools": "false"
+       "settings.tools": "false"
       }
      }
     ],
@@ -332,9 +332,9 @@
     "rules": [
      {
       "hook": "server.settings",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
-       "resources": "false"
+       "settings.resources": "false"
       }
      }
     ],
@@ -394,7 +394,7 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "serverInfo": "true"
+       "settings.serverInfo": "true"
       }
      }
     ],

@@ -2,7 +2,7 @@
 
 Every question raised while designing the hooks model, written as a test case. Each case has an ID that the test that proves it carries in its name or comment, so `grep -r "RH-CALL-03"` finds the proof.
 
-The design is "v3: Hooks" in the "MCP Gateway - Policy Engine Intent" note. The engine is the standalone library `pkg/hooks` with the `hookctl` CLI; it is not wired into the Bifrost gateway yet.
+The design is "v3: Hooks" in the "MCP Gateway - Policy Engine Intent" note. The engine is the standalone library `pkg/hooks` with the `hookctl` CLI. The Bifrost gateway runs it: see [how Bifrost wires the engine](bifrost-wiring.md).
 
 ## How the tests are built
 
@@ -43,11 +43,11 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
-| RH-HOOK-01 | Can a rule set a field its hook does not have? | No. Saving fails with a problem naming the field | unit |
-| RH-HOOK-02 | Can a rule read a variable its hook does not have, such as `args` in `tools/list.post`? | No. Saving fails | unit |
+| RH-HOOK-01 | Can a rule set a path its hook does not have? | No. Saving fails with a problem naming the path, such as `there is no response.result.name on tools/call.post.result` | unit |
+| RH-HOOK-02 | Can a rule read a path its hook's tree does not have, such as `request.params.arguments` in `tools/list.post`? | No. Saving fails, and the problem lists what the parent has: `request.params has no "arguments"` | unit |
 | RH-HOOK-03 | Is an unknown hook name accepted? | No. Saving fails | unit |
-| RH-HOOK-04 | Can a hook that only changes things, such as `server/discover.post`, deny? | No. `decision` is not one of its fields | unit |
-| RH-HOOK-05 | Can any hook write `caller` or `client`? | No. Saving fails | unit |
+| RH-HOOK-04 | Can a hook that only changes things, such as `server/discover.post`, deny? | No. Saving fails with `a rule on server/discover.post cannot deny` | unit |
+| RH-HOOK-05 | Can any hook write `request.caller` or `request.client`? | No. Saving fails with `request.caller.role cannot be changed on tools/list.post` and what a rule there can set | unit |
 | RH-HOOK-06 | Is `completion/filter` a hook? | No. Completions are not supported | unit |
 | RH-HOOK-07 | Does a rule list that does not compile fail the entitlement closed? | Yes. Listings expose nothing for that slug and report the problem | e2e |
 | RH-HOOK-08 | Is a disabled rule skipped? | Yes | unit |
@@ -62,7 +62,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-LIST-02 | Does a hide written before a rename see the new name? | No. It sees the item as it was at that point | e2e |
 | RH-LIST-03 | What does a rule that both hides and changes do? | It hides. The change is discarded | e2e |
 | RH-LIST-04 | Does the first hide stop the rules below it, and does a failing change hide the item? | Yes to both. A failed change is reported and the item cannot be called | e2e |
-| RH-LIST-05 | Which rules run on a read of a URI that is in no list? | Only the deny rules of `resources/list.post`, with only `uri` to read. Rules that change a resource are skipped | e2e |
+| RH-LIST-05 | Which rules run on a read of a URI that is in no list? | Only the deny rules of `resources/list.post`, with only `resource.uri` to read. Rules that change a resource are skipped, so a change rule that reads `resource.mimeType` does not refuse the read | e2e |
 | RH-LIST-06 | Can a list rule set `reason` without a deny? | No. Saving fails | unit |
 
 ## CEL language
@@ -75,7 +75,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-CEL-04 | Can rules prepend and append text with `+`? | Yes | unit |
 | RH-CEL-05 | Is `regex.replace` available? | Yes, from `ext.Regex` | unit |
 | RH-CEL-06 | Is `"%s".format()` available? | Yes, from `ext.Strings` | unit |
-| RH-CEL-07 | Does `has()` guard an optional field? | Yes | unit |
+| RH-CEL-07 | Does `has()` guard an optional field? | Yes, for the last step of a path. The case guards each step: `has(tool._meta) && has(tool._meta.secret)` | unit |
 | RH-CEL-08 | Does `false && <error>` evaluate to false without an error? | Yes | unit |
 | RH-CEL-09 | Are list extensions (`slice`), two-variable comprehensions (`transformMap`) and sets available? | Yes | unit |
 | RH-CEL-10 | Is the old `regexReplace` function gone? | Yes. Using it fails to compile | unit |
@@ -94,18 +94,18 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-EVAL-07 | Does an audit rule that fails change the outcome? | No | unit |
 | RH-EVAL-08 | Do audit rules still run after a stop? | Yes, for a complete log | unit |
 | RH-EVAL-09 | In a call hook, do patches chain? | Yes. A later rule sees an earlier patch | unit |
-| RH-EVAL-10 | In a call hook, does a deny after an elicit run? | No. `elicit()` stops evaluation | unit |
+| RH-EVAL-10 | In a call hook, does a deny after an elicit run? | No. A `confirm` set with `elicit()` stops evaluation | unit |
 | RH-EVAL-11 | Does each item run through the list on its own? | Yes. One item's deny does not affect another item | unit |
 
 ## Item model
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
-| RH-ITEM-01 | Are item fields top-level variables? | Yes: `name`, `description` and so on | unit |
-| RH-ITEM-02 | Does `upstream.name` stay the same after a rename? | Yes | unit |
-| RH-ITEM-03 | Does a rule after a rename see the new `name`? | Yes. Changes chain | unit |
+| RH-ITEM-01 | Are item fields read under the item's branch? | Yes: `tool.name`, `tool.description` and so on. There are no top-level field names | unit |
+| RH-ITEM-02 | Does `tool.upstream.name` stay the same after a rename? | Yes | unit |
+| RH-ITEM-03 | Does a rule after a rename see the new `tool.name`? | Yes. Changes chain | unit |
 | RH-ITEM-04 | Does a `_meta` key a rule adds reach the client? | Yes, unless a later rule removes it | e2e |
-| RH-ITEM-05 | Is `upstream` writable? | No. Saving fails | unit |
+| RH-ITEM-05 | Is `tool.upstream` writable? | No. Saving fails with `tool.upstream.name cannot be changed on tools/list.post` | unit |
 
 ## Copy-on-write
 
@@ -134,8 +134,8 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-REV-11 | Do two tools renamed to the same name fail closed? | Yes. Both are hidden and the listing reports it | unit |
 | RH-REV-12 | Do two parameters renamed to the same key fail closed? | Yes | unit |
 | RH-REV-13 | Upstream `a` is renamed onto the name of hidden upstream `b`. Is that a collision? | No. The client's `b` means `a`, and upstream `b` gets only gateway values. Proven by RH-REV-03 | e2e |
-| RH-REV-14 | Is a pin static, so `caller.email` cannot be pinned in `tools/list.post`? | Yes. Caller values go in `tools/call.pre` as `args.<p>` | unit |
-| RH-REV-15 | Does a pin to the caller work as two rules, hide plus `args.<p>: caller.email`? | Yes | e2e |
+| RH-REV-14 | Is a pin static, so `request.caller.email` cannot be pinned in `tools/list.post`? | Yes. Caller values go in `tools/call.pre` as `request.params.arguments.<p>` | unit |
+| RH-REV-15 | Does a pin to the caller work as two rules, hide plus `request.params.arguments.<p>` set to `request.caller.email`? | Yes | e2e |
 | RH-REV-16 | Does the old exposed name fail after a rename? | Yes, with unknown tool | e2e |
 | RH-REV-17 | Do renamed prompt arguments map back on `prompts/get`? | Yes | e2e |
 
@@ -148,7 +148,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-CALL-03 | Is a patch that moves a value out of range rejected? | Yes, by the check after the rules | unit |
 | RH-CALL-04 | Is a deny reason returned as `isError` text? | Yes | e2e |
 | RH-CALL-05 | Does a time-range rule with `timestamp` and `duration` work? | Yes | unit |
-| RH-CALL-06 | Is a tool hidden by a `tools/list.post` rule refused when called directly? | Yes, with -32004, the same as a tool that does not exist | e2e |
+| RH-CALL-06 | Is a tool hidden by a `tools/list.post` rule refused when called directly? | Yes, with -32602 and `unknown tool <name>`, the same as a tool that does not exist | e2e |
 | RH-CALL-07 | Does a call to a name missing from the cached catalog refresh once before failing? | Yes. A tool the upstream added since caching succeeds | integration |
 | RH-CALL-08 | Does a policy change take effect on the next call? | Yes. Rules are not cached | e2e |
 | RH-CALL-09 | Is the upstream called at all when a call rule denies? | No | e2e |
@@ -169,7 +169,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-ELI-09 | Does elicitation work on `prompts/get` and `resources/read`? | Yes | e2e |
 | RH-ELI-10 | Is the upstream called before the gateway's prompt resolves? | No | e2e |
 | RH-ELI-11 | Are capabilities read from the current request, not inferred from earlier ones? | Yes | e2e |
-| RH-ELI-12 | Is the gateway's state a signed envelope with the upstream state inside? | Yes. Tampering is rejected | unit |
+| RH-ELI-12 | Is request state kept by the gateway, with the client holding only a key that works once? | Yes, for the gateway's own question and for a server's. State a client writes itself is refused | unit |
 | RH-ELI-13 | Does `elicit()` fall back to an error when the client cannot elicit, without a second rule? | Yes | e2e |
 
 ## Upstream input
@@ -188,7 +188,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | --- | --- | --- | --- |
 | RH-RES-01 | Does `drop()` remove three named fields? | Yes, including inside arrays | unit |
 | RH-RES-02 | Does `dropSchema()` remove the same properties from `outputSchema`? | Yes | unit |
-| RH-RES-03 | Does `content: []` drop the text copy of structured output? | Yes | e2e |
+| RH-RES-03 | Does setting `response.result.content` to `[]` drop the text copy of structured output? | Yes | e2e |
 | RH-RES-04 | Does native `map` projection keep only chosen fields? | Yes | unit |
 | RH-RES-05 | Does `slice` cap an array? | Yes | unit |
 | RH-RES-06 | Is there runtime validation against `outputSchema`? | No. A mismatched shaped result passes | e2e |
@@ -202,14 +202,14 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | --- | --- | --- | --- |
 | RH-SRV-01 | Does the upstream see `bifrost` as the client by default? | Yes | e2e |
 | RH-SRV-02 | With elicitation off in `server.session`, does the upstream see no elicitation capability? | Yes | e2e |
-| RH-SRV-03 | With `tools` switched off, are tools absent from listings and calls unknown? | Yes | e2e |
-| RH-SRV-04 | With `prompts` or `resources` switched off, are they absent? | Yes | e2e |
-| RH-SRV-05 | With `instructions` off, are instructions hidden? | Yes | e2e |
+| RH-SRV-03 | With `settings.tools` switched off, are tools absent from listings and calls unknown? | Yes | e2e |
+| RH-SRV-04 | With `settings.prompts` or `settings.resources` switched off, are they absent? | Yes | e2e |
+| RH-SRV-05 | With `settings.instructions` off, are instructions hidden? | Yes | e2e |
 | RH-SRV-06 | Does `server/discover.post` rewrite instructions on 1:1? | Yes | e2e |
 | RH-SRV-07 | Are instructions fetched live, so an upstream change shows at once? | Yes | e2e |
 | RH-SRV-08 | Does discover advertise `listChanged: false`? | Yes | e2e |
 | RH-SRV-09 | Are completions and logging left unadvertised? | Yes | e2e |
-| RH-SRV-10 | Does the `progress` switch control forwarding of upstream progress? | Yes | e2e |
+| RH-SRV-10 | Does the `settings.progress` switch control forwarding of upstream progress? | Yes | e2e |
 | RH-SRV-11 | Does `get_server_instructions(slug)` return the full text on the mux? | Yes, after `server/discover.post` | e2e |
 | RH-SRV-12 | Are mux instructions slug-labelled excerpts with a budget and a truncation mark? | Yes | e2e |
 
@@ -226,14 +226,14 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
 | RH-RSC-01 | Does `resources/list.post` hide a resource and refuse its read? | Yes | e2e |
-| RH-RSC-02 | Can `resources/list.post` change a URI? | No. Saving fails | unit |
-| RH-RSC-03 | Can `resources/templates/list.post` change `uriTemplate`? | No. Saving fails | unit |
-| RH-RSC-04 | Can `resources/list.post` change the title? | Yes | e2e |
+| RH-RSC-02 | Can `resources/list.post` change a URI? | No. Saving fails with `resource.uri cannot be changed on resources/list.post` | unit |
+| RH-RSC-03 | Can `resources/templates/list.post` change `template.uriTemplate`? | No. Saving fails with `template.uriTemplate cannot be changed on resources/templates/list.post` | unit |
+| RH-RSC-04 | Can `resources/list.post` change `resource.title`? | Yes | e2e |
 | RH-RSC-05 | Is a `resources/read.pre` deny a JSON-RPC error? | Yes | e2e |
 | RH-RSC-06 | A template allows a URI that sits under a denied skill folder. Readable? | No. Any applicable deny wins | e2e |
-| RH-RSC-07 | Is a URI that no listing or template covers unknown? | Yes, -32602 | e2e |
+| RH-RSC-07 | On the direct route, is a URI that no listing or template covers forwarded? | Yes. The server decides whether it exists | e2e |
 | RH-RSC-08 | Does a directory read drop hidden children? | Yes | e2e |
-| RH-RSC-09 | Does an opt-in `resources/read.post.result` rule rewrite text? | Yes | e2e |
+| RH-RSC-09 | Does an opt-in `resources/read.post.result` rule rewrite text? | Yes. The rule runs once over the whole response and sets `response.result.contents`, mapping each entry that has `text` | e2e |
 | RH-RSC-10 | Is a read result never cached, so a second read reaches the upstream? | Yes | e2e |
 
 ## Skills
@@ -242,13 +242,13 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | --- | --- | --- | --- |
 | RH-SKL-01 | Does denying a skill by name block its whole folder? | Yes, every file under it | e2e |
 | RH-SKL-02 | Is a nested skill denied with its parent? | Yes | e2e |
-| RH-SKL-03 | Are `name` and `description` shortcuts available in `skills/list.post`? | Yes | unit |
-| RH-SKL-04 | Two skills share a name. Does a `uri` rule deny only one? | Yes | e2e |
+| RH-SKL-03 | Are `skill.name` and `skill.description` available in `skills/list.post`? | Yes, from the frontmatter | unit |
+| RH-SKL-04 | Two skills share a name. Does a `skill.uri` rule deny only one? | Yes | e2e |
 | RH-SKL-05 | Is a file under a denied folder refused when read through a broad template? | Yes | e2e |
 | RH-SKL-06 | Does `resources/list` drop entries under a denied folder? | Yes | e2e |
 | RH-SKL-07 | Does a rewrite of a skill file recompute its digest and size? | Yes | e2e |
 | RH-SKL-08 | Is rewritten frontmatter copied into the entry? | Yes | e2e |
-| RH-SKL-09 | Is a rewrite that changes `name` rejected for that skill? | Yes. Upstream bytes are kept | e2e |
+| RH-SKL-09 | Is a rewrite that changes the frontmatter `name` rejected for that skill? | Yes. Upstream bytes are kept | e2e |
 | RH-SKL-10 | Is denying one file inside a skill allowed, leaving the manifest alone? | Yes | e2e |
 | RH-SKL-11 | Does the mux prefix leave digests unchanged? | Yes | e2e |
 | RH-SKL-12 | Does `skills/list.post` deny a skill from `skills/list` and `skills/get`? | Yes | e2e |
@@ -306,13 +306,13 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 
 | ID | Question | Expected | Level |
 | --- | --- | --- | --- |
-| RH-PRF-01 | Is a rule reading `caller` classified dynamic, and one reading only item fields static? | Yes | unit |
+| RH-PRF-01 | Is a rule reading `request` classified dynamic, and one reading only the item and `server` static? | Yes. `request.caller`, `request.client` and `request.time` each make a rule dynamic | unit |
 | RH-PRF-02 | Do rules over the real Datadog catalog (about 500 tools) and 20 rules run within the budget? | Yes | e2e |
 | RH-PRF-03 | Do all real Datadog and harness tool shapes pass through `tools/list.post` with no changes intact? | Yes. Output equals input when no rule matches | e2e |
 
-## Adversarial cases from the Codex review
+## Adversarial cases from an earlier review
 
-Codex reviewed the design and this catalogue and proposed 52 scenarios. They are in `docs/rules/adversarial-codex.md`.
+An earlier review of the design and this catalogue proposed 52 scenarios. The ones below are kept as tests.
 
 Proven in `pkg/hooks` (scenario or Go test carries the ID): ADV-02, ADV-03, ADV-07, ADV-10, ADV-11, ADV-12, ADV-13, ADV-14, ADV-15, ADV-16, ADV-17, ADV-18, ADV-19, ADV-20, ADV-21, ADV-22, ADV-23, ADV-24, ADV-26, ADV-27, ADV-28, ADV-29, ADV-30, ADV-31, ADV-32, ADV-33, ADV-37, ADV-38, ADV-39, ADV-43, ADV-44, ADV-45, ADV-46, ADV-47, ADV-51.
 
@@ -327,11 +327,11 @@ These came out of implementing the cases above and are now part of the design:
 - Listings are evaluated per item in parallel and then reduced in one step, which checks collisions and sorts output by slug a-z, then name a-z.
 - `resources/list.post` runs on every URI that is read, listed or not, so a single file reachable only through a template or a skill can be denied.
 - URIs with dot segments, empty segments or percent-encoded unreserved characters are refused as not canonical, so an upstream cannot resolve a path differently from the gateway.
-- Skill rewriting is skipped for rules that read `caller`, `client` or `now`, because list time and read time would produce different bytes. It also skips files the caller cannot read, and drops manifest entries outside the skill's folder.
-- Upstream input requests use the spec's wire shape, `{method: "elicitation/create", params: {...}}`. Rules see `request.message` and the other params, plus `request.key` and `request.method`.
+- Skill rewriting is skipped for rules that read `request`, such as `request.caller`, `request.client` or `request.time`, because list time and read time would produce different bytes. It also skips files the caller cannot read, and drops manifest entries outside the skill's folder.
+- Upstream input requests use the spec's wire shape, `{method: "elicitation/create", params: {...}}`. Rules see `elicitation.params.message` and the other params, plus `elicitation.key` and `elicitation.method`.
 - Gateway state carries earlier answers, so several confirmations in a row complete.
 - Pins win over call-rule patches. A call-rule patch that names a renamed parameter's upstream key fails closed.
 - Client arguments are limited to 64 levels of nesting, duplicate JSON keys are rejected, and large integers are forwarded exactly.
 - Results are checked against the size cap again after rules shape them.
-- Setting a `meta.*` field to `null` removes the key.
+- Setting a `_meta` key, such as `tool._meta.<key>`, to `null` removes the key.
 

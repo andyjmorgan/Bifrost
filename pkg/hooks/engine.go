@@ -129,7 +129,6 @@ func (l Limits) ttl() int {
 
 // Engine evaluates requests against a caller's servers.
 type Engine struct {
-	Signer Signer
 	Limits Limits
 	// Version is the gateway version sent upstream in clientInfo.
 	Version string
@@ -178,9 +177,15 @@ type Request struct {
 	// it is empty the engine falls back to Caller["userId"]; with neither,
 	// it cannot bind state and refuses to ask for confirmation.
 	Principal string
-	Client    map[string]any // name, version, capabilities (from this request's _meta)
-	Now       time.Time
-	Servers   []*Server // direct: exactly one; mux/search: every entitlement on the route (already narrowed by ?slugs=)
+	// Client is the client as it describes itself on this request, in MCP's
+	// words: clientInfo (name, version, title) and capabilities.
+	Client map[string]any
+	// Headers are the request's HTTP headers a gateway lets rules read, by
+	// name. A gateway passes only the ones on its allow-list, which starts
+	// empty: a header that carries a credential must never be on it.
+	Headers map[string]string
+	Now     time.Time
+	Servers []*Server // direct: exactly one; mux/search: every entitlement on the route (already narrowed by ?slugs=)
 }
 
 func (r Request) context(s *Server) Context {
@@ -188,7 +193,12 @@ func (r Request) context(s *Server) Context {
 		"slug": s.Slug, "name": s.Info.Name, "title": s.Info.Title, "description": s.Info.Description,
 		"instructions": s.Info.Instructions, "protocolVersion": s.Info.ProtocolVersion, "url": s.Info.URL,
 	}
-	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Route: r.route(), Flags: r.flags(), Now: r.Now}
+	for k, v := range srv {
+		if v == "" {
+			delete(srv, k) // nothing is filled in for what the gateway does not know
+		}
+	}
+	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Headers: r.Headers, Route: r.route(), Flags: r.flags(), Now: r.Now}
 }
 
 // route is the route rules see: "direct" or "mux", never "search".
@@ -346,10 +356,41 @@ type CallContext struct {
 	// same one, so an item cannot mean one thing in tools/call and another
 	// in tools/call.post.result.
 	resolve func(name string) (any, bool)
-	Args    map[string]any // exactly what was sent upstream
+	// Params is MCP's part of the request as the client knows it and as the
+	// pre rules left it: the exposed name or URI, the arguments under the
+	// names the client uses, and _meta. Reply hooks read it as
+	// request.params.
+	Params  map[string]any
+	Args    map[string]any // exactly what was sent upstream; reply hooks read it as request.upstream.params.arguments
 	Hash    string
 	State   *State
 	Answers map[string]any // gateway answers validated for this request, carried into an upstream round
+}
+
+// roots builds the branches a reply hook reads: the request with both sides
+// of its params, to which the caller adds what came back.
+func (c *CallContext) roots(r Request) map[string]any {
+	roots := r.context(c.Server).roots(c.Method, c.Params)
+	req := requestOf(roots)
+	up := map[string]any{}
+	if strings.HasPrefix(c.Method, "resources/") { // a read or a directory read
+		up["uri"] = c.Target
+	} else {
+		up["name"] = c.Target
+		up["arguments"] = celArgs(c.Args)
+	}
+	req["upstream"] = map[string]any{"params": up}
+	return roots
+}
+
+// callParams is MCP's part of a call or a get: the name, the arguments and,
+// when the client sent one, _meta.
+func callParams(name string, args any, meta mcp.Meta) map[string]any {
+	p := map[string]any{"name": name, "arguments": args}
+	if len(meta) > 0 {
+		p["_meta"] = map[string]any(meta)
+	}
+	return p
 }
 
 // expired reports a spent rule budget; every success and forward path
@@ -515,26 +556,24 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		ept = prepare(et.Tool)
 	}
 	ts := newToolState(ept)
-	upDerived := prepare(upstreamTool(s, tr.Upstream)).derived
+	upBase := prepare(upstreamTool(s, tr.Upstream)).base
 	resolve := func(name string) (any, bool) {
 		if name == "upstream" {
-			return upDerived, true
+			return upBase, true
 		}
 		return ts.resolve(name)
 	}
-	vars := r.context(s).vars()
-	vars["args"] = celArgs(args)
-	vars["input"] = answers
+	roots := r.context(s).roots("tools/call", callParams(tr.Exposed, celArgs(args), p.Meta))
 	var timeout time.Duration
-	co := s.Rules.run(ctx, "tools/call.pre", tr.Exposed, resolve, vars, func(key string, val any) error {
+	co := s.Rules.runAsking(ctx, "tools/call.pre", tr.Exposed, resolve, roots, asked(st, answers, args), func(key string, val any) error {
 		parts := splitPath(key)
 		switch parts[0] {
-		case "args":
+		case "arguments":
 			if err := tr.patchable(parts[1]); err != nil {
 				return err
 			}
 			args[parts[1]] = val
-			vars["args"] = celArgs(args)
+			setParam(roots, "arguments", celArgs(args))
 		case "timeout":
 			timeout = val.(time.Duration)
 		}
@@ -549,7 +588,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		o.Result = toolError(denyText(co.reason, tr.Exposed))
 		return o
 	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "tools/call", tr.Upstream, hash, st, answers, co.elicit)
+		res, err := e.elicitation(r, s, "tools/call", tr.Upstream, hash, st, answers, args, co.elicit)
 		if err != nil {
 			o.Result = toolError(err.Error())
 			return o
@@ -588,7 +627,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	if timeout > 0 {
 		o.Forward.Timeout = timeout.String()
 	}
-	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Args: upArgs, Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 
@@ -747,21 +786,15 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		}
 		return nil, answers, nil, nil
 	}
-	var st State
-	if isStateKey(token) {
-		// A gateway confirmation. Taking it removes it, so it can be answered
-		// once, whether or not the answer turns out to be valid.
-		var ok bool
-		if st, ok = e.states().Take(token); !ok {
-			return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
-		}
-	} else {
-		// The signed envelope around an upstream's own state. It never
-		// carries a gateway confirmation.
-		var err error
-		if st, err = e.Signer.Open(token); err != nil || len(st.Pending) > 0 {
-			return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
-		}
+	// Taking the state removes it, so a question can be answered once,
+	// whether the gateway asked it or the server did, and whether or not the
+	// answer turns out to be valid.
+	if !isStateKey(token) {
+		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
+	}
+	st, ok := e.states().Take(token)
+	if !ok {
+		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "invalid request state"}
 	}
 	now := r.Now
 	if now.IsZero() {
@@ -845,7 +878,25 @@ func responseMap(v any) map[string]any {
 
 // elicitation turns an elicit() marker into an input_required result, or an
 // error when the client cannot elicit.
-func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, prev *State, answers map[string]any, marker map[string]any) (any, error) {
+// carry brings the confirmations already given on this request into the
+// state of its next round, each with what it covers.
+func (st *State) carry(prev *State, answers map[string]any) {
+	for k, v := range answers {
+		m, ok := v.(map[string]any)
+		if !ok || prev == nil {
+			continue
+		}
+		if st.Answers == nil {
+			st.Answers = map[string]map[string]any{}
+		}
+		if st.Bound == nil {
+			st.Bound = map[string]string{}
+		}
+		st.Answers[k], st.Bound[k] = m, prev.Bound[k]
+	}
+}
+
+func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, prev *State, answers, args, marker map[string]any) (any, error) {
 	key, _ := marker[ElicitKey].(string)
 	msg, _ := marker["message"].(string)
 	if !r.clientCan("elicitation") {
@@ -853,9 +904,6 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 			return nil, errors.New(em)
 		}
 		return nil, fmt.Errorf("This request needs confirmation (%s), which this client does not support.", msg)
-	}
-	if _, done := answers[key]; done {
-		return nil, fmt.Errorf("confirmation %q was already answered; the rule asking for it must check has(input.%s)", key, key)
 	}
 	if r.principal() == "" {
 		return nil, errNoPrincipal
@@ -865,15 +913,9 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 		now = time.Now()
 	}
 	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: r.principal(), Entitlement: entitlementID(s),
-		Target: target, ArgsHash: hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Pending: []string{key}}
-	if len(answers) > 0 {
-		st.Answers = map[string]map[string]any{}
-		for k, v := range answers {
-			if m, ok := v.(map[string]any); ok {
-				st.Answers[k] = m
-			}
-		}
-	}
+		Target: target, ArgsHash: hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Pending: []string{key},
+		Bound: map[string]string{key: binding(marker, args)}}
+	st.carry(prev, answers)
 	reqs := mcp.InputRequestMap{KeyPrefix + key: &mcp.ElicitParams{
 		Mode:    "form",
 		Message: msg,

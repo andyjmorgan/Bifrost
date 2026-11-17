@@ -10,10 +10,10 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'telemetry' in params",
+      "when": "'telemetry' in tool.params",
       "then": {
-       "params.telemetry.hide": "true",
-       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+       "tool.params.telemetry.hide": "true",
+       "tool.params.telemetry.pin": "{'intent': 'mind your own business'}"
       }
      }
     ],
@@ -227,25 +227,25 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'telemetry' in params",
+      "when": "'telemetry' in tool.params",
       "then": {
-       "params.telemetry.hide": "true",
-       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+       "tool.params.telemetry.hide": "true",
+       "tool.params.telemetry.pin": "{'intent': 'mind your own business'}"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "'reason' in params && !('reason' in upstream.inputSchema.required)",
+      "when": "'reason' in tool.params && !('reason' in tool.upstream.inputSchema.required)",
       "then": {
-       "params.reason.hide": "true"
+       "tool.params.reason.hide": "true"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "'reason' in params && 'reason' in upstream.inputSchema.required",
+      "when": "'reason' in tool.params && 'reason' in tool.upstream.inputSchema.required",
       "then": {
-       "params.reason.hide": "true",
-       "params.reason.pin": "'mind your own business'"
+       "tool.params.reason.hide": "true",
+       "tool.params.reason.pin": "'mind your own business'"
       }
      }
     ],
@@ -424,9 +424,9 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'telemetry' in params",
+      "when": "'telemetry' in tool.params",
       "then": {
-       "params.telemetry.hide": "true"
+       "tool.params.telemetry.hide": "true"
       }
      }
     ],
@@ -567,10 +567,10 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'telemetry' in params",
+      "when": "'telemetry' in tool.params",
       "then": {
-       "params.telemetry.hide": "true",
-       "params.telemetry.pin": "{'intent': 'mind your own business'}"
+       "tool.params.telemetry.hide": "true",
+       "tool.params.telemetry.pin": "{'intent': 'mind your own business'}"
       }
      }
     ]

@@ -117,17 +117,15 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 	up := upstreamPrompt(s, l.upstreamID)
 	resolve := func(name string) (any, bool) {
 		if name == "upstream" {
-			return derived(KindPrompt, up), true
+			return up, true
 		}
 		return it.resolve(name)
 	}
-	vars := r.context(s).vars()
-	vars["args"] = args
-	vars["input"] = answers
-	co := s.Rules.run(ctx, "prompts/get.pre", l.exposedID, resolve, vars, func(key string, val any) error {
-		parts := splitPath(key)
+	roots := r.context(s).roots("prompts/get", callParams(l.exposedID, copyMap(args), p.Meta))
+	co := s.Rules.runAsking(ctx, "prompts/get.pre", l.exposedID, resolve, roots, asked(st, answers, args), func(key string, val any) error {
+		parts := splitPath(key) // arguments.<name>
 		args[parts[1]] = val
-		vars["args"] = args
+		setParam(roots, "arguments", copyMap(args))
 		return nil
 	})
 	o.Hits = append(o.Hits, co.hits...)
@@ -136,7 +134,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, "prompts/get was refused by policy")}
 		return o
 	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "prompts/get", l.upstreamID, hash, st, answers, co.elicit)
+		res, err := e.elicitation(r, s, "prompts/get", l.upstreamID, hash, st, answers, args, co.elicit)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
 			return o
@@ -170,7 +168,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		fp.Meta = forwardMeta(p.Meta)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: "prompts/get", Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Args: toAnyMap(upArgs), Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Params: callParams(l.exposedID, copyMap(args), p.Meta), Args: toAnyMap(upArgs), Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 
@@ -227,7 +225,7 @@ func (e *Engine) UpstreamPromptReply(parent context.Context, r Request, call *Ca
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.elicitHook(ctx, r, s, "prompts/get.post.elicit", call.Exposed, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, call, "prompts/get.post.elicit", call.Exposed, replyResolve(call), rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -299,7 +297,7 @@ func skillItem(sk Skill) map[string]any {
 func (e *Engine) skillView(ctx context.Context, r Request, s *Server) (visible []Skill, deniedRoots []string, hits []Hit) {
 	for _, sk := range s.Catalog.Skills {
 		it := &item{kind: KindSkill, id: sk.URI, view: NewView(skillItem(sk)), label: sk.URI}
-		o := s.Rules.run(ctx, "skills/list.post", sk.URI, it.resolve, r.context(s).vars(), func(string, any) error { return nil })
+		o := s.Rules.run(ctx, "skills/list.post", sk.URI, it.resolve, r.context(s).roots("skills/list", nil), func(string, any) error { return nil })
 		hits = append(hits, o.hits...)
 		if o.denied {
 			deniedRoots = append(deniedRoots, sk.Root())
@@ -393,7 +391,7 @@ func (e *Engine) planSkill(ctx context.Context, r Request, s *Server, v *resView
 		return p
 	}
 	for _, c := range s.Rules.byHook["resources/read.post.result"] {
-		if !c.audit && (c.vars["caller"] || c.vars["client"] || c.vars["now"]) {
+		if !c.audit && c.vars["request"] {
 			p.status, p.reason = "skipped", "resources/read.post.result rules depend on the request, so skill files are served unchanged"
 			return p
 		}
@@ -410,7 +408,7 @@ func (e *Engine) planSkill(ctx context.Context, r Request, s *Server, v *resView
 		if _, readable, _ := e.checkURI(ctx, r, s, v, m.URI); !readable {
 			continue // never fetch or rewrite a file the caller cannot read
 		}
-		text, hits, denied, err := e.applyResultRules(ctx, r, s, v, m.URI, *f.Text, f.MIMEType, true)
+		text, hits, denied, err := e.applyResultRules(ctx, r, s, v, m.URI, *f.Text, f.MIMEType)
 		p.hits = append(p.hits, hits...)
 		if err != nil || denied {
 			p.status, p.reason = "rejected", "rewrite of "+m.URI+" failed"
@@ -493,17 +491,14 @@ func (v *resView) skillFor(uri string) (Skill, bool) {
 	return best, found
 }
 
-// applyResultRules runs resources/read.post.result over one content item. text may
-// be empty and binary items pass text=="" with isText false; a deny blocks
-// either. mutate=false evaluates decisions but keeps the text.
-func (e *Engine) applyResultRules(ctx context.Context, r Request, s *Server, v *resView, uri, text, mime string, isText bool) (string, []Hit, bool, error) {
-	t, hits, _, denied, err := e.applyResultRulesReason(ctx, r, s, v, uri, text, mime, isText)
-	return t, hits, denied, err
-}
-
-// applyResultRulesReason is applyResultRules plus the deny reason the
-// administrator wrote, if any.
-func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Server, v *resView, uri, text, mime string, isText bool) (string, []Hit, string, bool, error) {
+// readRules runs resources/read.post.result once over the contents of a
+// read. Rules see every entry as response.result.contents and may replace
+// the list; response.upstream keeps the entries as the server sent them.
+// The resource is the one the read named. A rule may drop or change an
+// entry but not bring in a URI the read did not return: the entries here
+// are already the ones this caller may read, and nothing else may join
+// them.
+func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView, uri string, roots map[string]any, contents, sent []any) (out []any, hits []Hit, reason string, denied bool, err error) {
 	res := map[string]any{"uri": uri}
 	known, listed := v.visibleRes[normalizeURI(uri)]
 	if listed {
@@ -511,37 +506,88 @@ func (e *Engine) applyResultRulesReason(ctx context.Context, r Request, s *Serve
 	}
 	it := &item{kind: KindResource, id: uri, view: NewView(res), label: uri, bare: !listed}
 	resolve := itemResolver(it, v.originalRes[normalizeURI(uri)])
-	content := map[string]any{"uri": uri}
-	if mime != "" {
-		content["mimeType"] = mime
-	}
-	if isText {
-		content["text"] = text
-	}
-	cv := NewView(content)
-	vars := r.context(s).vars()
-	vars["args"] = map[string]any{"uri": uri}
-	vars["result"] = resultVar(map[string]any{"contents": []any{content}})
-	vars[muxVar] = muxContext(r.route(), s.Slug, v.owned())
-	o := s.Rules.run(ctx, "resources/read.post.result", uri, resolve, vars, func(key string, val any) error {
-		if key == "text" && !isText {
-			return nil // binary content keeps its bytes
+	// sent is the same entries with the server's own bytes, for
+	// response.upstream; it differs from contents only where the gateway
+	// has already rewritten a skill's file.
+	original := celValue(sent)
+	cur := contents
+	response := func() map[string]any {
+		return map[string]any{
+			"result":   map[string]any{"contents": celValue(cur)},
+			"upstream": map[string]any{"result": map[string]any{"contents": original}},
 		}
-		cv.Set([]string{key}, val)
-		vars["result"] = resultVar(map[string]any{"contents": []any{cv.Materialize()}})
+	}
+	roots["response"] = response()
+	roots[muxVar] = muxContext(r.route(), s.Slug, v.owned())
+	o := s.Rules.run(ctx, "resources/read.post.result", uri, resolve, roots, func(key string, val any) error {
+		cur = val.([]any) // the one path a rule may set here is contents
+		roots["response"] = response()
 		return nil
 	})
 	if o.denied {
-		return text, o.hits, o.reason, true, nil
+		return contents, o.hits, o.reason, true, nil
 	}
 	if o.err != nil {
-		return text, o.hits, "", false, o.err
+		return contents, o.hits, "", false, o.err
 	}
-	if !isText {
-		return text, o.hits, "", false, nil
+	// An entry a rule leaves must be one the read returned, under the same
+	// URI exactly as the server wrote it, and keep MCP's form: text and blob
+	// are strings.
+	returned := map[string]bool{}
+	for _, c := range contents {
+		cm, _ := c.(map[string]any)
+		u, _ := cm["uri"].(string)
+		returned[u] = true
 	}
-	t, _ := cv.Materialize()["text"].(string)
-	return t, o.hits, "", false, nil
+	for i, c := range cur {
+		cm, ok := c.(map[string]any)
+		u, _ := cm["uri"].(string)
+		if !ok || !returned[u] {
+			return contents, o.hits, "", false, fmt.Errorf("a rule put an entry into contents for %q, which the read did not return", u)
+		}
+		for _, k := range []string{"text", "blob", "mimeType"} {
+			if x, has := cm[k]; has {
+				if _, isStr := x.(string); !isStr {
+					return contents, o.hits, "", false, fmt.Errorf("contents[%d].%s must be a string", i, k)
+				}
+			}
+		}
+	}
+	return cur, o.hits, "", false, nil
+}
+
+func inManifest(ms []SkillResource, uri string) bool {
+	for _, m := range ms {
+		if normalizeURI(m.URI) == normalizeURI(uri) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyResultRules runs resources/read.post.result over the text of one
+// file, as a read that returned that file alone. It is how a skill's files
+// are rewritten ahead of time. A rule that drops the file or turns it into
+// something that is not text fails the rewrite.
+func (e *Engine) applyResultRules(ctx context.Context, r Request, s *Server, v *resView, uri, text, mime string) (string, []Hit, bool, error) {
+	content := map[string]any{"uri": uri, "text": text}
+	if mime != "" {
+		content["mimeType"] = mime
+	}
+	roots := r.context(s).roots("resources/read", map[string]any{"uri": uri})
+	requestOf(roots)["upstream"] = map[string]any{"params": map[string]any{"uri": uri}}
+	out, hits, _, denied, err := e.readRules(ctx, r, s, v, uri, roots, []any{content}, []any{content})
+	if denied || err != nil {
+		return text, hits, denied, err
+	}
+	if len(out) != 1 {
+		return text, hits, false, fmt.Errorf("a rule removed %s", uri)
+	}
+	t, ok := out[0].(map[string]any)["text"].(string)
+	if !ok {
+		return text, hits, false, fmt.Errorf("a rule left %s with no text", uri)
+	}
+	return t, hits, false, nil
 }
 
 // ParseFrontmatter parses and validates the YAML frontmatter of a SKILL.md:
@@ -849,10 +895,12 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	}
 	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[normalizeURI(up)]}
 	resolve := itemResolver(it, v.originalRes[normalizeURI(up)])
-	vars := r.context(s).vars()
-	vars["args"] = args
-	vars["input"] = answers
-	co := s.Rules.run(ctx, "resources/read.pre", up, resolve, vars, func(string, any) error { return nil })
+	params := map[string]any{"uri": up}
+	if len(p.Meta) > 0 {
+		params["_meta"] = map[string]any(p.Meta)
+	}
+	roots := r.context(s).roots(method, params)
+	co := s.Rules.runAsking(ctx, "resources/read.pre", up, resolve, roots, asked(st, answers, args), func(string, any) error { return nil })
 	o.Hits = append(o.Hits, co.hits...)
 	if expired(ctx) {
 		return budgetOutcome(o)
@@ -862,7 +910,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, method+" was refused by policy")}
 		return o
 	case co.elicit != nil:
-		out, err := e.elicitation(r, s, method, up, hash, st, answers, co.elicit)
+		out, err := e.elicitation(r, s, method, up, hash, st, answers, args, co.elicit)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
 			return o
@@ -883,7 +931,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return budgetOutcome(o)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: method, Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Args: args, Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: hash, State: st, Answers: answers, resolve: resolve}
 	return o
 }
 
@@ -920,7 +968,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: msg}
 			return e.finishOutcome(ctx, o)
 		}
-		out, hits, err := e.elicitHook(ctx, r, s, "resources/read.post.elicit", up, replyResolve(call), call.Args, rawRequests(m))
+		out, hits, err := e.elicitHook(ctx, r, call, "resources/read.post.elicit", up, replyResolve(call), rawRequests(m))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -954,12 +1002,18 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		m["resources"] = kept
 	} else {
 		contents, _ := m["contents"].([]any)
-		kept := []any{}
+		kept, sent := []any{}, []any{}
+		// fixed holds the entries a skill's manifest vouches for, by URI.
+		// Rules may refuse the read or drop such an entry, but its bytes
+		// stay as the manifest says.
+		fixed := map[string]map[string]any{}
 		for _, c := range contents {
 			cm, _ := c.(map[string]any)
 			cu, _ := cm["uri"].(string)
 			if cu == "" {
 				cu = up
+				cm = copyMap(cm)
+				cm["uri"] = up
 			}
 			if nonCanonical(cu) {
 				o.Issues = append(o.Issues, "dropped content with a non-canonical URI: "+cu)
@@ -971,39 +1025,48 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 					continue
 				}
 			}
-			text, isText := cm["text"].(string)
-			mime, _ := cm["mimeType"].(string)
-			mutate := true
+			server := cm
 			if sk, inSkill := v.skillFor(cu); inSkill {
 				plan := e.planSkill(ctx, r, s, v, sk)
-				switch plan.status {
-				case "applied":
-					if t, changed := plan.files[cu]; changed && isText {
+				if t, changed := plan.files[cu]; plan.status == "applied" && changed {
+					if _, isText := cm["text"].(string); isText {
 						cm = copyMap(cm)
 						cm["text"] = t
-						text = t
 					}
-					mutate = false // the plan already applied this file's rewrite
-				case "skipped", "rejected":
-					mutate = false // serve the upstream bytes; decisions still apply
+				}
+				// Only SKILL.md and the files the manifest lists have their
+				// bytes vouched for. Applied: the plan already made that
+				// file's rewrite. Skipped or rejected: the server's bytes are
+				// served. Another file under the skill's folder is an
+				// ordinary entry, and a rule's change to it stands.
+				// A dynamic skill has no manifest, so every file under it is
+				// served as the server sent it.
+				ms, isManifest := sk.manifest()
+				if !isManifest || normalizeURI(cu) == normalizeURI(sk.URI) || inManifest(ms, cu) {
+					fixed[normalizeURI(cu)] = cm
 				}
 			}
-			nt, hits, reason, denied, err := e.applyResultRulesReason(ctx, r, s, v, cu, text, mime, isText)
-			o.Hits = append(o.Hits, hits...)
-			if denied {
-				if reason == "" {
-					reason = "the read result was refused by policy"
-				}
-				o.Error = &RPCError{Code: CodeInvalidParams, Message: reason}
-				return e.finishOutcome(ctx, o)
+			kept, sent = append(kept, cm), append(sent, server)
+		}
+		out, hits, reason, denied, err := e.readRules(ctx, r, s, v, up, call.roots(r), kept, sent)
+		o.Hits = append(o.Hits, hits...)
+		if denied {
+			if reason == "" {
+				reason = "the read result was refused by policy"
 			}
-			if err != nil {
-				o.Error = &RPCError{Code: CodeInvalidParams, Message: "the read result could not be checked"}
-				return e.finishOutcome(ctx, o)
-			}
-			if mutate && isText && nt != text {
-				cm = copyMap(cm)
-				cm["text"] = nt
+			o.Error = &RPCError{Code: CodeInvalidParams, Message: reason}
+			return e.finishOutcome(ctx, o)
+		}
+		if err != nil {
+			o.Error = &RPCError{Code: CodeInvalidParams, Message: "the read result could not be checked"}
+			return e.finishOutcome(ctx, o)
+		}
+		kept = make([]any, 0, len(out))
+		for _, c := range out {
+			cm := c.(map[string]any)
+			cu, _ := cm["uri"].(string)
+			if f, ok := fixed[normalizeURI(cu)]; ok {
+				cm = f
 			}
 			kept = append(kept, cm)
 		}

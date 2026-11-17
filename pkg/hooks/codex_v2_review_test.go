@@ -13,7 +13,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// These regressions assert the contracts claimed by docs/rules/v2-report.md.
+// Regressions from the second review (November 15, 2026): each test holds a
+// contract the engine claimed and the review checked.
 
 //go:noinline
 func codexV2AbandonedCatalog(t *testing.T) []weak.Pointer[mcp.Tool] {
@@ -59,7 +60,7 @@ func TestCodexV2PreparedCacheReleasesCatalog(t *testing.T) { // V2-CX-G01
 
 func TestCodexV2InterleavedAuditCannotExpireEnforcement(t *testing.T) { // V2-CX-G02
 	before := Rule{Hook: "tools/list.post", When: "false", Then: map[string]string{"decision": "'deny'"}}
-	audit := Rule{Mode: "audit", Hook: "tools/list.post", When: "description == 'slow'", Then: map[string]string{"decision": "'deny'"}}
+	audit := Rule{Mode: "audit", Hook: "tools/list.post", When: "tool.description == 'slow'", Then: map[string]string{"decision": "'deny'"}}
 	after := Rule{Hook: "tools/list.post", When: "lists.range(1000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}}
 	run := func(rs []Rule) outcome {
 		set := codexSet(t, rs...)
@@ -72,7 +73,7 @@ func TestCodexV2InterleavedAuditCannotExpireEnforcement(t *testing.T) { // V2-CX
 			}
 			return nil, false
 		}
-		return set.run(ctx, "tools/list.post", "t", resolve, Context{}.vars(), nil)
+		return set.run(ctx, "tools/list.post", "t", resolve, Context{}.roots("tools/list", nil), nil)
 	}
 	if o := run([]Rule{before, after}); o.denied || o.err != nil {
 		t.Fatalf("control failed: %+v", o)

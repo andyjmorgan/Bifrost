@@ -308,7 +308,7 @@ var checks = []check{
 		u := harness.NewUpstream(e.t, harness.V2026)
 		u.Tool(plainTool, nil)
 		u.Tool(`{"name":"blocked"}`, nil)
-		e.g.AddServer(e.t, "a", u, rule("tools/call.pre", "name == 'blocked'", "decision", "'deny'", "reason", "'Not allowed.'"))
+		e.g.AddServer(e.t, "a", u, rule("tools/call.pre", "tool.name == 'blocked'", "decision", "'deny'", "reason", "'Not allowed.'"))
 		if out := e.mustConnect(e.g.Direct("a"), ConnectOptions{}); out != nil {
 			return *out
 		}

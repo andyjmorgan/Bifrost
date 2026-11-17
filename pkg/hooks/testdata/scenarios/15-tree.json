@@ -1,0 +1,209 @@
+[
+ {
+  "name": "TREE-01 after a rename the client's name is tool.name and request.params.name, the server's is tool.upstream.name and request.upstream.params.name, on every hook",
+  "ids": ["TREE-01"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "tool.upstream.name == 'foo'", "then": {"tool.name": "'baz'"}},
+    {"hook": "tools/list.post", "when": "tool.name == 'baz' && tool.upstream.name == 'foo'", "then": {"tool.description": "tool.name + ' was ' + tool.upstream.name"}},
+    {"hook": "tools/call.pre", "when": "tool.name == 'baz' && tool.upstream.name == 'foo' && request.params.name == 'baz'", "then": {"request.params.arguments.seen": "'pre:' + tool.name + '/' + tool.upstream.name + '/' + request.params.name"}},
+    {"hook": "tools/call.post.result", "when": "request.params.name == 'baz' && request.upstream.params.name == 'foo'", "then": {"response.result.content": "[{'type': 'text', 'text': request.params.name + '>' + request.upstream.params.name + ' ' + tool.name + '>' + tool.upstream.name}]"}}],
+   "catalog": {"tools": [{"name": "foo", "inputSchema": {"type": "object", "properties": {"seen": {"type": "string"}}}}]}}],
+  "steps": [
+   {"op": "tools/list", "expect": [
+     {"path": "outcome.result.tools[*].name", "equals": ["baz"]},
+     {"path": "outcome.result.tools[0].description", "equals": "baz was foo"}]},
+   {"op": "tools/call", "params": {"name": "baz", "arguments": {}},
+    "upstream": {"content": [{"type": "text", "text": "from the server"}]},
+    "expect": [
+     {"path": "outcome.forward.params", "equals": {"name": "foo", "arguments": {"seen": "pre:baz/foo/baz"}}},
+     {"path": "reply.result.content[0].text", "equals": "baz>foo baz>foo"}]},
+   {"op": "tools/call", "params": {"name": "foo", "arguments": {}}, "expect": [
+     {"path": "outcome.error.code", "equals": -32602},
+     {"path": "outcome.forward", "exists": false}]}]
+ },
+ {
+  "name": "TREE-02 request.upstream is refused on a pre hook when the rule is saved: nothing has been sent to the server yet",
+  "ids": ["TREE-02"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/call.pre", "when": "request.upstream.params.name == 't'", "then": {"decision": "'deny'"}}],
+   "catalog": {"tools": [{"name": "t", "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}],
+    "op": "tools/list", "expect": [
+     {"path": "problems.a[0].message", "contains": "request.upstream is not available on tools/call.pre"},
+     {"path": "outcome.result.tools", "equals": []}]}]
+ },
+ {
+  "name": "TREE-03 on a post hook request.params.arguments is what the client sent under its names, and request.upstream.params.arguments is what the server received after a rename, a default and a pin",
+  "ids": ["TREE-03"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "true", "then": {"tool.params.cql.name": "'query'", "tool.params.limit.default": "20", "tool.params.space.pin": "'ENG'"}},
+    {"hook": "tools/call.post.result", "when": "true", "then": {"response.result.content": "[{'type': 'text', 'text': 'client query=' + request.params.arguments.query + ' cql=' + string(has(request.params.arguments.cql)) + '; server cql=' + request.upstream.params.arguments.cql + ' query=' + string(has(request.upstream.params.arguments.query)) + ' limit=' + string(request.upstream.params.arguments.limit) + ' space=' + request.upstream.params.arguments.space}]"}}],
+   "catalog": {"tools": [{"name": "search", "inputSchema": {"type": "object", "properties": {"cql": {"type": "string"}, "limit": {"type": "integer"}, "space": {"type": "string"}}}}]}}],
+  "steps": [
+   {"op": "tools/call", "params": {"name": "search", "arguments": {"query": "roadmap"}},
+    "upstream": {"content": [{"type": "text", "text": "x"}]},
+    "expect": [
+     {"path": "outcome.forward.params.arguments", "equals": {"cql": "roadmap", "limit": 20, "space": "ENG"}},
+     {"path": "reply.result.content[0].text", "equals": "client query=roadmap cql=false; server cql=roadmap query=false limit=20 space=ENG"}]}]
+ },
+ {
+  "name": "TREE-04 response.upstream still holds what the server returned after a rule has changed response.result, and a later rule reads both",
+  "ids": ["TREE-04"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/call.post.result", "when": "true", "then": {"response.result.content": "[{'type': 'text', 'text': 'changed'}]"}},
+    {"hook": "tools/call.post.result", "when": "response.result.content[0].text == 'changed' && response.upstream.result.content[0].text == 'original'", "then": {"response.result.content": "[{'type': 'text', 'text': response.result.content[0].text + ' from ' + response.upstream.result.content[0].text}]"}}],
+   "catalog": {"tools": [{"name": "t", "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/call", "params": {"name": "t", "arguments": {}},
+    "upstream": {"content": [{"type": "text", "text": "original"}]},
+    "expect": [{"path": "reply.result.content[0].text", "equals": "changed from original"}]}]
+ },
+ {
+  "name": "TREE-05 nothing is filled in: a hint the server did not send is absent, and a rule reads it with .? and its own default, or asks whether it is there",
+  "ids": ["TREE-05"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "tool.?annotations.?destructiveHint.orValue(true)", "then": {"tool.title": "'may destroy'"}},
+    {"hook": "tools/list.post", "when": "tool.?annotations.?destructiveHint.hasValue()", "then": {"tool.description": "'the server said'"}}],
+   "catalog": {"tools": [
+     {"name": "a_none", "inputSchema": {"type": "object"}},
+     {"name": "b_empty", "annotations": {}, "inputSchema": {"type": "object"}},
+     {"name": "c_false", "annotations": {"destructiveHint": false}, "inputSchema": {"type": "object"}},
+     {"name": "d_true", "annotations": {"destructiveHint": true}, "inputSchema": {"type": "object"}},
+     {"name": "e_null", "annotations": {"destructiveHint": null}, "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/list", "expect": [
+     {"path": "outcome.issues", "exists": false},
+     {"path": "outcome.result.tools[*].name", "equals": ["a_none", "b_empty", "c_false", "d_true", "e_null"]},
+     {"path": "outcome.result.tools[0].title", "equals": "may destroy"},
+     {"path": "outcome.result.tools[1].title", "equals": "may destroy"},
+     {"path": "outcome.result.tools[2].title", "exists": false},
+     {"path": "outcome.result.tools[3].title", "equals": "may destroy"},
+     {"path": "outcome.result.tools[4].title", "equals": "may destroy"},
+     {"path": "outcome.result.tools[0].description", "exists": false},
+     {"path": "outcome.result.tools[1].description", "exists": false},
+     {"path": "outcome.result.tools[2].description", "equals": "the server said"},
+     {"path": "outcome.result.tools[3].description", "equals": "the server said"},
+     {"path": "outcome.result.tools[4].description", "exists": false}]}]
+ },
+ {
+  "name": "TREE-06 optional reads by key and by position, and a map built with only what is there",
+  "ids": ["TREE-06"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "true", "then": {
+      "tool._meta.owner": "tool.?_meta[?'team/owner'].orValue('nobody')",
+      "tool._meta.firstIcon": "tool.?icons[?0].?src.orValue('none')",
+      "tool._meta.summary": "{'name': tool.name, ?'description': tool.?description}"}}],
+   "catalog": {"tools": [
+     {"name": "bare", "inputSchema": {"type": "object"}},
+     {"name": "full", "description": "Does things", "icons": [{"src": "https://x/i.png"}], "_meta": {"team/owner": "sre"}, "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/list", "expect": [
+     {"path": "outcome.issues", "exists": false},
+     {"path": "outcome.result.tools[0]._meta", "equals": {"owner": "nobody", "firstIcon": "none", "summary": {"name": "bare"}}},
+     {"path": "outcome.result.tools[1]._meta", "equals": {"team/owner": "sre", "owner": "sre", "firstIcon": "https://x/i.png", "summary": {"name": "full", "description": "Does things"}}}]}]
+ },
+ {
+  "name": "TREE-07 a plain read of an absent field fails the rule, and a deny rule that fails hides the tool: missing never means let it through",
+  "ids": ["TREE-07"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "!tool.annotations.readOnlyHint", "then": {"decision": "'deny'"}}],
+   "catalog": {"tools": [
+     {"name": "reads", "annotations": {"readOnlyHint": true}, "inputSchema": {"type": "object"}},
+     {"name": "says_nothing", "inputSchema": {"type": "object"}},
+     {"name": "writes", "annotations": {"readOnlyHint": false}, "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/list", "expect": [
+     {"path": "outcome.result.tools[*].name", "equals": ["reads"]},
+     {"path": "outcome.issues[0]", "contains": "says_nothing"},
+     {"path": "outcome.hits[*].effect", "contains": "error"}]},
+   {"op": "tools/call", "params": {"name": "says_nothing", "arguments": {}}, "expect": [
+     {"path": "outcome.error.code", "equals": -32602},
+     {"path": "outcome.forward", "exists": false}]}]
+ },
+ {
+  "name": "TREE-08 nothing is filled in on the wire either: a tool leaves with the fields it arrived with",
+  "ids": ["TREE-08"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/list.post", "when": "tool.name == 'touched'", "then": {"tool._meta.reviewed": "true"}}],
+   "catalog": {"tools": [
+     {"name": "plain", "inputSchema": {"type": "object"}},
+     {"name": "touched", "annotations": {"destructiveHint": false}, "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/list", "expect": [
+     {"path": "outcome.result.tools[0]", "equals": {"name": "plain", "inputSchema": {"type": "object"}}},
+     {"path": "outcome.result.tools[1].annotations.destructiveHint", "equals": false},
+     {"path": "outcome.result.tools[1].annotations.openWorldHint", "exists": false},
+     {"path": "outcome.result.tools[1].annotations.title", "exists": false},
+     {"path": "outcome.result.tools[1].title", "exists": false},
+     {"path": "outcome.result.tools[1].description", "exists": false},
+     {"path": "outcome.result.tools[1]._meta", "equals": {"reviewed": true}}]}]
+ },
+ {
+  "name": "TREE-10 image blocks in a tool result are replaced one for one with a notice; other blocks keep their place; a result with no image is untouched",
+  "ids": ["TREE-10"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/call.post.result", "when": "response.result.content.exists(c, c.type == 'image')", "then": {"response.result.content": "response.result.content.map(c, c.type == 'image' ? {'type': 'text', 'text': 'this image has been stripped by policy'} : c)"}},
+    {"hook": "tools/call.post.result", "when": "response.upstream.result.content.exists(c, c.type == 'image')", "then": {"response.result.structuredContent": "{'imagesFromServer': size(response.upstream.result.content.filter(c, c.type == 'image')), 'imagesLeft': size(response.result.content.filter(c, c.type == 'image'))}"}}],
+   "catalog": {"tools": [{"name": "shot", "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/call", "params": {"name": "shot", "arguments": {}},
+    "upstream": {"content": [{"type": "image", "data": "QQ==", "mimeType": "image/png"}]},
+    "expect": [
+     {"path": "reply.result.content", "equals": [{"type": "text", "text": "this image has been stripped by policy"}]},
+     {"path": "reply.result.structuredContent", "equals": {"imagesFromServer": 1, "imagesLeft": 0}}]},
+   {"op": "tools/call", "params": {"name": "shot", "arguments": {}},
+    "upstream": {"content": [{"type": "image", "data": "QQ==", "mimeType": "image/png"}, {"type": "text", "text": "a caption"}]},
+    "expect": [
+     {"path": "reply.result.content", "equals": [{"type": "text", "text": "this image has been stripped by policy"}, {"type": "text", "text": "a caption"}]}]},
+   {"op": "tools/call", "params": {"name": "shot", "arguments": {}},
+    "upstream": {"content": [{"type": "image", "data": "QQ==", "mimeType": "image/png"}, {"type": "image", "data": "Qg==", "mimeType": "image/jpeg"}, {"type": "image", "data": "Qw==", "mimeType": "image/gif"}]},
+    "expect": [
+     {"path": "reply.result.content", "equals": [{"type": "text", "text": "this image has been stripped by policy"}, {"type": "text", "text": "this image has been stripped by policy"}, {"type": "text", "text": "this image has been stripped by policy"}]},
+     {"path": "reply.result.structuredContent", "equals": {"imagesFromServer": 3, "imagesLeft": 0}}]},
+   {"op": "tools/call", "params": {"name": "shot", "arguments": {}},
+    "upstream": {"content": [{"type": "text", "text": "no picture today"}]},
+    "expect": [
+     {"path": "reply.result.content", "equals": [{"type": "text", "text": "no picture today"}]},
+     {"path": "reply.result.structuredContent", "exists": false}]}]
+ },
+ {
+  "name": "TREE-10 variants: one notice for several images, and an image carried by a resource link matched on its MIME type",
+  "ids": ["TREE-10"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "tools/call.post.result", "when": "response.result.content.exists(c, c.type == 'image' || c.?mimeType.orValue('').startsWith('image/'))", "then": {"response.result.content": "response.result.content.filter(c, !(c.type == 'image' || c.?mimeType.orValue('').startsWith('image/'))) + [{'type': 'text', 'text': 'images have been stripped by policy'}]"}}],
+   "catalog": {"tools": [{"name": "shot", "inputSchema": {"type": "object"}}]}}],
+  "steps": [
+   {"op": "tools/call", "params": {"name": "shot", "arguments": {}},
+    "upstream": {"content": [{"type": "image", "data": "QQ==", "mimeType": "image/png"}, {"type": "text", "text": "kept"}, {"type": "resource_link", "uri": "file:///a.png", "name": "a", "mimeType": "image/png"}, {"type": "resource_link", "uri": "file:///a.txt", "name": "t", "mimeType": "text/plain"}]},
+    "expect": [
+     {"path": "reply.result.content", "equals": [{"type": "text", "text": "kept"}, {"type": "resource_link", "uri": "file:///a.txt", "name": "t", "mimeType": "text/plain"}, {"type": "text", "text": "images have been stripped by policy"}]}]}]
+ },
+ {
+  "name": "TREE-11 a read that returns several contents runs the result hook once: a rule sees them all, changes one and drops one, and response.upstream keeps the originals",
+  "ids": ["TREE-11"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "resources/read.post.result", "when": "size(response.result.contents) == 3", "then": {"response.result.contents": "response.result.contents.filter(c, !has(c.blob)).map(c, c.?text.orValue('').contains('secret') ? {'uri': c.uri, 'text': '[redacted]'} : c)"}},
+    {"hook": "resources/read.post.result", "when": "size(response.result.contents) == 2 && size(response.upstream.result.contents) == 3", "then": {"response.result.contents": "response.result.contents.map(c, c.uri == resource.uri ? {'uri': c.uri, 'text': c.text + ' (2 of ' + string(size(response.upstream.result.contents)) + ' kept)'} : c)"}}],
+   "catalog": {"resources": [{"uri": "docs://bundle", "name": "bundle"}]}}],
+  "steps": [
+   {"op": "resources/read", "params": {"uri": "docs://bundle"},
+    "upstream": {"contents": [{"uri": "docs://bundle", "text": "intro"}, {"uri": "docs://bundle/logo", "blob": "QQ=="}, {"uri": "docs://bundle/keys", "text": "the secret is 42"}]},
+    "expect": [
+     {"path": "reply.result.contents", "equals": [{"uri": "docs://bundle", "text": "intro (2 of 3 kept)"}, {"uri": "docs://bundle/keys", "text": "[redacted]"}]}]}]
+ },
+ {
+  "name": "TREE-11 a result rule cannot bring in an entry for a URI the read did not return: the read is refused",
+  "ids": ["TREE-11"],
+  "servers": [{"slug": "a", "rules": [
+    {"hook": "resources/read.post.result", "when": "true", "then": {"response.result.contents": "response.result.contents + [{'uri': 'docs://elsewhere', 'text': 'smuggled'}]"}}],
+   "catalog": {"resources": [{"uri": "docs://a", "name": "a"}]}}],
+  "steps": [
+   {"op": "resources/read", "params": {"uri": "docs://a"},
+    "upstream": {"contents": [{"uri": "docs://a", "text": "body"}]},
+    "expect": [
+     {"path": "reply.result", "exists": false},
+     {"path": "reply.error.code", "equals": -32602},
+     {"path": "client", "lacksText": ["smuggled"]}]}]
+ }
+]

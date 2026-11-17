@@ -1,12 +1,9 @@
 package hooks
 
 import (
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"runtime"
 	"sort"
 	"strings"
@@ -73,8 +70,10 @@ const KeyPrefix = "bifrost."
 // StateTTL is how long a challenge stays valid.
 const StateTTL = 5 * time.Minute
 
-// State is the gateway's part of a requestState. It is signed, so a client
-// can read it but not change it.
+// State is what the gateway keeps between the rounds of one request: a
+// question it asked, or the state a server sent with a question of its own.
+// It stays in the gateway's store. The client holds only the key, which
+// works once.
 type State struct {
 	Challenge     string                    `json:"c"`             // id of this challenge
 	Method        string                    `json:"m"`             // tools/call, prompts/get or resources/read
@@ -86,45 +85,41 @@ type State struct {
 	Expires       int64                     `json:"x"`             // unix seconds
 	Pending       []string                  `json:"p,omitempty"`   // gateway keys asked in this round
 	Answers       map[string]map[string]any `json:"a,omitempty"`   // gateway answers from earlier rounds
+	Bound         map[string]string         `json:"b,omitempty"`   // what each confirmation covers: see binding
 	Upstream      string                    `json:"up,omitempty"`  // the upstream's own opaque requestState, if it sent one
 	UpstreamRound bool                      `json:"ur,omitempty"`  // the upstream asked for input; forward its answers on retry
 	UpPending     []string                  `json:"upp,omitempty"` // upstream keys asked in this round
 }
 
-// ErrState is any problem with a presented requestState.
-var ErrState = errors.New("invalid request state")
-
-// Signer signs and verifies request state.
-type Signer struct{ Key []byte }
-
-// Seal encodes and signs a state.
-func (s Signer) Seal(st State) string {
-	b, _ := json.Marshal(st)
-	p := base64.RawURLEncoding.EncodeToString(b)
-	m := hmac.New(sha256.New, s.Key)
-	m.Write([]byte(p))
-	return p + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+// binding is what a confirmation covers: the question, as the user was
+// shown it, and the arguments as they stood when it was asked, after the
+// rules before it had made their changes. An answer counts only for the
+// same question about the same arguments.
+func binding(marker, args map[string]any) string {
+	key, _ := marker[ElicitKey].(string)
+	msg, _ := marker["message"].(string)
+	sum := sha256.Sum256([]byte(canonical([]any{key, msg, args})))
+	return hex.EncodeToString(sum[:16])
 }
 
-// Open verifies and decodes a state.
-func (s Signer) Open(tok string) (State, error) {
-	var st State
-	p, sig, ok := strings.Cut(tok, ".")
-	if !ok {
-		return st, ErrState
+// errChanged is what a caller is told when the answer to a confirmation
+// arrives with a request that is no longer the one the user was asked about.
+const errChanged = "The request changed since the confirmation was asked. Send it again."
+
+// asked returns the check a pre hook's rules use to learn whether a
+// question has already been confirmed on this request. The engine decides
+// that, not the rule: a rule only says when to ask and what.
+func asked(st *State, answers, args map[string]any) func(map[string]any) (bool, string) {
+	return func(marker map[string]any) (bool, string) {
+		key, _ := marker[ElicitKey].(string)
+		if _, ok := answers[key]; !ok {
+			return false, ""
+		}
+		if st == nil || st.Bound[key] != binding(marker, args) {
+			return false, errChanged
+		}
+		return true, ""
 	}
-	m := hmac.New(sha256.New, s.Key)
-	m.Write([]byte(p))
-	want := m.Sum(nil)
-	got, err := base64.RawURLEncoding.DecodeString(sig)
-	if err != nil || !hmac.Equal(want, got) {
-		return st, ErrState
-	}
-	b, err := base64.RawURLEncoding.DecodeString(p)
-	if err != nil || json.Unmarshal(b, &st) != nil {
-		return st, ErrState
-	}
-	return st, nil
 }
 
 // argsHash hashes arguments canonically: keys sorted at every level, numbers

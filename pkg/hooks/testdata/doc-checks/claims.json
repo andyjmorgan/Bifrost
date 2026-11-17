@@ -10,16 +10,16 @@
     "rules": [
      {
       "hook": "tools/call.post.result",
-      "when": "has(result.structuredContent) && result.structuredContent.x == 1",
+      "when": "has(response.result.structuredContent) && response.result.structuredContent.x == 1",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "tools/call.post.result",
-      "when": "has(result.structuredContent) && result.structuredContent.x == 2",
+      "when": "has(response.result.structuredContent) && response.result.structuredContent.x == 2",
       "then": {
-       "content": "[]"
+       "response.result.content": "[]"
       }
      }
     ],
@@ -160,14 +160,14 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'w'",
+      "when": "skill.name == 'w'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/read.post.result",
-      "when": "result.text == 'bad'",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text == 'bad'))",
       "then": {
        "decision": "'deny'"
       }
@@ -175,16 +175,16 @@
      {
       "name": "Team check",
       "hook": "prompts/get.pre",
-      "when": "caller.team == 'x'",
+      "when": "request.caller.team == 'x'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/list.post",
-      "when": "uri == 'file:///b.md'",
+      "when": "resource.uri == 'file:///b.md'",
       "then": {
-       "title": "annotations.missing"
+       "resource.title": "resource._meta.missing"
       }
      }
     ],
@@ -306,9 +306,9 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tools": "false",
-       "prompts": "false",
-       "resources": "false"
+       "settings.tools": "false",
+       "settings.prompts": "false",
+       "settings.resources": "false"
       }
      }
     ],

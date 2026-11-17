@@ -25,7 +25,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: hookctl run [-summary] [-only ID] [files...] | hookctl check [file] | hookctl hooks [hook]")
+		fmt.Fprintln(os.Stderr, "usage: hookctl run [-summary] [-only ID] [files...] | hookctl check [file] | hookctl hooks [hook] | hookctl schema hook")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -35,6 +35,8 @@ func main() {
 		os.Exit(check(os.Args[2:]))
 	case "hooks":
 		os.Exit(hookSchemas(os.Args[2:]))
+	case "schema":
+		os.Exit(jsonSchema(os.Args[2:]))
 	default:
 		fmt.Fprintln(os.Stderr, "unknown command "+os.Args[1])
 		os.Exit(2)
@@ -153,8 +155,26 @@ func trim(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
+// jsonSchema prints the JSON Schema of the document a rule on one hook
+// reads: the hook's tree, in a form other tools can validate against.
+func jsonSchema(args []string) int {
+	if len(args) != 1 || hooks.Hooks[args[0]] == nil {
+		fmt.Fprintln(os.Stderr, "usage: hookctl schema <hook>, for example hookctl schema tools/call.post.result")
+		return 2
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(hooks.Hooks[args[0]].JSONSchema()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
 // hookSchemas prints what a rule on each hook may read and set, as JSON:
-// every hook, or the one named. The flags struct is part of every hook.
+// every hook, or the one named. Each hook's tree is everything a rule there
+// can read, with what it may set marked writable.
 func hookSchemas(args []string) int {
 	all := hooks.Schema()
 	out := any(map[string]any{"flags": hooks.FlagDocs, "hooks": all})

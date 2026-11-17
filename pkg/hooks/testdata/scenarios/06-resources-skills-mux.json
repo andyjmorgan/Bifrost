@@ -13,21 +13,21 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'file:///README.md'",
+      "when": "resource.uri == 'file:///README.md'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/list.post",
-      "when": "uri.startsWith('confluence://ENG/')",
+      "when": "resource.uri.startsWith('confluence://ENG/')",
       "then": {
-       "title": "'ENG wiki: ' + title"
+       "resource.title": "'ENG wiki: ' + resource.title"
       }
      },
      {
       "hook": "resources/read.pre",
-      "when": "uri.startsWith('confluence://ENG/')",
+      "when": "resource.uri.startsWith('confluence://ENG/')",
       "then": {
        "decision": "'deny'",
        "reason": "'ENG pages are read-only through search.'"
@@ -238,7 +238,7 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
@@ -438,7 +438,7 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
@@ -811,14 +811,14 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/list.post",
-      "when": "uri.endsWith('advanced-analysis.md')",
+      "when": "resource.uri.endsWith('advanced-analysis.md')",
       "then": {
        "decision": "'deny'"
       }
@@ -1038,7 +1038,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'Confluence', 'the wiki')} : c)"
       }
      }
     ],
@@ -1232,7 +1232,7 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
@@ -1425,7 +1425,7 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
@@ -1645,14 +1645,14 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'refunds' && uri.startsWith('skill://acme/support/')",
+      "when": "skill.name == 'refunds' && skill.uri.startsWith('skill://acme/support/')",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "skills/list.post",
-      "when": "description == 'Dynamic.'",
+      "when": "skill.description == 'Dynamic.'",
       "then": {
        "decision": "'deny'"
       }
@@ -1829,7 +1829,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(regex.replace(result.text, 'Confluence', 'the wiki'), 'Build Datadog notebooks.', 'Build notebooks.')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(regex.replace(c.text, 'Confluence', 'the wiki'), 'Build Datadog notebooks.', 'Build notebooks.')} : c)"
       }
      }
     ],
@@ -2035,7 +2035,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(regex.replace(result.text, 'name: notebooks', 'name: evil'), 'Confluence', 'X')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(regex.replace(c.text, 'name: notebooks', 'name: evil'), 'Confluence', 'X')} : c)"
       }
      }
     ],
@@ -2215,7 +2215,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "result.text + string(now)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + string(request.time)} : c)"
       }
      }
     ],
@@ -2389,7 +2389,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri.endsWith('advanced-analysis.md')",
+      "when": "resource.uri.endsWith('advanced-analysis.md')",
       "then": {
        "decision": "'deny'"
       }
@@ -4023,7 +4023,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "slugUris(result.text)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': slugUris(c.text)} : c)"
       }
      }
     ],

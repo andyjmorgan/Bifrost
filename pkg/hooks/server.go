@@ -34,7 +34,7 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 	for k, v := range switchDefaults {
 		out[k] = v
 	}
-	o := s.Rules.run(ctx, "server.settings", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server.settings", s.Slug, nil, r.context(s).roots("server/discover", nil), func(key string, val any) error {
 		out[key] = val.(bool)
 		return nil
 	})
@@ -56,7 +56,7 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 		// The default is on, so only say so when a rule asked for it.
 		for _, h := range o.hits {
 			for _, f := range h.Fields {
-				if f == "progress" {
+				if f == "settings.progress" {
 					hits = append(hits, gateHit("server.settings", s.Slug, "progress", "progress is only relayed from servers on "+ProtocolCurrent))
 				}
 			}
@@ -97,17 +97,24 @@ func (e *Engine) Modify(ctx context.Context, r Request, s *Server) (meta ServerM
 	defer e.recoveredDirect(ctx, "server/discover.post", s, func(h Hit) {
 		meta, hits, err = ServerMeta{}, []Hit{h}, fmt.Errorf("server/discover.post could not be evaluated")
 	})
-	view := NewView(map[string]any{"title": s.Info.Title, "description": s.Info.Description, "instructions": s.Info.Instructions})
+	said := map[string]any{}
+	for k, v := range map[string]string{"title": s.Info.Title, "description": s.Info.Description, "instructions": s.Info.Instructions} {
+		if v != "" {
+			said[k] = v // nothing is filled in for what the server did not say
+		}
+	}
+	view := NewView(said)
 	resolve := func(name string) (any, bool) {
 		switch name {
 		case "title", "description", "instructions":
-			return view.Get(name)
+			v, ok := view.Get(name)
+			return v, ok && v != nil
 		case "upstream":
 			return view.Upstream(), true
 		}
 		return nil, false
 	}
-	o := s.Rules.run(ctx, "server/discover.post", s.Slug, resolve, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server/discover.post", s.Slug, resolve, r.context(s).roots("server/discover", nil), func(key string, val any) error {
 		view.Set([]string{key}, val)
 		return nil
 	})
@@ -139,7 +146,7 @@ func (e *Engine) Connect(ctx context.Context, r Request, s *Server, version stri
 		hits = []Hit{h}
 	})
 	ci := ConnectInfo{ClientInfo: map[string]any{"name": "bifrost", "version": version}, Capabilities: map[string]any{}}
-	o := s.Rules.run(ctx, "server.session", s.Slug, nil, r.context(s).vars(), func(key string, val any) error {
+	o := s.Rules.run(ctx, "server.session", s.Slug, nil, r.context(s).roots("server/discover", nil), func(key string, val any) error {
 		switch key {
 		case "clientInfo":
 			ci.ClientInfo = val.(map[string]any)
@@ -149,7 +156,7 @@ func (e *Engine) Connect(ctx context.Context, r Request, s *Server, version stri
 			} else {
 				delete(ci.Capabilities, "elicitation")
 			}
-		case "meta":
+		case "_meta":
 			ci.ForwardMeta = val.(bool)
 		}
 		return nil
@@ -392,7 +399,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 			o.Result = toolError(msg)
 			return e.finishOutcome(ctx, o)
 		}
-		reqs, hits, err := e.elicitHook(ctx, r, s, "tools/call.post.elicit", tr.Exposed, itemResolve, call.Args, rawRequests(result))
+		reqs, hits, err := e.elicitHook(ctx, r, call, "tools/call.post.elicit", tr.Exposed, itemResolve, rawRequests(result))
 		o.Hits = append(o.Hits, hits...)
 		if err != nil {
 			o.Result = toolError(err.Error())
@@ -408,14 +415,17 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 		return e.finishOutcome(ctx, o)
 	}
 	view := NewView(result)
-	vars := r.context(s).vars()
-	vars["args"] = celArgs(call.Args)
-	vars["result"] = resultVar(result)
+	roots := call.roots(r)
+	upstream := map[string]any{"result": celMap(result)}
+	roots["response"] = map[string]any{"result": upstream["result"], "upstream": upstream}
 	setKeys := map[string]bool{}
-	ro := s.Rules.run(ctx, "tools/call.post.result", tr.Exposed, itemResolve, vars, func(key string, val any) error {
+	ro := s.Rules.run(ctx, "tools/call.post.result", tr.Exposed, itemResolve, roots, func(key string, val any) error {
+		if err := wellFormedResult(key, val); err != nil {
+			return err
+		}
 		setKeys[key] = true
 		view.Set([]string{key}, val)
-		vars["result"] = resultVar(view.Materialize())
+		roots["response"] = map[string]any{"result": celMap(view.Materialize()), "upstream": upstream}
 		return nil
 	})
 	o.Hits = append(o.Hits, ro.hits...)
@@ -472,47 +482,40 @@ func (e *Engine) finishOutcome(ctx context.Context, o Outcome) Outcome {
 	return o
 }
 
-// resultVar is the `result` variable: the result plus `text`, all text
-// content joined.
-func resultVar(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m)+1)
+// wellFormedResult refuses a value a rule sets on a tool result that MCP
+// would not accept there: content is a list of blocks, each a map with a
+// type, and structuredContent is an object or nothing.
+func wellFormedResult(key string, val any) error {
+	switch key {
+	case "content":
+		for i, c := range val.([]any) {
+			m, ok := c.(map[string]any)
+			if t, isStr := m["type"].(string); !ok || !isStr || t == "" {
+				return fmt.Errorf("content[%d] must be a content block: a map with a type", i)
+			}
+		}
+	case "structuredContent":
+		if _, ok := val.(map[string]any); !ok && val != nil {
+			return fmt.Errorf("structuredContent must be an object")
+		}
+	}
+	return nil
+}
+
+// celMap is a JSON object as rules read it: the same keys, with numbers
+// kept exact. Nothing is added to it.
+func celMap(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
 	for k, v := range m {
 		out[k] = celValue(v)
-	}
-	var parts []string
-	if cs, ok := m["content"].([]any); ok {
-		for _, c := range cs {
-			if cm, ok := c.(map[string]any); ok && cm["type"] == "text" {
-				if t, ok := cm["text"].(string); ok {
-					parts = append(parts, t)
-				}
-			}
-		}
-	}
-	if cs, ok := m["contents"].([]any); ok {
-		for _, c := range cs {
-			if cm, ok := c.(map[string]any); ok {
-				if t, ok := cm["text"].(string); ok {
-					parts = append(parts, t)
-				}
-			}
-		}
-	}
-	out["text"] = strings.Join(parts, "\n")
-	if _, ok := out["isError"]; !ok {
-		out["isError"] = false
-	}
-	if meta, ok := m["_meta"].(map[string]any); ok {
-		out["meta"] = meta
-	} else {
-		out["meta"] = map[string]any{}
 	}
 	return out
 }
 
 // elicitHook runs an elicit hook over each question the upstream asks. A deny
 // refuses the whole round; message changes apply to the request.
-func (e *Engine) elicitHook(ctx context.Context, r Request, s *Server, hook, label string, resolve func(string) (any, bool), upArgs map[string]any, in map[string]json.RawMessage) (mcp.InputRequestMap, []Hit, error) {
+func (e *Engine) elicitHook(ctx context.Context, r Request, call *CallContext, hook, label string, resolve func(string) (any, bool), in map[string]json.RawMessage) (mcp.InputRequestMap, []Hit, error) {
+	s := call.Server
 	out := mcp.InputRequestMap{}
 	var hits []Hit
 	for _, key := range sortedKeys(in) {
@@ -529,25 +532,23 @@ func (e *Engine) elicitHook(ctx context.Context, r Request, s *Server, hook, lab
 		if wire.Method != "elicitation/create" {
 			return nil, hits, fmt.Errorf("upstream input request %q uses %q; only elicitation is supported", key, wire.Method)
 		}
-		req := copyMap(wire.Params)
-		req["key"], req["method"] = key, wire.Method
-		view := NewView(req)
-		vars := r.context(s).vars()
-		vars["args"] = celArgs(upArgs)
-		vars["request"] = req
-		o := s.Rules.run(ctx, hook, label, resolve, vars, func(k string, val any) error {
+		view := NewView(copyMap(wire.Params))
+		roots := call.roots(r)
+		upstream := map[string]any{"params": celMap(wire.Params)}
+		elicitation := func() map[string]any {
+			return map[string]any{"key": key, "method": wire.Method, "params": celMap(view.Materialize()), "upstream": upstream}
+		}
+		roots["elicitation"] = elicitation()
+		o := s.Rules.run(ctx, hook, label, resolve, roots, func(k string, val any) error {
 			view.Set([]string{k}, val)
-			vars["request"] = view.Materialize()
+			roots["elicitation"] = elicitation()
 			return nil
 		})
 		hits = append(hits, o.hits...)
 		if o.denied {
 			return nil, hits, fmt.Errorf("%s", denyOr(o.reason, "The upstream server asked for input, which policy does not allow."))
 		}
-		final := view.Materialize()
-		delete(final, "key")
-		delete(final, "method")
-		b, _ := json.Marshal(final)
+		b, _ := json.Marshal(view.Materialize())
 		var ep mcp.ElicitParams
 		if err := json.Unmarshal(b, &ep); err != nil {
 			return nil, hits, fmt.Errorf("upstream input request %q is not an elicitation", key)
@@ -612,19 +613,14 @@ func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken,
 	}
 	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: r.principal(), Entitlement: entitlementID(s),
 		Target: call.Target, ArgsHash: call.Hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Upstream: upstreamState, UpstreamRound: true}
-	if len(call.Answers) > 0 {
-		st.Answers = map[string]map[string]any{}
-		for k, v := range call.Answers {
-			if m, ok := v.(map[string]any); ok {
-				st.Answers[k] = m
-			}
-		}
-	}
+	st.carry(call.State, call.Answers)
 	for k := range reqs {
 		st.UpPending = append(st.UpPending, k)
 	}
 	sort.Strings(st.UpPending)
-	return e.Signer.Seal(st), nil
+	key := newStateKey()
+	e.states().Put(key, st, StateTTL)
+	return key, nil
 }
 
 // quoteLines quotes every line of an upstream excerpt ("> "), so upstream

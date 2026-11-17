@@ -148,6 +148,12 @@ func parseHook(id, text string) (rules []parsed, probs []Problem) {
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
+		// A // comment ends at the end of its line. Lines are joined into
+		// one expression, so it is taken off here: left in, it would run to
+		// the end of the expression and swallow the lines that continue it.
+		if t = strings.TrimSpace(stripComment(t)); t == "" {
+			continue
+		}
 		indented := raw[0] == ' ' || raw[0] == '\t'
 		kw, rest := keyword(t)
 		switch kw {
@@ -210,19 +216,18 @@ func build(s *Hook, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pro
 			}
 			switch a.kind {
 			case "deny":
-				put("decision", "'deny'")
+				put(hooks.KeyDecision, "'deny'")
 				if a.expr != "" {
-					put("reason", a.expr)
+					put(hooks.KeyReason, a.expr)
 				}
 			case "confirm":
-				key, call, err := confirmCall(s.Name, a.expr)
+				call, err := confirmCall(s.Name, a.expr)
 				if err != nil {
 					bad(a.line, "%v", err)
 					ok = false
 					continue
 				}
-				when = "(" + p.when + ") && !has(input." + key + ")"
-				put("result", call)
+				put(hooks.KeyConfirm, call)
 			case "set":
 				if a.expr == "" {
 					bad(a.line, "set %s needs a value", a.path)
@@ -245,17 +250,17 @@ func build(s *Hook, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pro
 	return rules, from, probs
 }
 
-// confirmCall turns confirm "Delete {args.id}?" into the engine's elicit
+// confirmCall turns confirm "Delete {tool.name}?" into the engine's elicit
 // call. Each {expression} becomes a named value, which the engine quotes
 // and truncates so argument text cannot pose as the gateway's own wording.
-func confirmCall(hook, lit string) (key, call string, err error) {
+func confirmCall(hook, lit string) (call string, err error) {
 	msg, ok := unquote(lit)
 	if !ok || msg == "" {
-		return "", "", fmt.Errorf(`confirm takes the question in quotes: confirm "Delete {args.id}?"`)
+		return "", fmt.Errorf(`confirm takes the question in quotes: confirm "Delete {tool.name}?"`)
 	}
 	h := fnv.New32a()
 	h.Write([]byte(hook + "\n" + msg))
-	key = fmt.Sprintf("confirm_%08x", h.Sum32())
+	key := fmt.Sprintf("confirm_%08x", h.Sum32())
 	var tmpl strings.Builder
 	var vals []string
 	for i := 0; i < len(msg); i++ {
@@ -263,21 +268,32 @@ func confirmCall(hook, lit string) (key, call string, err error) {
 			tmpl.WriteByte(msg[i])
 			continue
 		}
+		// The expression runs to the matching }, and a brace inside a
+		// string in it is text, not a bracket.
 		depth, j := 1, i+1
+		var quote byte
 		for ; j < len(msg) && depth > 0; j++ {
-			switch msg[j] {
-			case '{':
+			switch c := msg[j]; {
+			case quote != 0:
+				if c == '\\' {
+					j++
+				} else if c == quote {
+					quote = 0
+				}
+			case c == '\'' || c == '"':
+				quote = c
+			case c == '{':
 				depth++
-			case '}':
+			case c == '}':
 				depth--
 			}
 		}
 		if depth != 0 {
-			return "", "", fmt.Errorf("the question has a { with no closing }")
+			return "", fmt.Errorf("the question has a { with no closing }")
 		}
 		expr := strings.TrimSpace(msg[i+1 : j-1])
 		if expr == "" {
-			return "", "", fmt.Errorf("the question has an empty {}")
+			return "", fmt.Errorf("the question has an empty {}")
 		}
 		name := fmt.Sprintf("v%d", len(vals)+1)
 		vals = append(vals, strconv.Quote(name)+": "+expr)
@@ -285,9 +301,23 @@ func confirmCall(hook, lit string) (key, call string, err error) {
 		i = j - 1
 	}
 	if len(vals) == 0 {
-		return key, fmt.Sprintf("elicit(%s, %s)", strconv.Quote(key), strconv.Quote(msg)), nil
+		return fmt.Sprintf("elicit(%s, %s)", strconv.Quote(key), strconv.Quote(msg)), nil
 	}
-	return key, fmt.Sprintf("elicit(%s, %s, {%s})", strconv.Quote(key), strconv.Quote(tmpl.String()), strings.Join(vals, ", ")), nil
+	return fmt.Sprintf("elicit(%s, %s, {%s})", strconv.Quote(key), strconv.Quote(tmpl.String()), strings.Join(vals, ", ")), nil
+}
+
+// stripComment removes a // comment from the end of a line. A // inside a
+// string, such as 'https://example.com', is text.
+func stripComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\'' || line[i] == '"':
+			i = skipString(line, i)
+		case line[i] == '/' && i+1 < len(line) && line[i+1] == '/':
+			return line[:i]
+		}
+	}
+	return line
 }
 
 // unquote reads a single- or double-quoted string literal.
@@ -324,9 +354,13 @@ func unquote(lit string) (string, bool) {
 // them with the engine's own compiler. Problems come back placed on the
 // line that caused them. The rules are usable only when there are none.
 func Compile(text map[string]string) ([]hooks.Rule, []Problem) {
-	var rules []hooks.Rule
-	var from []origin
-	var probs []Problem
+	rules, _, probs, _ := compile(text)
+	return rules, probs
+}
+
+// compile is Compile, with what Lint needs beside it: where each rule came
+// from, and what the engine noted about rules that compile.
+func compile(text map[string]string) (rules []hooks.Rule, from []origin, probs, notes []Problem) {
 	for id := range text {
 		if _, ok := byName[id]; !ok && strings.TrimSpace(text[id]) != "" {
 			probs = append(probs, Problem{Hook: id, Message: "there is no such hook"})
@@ -340,28 +374,34 @@ func Compile(text map[string]string) ([]hooks.Rule, []Problem) {
 		rules, from = append(rules, rs...), append(from, fr...)
 	}
 	if len(probs) > 0 {
-		return nil, sorted(probs)
+		return nil, nil, sorted(probs), nil
 	}
-	if _, eps := hooks.Compile(rules); eps != nil {
-		for _, ep := range eps {
-			if ep.Rule < 0 || ep.Rule >= len(from) {
-				probs = append(probs, Problem{Message: ep.Message})
-				continue
-			}
-			o := from[ep.Rule]
-			line, ok := o.lines[ep.Field]
-			if !ok {
-				line = o.when
-			}
-			msg := tidy(ep.Message)
-			if ep.Field != "" && ep.Field != "when" && ok {
-				msg = ep.Field + ": " + msg
-			}
-			probs = append(probs, Problem{Hook: o.hook, Line: line, Message: msg})
+	place := func(ep hooks.Problem, level string) Problem {
+		if ep.Rule < 0 || ep.Rule >= len(from) {
+			return Problem{Message: ep.Message, Level: level}
 		}
-		return nil, sorted(probs)
+		o := from[ep.Rule]
+		line, ok := o.lines[ep.Field]
+		if !ok {
+			line = o.when
+		}
+		msg := tidy(ep.Message)
+		if ep.Field != "" && ep.Field != "when" && ok && level == "" {
+			msg = ep.Field + ": " + msg
+		}
+		return Problem{Hook: o.hook, Line: line, Message: msg, Level: level}
 	}
-	return rules, nil
+	set, eps := hooks.Compile(rules)
+	if eps != nil {
+		for _, ep := range eps {
+			probs = append(probs, place(ep, ""))
+		}
+		return nil, nil, sorted(probs), nil
+	}
+	for _, n := range set.Notes {
+		notes = append(notes, place(n, "warning"))
+	}
+	return rules, from, nil, notes
 }
 
 var (

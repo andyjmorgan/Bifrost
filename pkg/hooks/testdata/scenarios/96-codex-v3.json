@@ -14,7 +14,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -57,7 +57,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -100,7 +100,7 @@
     "rules": [
      {
       "hook": "resources/read.pre",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -143,7 +143,7 @@
     "rules": [
      {
       "hook": "resources/read.pre",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -186,7 +186,7 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -241,7 +241,7 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "upstream.name == 'secret'",
+      "when": "resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -296,7 +296,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri != 'file:///dir/' && upstream.mimeType == 'secret'",
+      "when": "resource.uri != 'file:///dir/' && resource.upstream.mimeType == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -357,7 +357,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri != 'file:///public' && upstream.name == 'secret'",
+      "when": "resource.uri != 'file:///public' && resource.upstream.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -410,12 +410,12 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      },
      {
       "hook": "resources/read.post.elicit",
-      "when": "name == 'secret'",
+      "when": "resource.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -860,7 +860,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri.startsWith('private://') && name == 'secret'",
+      "when": "resource.uri.startsWith('private://') && resource.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -899,7 +899,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "name == 'secret'",
+      "when": "resource.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -986,7 +986,7 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "uri == 'file:///secret' && upstream.name == 'secret'",
+      "when": "response.result.contents.exists(c, c.uri == 'file:///secret' && dyn(c).name == 'secret')",
       "then": {
        "decision": "'deny'"
       }

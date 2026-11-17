@@ -8,18 +8,18 @@
      {
       "name": "Drop issue noise",
       "hook": "tools/call.post.result",
-      "when": "upstream.name == 'search_issues' && has(result.structuredContent)",
+      "when": "tool.upstream.name == 'search_issues' && has(response.result.structuredContent)",
       "then": {
-       "structuredContent": "drop(result.structuredContent, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])",
-       "content": "[]"
+       "response.result.structuredContent": "drop(response.result.structuredContent, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])",
+       "response.result.content": "[]"
       }
      },
      {
       "name": "Drop issue noise from schema",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'search_issues'",
+      "when": "tool.upstream.name == 'search_issues'",
       "then": {
-       "outputSchema": "dropSchema(outputSchema, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])"
+       "tool.outputSchema": "dropSchema(tool.outputSchema, ['issues.*.self', 'issues.*.avatarUrls', 'issues.*.fields.watches'])"
       }
      }
     ],
@@ -161,9 +161,9 @@
      {
       "name": "First 20 ids and titles",
       "hook": "tools/call.post.result",
-      "when": "upstream.name == 'list_issues' && has(result.structuredContent.items)",
+      "when": "tool.upstream.name == 'list_issues' && has(response.result.structuredContent.items)",
       "then": {
-       "structuredContent": "cel.bind(items, result.structuredContent.items.map(i, {'number': i.number, 'title': i.title}), {'items': size(items) > 20 ? items.slice(0, 20) : items})"
+       "response.result.structuredContent": "cel.bind(items, response.result.structuredContent.items.map(i, {'number': i.number, 'title': i.title}), {'items': size(items) > 20 ? items.slice(0, 20) : items})"
       }
      }
     ],
@@ -384,9 +384,9 @@
      {
       "name": "Generic error",
       "hook": "tools/call.post.result",
-      "when": "result.isError",
+      "when": "response.result.?isError.orValue(false)",
       "then": {
-       "content": "[{'type': 'text', 'text': 'The query failed. Check the table name and try again.'}]"
+       "response.result.content": "[{'type': 'text', 'text': 'The query failed. Check the table name and try again.'}]"
       }
      }
     ],
@@ -468,7 +468,7 @@
      {
       "name": "Block keys",
       "hook": "tools/call.post.result",
-      "when": "result.text.contains('BEGIN PRIVATE KEY')",
+      "when": "response.result.content.exists(c, c.type == 'text' && c.text.contains('BEGIN PRIVATE KEY'))",
       "then": {
        "decision": "'deny'",
        "reason": "'The result contained a private key and was withheld.'"
@@ -537,14 +537,14 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.cql.name": "'q'"
+       "tool.params.cql.name": "'q'"
       }
      },
      {
       "hook": "tools/call.post.result",
-      "when": "args.cql == 'link'",
+      "when": "request.upstream.params.arguments.cql == 'link'",
       "then": {
-       "content": "[{'type': 'resource_link', 'uri': 'file:///a.md', 'name': 'a'}]"
+       "response.result.content": "[{'type': 'resource_link', 'uri': 'file:///a.md', 'name': 'a'}]"
       }
      }
     ],
@@ -622,7 +622,7 @@
       "hook": "tools/call.post.result",
       "when": "true",
       "then": {
-       "structuredContent": "{'items': result.structuredContent.items.slice(0, 20)}"
+       "response.result.structuredContent": "{'items': response.result.structuredContent.items.slice(0, 20)}"
       }
      }
     ],
@@ -679,21 +679,21 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.env.pin": "'staging'"
+       "tool.params.env.pin": "'staging'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.limit) && args.limit > 10",
+      "when": "has(request.params.arguments.limit) && request.params.arguments.limit > 10",
       "then": {
-       "args.limit": "10"
+       "request.params.arguments.limit": "10"
       }
      },
      {
       "hook": "tools/call.post.result",
-      "when": "has(args.limit) && args.limit == 10 && args.env == 'staging' && result.meta.k == 'v'",
+      "when": "has(request.upstream.params.arguments.limit) && request.upstream.params.arguments.limit == 10 && request.upstream.params.arguments.env == 'staging' && response.result._meta.k == 'v'",
       "then": {
-       "content": "[{'type': 'text', 'text': 'seen'}]"
+       "response.result.content": "[{'type': 'text', 'text': 'seen'}]"
       }
      }
     ],

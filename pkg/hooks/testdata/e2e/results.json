@@ -1,27 +1,27 @@
 [
 {"name": "tools/call.post.result drop: drop fields from structured content", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (get_report) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'get_report'", "then": {"structuredContent": "drop(result.structuredContent, ['user.email', 'rows.*.secret'])"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "tool.upstream.name == 'get_report'", "then": {"response.result.structuredContent": "drop(response.result.structuredContent, ['user.email', 'rows.*.secret'])"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "get_report", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent.user", "equals": {"name": "Ana"}}, {"path": "client.result.structuredContent.rows", "equals": [{"id": 1}, {"id": 2}]}, {"path": "client.result.content[0].text", "equals": "Report for ana@example.com. Card 4111 1111 1111 1111. Host db-internal-7."}, {"path": "hits", "has": {"hook": "tools/call.post.result", "effect": "set"}}]}
  ]},
 {"name": "tools/call.post.result regex: rewrite text with a regex", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (get_report) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'get_report'", "then": {"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, '[0-9]{4}( [0-9]{4}){3}', '[card]')} : c)"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "tool.upstream.name == 'get_report'", "then": {"response.result.content": "response.result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, '[0-9]{4}( [0-9]{4}){3}', '[card]')} : c)"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "get_report", "arguments": {}}, "expect": [{"path": "client.result.content[0].text", "equals": "Report for ana@example.com. Card [card]. Host db-internal-7."}, {"path": "client", "refused": false}]}
  ]},
 {"name": "tools/call.post.result keep image: the guarded rewrite changes text and keeps the image and link", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (picture) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'picture'", "then": {"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'picture', 'photo')} : c)"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "tool.upstream.name == 'picture'", "then": {"response.result.content": "response.result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'picture', 'photo')} : c)"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "picture", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client", "refused": false}, {"path": "client.result.content", "len": 3}, {"path": "client.result.content[0]", "equals": {"type": "text", "text": "a photo"}}, {"path": "client.result.content[1].type", "equals": "image"}, {"path": "client.result.content[1].data", "equals": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}, {"path": "client.result.content[1].mimeType", "equals": "image/png"}, {"path": "client.result.content[2].type", "equals": "resource_link"}, {"path": "client.result.content[2].uri", "equals": "ref://docs/guide"}, {"path": "client.result.content[2].name", "equals": "guide"}]}
  ]},
 {"name": "tools/call.post.result deny: deny a result by its text", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (get_report, echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "result.text.contains('4111')", "then": {"decision": "'deny'", "reason": "'The result held a card number and was withheld.'"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "response.result.content.exists(c, c.type == 'text' && c.text.contains('4111'))", "then": {"decision": "'deny'", "reason": "'The result held a card number and was withheld.'"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "get_report", "arguments": {}}, "expect": [{"path": "client.result.isError", "equals": true}, {"path": "client.result.content[0].text", "equals": "The result held a card number and was withheld."}, {"path": "client.result", "lacksText": ["4111", "ana@example.com"]}]},
   {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client", "refused": false}]}
  ]},
 {"name": "tools/call.post.result plain: remove structured content, keep the text", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'echo'", "then": {"structuredContent": "null"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "tool.upstream.name == 'echo'", "then": {"response.result.structuredContent": "null"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.result.content[0].text", "equals": "hi"}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent", "exists": false}]}
  ]}

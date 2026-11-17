@@ -10,40 +10,89 @@ import (
 	"time"
 )
 
-// Context is the request context every hook sees. All of it is read-only to
-// rules.
+// Context is what every hook is told about the request and where it is
+// served. All of it is read-only to rules.
 type Context struct {
-	Server      map[string]any  `json:"server,omitempty"`
-	Entitlement map[string]any  `json:"entitlement,omitempty"`
-	Caller      map[string]any  `json:"caller,omitempty"`
-	Client      map[string]any  `json:"client,omitempty"`
-	Route       string          `json:"route,omitempty"` // direct | mux
-	Flags       map[string]bool `json:"flags,omitempty"` // the request's switches, such as search and cli
-	Now         time.Time       `json:"now,omitempty"`
+	Server      map[string]any `json:"server,omitempty"`
+	Entitlement map[string]any `json:"entitlement,omitempty"`
+	Caller      map[string]any `json:"caller,omitempty"`
+	// Client is the client as it describes itself on this request:
+	// clientInfo and capabilities.
+	Client map[string]any `json:"client,omitempty"`
+	// Headers are the request's HTTP headers the gateway lets rules see, by
+	// lower-case name. A gateway passes only what is on its allow-list.
+	Headers map[string]string `json:"headers,omitempty"`
+	Route   string            `json:"route,omitempty"` // direct | mux
+	Flags   map[string]bool   `json:"flags,omitempty"` // the request's switches, such as search and cli
+	Now     time.Time         `json:"now,omitempty"`
 }
 
-func (c Context) vars() map[string]any {
+// roots builds the branches every hook has: server, entitlement and
+// request. method and params are MCP's part of the request; params may be
+// nil. A caller adds what its hook has beyond these: the response, a
+// progress notification, an elicitation.
+func (c Context) roots(method string, params map[string]any) map[string]any {
 	orEmpty := func(m map[string]any) map[string]any {
 		if m == nil {
 			return map[string]any{}
 		}
 		return m
 	}
-	client := orEmpty(c.Client)
-	if _, ok := client["capabilities"].(map[string]any); !ok {
-		// Always present, so has(client.capabilities.x) never errors. The
-		// caller's map is copied, never modified.
-		cp := make(map[string]any, len(client)+1)
-		for k, v := range client {
-			cp[k] = v
+	client := map[string]any{"capabilities": map[string]any{}}
+	for k, v := range c.Client {
+		// capabilities is always a map, so has(request.client.capabilities.x)
+		// never fails. The caller's map is copied, never modified.
+		if _, isMap := v.(map[string]any); k == "capabilities" && !isMap {
+			continue
 		}
-		cp["capabilities"] = map[string]any{}
-		client = cp
+		client[k] = v
+	}
+	headers := make(map[string]any, len(c.Headers))
+	for k, v := range c.Headers {
+		headers[strings.ToLower(k)] = v
 	}
 	return map[string]any{
-		"server": orEmpty(c.Server), "entitlement": orEmpty(c.Entitlement), "caller": orEmpty(c.Caller),
-		"client": client, "route": ruleRoute(c.Route), "flags": flagVars(c.Flags), "now": timeOrZero(c.Now),
+		"server": orEmpty(c.Server), "entitlement": orEmpty(c.Entitlement),
+		"request": map[string]any{
+			"method": method, "params": orEmpty(params),
+			"caller": orEmpty(c.Caller), "client": client, "headers": headers,
+			"route": ruleRoute(c.Route), "flags": flagVars(c.Flags), "time": timeOrZero(c.Now),
+		},
 	}
+}
+
+// requestOf is the request branch of a set of roots.
+func requestOf(roots map[string]any) map[string]any { return roots["request"].(map[string]any) }
+
+// setParam sets one key of request.params: the arguments after a rule
+// changed them, so the next rule reads them as changed.
+func setParam(roots map[string]any, key string, val any) {
+	req := requestOf(roots)
+	params := req["params"].(map[string]any)
+	next := make(map[string]any, len(params)+1)
+	for k, v := range params {
+		next[k] = v
+	}
+	next[key] = val
+	req["params"] = next
+}
+
+// subject builds the item branch from the item's fields: the ones that are
+// there, the gateway's view of its parameters, and upstream. Nothing is
+// filled in for a field the item does not have.
+func subject(kind ItemKind, resolve func(string) (any, bool)) map[string]any {
+	out := make(map[string]any, len(itemFields[kind])+2)
+	for _, f := range itemFields[kind] {
+		if v, ok := resolve(f); ok {
+			out[f] = v
+		}
+	}
+	for _, f := range []string{"params", "upstream"} {
+		if v, ok := resolve(f); ok {
+			out[f] = v
+		}
+	}
+	return out
 }
 
 // ruleRoute is the route as rules see it. Search is a flag, not a route, so
@@ -90,16 +139,26 @@ type setter func(key string, val any) error
 // evaluation error stops enforce rules; audit rules still run so the log is
 // complete, but never change anything.
 func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter) outcome {
-	return s.runIf(ctx, hook, itemLabel, resolve, vars, set, nil)
+	return s.runIf(ctx, hook, itemLabel, resolve, vars, set, nil, nil)
+}
+
+// runAsking is run for a hook whose rules can ask the user to confirm.
+// answered says whether a question has been confirmed on this request; it
+// returns a reason when the answer no longer fits and the request is to be
+// refused.
+func (s *Set) runAsking(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, answered func(map[string]any) (bool, string), set setter) outcome {
+	return s.runIf(ctx, hook, itemLabel, resolve, vars, set, nil, answered)
 }
 
 // runIf is run over the rules keep accepts; nil accepts every rule.
-func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter, keep func(*compiledRule) bool) outcome {
+func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter, keep func(*compiledRule) bool, answered func(map[string]any) (bool, string)) outcome {
 	var o outcome
 	if s == nil {
 		return o
 	}
-	act := &activation{vars: vars, item: resolve}
+	spec := Hooks[hook]
+	act := &activation{vars: vars, kind: spec.Item, item: resolve}
+	strip := spec.writeRoot()
 	// A panic in the engine's own code while a rule is in play travels up
 	// with that rule attached, so the fault record can show its text.
 	var cur *compiledRule
@@ -218,14 +277,14 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 		var marker map[string]any
 		for i, t := range r.then {
 			switch t.key {
-			case "decision":
+			case KeyDecision:
 				deny = true
-			case "reason":
+			case KeyReason:
 				reason, _ = vals[i].(string)
-			case "result":
+			case KeyConfirm:
 				m, _ := vals[i].(map[string]any)
 				if _, ok := m[ElicitKey]; !ok {
-					hit.Effect, hit.Error = "error", "result must be built with elicit()"
+					hit.Effect, hit.Error = "error", "confirm must be built with elicit()"
 					failed = true
 				}
 				elicit, marker = true, m
@@ -242,7 +301,7 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 			hit.Effect = "set"
 		}
 		for _, t := range r.then {
-			if t.key != "decision" && t.key != "reason" && t.key != "result" {
+			if t.key != KeyDecision && t.key != KeyReason && t.key != KeyConfirm {
 				hit.Fields = append(hit.Fields, t.key)
 			}
 		}
@@ -263,14 +322,14 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 			stopped = true
 			continue
 		}
-		// Patches apply before an elicit stops evaluation, so the challenge
-		// binds the arguments as patched so far.
+		// A rule's changes apply before its question is asked.
 		for i, t := range r.then {
 			switch t.key {
-			case "decision", "reason", "result":
+			case KeyDecision, KeyReason, KeyConfirm:
 				continue
 			}
-			if err := set(t.key, vals[i]); err != nil {
+			// The setter takes the path inside the branch this hook changes.
+			if err := set(strings.TrimPrefix(t.key, strip), vals[i]); err != nil {
 				hit.Effect, hit.Error = "error", fmt.Sprintf("%s: %v", t.key, err)
 				o.hits = append(o.hits, hit)
 				o.denied, o.err, o.reason = true, err, ""
@@ -281,11 +340,26 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 		if stopped {
 			continue
 		}
-		o.hits = append(o.hits, hit)
 		if elicit {
-			o.elicit = marker
-			stopped = true
+			// The question is asked once the rule's own changes are made, so
+			// it covers the arguments as they stand now.
+			done, changed := false, ""
+			if answered != nil {
+				done, changed = answered(marker)
+			}
+			switch {
+			case changed != "":
+				hit.Effect, hit.Reason = "deny", changed
+				o.denied, o.reason = true, changed
+				stopped = true
+			case done:
+				hit.Effect = "confirmed"
+			default:
+				o.elicit = marker
+				stopped = true
+			}
 		}
+		o.hits = append(o.hits, hit)
 	}
 	cur = nil
 	return o

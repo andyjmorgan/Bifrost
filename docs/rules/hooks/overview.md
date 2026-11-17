@@ -1,16 +1,229 @@
 # Hooks and rules overview
 
-Rules control what an MCP client can see and do through Bifrost. Each rule attaches to one hook, which is a point in request handling where the gateway runs rules. A hook defines which variables a rule can read and which fields it can set.
+Rules control what an MCP client can see and do through Bifrost. Each rule attaches to one hook, which is a point in request handling where the gateway runs rules. A rule reads one tree of values and can change one branch of it.
 
-This page explains the rule shape, how rules are evaluated, what rules can read, and the order in which hooks run for each request. For the details of one hook, see the pages listed in [hook reference pages](#hook-reference-pages).
+This page explains the tree, how to read values that may be absent, the rule shape, how rules are evaluated, and the order in which hooks run. For the details of one hook, see its page in the [list of hooks](#hooks).
 
 ## Concepts
 
 - Route: how a client reaches the gateway. `/<slug>/mcp` is the direct route and exposes one entitlement. `/mcp` is the mux route and exposes every entitlement the caller holds. `?search=true` on either route is search mode, which replaces the tool list with search tools.
-- Entitlement: a named, grantable view of one upstream server, with its own slug.
-- Catalog: what the upstream server offers. The gateway fetches and caches it per server. Rules never change the catalog. They shape a view of it for each request.
-- Hook: a point in request handling where rules run, with a fixed set of variables and settable fields.
-- Rule: one CEL condition and the fields it sets when the condition is true.
+- Entitlement: a named, grantable view of one server, with its own slug.
+- Catalog: what the server offers. The gateway fetches and caches it per server. Rules never change the catalog. They shape a view of it for each request.
+- Hook: a point in request handling where rules run. Each hook has its own tree.
+- Rule: one CEL condition and the paths it sets when the condition is true.
+
+## Hooks
+
+A hook is named after where it runs in a request: the MCP method, then `pre` for the request or `post` for the reply. Where a reply can be several things, the name ends with what came back: `progress`, `elicit` or `result`. `server.settings` and `server.session` belong to no method. The name is the exact text of a rule's `hook` value. There are 19 hooks.
+
+Server hooks:
+
+- [server.settings](server-settings.md): switches for what a server exposes
+- [server.session](server-session.md): what the gateway tells the server about the client
+- [server/discover.post](server-discover-post.md): the server's title, description and instructions
+
+Tool hooks:
+
+- [tools/list.post](tools-list-post.md): which tools are visible, and their names, text, annotations and parameters
+- [tools/call.pre](tools-call-pre.md): call decisions, argument changes, timeouts and confirmations
+- [tools/call.post.progress](tools-call-post-progress.md): progress messages during a call
+- [tools/call.post.elicit](tools-call-post-elicit.md): questions the server asks the user during a call
+- [tools/call.post.result](tools-call-post-result.md): the content of tool results
+
+Prompt hooks:
+
+- [prompts/list.post](prompts-list-post.md): which prompts are visible, and their names, text and argument names
+- [prompts/get.pre](prompts-get-pre.md): `prompts/get` decisions, argument changes and confirmations
+- [prompts/get.post.progress](prompts-get-post-progress.md): progress messages during `prompts/get`
+- [prompts/get.post.elicit](prompts-get-post-elicit.md): questions the server asks the user during `prompts/get`
+
+Resource, template and skill hooks:
+
+- [resources/list.post](resources-list-post.md): which resources are visible and readable, and their text and annotations
+- [resources/templates/list.post](resources-templates-list-post.md): which templates are visible and usable, and their text and annotations
+- [resources/read.pre](resources-read-pre.md): read decisions and confirmations
+- [resources/read.post.progress](resources-read-post-progress.md): progress messages during a read
+- [resources/read.post.elicit](resources-read-post-elicit.md): questions the server asks the user during a read
+- [resources/read.post.result](resources-read-post-result.md): the contents of read results and skill files
+- [skills/list.post](skills-list-post.md): which skills and skill folders are visible
+
+## The tree
+
+What a rule can see on a hook is one tree. Hooks differ only in which branches exist and which one branch a rule can change.
+
+| Branch | What it holds | Hooks that have it |
+| --- | --- | --- |
+| `tool`, `prompt`, `resource`, `template`, `skill` | The item the hook is about, as this entitlement presents it. Its fields are MCP's fields | The hooks of that item |
+| `request` | The request: MCP's `method` and `params`, plus what the gateway knows about who sent it and how | Every hook |
+| `response` | The response the client will get: `response.result` | The two `post.result` hooks |
+| `progress` | One progress notification: `progress.params` | The three `post.progress` hooks |
+| `elicitation` | One question the server asks the user: `elicitation.key`, `elicitation.method`, `elicitation.params` | The three `post.elicit` hooks |
+| `server` | The server as this entitlement presents it | Every hook |
+| `entitlement` | The entitlement serving the request: `id`, `slug`, `name` | Every hook |
+| `settings` | The switches a rule sets. Rules cannot read it | `server.settings` |
+| `session` | What the server is told about the client. Rules cannot read it | `server.session` |
+
+Names in the tree are MCP's names wherever MCP has one, spelled as MCP spells them: `arguments`, `_meta`, `clientInfo`, `inputSchema`, `structuredContent`, `contents`. A branch that is a message looks like the message on the wire. A request is `request.method` and `request.params`. A tool result is `response.result.content`, `response.result.structuredContent`, `response.result.isError` and `response.result._meta`.
+
+The gateway's own additions sit beside MCP's part, never inside it: `request.caller`, `request.headers`, `tool.params` and every `upstream`.
+
+### What upstream means
+
+`X` is this entitlement's form of a thing. `X.upstream` is the same thing in the server's own terms:
+
+- `tool.upstream` is the tool as the server declares it
+- `request.upstream` is the request as the server receives it
+- `response.upstream` is the response as the server produced it
+
+Nothing can set `upstream`, and it never changes while rules run. Match `tool.upstream.name` when a rule must keep working after a rename. Match `tool.name` when a rule builds on earlier rules.
+
+After a `tools/list.post` rule renames the tool `foo` to `baz`:
+
+| Path | Value |
+| --- | --- |
+| `tool.name` | `baz`, the name the client sends |
+| `tool.upstream.name` | `foo`, the server's name |
+| `request.params.name` | `baz` |
+| `request.upstream.params.name` | `foo` |
+
+`request.upstream` exists only on the post hooks. On a pre hook nothing has been sent to the server yet, so a rule that reads it is refused when saved.
+
+On the post hooks, `request.params.arguments` holds the arguments under the names the client knows, as the pre rules left them. `request.upstream.params.arguments` holds what the server received, after renames, defaults and pins.
+
+`server.upstream` exists only on `server/discover.post`. `settings` and `session` have no `upstream`.
+
+### Each hook changes one branch
+
+A rule sets a value by naming its path. The `set` paths are the same paths a rule reads: `tool.name`, `request.params.arguments.limit`, `response.result.content`, `settings.prompts`.
+
+| Hooks | The branch a rule can change |
+| --- | --- |
+| The four list hooks | The item: `tool`, `prompt`, `resource` or `template` |
+| `tools/call.pre`, `prompts/get.pre` | `request.params.arguments` |
+| `resources/read.pre`, `skills/list.post` | Nothing. These rules only decide |
+| The `post.result` hooks | `response.result` |
+| The `post.progress` hooks | `progress.params` |
+| The `post.elicit` hooks | `elicitation.params` |
+| `server/discover.post` | `server` |
+| `server.settings` | `settings` |
+| `server.session` | `session` |
+
+`timeout` is the one plain name a rule sets, on `tools/call.pre`. It is the gateway's limit on the forwarded call, not part of the request.
+
+Within its branch, a hook lists exactly which paths are writable. Each hook page has the list.
+
+### What the gateway refuses when a rule is saved
+
+The gateway checks every path in a rule against the hook's tree when the rule is saved. A wrong name never waits for a request to be found.
+
+| Mistake | Message |
+| --- | --- |
+| Reading a name the tree does not have | `tool has no "readOnly"; it has _meta, annotations, description, icons, inputSchema, name, outputSchema, params, title, upstream` |
+| Reading `request.upstream` on a pre hook | `request.upstream is not available on tools/call.pre: nothing has been sent to the server yet; it is there on the post hooks` |
+| Setting a path that exists but is not writable | `tool.upstream.name cannot be changed on tools/list.post; a rule here can set fields of tool` |
+| Setting a path that does not exist | `there is no limit on tools/call.pre; a rule here can set request.params.arguments.*, timeout` |
+| A flag name that is not a flag | `unknown flag "serach"; the flags are cli, search` |
+
+### The request branch
+
+| Path | Type | What it holds |
+| --- | --- | --- |
+| `request.method` | string | The MCP method the hook belongs to, such as `tools/call`. It is `resources/directory/read` on a directory read, and `server/discover` on the three server hooks |
+| `request.params` | map | MCP's part of the request. See the table below |
+| `request.caller` | map | Who sent the request. Each gateway defines these fields |
+| `request.client` | map | `clientInfo` (`name`, `version`, `title`) and `capabilities`, as the client declared them on this request |
+| `request.headers` | map | The HTTP request headers on the gateway's allow-list, by lower-case name. The list starts empty |
+| `request.route` | string | `direct` or `mux` |
+| `request.flags` | map | The request's switches. See [flags](#flags) |
+| `request.time` | timestamp | When the request arrived |
+| `request.upstream` | map | The request in the server's terms: `request.upstream.params`. Only on the post hooks |
+
+`request.params` depends on the method:
+
+| Hooks | `request.params` holds |
+| --- | --- |
+| `tools/call` hooks | `name`, `arguments`, `_meta` |
+| `prompts/get` hooks | `name`, `arguments` with string values, `_meta` |
+| `resources/read` hooks | `uri`, `_meta` |
+| List hooks and server hooks | `_meta` only |
+
+`request.params.arguments` is always a map. It is empty when the client sent no arguments. An argument the client did not send is absent.
+
+On Bifrost, `request.caller` has `userId`, `orgId`, `role` and `type`, and `email`, `name` and `keyName` when the caller has them. A caller with no email has no `email` field, so read it with `request.caller.?email.orValue('')`. `role` is `admin` or `member`. `type` is `oidc` for a signed-in user, `apikey` for an API key, `dev` or `system`. The engine treats the caller as opaque, so another gateway can supply other fields.
+
+`request.client.clientInfo` is self-reported, and absent when the client sent none. Do not use it for security decisions. `request.client.capabilities` is always a map, so `has(request.client.capabilities.elicitation)` never fails.
+
+`request.headers` holds only the headers the operator names in `MCPGW_RULE_HEADERS`. Headers that carry credentials never reach a rule, even when the operator names them: any header whose name contains `auth`, `cookie`, `token`, `secret`, `password`, `credential`, `signature`, `session`, `api-key` or `apikey`. Read a header with `request.headers[?'x-team'].orValue('')`, because a header the client did not send is absent.
+
+### The server and entitlement branches
+
+| Path | Type | What it holds |
+| --- | --- | --- |
+| `server.slug` | string | The entitlement's slug for this server |
+| `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` | string | What the gateway knows about the server. Each is absent when the server did not say |
+| `entitlement.id`, `entitlement.slug`, `entitlement.name` | string | The entitlement serving the request |
+
+## Optional values
+
+Nothing in the tree is filled in. An optional field that the server or client did not send is absent, not empty. A plain read of an absent value fails the rule, and an enforce rule that fails denies.
+
+Read a value that may be absent with CEL's optional forms, and state your own default:
+
+| Form | Returns |
+| --- | --- |
+| `tool.?title` | An optional value. It holds the title when there is one, and is empty otherwise |
+| `tool.?annotations.?destructiveHint` | An optional value. It is empty when any step of the chain is absent |
+| `.orValue(true)` | The value, or the default you give when it is absent |
+| `.hasValue()` | `true` when the value is present |
+| `tool.?_meta[?'team/owner']` | An optional value for a map key, for keys that are not plain names |
+| `response.result.content[?0]` | An optional value for a list index. It is empty when the list is shorter |
+| `{?'mimeType': c.?mimeType}` | A map that has the key only when the optional value is present |
+| `has(tool.title)` | `true` when the last step is present. Every step before it must exist |
+
+`has(a.b.c)` guards only the last step. `has(tool.annotations.destructiveHint)` fails on a tool with no `annotations`. Write `tool.?annotations.?destructiveHint.hasValue()` for a chain.
+
+CEL's `&&` and `||` tolerate an error on one side when the other side decides the result. So `has(request.params.arguments.limit) && request.params.arguments.limit > 100` is false when `limit` is missing, and does not fail.
+
+### Why a plain read of an absent value denies
+
+The gateway fails closed. If an absent value read as `false`, a deny rule would let through exactly the items it knows least about.
+
+This rule is meant to hide destructive tools:
+
+```json
+{
+  "hook": "tools/list.post",
+  "when": "tool.annotations.destructiveHint",
+  "then": { "decision": "'deny'" }
+}
+```
+
+A tool with no annotations might delete anything. MCP says a missing `destructiveHint` means the tool may be destructive. If "missing" read as `false`, this rule would list that tool. Instead the read fails, the rule fails, and the tool is hidden.
+
+Write the rule with its own default, so that it does not depend on a failure:
+
+```json
+{
+  "hook": "tools/list.post",
+  "when": "tool.?annotations.?destructiveHint.orValue(true)",
+  "then": { "decision": "'deny'" }
+}
+```
+
+Both rules list only tools that declare `destructiveHint: false`. The second one records no error.
+
+A rule that reads an optional value with a plain `.` still saves. The gateway records a note against the rule, saying that it denies when the value is absent. A read that the same expression tests with `has()`, or that follows a `.?` step, gets no note. The check follows macro variables: in `response.result.content.exists(c, c.text.contains('x'))` it knows `c` is a content block and notes that `text` may be absent.
+
+A value whose type is known when the rule is saved must fit its path. `settings.tools: 'off'` and `tool.name: 5` are refused then, not when a request arrives.
+
+### Values that are always present
+
+- `request.params.arguments` and `request.client.capabilities` are always maps.
+- Every flag in `request.flags` is always present, as `true` or `false`.
+- A tool that has `annotations` always carries `readOnlyHint` and `idempotentHint`. They are `false` when the server left them out, because the Go SDK types them as plain booleans. `destructiveHint` and `openWorldHint` are absent when the server did not send them.
+- A listed resource or template always has `name`.
+
+An empty string and a size of zero in a catalog read as absent. So does an explicit `null`.
 
 ## Rule shape
 
@@ -23,7 +236,7 @@ A rule is a JSON object:
   "enabled": true,
   "mode": "enforce",
   "hook": "tools/list.post",
-  "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
+  "when": "tool.name.startsWith('delete_') && !(request.caller.email in ['sre-lead@example.com'])",
   "then": { "decision": "'deny'", "reason": "'Deleting is restricted.'" }
 }
 ```
@@ -36,21 +249,28 @@ A rule is a JSON object:
 | `mode` | No | `enforce` or `audit`. Defaults to `enforce` |
 | `hook` | Yes | The hook the rule belongs to |
 | `when` | Yes | A CEL expression that must produce a boolean |
-| `then` | Yes | The fields to set when `when` is true. Each value is a CEL expression |
+| `then` | Yes | The paths to set when `when` is true. Each value is a CEL expression |
+
+Each key of `then` is a path in the hook's tree, or one of three special keys:
+
+| Key | Value | Effect |
+| --- | --- | --- |
+| `decision` | The literal `'deny'` | Deny. What a deny does depends on the hook |
+| `reason` | A string | The reason for the deny. On pre, elicit and result hooks the client receives it. On list and progress hooks it is recorded only |
+| `confirm` | `elicit(...)` | Ask the user to confirm before the request goes ahead. Only on the three pre hooks |
 
 Every value in `then` is a CEL expression, not a literal. A string value therefore needs CEL quotes inside the JSON string: write `"'deny'"`, not `"deny"`. Numbers and booleans need no quotes: `"100"`, `"true"`.
 
 A rule does not compile when:
 
 - the hook does not exist
-- `when` reads a variable the hook does not have, such as `args` in `tools/list.post`
-- `then` sets a field the hook does not have
+- `when` or a `then` value reads a path the hook's tree does not have, such as `request.params.arguments` in `tools/list.post`
+- `then` sets a path that does not exist on the hook, or that a rule there cannot change
 - `when` does not produce a boolean
 - `decision` is anything other than the literal `'deny'`. There is no allow decision
 - a `skills/list.post` rule does not set `decision`
 - a list rule sets `reason` without `decision`. A reason only has an effect beside a deny
-- a pin or default in `tools/list.post` reads a request variable, such as `caller`
-- a `tools/call.pre` rule sets `limit`. Rate limits are not enforced yet, so the gateway refuses the field rather than accept a limit that does nothing
+- a pin or default in `tools/list.post` reads the request, such as `request.caller`
 
 An enabled rule that does not compile fails the whole entitlement closed. The entitlement exposes nothing, and listings report the problem to administrators.
 
@@ -60,51 +280,54 @@ A disabled rule that does not compile is ignored. The gateway reports it as a wa
 
 ## Evaluation
 
-The gateway runs a hook's rules on each item separately, from top to bottom. An item is one tool, prompt, resource, template, skill, request or result.
+The gateway runs a hook's rules on each item separately, from top to bottom. An item is one tool, prompt, resource, template, skill, request, response, progress notification or question.
 
-| Hook kind | Changes that chain | Decisions that stop evaluation |
+| Hook kind | Changes that chain | What stops evaluation |
 | --- | --- | --- |
-| List (`tools/list.post`, `prompts/list.post`, `resources/list.post`, `resources/templates/list.post`) | Every settable field except `decision` and `reason` | `decision: 'deny'` |
-| Filter (`skills/list.post`) | None | `decision: 'deny'` |
-| Call (`tools/call.pre`, `prompts/get.pre`, `resources/read.pre`) | `args.*`, `timeout` | `decision: 'deny'`, `result: elicit(...)` |
-| Elicit (the `post.elicit` hooks) | `message` | `decision: 'deny'` |
-| Result (the `post.result` hooks) | `content`, `structuredContent`, `text` | `decision: 'deny'` |
-| Server (`server.settings`, `server.session`, `server/discover.post`) | Every settable field | None |
+| List (`tools/list.post`, `prompts/list.post`, `resources/list.post`, `resources/templates/list.post`) | Every writable path of the item | `decision: 'deny'` |
+| `skills/list.post` | None | `decision: 'deny'` |
+| Pre (`tools/call.pre`, `prompts/get.pre`, `resources/read.pre`) | `request.params.arguments.*`, and `timeout` on `tools/call.pre` | `decision: 'deny'`, `confirm: elicit(...)` |
+| Elicit (the `post.elicit` hooks) | `elicitation.params.message` | `decision: 'deny'` |
+| Progress (the `post.progress` hooks) | `progress.params.message` | `decision: 'deny'` |
+| Result (the `post.result` hooks) | `response.result.content` and `response.result.structuredContent`, or `response.result.contents` for a read | `decision: 'deny'` |
+| Server (`server.settings`, `server.session`, `server/discover.post`) | Every writable path | Nothing |
 
 ### List hooks hide and change
 
 The four list hooks can both hide an item and change it. They are `tools/list.post`, `prompts/list.post`, `resources/list.post` and `resources/templates/list.post`.
 
 - The rules run from top to bottom, in the order you write them. A rule either hides the item, with `decision: 'deny'` and an optional `reason`, or changes it.
-- Changes chain into hide rules. A hide rule written after a rename sees the new `name`. `upstream.name` is always the server's own name.
+- Changes chain into hide rules. A hide rule written after a rename sees the new `tool.name`. `tool.upstream.name` is always the server's own name.
 - The first deny hides the item and stops the enforce rules. Audit rules still run for the log.
-- A rule that sets both `decision` and other fields hides the item. Its other fields are discarded.
+- A rule that sets both `decision` and other paths hides the item. Its other values are discarded.
 - Writing hide rules first is cheaper, because a hidden item is never changed. It is not required.
 
 `skills/list.post` can only hide. Its rules must set `decision: 'deny'`.
 
-You can only call what you can list. A `tools/call`, `prompts/get` or `resources/read` first runs the matching list hook for the item it names, so a hidden item cannot be called, fetched or read. A `resources/read` of a URI that no listing contains is allowed unless something denies it. It still runs `resources/list.post`, but only its rules that deny, with only `uri` to read. See [resources/list.post](resources-list-post.md#uris-that-no-listing-contains).
+You can only call what you can list. A `tools/call`, `prompts/get` or `resources/read` first runs the matching list hook for the item it names, so a hidden item cannot be called, fetched or read.
+
+A `resources/read` of a URI that no listing contains is allowed unless something denies it. It still runs `resources/list.post`, but only its rules that deny, with only `resource.uri` to read. See [URIs that no listing contains](resources-list-post.md#uris-that-no-listing-contains).
 
 ### Changes chain
 
-A later rule sees the values that earlier rules set. In this example, the second rule matches the name the first rule produced, and reads the original name from `upstream`:
+A later rule sees the values that earlier rules set. In this example, the second rule matches the name the first rule produced, and reads the server's name from `tool.upstream`:
 
 ```json
 [
   {
     "hook": "tools/list.post",
-    "when": "name.startsWith('confluence_')",
-    "then": { "name": "regex.replace(name, '^confluence_', 'wiki_')" }
+    "when": "tool.name.startsWith('confluence_')",
+    "then": { "tool.name": "regex.replace(tool.name, '^confluence_', 'wiki_')" }
   },
   {
     "hook": "tools/list.post",
-    "when": "name.startsWith('wiki_')",
-    "then": { "description": "'[' + upstream.name + '] ' + description" }
+    "when": "tool.name.startsWith('wiki_')",
+    "then": { "tool.description": "'[' + tool.upstream.name + '] ' + tool.?description.orValue('')" }
   }
 ]
 ```
 
-The upstream tool `confluence_search` with the description `Search.` is listed as `wiki_search` with the description `[confluence_search] Search.`.
+The server's tool `confluence_search` with the description `Search.` is listed as `wiki_search` with the description `[confluence_search] Search.`.
 
 A rule evaluates all of its `then` values before it applies any of them. If one value fails, the rule applies nothing.
 
@@ -115,7 +338,7 @@ The first deny stops evaluation for that item, and no later rule can undo it. Be
 ```json
 {
   "hook": "tools/list.post",
-  "when": "name.startsWith('delete_') && !(caller.email in ['sre-lead@example.com'])",
+  "when": "tool.name.startsWith('delete_') && !(request.caller.email in ['sre-lead@example.com'])",
   "then": { "decision": "'deny'" }
 }
 ```
@@ -128,90 +351,58 @@ To give a group of callers different rules, grant them a different entitlement. 
 
 A rule with `"mode": "audit"` runs and records what it would have done, such as `would deny` or `would set`, but never changes the outcome. Audit rules still run after an enforce rule stops evaluation, so the audit record is complete.
 
-On Bifrost the record is the request's audit event. The Audit page shows a count beside each request that a rule applied to, and the event's detail lists every hit: the hook, the rule's line, the server, the item, the effect and the reason. Enforce rules are listed too. An event keeps 100 hits; when a request has more, plain `set` hits are dropped first and the detail says how many.
+On Bifrost the record is the request's audit event. The Audit page shows a count beside each request that a rule applied to. The event's detail lists every hit: the hook, the rule's line, the server, the item, the effect and the reason. Enforce rules are listed too. An event keeps 100 hits. When a request has more, plain `set` hits are dropped first and the detail says how many.
 
 An audit rule that fails to evaluate is recorded as `would error` and changes nothing. Audit rules have their own time allowance, separate from the enforcement budget. When the audit allowance runs out, the remaining audit rules are recorded as `would error`, and the request continues as if they did not exist.
 
 ### Errors fail closed
 
-An enforce rule that fails to evaluate counts as a deny and stops evaluation. Common causes are reading a key that does not exist, a value of the wrong type for its field, a CEL cost limit, and the request time budget.
+An enforce rule that fails to evaluate counts as a deny and stops evaluation. Common causes are:
+
+- a plain read of an absent value
+- a value of the wrong type for its path
+- a CEL cost limit
+- the request time budget
 
 What the failure means depends on the hook:
 
 | Hook kind | Effect of an evaluation error |
 | --- | --- |
 | List | The item is hidden and cannot be called or read. The listing reports the problem to administrators |
-| Filter (`skills/list.post`) | The item is hidden |
-| Call, elicit and result | The request is refused with the hook's generic refusal, such as `The call to <tool> was refused by policy.` |
+| `skills/list.post` | The skill is hidden |
+| Pre, elicit and result | The request is refused with the hook's generic refusal, such as `The call to <tool> was refused by policy.` |
+| Progress | The progress notification is dropped. The request continues |
 | `server.settings` | Every switch is off |
 | `server.session` | The gateway uses its anonymous defaults |
 | `server/discover.post` | Title, description and instructions are empty |
 
 ### Refusals never name rules
 
-A client never sees a rule's name, id or position. A deny without a `reason`, a rule that fails to evaluate, and a patch the gateway does not allow all return the same generic refusal for the hook. The rule's label appears only in the hits and the audit record.
+A client never sees a rule's name, id or position. A deny without a `reason`, a rule that fails to evaluate, and a change the gateway does not allow all return the same generic refusal for the hook. The rule's label appears only in the hits and the audit record.
 
 A `reason` that an administrator writes reaches the client unchanged, so write reasons that are safe to show.
 
-### Guard optional values
-
-Guard optional values with `has()`. CEL's `&&` and `||` tolerate an error on one side when the other side decides the result, so `has(args.limit) && args.limit > 100` is false when `limit` is missing.
-
-## Item model
-
-Each hook works on one kind of item: a tool, prompt, resource, template, skill entry or server. Hooks that handle a request or response add one object for it.
-
-- The item's current fields are top-level variables, such as `name`, `description` and `inputSchema`. They hold the item as earlier rules left it.
-- `upstream` holds the item exactly as the upstream sent it. It never changes. Match `upstream.name` when a rule must keep working after a rename. Match `name` when a rule builds on earlier rules.
-- `args`, `input`, `request` and `result` hold the request or response the hook handles. Rules change them only through the hook's fields, such as `args.limit` or `message`.
-- `server`, `entitlement`, `caller`, `client`, `route`, `flags` and `now` are read-only in every hook.
-- A field the upstream left out reads as an empty value: `''` for text, `{}` for objects and `[]` for lists. `meta` reads `_meta`, or `{}` when there is none.
-
-Anything a rule adds to `meta` reaches the client unless a later rule removes it. Setting a `meta.<key>` field to `null` removes that key.
-
-### Common variables
-
-Every hook can read these variables:
-
-| Variable | Type | Fields and values |
-| --- | --- | --- |
-| `server` | map | `slug`, `name`, `title`, `description`, `instructions`, `protocolVersion`, `url`, as the upstream reported them |
-| `entitlement` | map | `id`, `slug`, `name` of the entitlement serving the request |
-| `caller` | map | The caller's identity, as the gateway supplies it. The engine treats it as opaque, so the fields depend on the gateway. Expect `userId` and `email`; guard any other field with `has()` |
-| `client` | map | `name`, `version`, `capabilities`, from the current request's `_meta`. `capabilities` is always present, and is `{}` when the client sent none |
-| `route` | string | `direct` or `mux`. The two are exclusive |
-| `flags` | struct | The request's switches, read by name: `flags.search`, `flags.cli`. See [Flags](#flags) |
-| `now` | timestamp | The time of the request |
-
-If the gateway supplies a verified OAuth client id on `caller`, use it for security decisions about the client. `client.name` and `client.version` are self-reported.
-
-### Flags
+## Flags
 
 A request reaches the gateway by one route, `direct` or `mux`, and can also carry flags. A flag is a switch on the request that is independent of the route: any flag can be on for either route.
 
 | Flag | Type | True when |
 | --- | --- | --- |
-| `flags.search` | bool | The request is in search mode, set with `?search=true`. The gateway offers its search tools in place of the full listing |
-| `flags.cli` | bool | The request comes from the command line client, through the gateway's API. The gateway sets this flag; a client cannot. The request does not come in through MCP, but the call the gateway sends upstream is the same |
+| `request.flags.search` | bool | The request is in search mode, set with `?search=true`. The gateway offers its search tools in place of the full listing |
+| `request.flags.cli` | bool | The request comes from the command line client, through the gateway's API. The gateway sets this flag and a client cannot. The request does not come in through MCP, but the call the gateway sends to the server is the same |
 
-- Read a flag by name, as `flags.search`. Every flag is always present, and is `false` when the request did not set it, so no `has()` guard is needed.
-- A name that is not a flag is refused when the rule is saved. `flags.serach` does not compile, and neither does `'search' in flags`.
+- Read a flag by name, as `request.flags.search`. Every flag is always present, and is `false` when the request did not set it, so no guard is needed.
+- A name that is not a flag is refused when the rule is saved. `request.flags.serach` does not compile, and neither does `'search' in request.flags`. `request.flags['search']` compiles, because the gateway can check the key.
 - New flags are added to this list over time. A rule that does not mention a flag is not affected by it.
-- `flags.search` is something the client says about its own request. Use it to tailor behaviour. A rule that relaxes a deny because `flags.search` is set is trusting the caller.
-- `flags.cli` says how the request arrived, and the gateway sets it. An MCP client that sends `?cli=true` does not get it, so a rule can rely on it.
-- A `flags.cli` request has no client to show a question to. A rule that asks for confirmation refuses such a request, the server is not told that elicitation is available, and a question the server asks is refused.
+- `request.flags.search` is something the client says about its own request. Use it to tailor behaviour. A rule that relaxes a deny because `request.flags.search` is set is trusting the caller.
+- `request.flags.cli` says how the request arrived, and the gateway sets it. An MCP client that sends `?cli=true` does not get it, so a rule can rely on it.
+- A `request.flags.cli` request has no client to show a question to. A rule that asks for confirmation refuses such a request, the server is not told that elicitation is available, and a question the server asks is refused.
 
 ```
-route == 'mux' && flags.search && !flags.cli
+request.route == 'mux' && request.flags.search && !request.flags.cli
 ```
 
-The command `hookctl hooks` prints, for every hook, the variables its rules can read and the fields they can set, including the flags, as JSON.
-
-`client.capabilities` is safe to branch on, because the client declares it on every request. `has(client.capabilities.elicitation)` never fails to evaluate: it is false when the client sent no capabilities.
-
-Reading any other key that the request did not provide is an evaluation error. If a caller or client might lack a key, guard it with `has()`, for example `has(client.name) && client.name == 'claude-code'`.
-
-### Numbers
+## Numbers
 
 An integral JSON number that fits in a 64-bit integer reaches CEL as an `int`, whatever its spelling: `1`, `1.0` and `1e0` all equal `1`. Other numbers are `double` values.
 
@@ -221,7 +412,7 @@ The gateway compares pins, `enum` values, `minimum` and `maximum` exactly, witho
 
 Rules run on every request over the cached catalog. The gateway does not cache rule output, results or content.
 
-Every upstream request the gateway forwards carries the result of [server.session](server-session.md): the client identity, the capabilities and whether `_meta` is forwarded.
+Every request the gateway forwards to a server carries the result of [server.session](server-session.md): the client identity, the capabilities and whether `_meta` is forwarded.
 
 ### Discover
 
@@ -230,75 +421,75 @@ Every upstream request the gateway forwards carries the result of [server.sessio
 
 The result always carries `supportedVersions: ["2026-07-28"]`, `ttlMs` and `cacheScope: "private"`. Display identity is in `_meta["io.modelcontextprotocol/serverInfo"]`, not in a top-level `serverInfo`. Where at least one server serves skills, `capabilities.extensions["io.modelcontextprotocol/skills"]` is `{"directoryRead": true}`.
 
-On the direct route, the result is the gateway's own `server/discover` answer for that server. On the mux route, instructions appear as slug-labelled excerpts, and the `get_server_instructions` tool returns the full text. Every line of an excerpt starts with `> `, so upstream text cannot start a heading that poses as another server's section. Discover always advertises `listChanged: false`, and never advertises completions or logging.
+On the direct route, the result is the gateway's own `server/discover` answer for that server. On the mux route, instructions appear as slug-labelled excerpts, and the `get_server_instructions` tool returns the full text. Every line of an excerpt starts with `> `, so a server's text cannot start a heading that poses as another server's section. Discover always advertises `listChanged: false`, and never advertises completions or logging.
 
-### tools/list
+### Listing tools
 
-1. `server.settings`. If `tools` is off, the server contributes nothing.
-2. The catalog, from cache or from the upstream.
-3. `tools/list.post` on each upstream tool. Its rules run in the order written, and each one hides the tool or changes it.
+1. `server.settings`. If `settings.tools` is off, the server contributes nothing.
+2. The catalog, from cache or from the server.
+3. `tools/list.post` on each tool. Its rules run in the order written, and each one hides the tool or changes it.
 4. The gateway checks for name collisions. Tools that share a final name are all hidden.
 5. On the mux route, each name gets the prefix `<slug>__`, and the gateway adds its `get_server_instructions` tool.
 
-Output is sorted by slug, then by name. The output is the same, byte for byte, whatever order the upstream sends.
+Output is sorted by slug, then by name. The output is the same, byte for byte, whatever order the server sends.
 
-### tools/call
+### Calling a tool
 
-1. `server.settings`. If `tools` is off, the call fails as an unknown tool.
-2. `tools/list.post` runs over the catalog, and the gateway looks up the exposed name. A missing name fails with `-32602`.
-3. The gateway builds the effective arguments under the exposed names. It rejects values for hidden parameters and for upstream names that were renamed, rejects undefined keys when the upstream schema sets `additionalProperties: false`, fills defaults, applies visible pins, and checks `enum`, `minimum` and `maximum`.
-4. `tools/call.pre` rules run on the effective arguments. Patches chain. The first deny or `elicit()` stops evaluation.
-5. The gateway forces pinned values, checks constraints again, maps names and keys back to the upstream, and removes added parameters. A hidden required parameter that still has no value refuses the call.
-6. The gateway calls the upstream.
-7. If the upstream replies with `input_required`, `tools/call.post.elicit` runs on each input request. `tools/call.post.result` does not run.
-8. If the upstream replies with a result, `tools/call.post.result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
+1. `server.settings`. If `settings.tools` is off, the call fails as an unknown tool.
+2. `tools/list.post` runs over the catalog, and the gateway looks up the name the client sent. A missing name fails with `-32602`.
+3. The gateway builds the effective arguments under the names the client knows. It rejects values for hidden parameters and for the server's names of renamed parameters. It rejects undefined keys when the server's schema sets `additionalProperties: false`. It fills defaults, applies visible pins, and checks `enum`, `minimum` and `maximum`.
+4. `tools/call.pre` rules run on the effective arguments, as `request.params.arguments`. Changes chain. The first deny or `confirm` stops evaluation.
+5. The gateway forces pinned values, checks constraints again, maps names and keys back to the server's, and removes added parameters. A hidden required parameter that still has no value refuses the call.
+6. The gateway calls the server.
+7. If the server replies with `input_required`, `tools/call.post.elicit` runs on each question. `tools/call.post.result` does not run.
+8. If the server replies with a result, `tools/call.post.result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
 
-`tools/call.post.elicit` and `tools/call.post.result` see the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the upstream never ask for input in the same round. See [effective arguments and elicitation](tools-call-pre.md).
+On the post hooks, `request.upstream.params.arguments` holds the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the server never ask for input in the same round. See [effective arguments](tools-call-pre.md#effective-arguments) and [confirmation](tools-call-pre.md#confirmation).
 
 ### Prompts
 
 - `prompts/list`: `server.settings`, the catalog, `prompts/list.post`, then the mux name prefix. Sorted by slug, then by name.
-- `prompts/get`: `server.settings`, name lookup through the `prompts/list.post` rules, `prompts/get.pre` rules, reversal of renames, the upstream call, then `prompts/get.post.elicit` for an `input_required` reply, or the mux prefix on structured URIs in the messages. `prompts/get.post.elicit` sees the arguments as they were sent upstream.
+- `prompts/get`: `server.settings`, name lookup through the `prompts/list.post` rules, `prompts/get.pre` rules, reversal of renames, then the call to the server. An `input_required` reply goes to `prompts/get.post.elicit`. Otherwise, on the mux route, structured URIs in the messages get the slug prefix. There is no result hook for prompts.
 
 ### Resources and templates
 
-One visibility check decides every resource URI. Listings, reads, directory children and content items in a read result all use it, so they cannot disagree.
+One visibility check decides every resource URI. Listings, reads, directory children and the entries of a read result all use it, so they cannot disagree.
 
 A read is allowed unless something denies it. That includes a URI the server never listed: servers hand out URIs they do not list, in tool results and through templates. A URI is hidden and unreadable when any of these is true:
 
 - it is under a denied skill folder
 - a template that covers it is denied, failed in a `resources/templates/list.post` rule, or collided
 - it is listed, but a `resources/list.post` rule denied it or failed on it, or it collided with another resource
-- a `resources/list.post` deny rule denies it. The deny rules run on every read URI, listed or not. For a URI that no listing contains, they have only `uri` to read
+- a `resources/list.post` deny rule denies it. The deny rules run on every read URI, listed or not. For a URI that no listing contains, they have only `resource.uri` to read
 - it is not in canonical form
 
-To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
+To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `resource.uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
 
-The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`; it is forwarded exactly as the client sent it, as its own resource.
+The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`. It is forwarded exactly as the client sent it, as its own resource.
 
 The listings use that check:
 
 - `resources/list`: `server.settings`, then `skills/list.post` to find denied skill folders, then `resources/list.post` and the visibility check, then the mux URI prefix.
 - `resources/templates/list`: `server.settings`, the catalog, `resources/templates/list.post`, then the mux URI prefix.
 
-Resources, templates and skills are sorted by slug, then by URI within each slug. The output is the same, byte for byte, whatever order the upstream sends.
+Resources, templates and skills are sorted by slug, then by URI within each slug. The output is the same, byte for byte, whatever order the server sends.
 
-`resources/read`:
+A `resources/read` runs these steps:
 
-1. `server.settings`. If `resources` is off, the URI is not found.
+1. `server.settings`. If `settings.resources` is off, the URI is not found.
 2. The gateway refuses a URI that is not in canonical form.
-3. On the mux route, the gateway removes the `<slug>+` prefix to find the upstream. A URI without a prefix goes through [fallback resolution](#fallback-resolution).
+3. On the mux route, the gateway removes the `<slug>+` prefix to find the server. A URI without a prefix goes through [fallback resolution](#fallback-resolution).
 4. The visibility check. A URI it rejects is unknown.
 5. `resources/read.pre` rules.
-6. The gateway reads from the upstream, with the URI as the upstream knows it.
-7. `resources/read.post.elicit` for an `input_required` reply. Otherwise, the gateway drops content items with a non-canonical URI or a URI the caller cannot read, and `resources/read.post.result` runs on each remaining content item, text or binary.
+6. The gateway reads from the server, with the URI as the server knows it.
+7. An `input_required` reply goes to `resources/read.post.elicit`. Otherwise, the gateway drops entries with a non-canonical URI or a URI the caller cannot read. Then `resources/read.post.result` runs once over the whole response, with every remaining entry in `response.result.contents`.
 8. On the mux route, structured URIs in the result get the slug prefix.
 
-The result carries the gateway's `ttlMs` and `cacheScope: "private"`, whatever the upstream sent.
+The result carries the gateway's `ttlMs` and `cacheScope: "private"`, whatever the server sent.
 
 ### Directory reads
 
-`resources/directory/read` follows the same steps as `resources/read` up to the upstream call, including the `resources/read.pre` rules. In the reply, the gateway:
+`resources/directory/read` follows the same steps as `resources/read` up to the call to the server, including the `resources/read.pre` rules. In the reply, the gateway:
 
 - drops children that are not under the requested URI, or that are not in canonical form
 - drops children that fail the visibility check, whatever their MIME type, and whether or not they are marked as directories
@@ -307,29 +498,35 @@ The result carries the gateway's `ttlMs` and `cacheScope: "private"`, whatever t
 
 ### Skills
 
-- `skills/list` and `skills/get` follow the `resources` switch in `server.settings`.
+- `skills/list` and `skills/get` follow `settings.resources` in `server.settings`.
 - On the mux route, the gateway removes the prefix from a `skills/get` URI.
 - `skills/list.post` runs on each skill entry. Skills nested under a denied skill are denied with it.
 - The gateway drops manifest entries that are outside the skill's folder.
-- If `resources/read.post.result` rules exist, the gateway builds one rewrite plan per skill and uses it for both the entry and every file read. See [resources/read.post.result](resources-read-post-result.md#skill-files).
+- If `resources/read.post.result` rules exist, the gateway builds one rewrite plan per skill and uses it for both the entry and every file read. See [skill files](resources-read-post-result.md#skill-files).
 - On the mux route, every URI in the entry gets the slug prefix last.
 
 ### Search mode
 
 Search mode uses the same pipeline, so it can never expose a tool that the flat list would hide:
 
-- `tool_search`: the catalog, `tools/list.post` rules, then ranking over the exposed tools. When the `searchRoster` switch is on, ranking also uses the server's title and description after `server/discover.post`.
+- `tool_search`: the catalog, `tools/list.post` rules, then ranking over the exposed tools. When `settings.searchRoster` is on, ranking also uses the server's title and description after `server/discover.post`.
 - `list_tools`: the exposed tools, grouped by slug, with names indented under each slug.
 - `get_tool_definition`: the exposed definition. Names match exactly, including case.
 - `execute_tool`: a `tools/call`, with every step listed above.
 
-Tool names carry the `<slug>__` prefix only on the mux route. On the direct route, search returns the names that route lists, so they work in `execute_tool` and `tools/call` unchanged. Search mode does not change `route`: it stays `direct` or `mux`, and `flags.search` is `true`.
+Tool names carry the `<slug>__` prefix only on the mux route. On the direct route, search returns the names that route lists, so they work in `execute_tool` and `tools/call` unchanged. Search mode does not change `request.route`: it stays `direct` or `mux`, and `request.flags.search` is `true`.
 
 ### Notifications
 
-A server may answer a request with a stream: notifications first, then the result. The gateway relays progress notifications from that stream when the client sent a progress token, the `progress` switch in [server.settings](server-settings.md) is on, and the server speaks MCP 2026-07-28. Each progress event passes through the progress hook for its kind of request, [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) or [resources/read.post.progress](resources-read-post-progress.md), which can drop it or reword its message.
+A server may answer a request with a stream: notifications first, then the result. The gateway relays progress notifications from that stream when all of these are true:
 
-Log messages and every other notification on the stream are dropped; no rule runs on them. The gateway sends no change notifications. Clients stay current through `ttlMs`.
+- the client sent a progress token
+- `settings.progress` in [server.settings](server-settings.md) is on
+- the server speaks MCP 2026-07-28
+
+Each progress notification passes through the progress hook for its kind of request: [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) or [resources/read.post.progress](resources-read-post-progress.md). A rule there can drop it or reword its message.
+
+Log messages and every other notification on the stream are dropped. No rule runs on them. The gateway sends no change notifications. Clients stay current through `ttlMs`.
 
 ## Mux URIs
 
@@ -348,13 +545,13 @@ The gateway adds the prefix to:
 - `contents[].uri` in read results, and children in directory read results
 - `resource_link` and embedded `resource` blocks in tool results and prompt messages
 
-The gateway removes the prefix from read and `skills/get` URIs before it calls the upstream. Rules always see the URI as the upstream knows it, without the prefix.
+The gateway removes the prefix from read and `skills/get` URIs before it calls the server. Rules always see the URI as the server knows it, without the prefix.
 
 Template variables keep working, because the prefix comes before the scheme. Digests do not change, because they cover file bytes, not URIs.
 
 Slugs match `[a-z][a-z0-9]*`. Slugs cannot contain `+`, so a mux URI splits at the first `+`: `docs+git+ssh://x` is slug `docs` and URI `git+ssh://x`. Tool and prompt names split at the first `__`.
 
-A prefix that names a slug the caller does not hold returns `-32602` with `not found: <uri>`, before any upstream call.
+A prefix that names a slug the caller does not hold returns `-32602` with `not found: <uri>`, before any call to a server.
 
 Text inside resources and skills is not rewritten. A URI written in text reaches the client without a prefix. The mux instructions explain the prefix to the model. To rewrite URIs in text, use `slugUris()` in a [resources/read.post.result](resources-read-post-result.md) rule.
 
@@ -380,11 +577,16 @@ A URI that no server claims is not found on the mux, even though the same URI wi
 
 If the catalog of one of the caller's servers is unavailable, the gateway refuses to pick a match and returns `-32602` with `cannot resolve <uri>: <slug> unavailable; retry with a prefixed URI`.
 
-Every fallback resolution reports an event for the gateway to audit and count. The event has the `uri`, the `method`, an `outcome` (`resolved`, `ambiguous`, `not_found` or `unavailable`), the resolved `slug`, the number of `candidates`, and `template`, which is true when the match came through a template.
+Every fallback resolution reports an event for the gateway to audit and count. The event has:
+
+- the `uri` and the `method`
+- an `outcome`: `resolved`, `ambiguous`, `not_found` or `unavailable`
+- the resolved `slug` and the number of `candidates`
+- `template`, which is true when the match came through a template
 
 ### Canonical URIs
 
-The gateway refuses URIs with dot segments (`.` or `..`), empty segments (`//` in the path) or percent-encoded unreserved characters, on every route. The error is `-32602` with `URI is not in canonical form`. Content items and directory children with such URIs are dropped from upstream replies. This stops an upstream from resolving a path differently from the gateway.
+The gateway refuses URIs with a scheme that is not lower case, dot segments (`.` or `..`), empty segments (`//` in the path) or percent-encoded unreserved characters, on every route. A scheme is not case sensitive, so `FILE:///secrets/key` and `file:///secrets/key` name the same thing to a server. Refusing the first keeps one spelling for a rule to match. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
 
 Reserved escapes, such as `%2F`, stay opaque. The gateway does not decode them, so `file:///a%2Fb` is not under `file:///a/`.
 
@@ -392,7 +594,7 @@ Reserved escapes, such as `%2F`, stay opaque. The gateway does not decode them, 
 
 | Limit | Default | Effect when exceeded |
 | --- | --- | --- |
-| Upstream response size | 10 MiB | `-32013`, `upstream result exceeds gateway size limit` |
+| Server response size | 10 MiB | `-32013`, `upstream result exceeds gateway size limit` |
 | Shaped response size | 10 MiB | `-32013`, `result exceeds gateway size limit after shaping`. Applies to every reply and listing after rules run, including `input_required` replies |
 | CEL cost per evaluation | 1,000,000 | An evaluation error, which denies |
 | Nodes per `drop` or `dropSchema` call | 100,000 | An evaluation error, which denies |
@@ -409,6 +611,7 @@ The rule budget counts the time rules spend evaluating, not wall-clock time for 
 
 Rules use CEL with these cel-go extensions:
 
+- optional values: `.?`, `[?key]`, `orValue`, `hasValue` and `optional.of`
 - strings, including `format`, `replace`, `split` and `lowerAscii`
 - lists, including `slice`, `flatten` and `sortBy`
 - sets: `sets.contains`, `sets.intersects` and `sets.equivalent`
@@ -417,9 +620,10 @@ Rules use CEL with these cel-go extensions:
 - bindings: `cel.bind`
 - encoders: `base64.encode` and `base64.decode`
 - math, such as `math.least` and `math.greatest`
-- optional values, such as `frontmatter.?metadata.?tags.orValue([])`
 
-Ordering comparisons (`<`, `<=`, `>`, `>=`) work across `int`, `uint` and `double` values. Equality between literals of different types does not: `1 == 1.0` fails to compile. `route` is a string, `now` is a timestamp, and every other variable is dynamic.
+CEL's list macros are the way to work with lists: `exists`, `all`, `filter` and `map`.
+
+Ordering comparisons (`<`, `<=`, `>`, `>=`) work across `int`, `uint` and `double` values. Equality between literals of different types does not: `1 == 1.0` fails to compile. Every branch of the tree is dynamically typed, so CEL checks the types of tree values when a rule runs.
 
 `slice(0, n)` fails to evaluate when the list has fewer than `n` items. To cap a list, write `size(xs) > n ? xs.slice(0, n) : xs`.
 
@@ -429,74 +633,16 @@ The gateway adds four helpers. Each helper is available only in the hooks listed
 | --- | --- | --- |
 | `drop(value, paths)` | `tools/call.post.result` | Remove fields at dot-separated paths. `*` matches every key of a map or every element of a list |
 | `dropSchema(schema, paths)` | `tools/list.post` | Remove the same properties from a JSON Schema, including from `required`. A trailing `*` removes every property. A path through `$ref` is an evaluation error |
-| `elicit(key, template, values)` and `elicit(key, template, values, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm. Each `{name}` in the template is replaced by `values.name`, quoted and bounded. See [elicitation](tools-call-pre.md#elicitation) |
-| `elicit(key, message)` and `elicit(key, message, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm with fixed text. Returns an error result with `error` as the text when the client cannot elicit |
-| `slugUris(text)` | `resources/read.post.result` | Rewrite this upstream's URIs in text to the mux form. Changes nothing on the direct route |
+| `elicit(key, template, values)` and `elicit(key, template, values, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm. Each `{name}` in the template is replaced by `values.name`, quoted and bounded. See [confirmation](tools-call-pre.md#confirmation) |
+| `elicit(key, message)` and `elicit(key, message, error)` | `tools/call.pre`, `prompts/get.pre`, `resources/read.pre` | Ask the user to confirm with fixed text. Returns an error with `error` as the text when the client cannot elicit |
+| `slugUris(text)` | `resources/read.post.result` | Rewrite this server's URIs in text to the mux form. Changes nothing on the direct route |
 
 All helpers are pure: they have no side effects and give the same answer for the same input.
 
 These are not available in CEL: rate limits, state across requests, external lookups, and rules across a whole list, such as a maximum number of tools.
 
-## Hook reference pages
+## Print the tree of a hook
 
-A hook is named after where it runs in a request: the MCP method, then `pre` for the request or `post` for the reply. Where a reply can be several things, the name ends with what came back: `progress`, `elicit` or `result`. `server.settings` and `server.session` belong to no method. The name is the exact text of a rule's `hook` value. There are 19 hooks.
+The command `hookctl hooks` prints every hook as JSON: its `tree`, the paths its rules can set (`sets`), whether its rules can deny (`denies`) and confirm (`confirms`), and its helpers. It also prints the flags. `hookctl hooks tools/call.pre` prints one hook.
 
-Server hooks:
-
-- [server.session](server-session.md): what the gateway tells the upstream about itself
-- [server.settings](server-settings.md): switches for what a server exposes
-- [server/discover.post](server-discover-post.md): server title, description and instructions
-
-Tool hooks:
-
-- [tools/list.post](tools-list-post.md): which tools are visible, and their names, text, annotations and parameters
-- [tools/call.pre](tools-call-pre.md): call decisions, argument patches and confirmations
-- [tools/call.post.progress](tools-call-post-progress.md): progress events during a call
-- [tools/call.post.elicit](tools-call-post-elicit.md): upstream requests for user input during a call
-- [tools/call.post.result](tools-call-post-result.md): the shape of tool results
-
-Prompt hooks:
-
-- [prompts/list.post](prompts-list-post.md): which prompts are visible, and their names, text and arguments
-- [prompts/get.pre](prompts-get-pre.md): `prompts/get` decisions, argument patches and confirmations
-- [prompts/get.post.progress](prompts-get-post-progress.md): progress events during `prompts/get`
-- [prompts/get.post.elicit](prompts-get-post-elicit.md): upstream requests for user input during `prompts/get`
-
-Resource, template and skill hooks:
-
-- [resources/list.post](resources-list-post.md): which resources are visible and readable, and their text and annotations
-- [resources/templates/list.post](resources-templates-list-post.md): which templates are visible and usable, and their text and annotations
-- [resources/read.pre](resources-read-pre.md): read decisions and confirmations
-- [resources/read.post.progress](resources-read-post-progress.md): progress events during a read
-- [resources/read.post.elicit](resources-read-post-elicit.md): upstream requests for user input during a read
-- [resources/read.post.result](resources-read-post-result.md): the content of read results and skill files
-- [skills/list.post](skills-list-post.md): which skills and skill folders are visible
-
-## Earlier names
-
-Hooks used to be named after a surface and a phase. This table maps each earlier name to the name now.
-
-| Earlier name | Name now |
-| --- | --- |
-| `server/config` | `server.settings` |
-| `server/connect` | `server.session` |
-| `server/modify` | `server/discover.post` |
-| `tools/filter` and `tools/modify` | `tools/list.post` (one hook) |
-| `tools/call` | `tools/call.pre` |
-| `tools/progress` | `tools/call.post.progress` |
-| `tools/elicit` | `tools/call.post.elicit` |
-| `tools/result` | `tools/call.post.result` |
-| `prompts/filter` and `prompts/modify` | `prompts/list.post` (one hook) |
-| `prompts/get` | `prompts/get.pre` |
-| `prompts/progress` | `prompts/get.post.progress` |
-| `prompts/elicit` | `prompts/get.post.elicit` |
-| `resources/filter` and `resources/modify` | `resources/list.post` (one hook) |
-| `templates/filter` and `templates/modify` | `resources/templates/list.post` (one hook) |
-| `resources/read` | `resources/read.pre` |
-| `resources/progress` | `resources/read.post.progress` |
-| `resources/elicit` | `resources/read.post.elicit` |
-| `resources/result` | `resources/read.post.result` |
-| `skills/filter` | `skills/list.post` |
-| `tools/input`, `prompts/input`, `resources/input` | The names before `tools/elicit`, `prompts/elicit` and `resources/elicit`. For example, `tools/input` became `tools/elicit`, which is now `tools/call.post.elicit` |
-
-Where a filter hook and a modify hook became one list hook, the rules now run in the order written. Before, every filter rule ran first, then every modify rule. See [list hooks hide and change](#list-hooks-hide-and-change).
+In the tree, `optional` marks a value that may be absent, `writable` marks a value a rule can set, and `writeOnly` marks a value a rule sets but cannot read.

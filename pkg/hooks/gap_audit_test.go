@@ -59,7 +59,7 @@ func TestGapAuditBudgetSpentByRulesThatSucceed(t *testing.T) {
 			t.Fatalf("want the budget refusal, got error %+v result %s", o.Error, o.Result)
 		}
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, Limits: Limits{Budget: time.Nanosecond}}
+	e := &Engine{Limits: Limits{Budget: time.Nanosecond}}
 	server := func(rules ...Rule) Request {
 		s := &Server{Slug: "a", Rules: codexSet(t, rules...), Catalog: Catalog{
 			Tools:     []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}},
@@ -72,7 +72,7 @@ func TestGapAuditBudgetSpentByRulesThatSucceed(t *testing.T) {
 	noop := map[string]string{"decision": "'deny'"}
 
 	t.Run("control: with time to spare the same requests forward", func(t *testing.T) {
-		roomy := &Engine{Signer: Signer{Key: []byte("k")}, Limits: Limits{Budget: time.Minute}}
+		roomy := &Engine{Limits: Limits{Budget: time.Minute}}
 		r := server(Rule{Hook: "tools/call.pre", When: "false", Then: noop}, Rule{Hook: "prompts/get.pre", When: "false", Then: noop}, Rule{Hook: "resources/read.pre", When: "false", Then: noop})
 		if o := roomy.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}); o.Forward == nil {
 			t.Fatalf("tool call did not forward: %+v", o)
@@ -89,7 +89,7 @@ func TestGapAuditBudgetSpentByRulesThatSucceed(t *testing.T) {
 		spent(t, e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}))
 	})
 	t.Run("server.session rules on a tool call", func(t *testing.T) {
-		r := server(Rule{Hook: "server.session", When: "false", Then: map[string]string{"meta": "true"}})
+		r := server(Rule{Hook: "server.session", When: "false", Then: map[string]string{"session._meta": "true"}})
 		spent(t, e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}))
 	})
 	t.Run("prompts/get rules", func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestGapAuditBudgetSpentByRulesThatSucceed(t *testing.T) {
 		spent(t, e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "docs://a"}))
 	})
 	t.Run("server.session rules on a read", func(t *testing.T) {
-		r := server(Rule{Hook: "server.session", When: "false", Then: map[string]string{"meta": "true"}})
+		r := server(Rule{Hook: "server.session", When: "false", Then: map[string]string{"session._meta": "true"}})
 		spent(t, e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "docs://a"}))
 	})
 }

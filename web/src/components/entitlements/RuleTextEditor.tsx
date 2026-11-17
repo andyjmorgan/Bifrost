@@ -12,8 +12,8 @@ import { cn } from '../../lib'
 
 // The editor for one hook's rules, written as text:
 //
-//   when name == 'echo'          deny "Not today."
-//   when !has(args.limit)        set args.limit = 50
+//   when tool.name == 'echo'                         deny "Not today."
+//   when !has(request.params.arguments.limit)        set request.params.arguments.limit = 50
 //
 // The words when, audit, deny, confirm and set are the format's own; everything else on a line is
 // CEL.
@@ -75,10 +75,10 @@ function markedLines(state: EditorState, problems: number[], warnings: number[])
 }
 
 const RULE_START = /^\s*(?:audit\s+)?when(?:\s|$)/
-const NAMED = /(?<![\w.])(?:upstream\.)?name\s*==\s*(['"])([^'"]+)\1/
+const NAMED = /(?<![\w.])(?:(?:tool|prompt)\.(?:upstream\.)?|request\.params\.)name\s*==\s*(['"])([^'"]+)\1/
 const ENDS_OPEN = /(?:&&|\|\||[=!<>+\-*/%,([{?:]|\bin|\bwhen)$/
 
-/** The item the rule around a line names in its condition: `flip` for when name == 'flip'. */
+/** The item the rule around a line names in its condition: `flip` for when tool.name == 'flip'. */
 function namedItem(state: EditorState, lineNo: number): string | undefined {
   for (let n = lineNo; n >= 1; n--) {
     const text = state.doc.line(n).text

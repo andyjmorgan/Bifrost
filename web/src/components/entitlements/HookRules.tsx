@@ -353,7 +353,7 @@ function HookHelp({ hook, title, open, onClose, onAdd }: { hook: HookInfo; title
               <>
                 <dt className="font-mono text-accent">confirm</dt>
                 <dd className="text-muted-foreground">
-                  asks the user first and goes ahead once they agree. Values in braces are filled in: <span className="font-mono">confirm "Delete {'{args.id}'}?"</span>
+                  asks the user first and goes ahead once they agree. Values in braces are filled in: <span className="font-mono">confirm "Delete {'{tool.name}'}?"</span>
                 </dd>
               </>
             )}
@@ -362,8 +362,8 @@ function HookHelp({ hook, title, open, onClose, onAdd }: { hook: HookInfo; title
                 <dt className="font-mono text-accent">set</dt>
                 <dd className="font-mono text-muted-foreground">
                   {hook.sets.map((s) => (
-                    <span key={s.field} title={s.type} className="mr-3 inline-block">
-                      {s.field}
+                    <span key={s.path} title={s.type} className="mr-3 inline-block">
+                      {s.path}
                     </span>
                   ))}
                 </dd>
@@ -371,11 +371,16 @@ function HookHelp({ hook, title, open, onClose, onAdd }: { hook: HookInfo; title
             )}
             <dt className="font-mono text-accent">read</dt>
             <dd className="font-mono text-muted-foreground">
-              {hook.reads.map((v) => (
-                <span key={v.name} title={v.doc} className="mr-3 inline-block">
-                  {v.name}
-                </span>
-              ))}
+              {Object.entries(hook.tree.keys ?? {})
+                .filter(([, n]) => !n.writeOnly)
+                .map(([name, n]) => (
+                  <span key={name} title={n.doc} className="mr-3 inline-block">
+                    {name}
+                  </span>
+                ))}
+              <span className="mt-1 block font-sans">
+                Type a name and a dot to see what is under it. A value that may be absent is read as <span className="font-mono">tool.?title.orValue('')</span>.
+              </span>
             </dd>
             <dt className="font-mono text-accent">audit</dt>
             <dd className="text-muted-foreground">before when, makes a rule record what it would do and change nothing. A line that starts with # is a comment.</dd>

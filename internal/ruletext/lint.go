@@ -27,7 +27,7 @@ func Lint(text map[string]string, catalog map[string][]string) []Problem {
 		s := &all[i]
 		for _, p := range parsedBy[s.Name] {
 			for _, a := range p.acts {
-				if v, ok := unquote(a.expr); ok && a.kind == "set" && a.path == "name" {
+				if v, ok := unquote(a.expr); ok && a.kind == "set" && a.path == s.Item+".name" {
 					if renamed[s.Item] == nil {
 						renamed[s.Item] = map[string]bool{}
 					}
@@ -66,6 +66,11 @@ func Lint(text map[string]string, catalog map[string][]string) []Problem {
 			}
 		}
 	}
+	// What the engine noted about rules that compile: an optional value read
+	// with no guard, which denies when the value is absent.
+	if _, _, probs, notes := compile(text); len(probs) == 0 {
+		out = append(out, notes...)
+	}
 	return sorted(out)
 }
 
@@ -84,13 +89,13 @@ type nameRef struct {
 }
 
 var (
-	nameEq = regexp.MustCompile(`(^|[^\w.])(upstream\.)?name\s*[=!]=\s*(?:'([^'\\]*)'|"([^"\\]*)")`)
-	nameIn = regexp.MustCompile(`(^|[^\w.])(upstream\.)?name\s+in\s*\[([^\]]*)\]`)
+	nameEq = regexp.MustCompile(`(^|[^\w.])(?:tool|prompt)\.(upstream\.)?name\s*[=!]=\s*(?:'([^'\\]*)'|"([^"\\]*)")`)
+	nameIn = regexp.MustCompile(`(^|[^\w.])(?:tool|prompt)\.(upstream\.)?name\s+in\s*\[([^\]]*)\]`)
 	strLit = regexp.MustCompile(`'([^'\\]*)'|"([^"\\]*)"`)
 )
 
 // nameRefs finds the names a condition compares the item's name with:
-// name == 'x', upstream.name != "x" and name in ['x', 'y'].
+// tool.name == 'x', tool.upstream.name != "x" and prompt.name in ['x', 'y'].
 func nameRefs(when string) []nameRef {
 	var out []nameRef
 	for _, m := range nameEq.FindAllStringSubmatch(when, -1) {

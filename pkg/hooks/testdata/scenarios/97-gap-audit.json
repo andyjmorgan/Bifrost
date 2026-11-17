@@ -10,17 +10,17 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'echo'",
+      "when": "tool.upstream.name == 'echo'",
       "then": {
-       "name": "'say'",
-       "description": "'Says it'"
+       "tool.name": "'say'",
+       "tool.description": "'Says it'"
       }
      },
      {
       "hook": "tools/call.post.result",
-      "when": "name == 'say'",
+      "when": "tool.name == 'say'",
       "then": {
-       "content": "[{'type': 'text', 'text': 'matched the exposed name'}]"
+       "response.result.content": "[{'type': 'text', 'text': 'matched the exposed name'}]"
       }
      }
     ],
@@ -78,14 +78,14 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "description": "'Exposed text'"
+       "tool.description": "'Exposed text'"
       }
      },
      {
       "hook": "tools/call.post.result",
       "when": "true",
       "then": {
-       "content": "[{'type': 'text', 'text': description}]"
+       "response.result.content": "[{'type': 'text', 'text': tool.description}]"
       }
      }
     ],
@@ -137,16 +137,16 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'echo'",
+      "when": "tool.upstream.name == 'echo'",
       "then": {
-       "name": "'say'"
+       "tool.name": "'say'"
       }
      },
      {
       "hook": "tools/call.post.progress",
-      "when": "name == 'say'",
+      "when": "tool.name == 'say'",
       "then": {
-       "message": "'working'"
+       "progress.params.message": "'working'"
       }
      }
     ],
@@ -221,16 +221,16 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'create'",
+      "when": "tool.upstream.name == 'create'",
       "then": {
-       "name": "'new_issue'"
+       "tool.name": "'new_issue'"
       }
      },
      {
       "hook": "tools/call.post.elicit",
-      "when": "name == 'new_issue'",
+      "when": "tool.name == 'new_issue'",
       "then": {
-       "message": "'Reworded'"
+       "elicitation.params.message": "'Reworded'"
       }
      }
     ],
@@ -307,7 +307,7 @@
       "mode": "audit",
       "when": "true",
       "then": {
-       "args.n": "args.n / 0"
+       "request.params.arguments.n": "request.params.arguments.n / 0"
       }
      }
     ],
@@ -378,7 +378,7 @@
      {
       "hook": "resources/list.post",
       "mode": "audit",
-      "when": "uri == 'docs://secret'",
+      "when": "resource.uri == 'docs://secret'",
       "then": {
        "decision": "'deny'"
       }
@@ -459,7 +459,7 @@
       "mode": "audit",
       "when": "true",
       "then": {
-       "tools": "false"
+       "settings.tools": "false"
       }
      }
     ],
@@ -524,7 +524,7 @@
       "mode": "audit",
       "when": "true",
       "then": {
-       "result": "elicit('go', 'Continue?')"
+       "confirm": "elicit('go', 'Continue?')"
       }
      }
     ],
@@ -956,14 +956,14 @@
     "rules": [
      {
       "hook": "prompts/get.post.progress",
-      "when": "progress.message.contains('/srv')",
+      "when": "progress.params.message.contains('/srv')",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/read.post.progress",
-      "when": "progress.message.contains('/srv')",
+      "when": "progress.params.message.contains('/srv')",
       "then": {
        "decision": "'deny'"
       }
@@ -1157,9 +1157,9 @@
     "rules": [
      {
       "hook": "prompts/list.post",
-      "when": "name == 'greet'",
+      "when": "prompt.name == 'greet'",
       "then": {
-       "name": "''"
+       "prompt.name": "''"
       }
      }
     ],
@@ -1216,9 +1216,9 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name == 't'",
+      "when": "tool.name == 't'",
       "then": {
-       "name": "''"
+       "tool.name": "''"
       }
      }
     ],
@@ -1284,7 +1284,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.q.add": "{'type': 'string'}"
+       "tool.params.q.add": "{'type': 'string'}"
       }
      }
     ],
@@ -1344,7 +1344,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "route == 'mux' && name == 'admin'",
+      "when": "request.route == 'mux' && tool.name == 'admin'",
       "then": {
        "decision": "'deny'"
       }
@@ -1416,7 +1416,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "flags.search && name == 'zebra_admin'",
+      "when": "request.flags.search && tool.name == 'zebra_admin'",
       "then": {
        "decision": "'deny'"
       }
@@ -1508,7 +1508,9 @@
    "userId": "u1"
   },
   "client": {
-   "name": "bifrost-cli",
+   "clientInfo": {
+    "name": "bifrost-cli"
+   },
    "capabilities": {
     "elicitation": {}
    }
@@ -1519,9 +1521,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Delete?')"
+       "confirm": "elicit('ok', 'Delete?')"
       }
      }
     ],
@@ -1583,7 +1585,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.mode.pin": "flags.cli ? 'cli' : 'mcp'"
+       "tool.params.mode.pin": "request.flags.cli ? 'cli' : 'mcp'"
       }
      }
     ],
@@ -1642,7 +1644,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "entitlement.name == 'Readers' && name == 'write'",
+      "when": "entitlement.name == 'Readers' && tool.name == 'write'",
       "then": {
        "decision": "'deny'"
       }
@@ -1692,9 +1694,9 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'docs://a'",
+      "when": "resource.uri == 'docs://a'",
       "then": {
-       "title": "'Doc A'"
+       "resource.title": "'Doc A'"
       }
      }
     ],
@@ -1822,23 +1824,23 @@
     "rules": [
      {
       "hook": "prompts/list.post",
-      "when": "name == 'greet'",
+      "when": "prompt.name == 'greet'",
       "then": {
-       "name": "'hello'"
+       "prompt.name": "'hello'"
       }
      },
      {
       "hook": "prompts/get.post.progress",
-      "when": "name == 'hello'",
+      "when": "prompt.name == 'hello'",
       "then": {
-       "message": "'working'"
+       "progress.params.message": "'working'"
       }
      },
      {
       "hook": "prompts/get.post.elicit",
-      "when": "name == 'hello'",
+      "when": "prompt.name == 'hello'",
       "then": {
-       "message": "'Reworded'"
+       "elicitation.params.message": "'Reworded'"
       }
      }
     ],
@@ -1952,16 +1954,16 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'docs://a'",
+      "when": "resource.uri == 'docs://a'",
       "then": {
-       "title": "'Public'"
+       "resource.title": "'Public'"
       }
      },
      {
       "hook": "resources/read.post.result",
-      "when": "title == 'Public'",
+      "when": "resource.title == 'Public'",
       "then": {
-       "text": "'shaped'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': 'shaped'} : c)"
       }
      }
     ],
@@ -2012,7 +2014,7 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "meta": "true"
+       "session._meta": "true"
       }
      }
     ],
@@ -2245,7 +2247,7 @@
     "rules": [
      {
       "hook": "prompts/list.post",
-      "when": "has(meta.hidden) && meta.hidden == true",
+      "when": "prompt.?_meta.?hidden.orValue(false) == true",
       "then": {
        "decision": "'deny'"
       }
@@ -2254,7 +2256,7 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "meta.secret": "null"
+       "prompt._meta.secret": "null"
       }
      }
     ],
@@ -2302,7 +2304,7 @@
   ]
  },
  {
-  "name": "GA-33 a confirmation rule without a has(input.x) guard: the retry is refused with a clear error, not looped",
+  "name": "GA-33 a confirmation rule needs no guard: the engine knows the question is answered and forwards the retry",
   "ids": [
    "GA-33"
   ],
@@ -2322,7 +2324,7 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "result": "elicit('ok', 'Sure?')"
+       "confirm": "elicit('ok', 'Sure?')"
       }
      }
     ],
@@ -2389,14 +2391,12 @@
     },
     "expect": [
      {
-      "path": "outcome.forward",
-      "exists": false
+      "path": "outcome.forward.params.name",
+      "equals": "t"
      },
      {
-      "path": "client",
-      "hasText": [
-       "already answered"
-      ]
+      "path": "hits[0].effect",
+      "equals": "confirmed"
      }
     ]
    }
@@ -2422,16 +2422,16 @@
     "rules": [
      {
       "hook": "prompts/get.pre",
-      "when": "name == 'secret'",
+      "when": "prompt.name == 'secret'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "prompts/get.post.elicit",
-      "when": "name == 'greet'",
+      "when": "prompt.name == 'greet'",
       "then": {
-       "message": "'Reworded'"
+       "elicitation.params.message": "'Reworded'"
       }
      }
     ],
@@ -2532,9 +2532,9 @@
     "rules": [
      {
       "hook": "resources/read.post.elicit",
-      "when": "name == 'other'",
+      "when": "resource.name == 'other'",
       "then": {
-       "message": "'x'"
+       "elicitation.params.message": "'x'"
       }
      }
     ],
@@ -2604,33 +2604,33 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'search_issues'",
+      "when": "tool.upstream.name == 'search_issues'",
       "then": {
-       "name": "'find'",
-       "params.q.name": "'query'",
-       "params.tenant.hide": "true",
-       "params.tenant.pin": "'acme'"
+       "tool.name": "'find'",
+       "tool.params.q.name": "'query'",
+       "tool.params.tenant.hide": "true",
+       "tool.params.tenant.pin": "'acme'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "args.query == 'blocked'",
+      "when": "request.params.arguments.query == 'blocked'",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "tools/call.post.result",
-      "when": "has(result.structuredContent)",
+      "when": "has(response.result.structuredContent)",
       "then": {
-       "structuredContent": "drop(result.structuredContent, ['secret'])"
+       "response.result.structuredContent": "drop(response.result.structuredContent, ['secret'])"
       }
      },
      {
       "hook": "tools/call.post.progress",
       "when": "true",
       "then": {
-       "message": "'step ' + string(progress.progress)"
+       "progress.params.message": "'step ' + string(progress.params.progress)"
       }
      }
     ],
@@ -2814,9 +2814,9 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "result.text.contains(args.missing)",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text.contains(request.params._meta.missing)))",
       "then": {
-       "text": "'x'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) && (c.text.contains(request.params._meta.missing)) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': 'x'} : c)"
       }
      }
     ],

@@ -119,7 +119,6 @@ func buildPrepared(t *mcp.Tool) *preparedTool {
 		base["icons"] = schemaValue(t.Icons)
 	}
 	p := &preparedTool{base: base, required: map[string]bool{}}
-	p.derived = toolDerived(base)
 	schema, _ := base["inputSchema"].(map[string]any)
 	p.props, _ = schema["properties"].(map[string]any)
 	for k := range p.props {
@@ -152,57 +151,6 @@ func buildPrepared(t *mcp.Tool) *preparedTool {
 		}
 	}
 	return p
-}
-
-// toolDerived adds the rule-facing views of a tool definition: annotations
-// with the spec defaults filled in, annotationsRaw as sent, meta for _meta,
-// and empty values for missing fields.
-func toolDerived(m map[string]any) map[string]any {
-	out := make(map[string]any, len(m)+4)
-	for k, v := range m {
-		out[k] = v
-	}
-	raw, _ := m["annotations"].(map[string]any)
-	if raw == nil {
-		raw = map[string]any{}
-	}
-	ann := map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true, "title": ""}
-	for k, v := range raw {
-		ann[k] = v
-	}
-	out["annotations"] = ann
-	out["annotationsRaw"] = raw
-	if meta, ok := m["_meta"].(map[string]any); ok {
-		out["meta"] = meta
-	} else {
-		out["meta"] = map[string]any{}
-	}
-	for _, k := range []string{"title", "description", "name"} {
-		if _, ok := out[k]; !ok {
-			out[k] = ""
-		}
-	}
-	for _, k := range []string{"inputSchema", "outputSchema"} {
-		if _, ok := out[k]; !ok {
-			out[k] = map[string]any{}
-		}
-	}
-	if _, ok := out["icons"]; !ok {
-		out["icons"] = []any{}
-	}
-	return out
-}
-
-func defaultFor(name string) any {
-	switch name {
-	case "title", "description", "name", "uri", "uriTemplate", "mimeType":
-		return ""
-	case "icons", "arguments", "resources":
-		return []any{}
-	case "size":
-		return int64(0)
-	}
-	return map[string]any{}
 }
 
 // ---- parameters -----------------------------------------------------------------------
@@ -363,52 +311,33 @@ func (ts *toolState) paramsVar() map[string]any {
 	return out
 }
 
-var toolFieldSet = func() map[string]bool {
-	m := map[string]bool{}
-	for _, f := range ItemFields[KindTool] {
-		m[f] = true
-	}
-	return m
-}()
-
-// resolve answers item-field lookups for tool hooks, memoized until the
-// next change.
+// resolve returns one field of the tool as rules have left it, and whether
+// it is there. params and inputSchema are worked out from the parameters and
+// kept until the next change. Nothing is filled in for a field the tool
+// does not have.
 func (ts *toolState) resolve(name string) (any, bool) {
-	if name == "upstream" {
-		return ts.pt.derived, true
-	}
-	if !toolFieldSet[name] {
-		return nil, false
-	}
-	if v, ok := ts.memo[name]; ok {
+	switch name {
+	case "upstream":
+		return ts.pt.base, true
+	case "params", "inputSchema":
+		if v, ok := ts.memo[name]; ok {
+			return v, true
+		}
+		var v any = ts.paramsVar()
+		if name == "inputSchema" {
+			v = ts.inputSchema()
+		}
+		if isNil(v) {
+			return nil, false // a tool the server sent with no input schema
+		}
+		if ts.memo == nil {
+			ts.memo = map[string]any{}
+		}
+		ts.memo[name] = v
 		return v, true
 	}
-	var v any
-	switch name {
-	case "params":
-		v = ts.paramsVar()
-	case "inputSchema":
-		v = ts.inputSchema()
-	case "annotations", "annotationsRaw", "meta":
-		if !ts.view.Changed() {
-			v = ts.pt.derived[name]
-		} else {
-			v = toolDerived(ts.view.Materialize())[name]
-		}
-	default:
-		if !ts.view.Changed() {
-			v = ts.pt.derived[name]
-		} else if x, ok := ts.view.Get(name); ok {
-			v = x
-		} else {
-			v = defaultFor(name)
-		}
-	}
-	if ts.memo == nil {
-		ts.memo = map[string]any{}
-	}
-	ts.memo[name] = v
-	return v, true
+	v, ok := ts.view.Get(name)
+	return v, ok && !isNil(v)
 }
 
 func toStrings(v any) []string {
@@ -482,22 +411,19 @@ func (ts *toolState) setParam(name, op string, val any) error {
 	return nil
 }
 
-// set applies one tools/list.post field.
+// set changes one path inside the tool on tools/list.post.
 func (ts *toolState) set(key string, val any) error {
 	ts.changed()
 	parts := splitPath(key)
 	switch parts[0] {
 	case "params":
 		return ts.setParam(parts[1], parts[2], val)
-	case "meta":
-		path := append([]string{"_meta"}, parts[1:]...)
-		if val == nil {
-			ts.view.Delete(path)
-		} else {
-			ts.view.Set(path, val)
-		}
 	default:
-		ts.view.Set(parts, val)
+		if val == nil {
+			ts.view.Delete(parts)
+		} else {
+			ts.view.Set(parts, val)
+		}
 	}
 	return nil
 }
@@ -719,7 +645,7 @@ func (tr *ToolTransform) patchable(key string) error {
 		return nil
 	}
 	if tr.upKeys[key] {
-		return fmt.Errorf("args.%s names an upstream parameter that is exposed under another name; patch it by its exposed name", key)
+		return fmt.Errorf("request.params.arguments.%s names a parameter of the server's that is exposed under another name; set it by its exposed name", key)
 	}
 	return nil
 }
@@ -821,7 +747,7 @@ func (s *Set) listTools(ctx context.Context, cat []*mcp.Tool, c Context, workers
 	}
 	filledByCall := s.callFilled("tools/call.pre")
 	results := make([]res, len(cat))
-	vars := c.vars()
+	vars := c.roots("tools/list", nil)
 	prof := s.profile()
 	parallel(len(cat), workers, func(i int) {
 		t := cat[i]
@@ -898,7 +824,7 @@ func (s *Set) renames() bool {
 			continue
 		}
 		for _, t := range r.then {
-			if t.key == "name" {
+			if t.key == "tool.name" {
 				return true
 			}
 		}
@@ -918,8 +844,8 @@ func (s *Set) callFilled(hook string) map[string]bool {
 			continue
 		}
 		for _, t := range r.then {
-			if p := splitPath(t.key); len(p) == 2 && p[0] == "args" {
-				out[p[1]] = true
+			if p := splitPath(t.key); len(p) == 4 && p[0] == "request" && p[1] == "params" && p[2] == "arguments" {
+				out[p[3]] = true
 			}
 		}
 	}

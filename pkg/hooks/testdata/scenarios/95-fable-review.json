@@ -10,9 +10,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Delete it?')"
+       "confirm": "elicit('ok','Delete it?')"
       }
      }
     ],
@@ -105,9 +105,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Delete it?')"
+       "confirm": "elicit('ok','Delete it?')"
       }
      }
     ],
@@ -200,9 +200,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Delete it?')"
+       "confirm": "elicit('ok','Delete it?')"
       }
      }
     ],
@@ -303,7 +303,7 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      }
     ],
@@ -421,15 +421,15 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      },
      {
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tasks": "true",
-       "progress": "true"
+       "settings.tasks": "true",
+       "settings.progress": "true"
       }
      }
     ],
@@ -516,15 +516,15 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      },
      {
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tasks": "true",
-       "progress": "true"
+       "settings.tasks": "true",
+       "settings.progress": "true"
       }
      }
     ],
@@ -611,15 +611,15 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      },
      {
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tasks": "true",
-       "progress": "true"
+       "settings.tasks": "true",
+       "settings.progress": "true"
       }
      }
     ],
@@ -706,15 +706,15 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      },
      {
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tasks": "true",
-       "progress": "true"
+       "settings.tasks": "true",
+       "settings.progress": "true"
       }
      }
     ],
@@ -838,7 +838,7 @@
       "hook": "tools/call.post.result",
       "when": "true",
       "then": {
-       "content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'secret', '[x]')} : c)"
+       "response.result.content": "response.result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'secret', '[x]')} : c)"
       }
      }
     ],
@@ -1273,7 +1273,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri.startsWith('file:///secret/')",
+      "when": "resource.uri.startsWith('file:///secret/')",
       "then": {
        "decision": "'deny'"
       }
@@ -1424,7 +1424,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "name.startsWith('internal')",
+      "when": "resource.name.startsWith('internal')",
       "then": {
        "decision": "'deny'"
       }
@@ -1701,9 +1701,9 @@
     "rules": [
      {
       "hook": "resources/read.pre",
-      "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
+      "when": "resource.uri.startsWith('file:///secrets/')",
       "then": {
-       "result": "elicit('ok', 'Share {uri}?', {'uri': uri})"
+       "confirm": "elicit('ok', 'Share {uri}?', {'uri': resource.uri})"
       }
      }
     ],
@@ -1871,31 +1871,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -1949,31 +1949,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2028,31 +2028,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2109,31 +2109,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2191,31 +2191,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2272,31 +2272,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2354,31 +2354,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2437,31 +2437,31 @@
      {
       "name": "cli only",
       "hook": "tools/call.post.result",
-      "when": "flags.cli && !flags.search",
+      "when": "request.flags.cli && !request.flags.search",
       "then": {
-       "content": "[{'type': 'text', 'text': 'cli on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'cli on ' + request.route}]"
       }
      },
      {
       "name": "search only",
       "hook": "tools/call.post.result",
-      "when": "flags.search && !flags.cli",
+      "when": "request.flags.search && !request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'search on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'search on ' + request.route}]"
       }
      },
      {
       "name": "both",
       "hook": "tools/call.post.result",
-      "when": "flags.search && flags.cli",
+      "when": "request.flags.search && request.flags.cli",
       "then": {
-       "content": "[{'type': 'text', 'text': 'both on ' + route}]"
+       "response.result.content": "[{'type': 'text', 'text': 'both on ' + request.route}]"
       }
      },
      {
       "name": "never",
       "hook": "tools/call.post.result",
-      "when": "route == 'search'",
+      "when": "request.route == 'search'",
       "then": {
        "decision": "'deny'"
       }
@@ -2515,7 +2515,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "flags.serach",
+      "when": "request.flags.serach",
       "then": {
        "decision": "'deny'"
       }
@@ -2567,7 +2567,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'search' in flags",
+      "when": "'search' in request.flags",
       "then": {
        "decision": "'deny'"
       }

@@ -39,6 +39,10 @@ type Config struct {
 	// may send back, on catalog items and results (MCPGW_META_ALLOW_OUT).
 	// Both are comma separated, and empty lets nothing through.
 	MetaAllowIn, MetaAllowOut []string
+	// RuleHeaders is the HTTP request headers rules may read as
+	// request.headers (MCPGW_RULE_HEADERS, comma separated). Empty shows
+	// rules no header. A header that carries a credential is never shown.
+	RuleHeaders []string
 }
 
 // FromEnv builds a Config from MCPGW_* variables, failing on anything unusable.
@@ -69,6 +73,7 @@ func FromEnv() (Config, error) {
 		return out
 	}
 	c.MetaAllowIn, c.MetaAllowOut = list("MCPGW_META_ALLOW_IN"), list("MCPGW_META_ALLOW_OUT")
+	c.RuleHeaders = list("MCPGW_RULE_HEADERS")
 	var err error
 	if c.RefreshInterval, err = durationEnv("MCPGW_REFRESH_INTERVAL", 4*time.Hour); err != nil {
 		return c, err

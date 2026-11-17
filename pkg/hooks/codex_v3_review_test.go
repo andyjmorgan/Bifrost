@@ -13,21 +13,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// V3 regressions assert the November 15 Obsidian follow-ups. Known failures
-// are opt-in, as requested by codex-handover-v3.md. No engine code is changed.
+// Regressions from the third review (November 15, 2026): each test
+// reproduced a finding against the design note's follow-ups and now holds
+// its fix.
 
 func codexV3ReadSetup(t *testing.T, rules ...Rule) (*Engine, Request, *mcp.ReadResourceParams) {
 	t.Helper()
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: codexSet(t, rules...)}
 	r := Request{Route: "direct", Principal: "review-principal", Servers: []*Server{s}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}}
-	return &Engine{Signer: Signer{Key: []byte("review-only-test-key")}}, r, &mcp.ReadResourceParams{URI: "file:///secret.txt"}
+	return &Engine{}, r, &mcp.ReadResourceParams{URI: "file:///secret.txt"}
 }
 
 func TestCodexV3BareUpstreamFieldsFailClosed(t *testing.T) { // V3-G01
 	for _, hook := range []string{"resources/list.post", "resources/read.pre", "resources/read.post.result"} {
 		for _, field := range []string{"name", "mimeType"} {
 			t.Run(hook+"/"+field, func(t *testing.T) {
-				e, r, p := codexV3ReadSetup(t, Rule{Hook: hook, When: "upstream." + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
+				e, r, p := codexV3ReadSetup(t, Rule{Hook: hook, When: "resource.upstream." + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 				o := e.ReadResource(context.Background(), r, p)
 				if hook == "resources/read.post.result" {
 					if o.Forward == nil {
@@ -47,8 +48,8 @@ func TestCodexV3BareInputAndProgressFieldsFailClosed(t *testing.T) { // V3-G02
 	for _, hook := range []string{"resources/read.post.elicit", "resources/read.post.progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
-				Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-				Rule{Hook: hook, When: "name == 'secret'", Then: map[string]string{"decision": "'deny'"}})
+				Rule{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
+				Rule{Hook: hook, When: "resource.name == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 			first := e.ReadResource(context.Background(), r, p)
 			if first.Forward == nil {
 				t.Fatalf("setup: %+v", first)
@@ -120,7 +121,7 @@ func TestCodexV3StreamCleanupPanicCannotSendSecondFinal(t *testing.T) { // V3-G0
 }
 
 func TestCodexV3ProgressRewriteRespectsSizeCap(t *testing.T) { // V3-G06
-	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"progress.params.message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
 	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1,"message":"small"}`), resultEvent(`{"content":[]}`)}}
 	got := c.run(u)
 	if got.final == nil || got.final.Error != nil {
@@ -204,9 +205,9 @@ func TestCodexV3UnknownNotificationsSurviveLostReply(t *testing.T) { // V3-G10
 
 // These controls are always on: they verify accepted decisions, not gaps.
 func TestCodexV3UnlistedReadsAndGuardedFields(t *testing.T) { // V3-C01
-	for _, field := range []string{"name", "upstream.name"} {
+	for _, field := range []string{"resource.name", "resource.upstream.name"} {
 		t.Run(field, func(t *testing.T) {
-			e, r, p := codexV3ReadSetup(t, Rule{Hook: "resources/list.post", When: "uri.startsWith('private://') && " + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
+			e, r, p := codexV3ReadSetup(t, Rule{Hook: "resources/list.post", When: "resource.uri.startsWith('private://') && " + field + " == 'secret'", Then: map[string]string{"decision": "'deny'"}})
 			o := e.ReadResource(context.Background(), r, p)
 			if o.Forward == nil {
 				t.Fatalf("false URI guard should allow unlisted read: %+v", o)
@@ -218,7 +219,7 @@ func TestCodexV3UnlistedReadsAndGuardedFields(t *testing.T) { // V3-C01
 func TestCodexV3ConfirmationConcurrentRedemption(t *testing.T) { // V3-C02
 	c := newStreamCase(t, "direct", nil, Limits{})
 	c.r.Principal = "opaque-review-principal"
-	c.call.Server.Rules = codexSet(t, Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok','Proceed?')"}})
+	c.call.Server.Rules = codexSet(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok','Proceed?')"}})
 	first := c.e.CallTool(context.Background(), c.r, c.params)
 	ir, ok := first.Result.(InputRequired)
 	if !ok {
@@ -254,8 +255,8 @@ func TestCodexV3VersionGatesWithExplicitMissingVersion(t *testing.T) { // V3-C03
 	for _, version := range []string{"", "unknown", "2025-03-26", "2026-07-28 "} {
 		t.Run(fmt.Sprintf("version=%q", version), func(t *testing.T) {
 			c := newStreamCase(t, "direct", []Rule{
-				{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-				{Hook: "server.settings", When: "true", Then: map[string]string{"progress": "true", "tasks": "true"}},
+				{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
+				{Hook: "server.settings", When: "true", Then: map[string]string{"settings.progress": "true", "settings.tasks": "true"}},
 			}, Limits{})
 			c.call.Server.Info.ProtocolVersion = version
 			ci, _ := c.e.Connect(context.Background(), c.r, c.call.Server, "review")

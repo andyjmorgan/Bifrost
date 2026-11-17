@@ -20,9 +20,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Go?')"
+       "confirm": "elicit('ok','Go?')"
       }
      }
     ],
@@ -95,9 +95,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Go?')"
+       "confirm": "elicit('ok','Go?')"
       }
      }
     ],
@@ -132,9 +132,9 @@
      "a": [
       {
        "hook": "tools/call.pre",
-       "when": "!has(input.ok)",
+       "when": "true",
        "then": {
-        "result": "elicit('ok','Really go?')"
+        "confirm": "elicit('ok','Really go?')"
        }
       }
      ]
@@ -194,7 +194,7 @@
      "a": [
       {
        "hook": "tools/list.post",
-       "when": "name == 't'",
+       "when": "tool.name == 't'",
        "then": {
         "decision": "'deny'"
        }
@@ -236,7 +236,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "outputSchema": "dropSchema(outputSchema, ['item.secret'])"
+       "tool.outputSchema": "dropSchema(tool.outputSchema, ['item.secret'])"
       }
      }
     ],
@@ -480,16 +480,16 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'strictadd'",
+      "when": "tool.upstream.name == 'strictadd'",
       "then": {
-       "params.why.add": "{'type': 'string'}"
+       "tool.params.why.add": "{'type': 'string'}"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'strict'",
+      "when": "tool.upstream.name == 'strict'",
       "then": {
-       "params.q.description": "'blocked: patternProperties'"
+       "tool.params.q.description": "'blocked: patternProperties'"
       }
      }
     ],
@@ -824,9 +824,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Delete page {id}?', {'id': args.id})"
+       "confirm": "elicit('ok', 'Delete page {id}?', {'id': request.params.arguments.id})"
       }
      }
     ],
@@ -885,7 +885,7 @@
     "expect": [
      {
       "path": "problems.a[0].message",
-      "contains": "not enforced yet"
+      "contains": "there is no limit on tools/call.pre"
      }
     ]
    }
@@ -940,9 +940,9 @@
     "rules": [
      {
       "hook": "server.settings",
-      "when": "caller.missing.field == 1",
+      "when": "request.caller.missing.field == 1",
       "then": {
-       "tools": "true"
+       "settings.tools": "true"
       }
      }
     ],
@@ -997,8 +997,8 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "title": "'Jira'",
-       "description": "'Issue tracking'"
+       "server.title": "'Jira'",
+       "server.description": "'Issue tracking'"
       }
      }
     ],
@@ -1043,7 +1043,7 @@
      {
       "name": "Secret team policy",
       "hook": "tools/call.pre",
-      "when": "args.missing.deep == 1",
+      "when": "request.params.arguments.missing.deep == 1",
       "then": {
        "decision": "'deny'"
       }
@@ -1090,10 +1090,7 @@
    "RH-SRV-01",
    "RH-SRV-02"
   ],
-  "client": {
-   "name": "claude-code",
-   "version": "2"
-  },
+  "client": {"clientInfo": {"name": "claude-code", "version": "2"}},
   "servers": [
    {
     "slug": "anon",
@@ -1126,8 +1123,8 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "clientInfo": "client",
-       "meta": "true"
+       "session.clientInfo": "request.client.clientInfo",
+       "session._meta": "true"
       }
      }
     ],
@@ -1231,23 +1228,23 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "title": "'Prompt: ' + name",
-       "meta.flag": "true"
+       "prompt.title": "'Prompt: ' + prompt.name",
+       "prompt._meta.flag": "true"
       }
      },
      {
       "hook": "resources/list.post",
       "when": "true",
       "then": {
-       "description": "'About ' + uri",
-       "annotations": "{'audience': ['assistant']}"
+       "resource.description": "'About ' + resource.uri",
+       "resource.annotations": "{'audience': ['assistant']}"
       }
      },
      {
       "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
-       "title": "'Template ' + name"
+       "template.title": "'Template ' + template.name"
       }
      }
     ],
@@ -1333,7 +1330,7 @@
       "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
-       "message": "'Prompt server asks: ' + request.message"
+       "elicitation.params.message": "'Prompt server asks: ' + elicitation.params.message"
       }
      },
      {
@@ -1459,9 +1456,9 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "tools": "false",
-       "prompts": "false",
-       "resources": "false"
+       "settings.tools": "false",
+       "settings.prompts": "false",
+       "settings.resources": "false"
       }
      }
     ],
@@ -1554,7 +1551,7 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "result.contents[0].text.contains('SSN')",
+      "when": "response.result.contents[0].text.contains('SSN')",
       "then": {
        "decision": "'deny'",
        "reason": "'This document contains personal data.'"

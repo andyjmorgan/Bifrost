@@ -32,7 +32,6 @@ type Scenario struct {
 	Client  map[string]any   `json:"client,omitempty"`
 	Now     string           `json:"now,omitempty"` // RFC 3339
 	Limits  Limits           `json:"limits,omitempty"`
-	Secret  string           `json:"secret,omitempty"`
 	Servers []ScenarioServer `json:"servers"`
 	Steps   []Step           `json:"steps"`
 	// Upstream says what the servers are. "" or "mock": servers described
@@ -403,11 +402,7 @@ func (sc *Scenario) run(ctx context.Context) Report {
 		rep.Elapsed = time.Since(start).String()
 		return rep
 	}
-	secret := sc.Secret
-	if secret == "" {
-		secret = "scenario-secret"
-	}
-	eng := &Engine{Signer: Signer{Key: []byte(secret)}, Limits: sc.Limits}
+	eng := sc.NewEngine()
 	var outputs []any
 	for i, st := range sc.Steps {
 		req := Request{Route: sc.Route, Flags: sc.Flags, Caller: sc.Caller, Client: sc.Client, Servers: servers}
@@ -1168,11 +1163,7 @@ func (sc *Scenario) Build() (Built, error) {
 
 // NewEngine returns the engine Run uses for this scenario.
 func (sc *Scenario) NewEngine() *Engine {
-	secret := sc.Secret
-	if secret == "" {
-		secret = "scenario-secret"
-	}
-	return &Engine{Signer: Signer{Key: []byte(secret)}, Limits: sc.Limits}
+	return &Engine{Limits: sc.Limits}
 }
 
 // StepTime is the clock Run gives a step.

@@ -1,19 +1,11 @@
 package hooks
 
-import (
-	"fmt"
-	"strings"
-
-	"cel.dev/cel-go/cel"
-	"cel.dev/cel-go/common/ast"
-)
-
 // A request reaches the gateway by one route, "direct" or "mux", and can
 // carry any number of flags: independent switches the client sets on the
 // request, usually as query parameters such as ?search=true. A route is a
 // choice between exclusive things; a flag is on or off whatever the route.
 //
-// Rules read a flag as flags.<name>, for example flags.search or flags.cli.
+// Rules read a flag as request.flags.<name>, for example request.flags.search.
 // Every known flag is always present, false when the request did not set
 // it, so a rule can read any of them without a guard. A name that is not in
 // the list is refused when the rule is saved, so a typo cannot quietly be
@@ -51,7 +43,7 @@ func ClientMaySet(name string) bool {
 	return false
 }
 
-// flagVars is the `flags` variable: every known flag, true or false. Names
+// flagVars is request.flags: every known flag, true or false. Names
 // the engine does not know are left out, so a rule can never read them.
 func flagVars(set map[string]bool) map[string]bool {
 	out := make(map[string]bool, len(Flags))
@@ -59,45 +51,4 @@ func flagVars(set map[string]bool) map[string]bool {
 		out[name] = set[name]
 	}
 	return out
-}
-
-// checkFlags refuses an expression that reads a flag the engine does not
-// know, or that uses `flags` in any way other than flags.<name>. Without
-// this, flags.serach would be an error only when a request arrived, and
-// 'serach' in flags would be false for ever.
-func checkFlags(a *cel.Ast) error {
-	idents, selects := 0, 0
-	var bad error
-	ast.PostOrderVisit(a.NativeRep().Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-		switch e.Kind() {
-		case ast.IdentKind:
-			if e.AsIdent() == "flags" {
-				idents++
-			}
-		case ast.SelectKind:
-			sel := e.AsSelect()
-			if op := sel.Operand(); op.Kind() == ast.IdentKind && op.AsIdent() == "flags" {
-				selects++
-				if bad == nil && !knownFlag(sel.FieldName()) {
-					bad = fmt.Errorf("unknown flag %q; the flags are %s", sel.FieldName(), strings.Join(Flags, ", "))
-				}
-			}
-		}
-	}))
-	if bad != nil {
-		return bad
-	}
-	if idents > selects {
-		return fmt.Errorf("read a flag by name, as flags.%s; the flags are %s", Flags[0], strings.Join(Flags, ", "))
-	}
-	return nil
-}
-
-func knownFlag(name string) bool {
-	for _, f := range Flags {
-		if f == name {
-			return true
-		}
-	}
-	return false
 }

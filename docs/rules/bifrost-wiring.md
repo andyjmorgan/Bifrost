@@ -32,9 +32,9 @@ The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every 
 - The client library reports a transport failure, such as a refused connection or an HTTP error, as a JSON-RPC error of its own (`-32005`). The gateway treats those as lost replies, not as the server's answer.
 - A server on an older version gets no questions and no progress, by the earlier decision, so its reply is one result.
 - `_meta` crosses the gateway only through two allowlists (decided November 16, 2026). The input list is for what comes into the gateway from a client: the request `_meta` keys that may go on to a server. A `server.session` rule still has to turn forwarding on; the list bounds what it can forward. The output list is for what comes from downstream: the `_meta` keys a server may send back, on catalog items and on the results of calls, prompts and reads. Both are empty unless set (`MCPGW_META_ALLOW_IN`, `MCPGW_META_ALLOW_OUT`), so by default no `_meta` passes either way. The protocol's own keys and the progress token are written by the gateway itself and cannot be put on either list.
+- HTTP request headers reach rules only through an allow-list. `MCPGW_RULE_HEADERS` names the headers rules may read as `request.headers`, comma separated. It is empty unless set, so by default a rule sees no header. Headers that carry credentials are never shown.
 - Every result names the gateway in `_meta`, under `io.modelcontextprotocol/serverInfo`, as the protocol asks of a server. The SDK server stamps it; the first wiring's result type dropped it. Discovery keeps the identity the rules chose.
-- Pending confirmations live in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
-- The key that signs the state wrapped around an upstream's own question is derived from the master key, so every replica has the same one.
+- The state of a request that waits on an answer, to the gateway's question or to a server's, lives in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
 - Stored hooks that cannot be read, or whose rules do not compile, leave the entitlement exposing nothing. The API reports why in `rulesError`.
 
 ## How rules are stored
@@ -43,8 +43,8 @@ An entitlement keeps its rules as text, in one `jsonb` column on its row (`entit
 
 ```json
 {
-  "toolsListPost": "when name == 'flip'\n  set name = 'toss'\n",
-  "toolsCallPre": "when name == 'pick'\n  confirm \"Pick one?\"\n"
+  "toolsListPost": "when tool.name == 'flip'\n  set tool.name = 'toss'\n",
+  "toolsCallPre": "when tool.name == 'pick'\n  confirm \"Pick one?\"\n"
 }
 ```
 
@@ -54,7 +54,8 @@ An entitlement keeps its rules as text, in one `jsonb` column on its row (`entit
 - `POST /entitlements/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
 - `GET /entitlements/hooks-schema` describes every hook: what it controls, what a rule there may read and set, and a worked example.
 - The engine's own input is still a list of JSON rules. Only the entitlement API and the database take text.
-- A rule is switched off by commenting it out with `#`.
+- A rule is switched off by commenting it out with `#`. A `//` comment may follow an expression on its line, and ends at the end of that line.
+- `confirm "question"` compiles to the engine's `confirm` key alone. The engine decides whether the question has been answered.
 - Rules are not counted. The API says only whether a hook, or an entitlement, has any.
 
 ## What was tested

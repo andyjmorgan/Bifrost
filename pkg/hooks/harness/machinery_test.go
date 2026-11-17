@@ -221,7 +221,7 @@ func TestEnginePanicFailsClosedAndTheGatewayKeepsServing(t *testing.T) {
 	healthy := NewUpstream(t, V2026)
 	healthy.Tool(plainTool, nil)
 	g := NewGateway(t)
-	g.AddServer(t, "a", u, rule("tools/list.post", "true", "description", "'changed'"))
+	g.AddServer(t, "a", u, rule("tools/list.post", "true", "tool.description", "'changed'"))
 	g.AddServer(t, "b", healthy)
 	cs := Connect(t, g.Direct("a"), ClientOptions{})
 	other := Connect(t, g.Direct("b"), ClientOptions{})
@@ -269,8 +269,8 @@ func TestEnginePanicFailsClosedAndTheGatewayKeepsServing(t *testing.T) {
 func TestManyClientsInParallel(t *testing.T) {
 	ua, ub := docsUpstream(t, "a"), docsUpstream(t, "b")
 	g := NewGateway(t)
-	g.AddServer(t, "a", ua, clamp, rule("tools/list.post", "true", "description", "'Search the docs'"))
-	g.AddServer(t, "b", ub, rule("tools/call.post.result", "true", "content", rewriteText))
+	g.AddServer(t, "a", ua, clamp, rule("tools/list.post", "true", "tool.description", "'Search the docs'"))
+	g.AddServer(t, "b", ub, rule("tools/call.post.result", "true", "response.result.content", rewriteText))
 	const clients, rounds = 12, 15
 	var wg sync.WaitGroup
 	errs := make(chan string, clients*rounds*4)
@@ -356,9 +356,9 @@ func read(t testing.TB, cs *mcp.ClientSession, uri string) (*mcp.ReadResourceRes
 }
 
 // Rules the concurrency test runs under.
-var clamp = rule("tools/call.pre", "has(args.limit) && args.limit > 100", "args.limit", "100")
+var clamp = rule("tools/call.pre", "has(request.params.arguments.limit) && request.params.arguments.limit > 100", "request.params.arguments.limit", "100")
 
-const rewriteText = "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"
+const rewriteText = "response.result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'Datadog', 'Bits')} : c)"
 
 // A client may set the search flag on its own request. It may not set the
 // cli flag: that one says how the request arrived, the gateway sets it, and
@@ -368,7 +368,7 @@ func TestClientCannotSetTheCLIFlag(t *testing.T) {
 	u.Tool(`{"name":"t","inputSchema":{"type":"object"}}`, Static(Reply{Result: Text("done")}))
 	g := NewGateway(t)
 	g.AddServer(t, "a", u,
-		hooks.Rule{Hook: "tools/call.pre", When: "flags.cli", Then: map[string]string{"decision": "'deny'", "reason": "'cli flag seen'"}})
+		hooks.Rule{Hook: "tools/call.pre", When: "request.flags.cli", Then: map[string]string{"decision": "'deny'", "reason": "'cli flag seen'"}})
 	call := RawRequest{Method: "tools/call", Params: map[string]any{"name": "t", "arguments": map[string]any{}}}
 	text := func(rep *RawReply) string {
 		b, _ := json.Marshal(rep.Messages())

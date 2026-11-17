@@ -10,10 +10,10 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name.startsWith('delete_') && annotations.readOnlyHint",
+      "when": "tool.name.startsWith('delete_') && tool.annotations.readOnlyHint",
       "then": {
-       "annotations.readOnlyHint": "false",
-       "annotations.destructiveHint": "true"
+       "tool.annotations.readOnlyHint": "false",
+       "tool.annotations.destructiveHint": "true"
       }
      }
     ],
@@ -84,23 +84,23 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "!has(annotationsRaw.readOnlyHint)",
+      "when": "!tool.?annotations.?readOnlyHint.hasValue()",
       "then": {
-       "annotations.readOnlyHint": "false"
+       "tool.annotations.readOnlyHint": "false"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "!annotations.readOnlyHint",
+      "when": "!tool.annotations.readOnlyHint",
       "then": {
-       "title": "'(writes) ' + name"
+       "tool.title": "'(writes) ' + tool.name"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "!has(upstream.annotationsRaw.readOnlyHint) && has(annotationsRaw.readOnlyHint)",
+      "when": "!tool.upstream.?annotations.?readOnlyHint.hasValue() && tool.?annotations.?readOnlyHint.hasValue()",
       "then": {
-       "description": "'hint was missing upstream'"
+       "tool.description": "'hint was missing upstream'"
       }
      }
     ],
@@ -168,10 +168,10 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name == 'fetch'",
+      "when": "tool.name == 'fetch'",
       "then": {
-       "annotations.title": "'Fetch a URL'",
-       "annotations.openWorldHint": "true"
+       "tool.annotations.title": "'Fetch a URL'",
+       "tool.annotations.openWorldHint": "true"
       }
      }
     ],
@@ -219,10 +219,10 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name == 'search'",
+      "when": "tool.name == 'search'",
       "then": {
-       "params.include_archived.hide": "true",
-       "params.debug.hide": "true"
+       "tool.params.include_archived.hide": "true",
+       "tool.params.debug.hide": "true"
       }
      }
     ],
@@ -324,9 +324,9 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name.startsWith('list_')",
+      "when": "tool.name.startsWith('list_')",
       "then": {
-       "params.org.hide": "true"
+       "tool.params.org.hide": "true"
       }
      }
     ],
@@ -414,37 +414,37 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name == 'a'",
+      "when": "tool.name == 'a'",
       "then": {
-       "description": "'Replaced.'"
+       "tool.description": "'Replaced.'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'b'",
+      "when": "tool.name == 'b'",
       "then": {
-       "description": "description + ' Read-only.'"
+       "tool.description": "tool.description + ' Read-only.'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'c'",
+      "when": "tool.name == 'c'",
       "then": {
-       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+       "tool.description": "regex.replace(tool.description, '(?i)confluence', 'the wiki')"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'c'",
+      "when": "tool.name == 'c'",
       "then": {
-       "params.space.description": "'Wiki space key, such as ENG.'"
+       "tool.params.space.description": "'Wiki space key, such as ENG.'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'd'",
+      "when": "tool.name == 'd'",
       "then": {
-       "description": "size(description) > 20 ? description.substring(0, 20) : description"
+       "tool.description": "size(tool.description) > 20 ? tool.description.substring(0, 20) : tool.description"
       }
      }
     ],
@@ -551,7 +551,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "description.contains('DEPRECATED')",
+      "when": "tool.description.contains('DEPRECATED')",
       "then": {
        "decision": "'deny'"
       }
@@ -560,7 +560,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "description": "'DEPRECATED: ' + description"
+       "tool.description": "'DEPRECATED: ' + tool.description"
       }
      }
     ],
@@ -607,38 +607,38 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name.startsWith('confluence_')",
+      "when": "tool.name.startsWith('confluence_')",
       "then": {
-       "name": "name.replace('confluence_', 'wiki_')"
+       "tool.name": "tool.name.replace('confluence_', 'wiki_')"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'wiki_delete_page'",
+      "when": "tool.name == 'wiki_delete_page'",
       "then": {
-       "description": "'Deletes a wiki page (was ' + upstream.name + ').'",
-       "annotations.destructiveHint": "true"
+       "tool.description": "'Deletes a wiki page (was ' + tool.upstream.name + ').'",
+       "tool.annotations.destructiveHint": "true"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'confluence_delete_page'",
+      "when": "tool.name == 'confluence_delete_page'",
       "then": {
-       "title": "'must never match after the rename'"
+       "tool.title": "'must never match after the rename'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name.startsWith('wiki_')",
+      "when": "tool.name.startsWith('wiki_')",
       "then": {
-       "name": "name + '_v2'"
+       "tool.name": "tool.name + '_v2'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "name == 'wiki_delete_page_v2'",
+      "when": "tool.name == 'wiki_delete_page_v2'",
       "then": {
-       "title": "'Delete page'"
+       "tool.title": "'Delete page'"
       }
      }
     ],
@@ -757,17 +757,17 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "'spaceKey' in params",
+      "when": "'spaceKey' in tool.params",
       "then": {
-       "params.spaceKey.name": "'space'"
+       "tool.params.spaceKey.name": "'space'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "'space' in params",
+      "when": "'space' in tool.params",
       "then": {
-       "params.space.description": "'Space key'",
-       "params.space.enum": "['ENG','OPS']"
+       "tool.params.space.description": "'Space key'",
+       "tool.params.space.enum": "['ENG','OPS']"
       }
      }
     ],
@@ -867,15 +867,15 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name == 'confluence_search'",
+      "when": "tool.name == 'confluence_search'",
       "then": {
-       "name": "'wiki_search'",
-       "params.cql.name": "'query'"
+       "tool.name": "'wiki_search'",
+       "tool.params.cql.name": "'query'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "name == 'wiki_search' && upstream.name == 'confluence_search' && args.query.contains('secret')",
+      "when": "tool.name == 'wiki_search' && tool.upstream.name == 'confluence_search' && request.params.arguments.query.contains('secret')",
       "then": {
        "decision": "'deny'",
        "reason": "'No secret searches.'"
@@ -955,18 +955,18 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "name": "'renamed'",
-       "description": "'new text'",
-       "params.cql.name": "'query'",
-       "params.cql.description": "'new param text'",
-       "annotations.readOnlyHint": "false"
+       "tool.name": "'renamed'",
+       "tool.description": "'new text'",
+       "tool.params.cql.name": "'query'",
+       "tool.params.cql.description": "'new param text'",
+       "tool.annotations.readOnlyHint": "false"
       }
      },
      {
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "title": "[upstream.name, upstream.description, string(upstream.annotations.readOnlyHint), upstream.inputSchema.properties.cql.description, string('cql' in upstream.inputSchema.properties), string('query' in params)].join('|')"
+       "tool.title": "[tool.upstream.name, tool.upstream.description, string(tool.upstream.annotations.readOnlyHint), tool.upstream.inputSchema.properties.cql.description, string('cql' in tool.upstream.inputSchema.properties), string('query' in tool.params)].join('|')"
       }
      }
     ],

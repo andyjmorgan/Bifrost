@@ -13,7 +13,7 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
+       "server.instructions": "regex.replace(server.instructions, '(?s)## Confluence.*', '')"
       }
      }
     ],
@@ -52,7 +52,7 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "title": "'Jira (read only)'"
+       "server.title": "'Jira (read only)'"
       }
      }
     ],
@@ -98,7 +98,7 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "instructions": "regex.replace(instructions, '(?s)## Confluence.*', '')"
+       "server.instructions": "regex.replace(server.instructions, '(?s)## Confluence.*', '')"
       }
      },
      {
@@ -106,7 +106,7 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "instructions": "instructions + 'All writes need a ticket ID.'"
+       "server.instructions": "server.instructions + 'All writes need a ticket ID.'"
       }
      }
     ],
@@ -156,8 +156,8 @@
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "title": "'Jira'",
-       "description": "'Issue tracking'"
+       "server.title": "'Jira'",
+       "server.description": "'Issue tracking'"
       }
      }
     ],
@@ -180,14 +180,14 @@
       "hook": "server.settings",
       "when": "true",
       "then": {
-       "searchRoster": "false"
+       "settings.searchRoster": "false"
       }
      },
      {
       "hook": "server/discover.post",
       "when": "true",
       "then": {
-       "description": "'Issue tracking'"
+       "server.description": "'Issue tracking'"
       }
      }
     ],

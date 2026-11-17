@@ -8,14 +8,15 @@ import (
 	"time"
 )
 
-// StateStore keeps the gateway's own confirmation challenges between the
-// request that asks and the retry that answers. The client holds only the
-// key, which says nothing about the request and cannot be altered.
+// StateStore keeps a request's state between the round that asks a question
+// and the retry that answers it, whether the gateway asked or the server
+// did. The client holds only the key, which says nothing about the request
+// and cannot be altered.
 //
 // The production implementation is a shared cache with expiring keys, such
 // as Redis; see MemoryStates for the stand-in used until then.
 //
-// Take returns a challenge and removes it in one step, so a challenge can be
+// Take returns a state and removes it in one step, so a question can be
 // answered once. An implementation shared between gateway instances must
 // keep that atomic.
 type StateStore interface {
@@ -23,8 +24,7 @@ type StateStore interface {
 	Take(key string) (State, bool)
 }
 
-// stateKeyPrefix marks a request state that is a store key, as opposed to
-// the signed envelope the gateway wraps around an upstream's own state.
+// stateKeyPrefix marks a request state the gateway issued.
 const stateKeyPrefix = "c_"
 
 func newStateKey() string {

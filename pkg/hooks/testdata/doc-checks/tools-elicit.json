@@ -18,7 +18,7 @@
       "hook": "tools/call.post.elicit",
       "when": "true",
       "then": {
-       "message": "'Jira asks: ' + request.message"
+       "elicitation.params.message": "'Jira asks: ' + elicitation.params.message"
       }
      }
     ],
@@ -135,7 +135,7 @@
      {
       "name": "No prompts for keys",
       "hook": "tools/call.post.elicit",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
        "decision": "'deny'",
        "reason": "'This tool needs user input, which API keys cannot give.'"
@@ -214,7 +214,7 @@
      {
       "name": "No URL mode",
       "hook": "tools/call.post.elicit",
-      "when": "request.mode == 'url'",
+      "when": "elicitation.params.mode == 'url'",
       "then": {
        "decision": "'deny'"
       }
@@ -310,14 +310,14 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.cql.name": "'q'"
+       "tool.params.cql.name": "'q'"
       }
      },
      {
       "hook": "tools/call.post.elicit",
-      "when": "request.key == 'k' && args.cql == 'x'",
+      "when": "elicitation.key == 'k' && request.upstream.params.arguments.cql == 'x'",
       "then": {
-       "message": "'seen'"
+       "elicitation.params.message": "'seen'"
       }
      }
     ],
@@ -398,14 +398,14 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "args.limit": "10"
+       "request.params.arguments.limit": "10"
       }
      },
      {
       "hook": "tools/call.post.elicit",
-      "when": "args.limit == 10",
+      "when": "request.upstream.params.arguments.limit == 10",
       "then": {
-       "message": "'patched seen'"
+       "elicitation.params.message": "'patched seen'"
       }
      }
     ],

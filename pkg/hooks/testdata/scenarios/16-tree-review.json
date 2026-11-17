@@ -1,0 +1,611 @@
+[
+ {
+  "name": "RT-03 a scheme written in capitals does not pass a deny of the same folder",
+  "ids": [
+   "RT-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/list.post",
+      "when": "resource.uri.startsWith('file:///secrets/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "file:///public/readme",
+       "name": "readme"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///secrets/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.error.code",
+      "equals": -32602
+     },
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "FILE:///secrets/key"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-03 a scheme written in capitals does not pass a denied template",
+  "ids": [
+   "RT-03"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/templates/list.post",
+      "when": "template.uriTemplate.startsWith('file:///vault/')",
+      "then": {
+       "decision": "'deny'"
+      }
+     }
+    ],
+    "catalog": {
+     "resourceTemplates": [
+      {
+       "uriTemplate": "file:///vault/{name}",
+       "name": "vault"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "file:///vault/a"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "FILE:///vault/a"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-04 a set key with an escape in its branch is refused when the rule is saved",
+  "ids": [
+   "RT-04"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call.post.result",
+      "when": "true",
+      "then": {
+       "respons\\e.result.content": "[{'type': 'text', 'text': 'REDACTED'}]"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "exists": true
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "typescript-sdk",
+      "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-10 a constant of the wrong type is refused when the rule is saved",
+  "ids": [
+   "RT-10"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "server.settings",
+      "when": "true",
+      "then": {
+       "settings.prompts": "'off'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "exists": true
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "typescript-sdk",
+      "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-07 a tool result without the content MCP requires fails a rule that reads content, and the result is refused",
+  "ids": [
+   "RT-07"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "tools/call.post.result",
+      "when": "response.result.content.exists(c, c.type == 'image')",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'No images.'"
+      }
+     }
+    ],
+    "catalog": {
+     "tools": [
+      {
+       "name": "t",
+       "inputSchema": {
+        "type": "object"
+       }
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/call",
+    "params": {
+     "name": "t",
+     "arguments": {}
+    },
+    "upstream": {
+     "structuredContent": {
+      "a": 1
+     }
+    },
+    "expect": [
+     {
+      "path": "reply.result.isError",
+      "equals": true
+     },
+     {
+      "path": "reply.result.structuredContent",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "hasText": [
+       "refused by policy"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-08 a macro variable that has the name of a branch is the variable",
+  "ids": [
+   "RT-08"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "rules": [
+     {
+      "hook": "resources/read.post.result",
+      "when": "response.result.contents.exists(resource, resource.?text.orValue('').contains('secret'))",
+      "then": {
+       "decision": "'deny'",
+       "reason": "'Holds a secret.'"
+      }
+     }
+    ],
+    "catalog": {
+     "resources": [
+      {
+       "uri": "docs://a",
+       "name": "a"
+      }
+     ]
+    }
+   }
+  ],
+  "steps": [
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "docs://a"
+    },
+    "upstream": {
+     "contents": [
+      {
+       "uri": "docs://a",
+       "text": "plain"
+      }
+     ]
+    },
+    "expect": [
+     {
+      "path": "reply.result.contents[0].text",
+      "equals": "plain"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-02 a confirmation covers the arguments a rule set: an answer sent with a changed request is refused",
+  "ids": [
+   "RT-02"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "deploy",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "env": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call.pre",
+      "when": "true",
+      "then": {
+       "request.params.arguments.env": "request.params.?_meta.?env.orValue('staging')"
+      }
+     },
+     {
+      "hook": "tools/call.pre",
+      "when": "true",
+      "then": {
+       "confirm": "elicit('sure', 'Deploy to {env}?', {'env': request.params.arguments.env})"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "A continuation written by hand."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "deploy",
+     "arguments": {},
+     "_meta": {
+      "env": "staging"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
+      "path": "client",
+      "hasText": [
+       "Deploy to \\\"staging\\\"?"
+      ]
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "A continuation written by hand."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "deploy",
+     "arguments": {},
+     "_meta": {
+      "env": "production"
+     },
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.sure": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward",
+      "exists": false
+     },
+     {
+      "path": "client",
+      "hasText": [
+       "The request changed since the confirmation was asked"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-02 a confirmation answered with the same request is forwarded with the argument the rule set",
+  "ids": [
+   "RT-02"
+  ],
+  "caller": {
+   "userId": "u1"
+  },
+  "client": {
+   "capabilities": {
+    "elicitation": {}
+   }
+  },
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "deploy",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "env": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call.pre",
+      "when": "true",
+      "then": {
+       "request.params.arguments.env": "request.params.?_meta.?env.orValue('staging')"
+      }
+     },
+     {
+      "hook": "tools/call.pre",
+      "when": "true",
+      "then": {
+       "confirm": "elicit('sure', 'Deploy to {env}?', {'env': request.params.arguments.env})"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "A continuation written by hand."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "deploy",
+     "arguments": {},
+     "_meta": {
+      "env": "staging"
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     }
+    ]
+   },
+   {
+    "exclude": [
+     {
+      "harness": [
+       "go-sdk",
+       "python-sdk",
+       "typescript-sdk"
+      ],
+      "reason": "A continuation written by hand."
+     }
+    ],
+    "op": "tools/call",
+    "params": {
+     "name": "deploy",
+     "arguments": {},
+     "_meta": {
+      "env": "staging"
+     },
+     "requestState": "${steps.0.outcome.result.requestState}",
+     "inputResponses": {
+      "bifrost.sure": {
+       "action": "accept",
+       "content": {
+        "confirm": true
+       }
+      }
+     }
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.arguments.env",
+      "equals": "staging"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "RT-20 a rule cannot both deny and ask the user to confirm",
+  "ids": [
+   "RT-20"
+  ],
+  "servers": [
+   {
+    "slug": "a",
+    "catalog": {
+     "tools": [
+      {
+       "name": "deploy",
+       "inputSchema": {
+        "type": "object",
+        "properties": {
+         "env": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     ]
+    },
+    "rules": [
+     {
+      "hook": "tools/call.pre",
+      "when": "true",
+      "then": {
+       "decision": "'deny'",
+       "confirm": "elicit('sure', 'Really?')"
+      }
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "op": "tools/list",
+    "expect": [
+     {
+      "path": "problems.a[0].message",
+      "contains": "either denies or asks the user to confirm"
+     }
+    ],
+    "exclude": [
+     {
+      "harness": "typescript-sdk",
+      "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."
+     }
+    ]
+   }
+  ]
+ }
+]

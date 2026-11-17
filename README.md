@@ -69,6 +69,7 @@ Postgres needs pg_cron for the cache sweep in production; without it the worker'
 | `MCPGW_REFRESH_LEEWAY` | `10m` | refresh tokens expiring within this window (capped at half the token lifetime) |
 | `MCPGW_AUDIT_RETENTION` | `720h` | |
 | `MCPGW_UPSTREAM_TIMEOUT` | `60s` | |
+| `MCPGW_RULE_HEADERS` | empty | HTTP request headers rules may read as `request.headers`, comma separated. Headers that carry credentials are never shown |
 
 Dev mode (no `MCPGW_OIDC_ISSUER`) treats every request as the user `dev`, admin of its own org, so the UI and API work without a login. An `X-Dev-User: <name>` header makes the request come from another local user, which is enough to exercise invites, joining and leaving.
 

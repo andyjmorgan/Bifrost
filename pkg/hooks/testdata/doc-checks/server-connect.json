@@ -1,13 +1,9 @@
 [
  {
   "name": "server.session E1 pass the client name and version through",
-  "client": {
-   "name": "claude-code",
-   "version": "2.1",
-   "capabilities": {
+  "client": {"clientInfo": {"name": "claude-code", "version": "2.1"}, "capabilities": {
     "elicitation": {}
-   }
-  },
+   }},
   "servers": [
    {
     "slug": "jira",
@@ -17,7 +13,7 @@
       "hook": "server.session",
       "when": "true",
       "then": {
-       "clientInfo": "{'name': client.name, 'version': client.version}"
+       "session.clientInfo": "{'name': request.client.clientInfo.name, 'version': request.client.clientInfo.version}"
       }
      }
     ],
@@ -85,9 +81,9 @@
      {
       "name": "Elicitation for users",
       "hook": "server.session",
-      "when": "caller.type == 'user'",
+      "when": "request.caller.type == 'user'",
       "then": {
-       "capabilities.elicitation": "true"
+       "session.capabilities.elicitation": "true"
       }
      }
     ],
@@ -149,7 +145,7 @@
       "hook": "server.session",
       "when": "server.slug == 'tracing'",
       "then": {
-       "meta": "true"
+       "session._meta": "true"
       }
      }
     ],

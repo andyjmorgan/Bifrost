@@ -172,8 +172,8 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	}
 	probe := map[string]any{"uri": uri}
 	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri, bare: true}
-	o := s.Rules.runIf(ctx, "resources/list.post", uri, it.resolve, r.context(s).vars(), func(string, any) error { return nil },
-		func(c *compiledRule) bool { return c.denies })
+	o := s.Rules.runIf(ctx, "resources/list.post", uri, it.resolve, r.context(s).roots("resources/list", nil), func(string, any) error { return nil },
+		func(c *compiledRule) bool { return c.denies }, nil)
 	if o.denied {
 		return nil, false, o.hits
 	}

@@ -3,6 +3,7 @@ package ruletext
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,25 +46,25 @@ func TestEveryEngineHookIsDescribed(t *testing.T) {
 
 func TestTextCompilesToTheEnginesRules(t *testing.T) {
 	text := map[string]string{
-		"tools/list.post": "# hide\nwhen name.startsWith('delete_')   deny\n\nwhen name == 'flip'\n  set name = 'toss'\n  set description = 'Toss a coin.'\n",
-		"tools/call.pre": "when name == 'echo' deny \"Not today.\"\n" +
-			"audit when caller.role != 'admin'  deny 'Admins: ' + name\n" +
-			"when name == 'search' &&\n    !has(args.limit)\n  set args.limit = 50\n  set timeout = duration('30s')\n",
-		"tools/call.post.result": "when true set structuredContent = drop(result.structuredContent, ['a'])",
-		"server.settings":        "when route == 'mux' set prompts = false",
+		"tools/list.post": "# hide\nwhen tool.name.startsWith('delete_')   deny\n\nwhen tool.name == 'flip'\n  set tool.name = 'toss'\n  set tool.description = 'Toss a coin.'\n",
+		"tools/call.pre": "when tool.name == 'echo' deny \"Not today.\"\n" +
+			"audit when request.caller.role != 'admin'  deny 'Admins: ' + tool.name\n" +
+			"when tool.name == 'search' &&\n    !has(request.params.arguments.limit)\n  set request.params.arguments.limit = 50\n  set timeout = duration('30s')\n",
+		"tools/call.post.result": "when true set response.result.structuredContent = drop(response.result.?structuredContent.orValue({}), ['a'])",
+		"server.settings":        "when request.route == 'mux' set settings.prompts = false",
 	}
 	rules, probs := Compile(text)
 	if len(probs) > 0 {
 		t.Fatalf("problems: %+v", probs)
 	}
 	want := []hooks.Rule{
-		{Name: "server.settings:1", Hook: "server.settings", When: "route == 'mux'", Then: map[string]string{"prompts": "false"}},
-		{Name: "tools/list.post:2", Hook: "tools/list.post", When: "name.startsWith('delete_')", Then: map[string]string{"decision": "'deny'"}},
-		{Name: "tools/list.post:4", Hook: "tools/list.post", When: "name == 'flip'", Then: map[string]string{"name": "'toss'", "description": "'Toss a coin.'"}},
-		{Name: "tools/call.pre:1", Hook: "tools/call.pre", When: "name == 'echo'", Then: map[string]string{"decision": "'deny'", "reason": `"Not today."`}},
-		{Name: "tools/call.pre:2", Mode: "audit", Hook: "tools/call.pre", When: "caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Admins: ' + name"}},
-		{Name: "tools/call.pre:3", Hook: "tools/call.pre", When: "name == 'search' && !has(args.limit)", Then: map[string]string{"args.limit": "50", "timeout": "duration('30s')"}},
-		{Name: "tools/call.post.result:1", Hook: "tools/call.post.result", When: "true", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a'])"}},
+		{Name: "server.settings:1", Hook: "server.settings", When: "request.route == 'mux'", Then: map[string]string{"settings.prompts": "false"}},
+		{Name: "tools/list.post:2", Hook: "tools/list.post", When: "tool.name.startsWith('delete_')", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "tools/list.post:4", Hook: "tools/list.post", When: "tool.name == 'flip'", Then: map[string]string{"tool.name": "'toss'", "tool.description": "'Toss a coin.'"}},
+		{Name: "tools/call.pre:1", Hook: "tools/call.pre", When: "tool.name == 'echo'", Then: map[string]string{"decision": "'deny'", "reason": `"Not today."`}},
+		{Name: "tools/call.pre:2", Mode: "audit", Hook: "tools/call.pre", When: "request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Admins: ' + tool.name"}},
+		{Name: "tools/call.pre:3", Hook: "tools/call.pre", When: "tool.name == 'search' && !has(request.params.arguments.limit)", Then: map[string]string{"request.params.arguments.limit": "50", "timeout": "duration('30s')"}},
+		{Name: "tools/call.post.result:1", Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.structuredContent": "drop(response.result.?structuredContent.orValue({}), ['a'])"}},
 	}
 	if !reflect.DeepEqual(rules, want) {
 		t.Fatalf("rules:\n got %+v\nwant %+v", rules, want)
@@ -71,21 +72,26 @@ func TestTextCompilesToTheEnginesRules(t *testing.T) {
 }
 
 func TestConfirmBecomesTheEnginesQuestion(t *testing.T) {
-	rules, probs := Compile(map[string]string{"tools/call.pre": `when name == 'delete_page'  confirm "Delete {args.id} in {args.space}?"`})
+	rules, probs := Compile(map[string]string{"tools/call.pre": `when tool.name == 'delete_page'  confirm "Delete {request.params.arguments.id} in {request.params.arguments.space}?"`})
 	if len(probs) > 0 {
 		t.Fatalf("problems: %+v", probs)
 	}
 	r := rules[0]
-	key := strings.TrimSuffix(strings.SplitN(r.When, "input.", 2)[1], ")")
-	if !strings.HasPrefix(key, "confirm_") || r.When != "(name == 'delete_page') && !has(input."+key+")" {
+	// The condition is the author's own: the engine, not the rule, decides
+	// whether the question has been answered.
+	if r.When != "tool.name == 'delete_page'" {
 		t.Fatalf("when = %s", r.When)
 	}
-	if want := `elicit("` + key + `", "Delete {v1} in {v2}?", {"v1": args.id, "v2": args.space})`; r.Then["result"] != want {
-		t.Fatalf("result = %s\n  want %s", r.Then["result"], want)
+	key := strings.SplitN(strings.TrimPrefix(r.Then["confirm"], `elicit("`), `"`, 2)[0]
+	if !strings.HasPrefix(key, "confirm_") {
+		t.Fatalf("key = %s", key)
+	}
+	if want := `elicit("` + key + `", "Delete {v1} in {v2}?", {"v1": request.params.arguments.id, "v2": request.params.arguments.space})`; r.Then["confirm"] != want {
+		t.Fatalf("confirm = %s\n  want %s", r.Then["confirm"], want)
 	}
 	// The key depends only on the hook and the question, so an answer still
 	// matches after the rules around it are edited.
-	again, _ := Compile(map[string]string{"tools/call.pre": "when true deny\n\n" + `when name == 'delete_page'  confirm "Delete {args.id} in {args.space}?"`})
+	again, _ := Compile(map[string]string{"tools/call.pre": "when true deny\n\n" + `when tool.name == 'delete_page'  confirm "Delete {request.params.arguments.id} in {request.params.arguments.space}?"`})
 	if again[1].When != r.When {
 		t.Fatalf("the key moved: %s", again[1].When)
 	}
@@ -98,17 +104,21 @@ func TestProblemsAreOnTheLineThatCausedThem(t *testing.T) {
 		has              string
 	}{
 		{"bad condition", "tools/call.pre", "when true deny\nwhen nope == 1 deny", 2, "nope"},
-		{"bad value", "tools/call.pre", "when true\n  set args.limit = nope", 2, "args.limit"},
-		{"unknown field", "tools/list.post", "when true\n\n  set colour = 'red'", 3, "colour"},
+		{"old name", "tools/call.pre", "when name == 'x' deny", 1, "name"},
+		{"no such field", "tools/call.pre", "when true deny\n\nwhen tool.nmae == 'x' deny", 3, `tool has no "nmae"`},
+		{"upstream before it is sent", "tools/call.pre", "when request.upstream.params.name == 'x' deny", 1, "request.upstream is not available"},
+		{"bad value", "tools/call.pre", "when true\n  set request.params.arguments.limit = nope", 2, "request.params.arguments.limit"},
+		{"unknown field", "tools/list.post", "when true\n\n  set tool.colour = 'red'", 3, "there is no tool.colour"},
+		{"a field that cannot be changed", "tools/list.post", "when true\n  set tool.upstream.name = 'x'", 2, "tool.upstream.name cannot be changed"},
+		{"another branch", "tools/call.post.result", "when true\n  set request.params.arguments.q = 'x'", 2, "cannot be changed on tools/call.post.result"},
 		{"action first", "tools/call.pre", "deny \"x\"", 1, "needs a when"},
 		{"stray line", "tools/call.pre", "when true deny\nallow everything", 2, "expected a line"},
 		{"no action", "tools/call.pre", "when true", 1, "does nothing"},
 		{"no condition", "tools/call.pre", "when\n  deny", 1, "needs a condition"},
 		{"deny where there is none", "server.settings", "when true deny", 1, "not available"},
 		{"confirm where there is none", "tools/list.post", "when true confirm \"Sure?\"", 1, "not available"},
-		{"reason with no deny", "tools/list.post", "when true\n  set reason = 'x'", 2, "beside decision"},
 		{"confirm unquoted", "tools/call.pre", "when true confirm Sure?", 1, "in quotes"},
-		{"set twice", "tools/call.pre", "when true\n  set args.a = 1\n  set args.a = 2", 3, "already sets"},
+		{"set twice", "tools/call.pre", "when true\n  set request.params.arguments.a = 1\n  set request.params.arguments.a = 2", 3, "already sets"},
 		{"no such hook", "tools/call.during", "when true deny", 0, "no such hook"},
 	}
 	for _, c := range cases {
@@ -128,11 +138,11 @@ func TestProblemsAreOnTheLineThatCausedThem(t *testing.T) {
 // Words that start an action do not split a condition when they sit inside
 // a string or a bracket.
 func TestAnActionWordInsideTheConditionIsNotAnAction(t *testing.T) {
-	rules, probs := Compile(map[string]string{"tools/call.pre": `when name == 'x deny y' || [' set a = 1 '].exists(s, s == name)  deny "No."`})
+	rules, probs := Compile(map[string]string{"tools/call.pre": `when tool.name == 'x deny y' || [' set a = 1 '].exists(s, s == tool.name)  deny "No."`})
 	if len(probs) > 0 {
 		t.Fatalf("problems: %+v", probs)
 	}
-	if want := `name == 'x deny y' || [' set a = 1 '].exists(s, s == name)`; rules[0].When != want {
+	if want := `tool.name == 'x deny y' || [' set a = 1 '].exists(s, s == tool.name)`; rules[0].When != want {
 		t.Fatalf("when = %s", rules[0].When)
 	}
 }
@@ -142,15 +152,17 @@ func TestAnActionWordInsideTheConditionIsNotAnAction(t *testing.T) {
 func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 	catalog := map[string][]string{"tool": {"echo", "flip", "search"}}
 	text := map[string]string{
-		"tools/list.post": "when name == 'flip'  set name = 'toss'\nwhen upstream.name == 'toss'  deny",
-		"tools/call.pre": "when name == 'ecoh'  deny \"typo\"\n" + // 1: unknown, near echo
-			"when name == 'toss'  deny \"renamed, so fine\"\n" + // 2: fine
-			"when name in ['echo', 'serch']  deny\n" + // 3: unknown in a list
+		"tools/list.post": "when tool.name == 'flip'  set tool.name = 'toss'\nwhen tool.upstream.name == 'toss'  deny\n" +
+			"when tool.description.contains('x')  deny\n" + // 3: an optional value, read with no guard
+			"when tool.?description.orValue('').contains('x')  deny", // 4: fine
+		"tools/call.pre": "when tool.name == 'ecoh'  deny \"typo\"\n" + // 1: unknown, near echo
+			"when tool.name == 'toss'  deny \"renamed, so fine\"\n" + // 2: fine
+			"when tool.name in ['echo', 'serch']  deny\n" + // 3: unknown in a list
 			"when false  deny\n" + // 4: never applies
 			"audit when true  deny \"an audit rule stops nothing\"\n" + // 5: fine
 			"when true  deny \"closed\"\n" + // 6: stops everything
-			"when name == 'echo'  set args.x = 1\n", // 7: never runs
-		"prompts/get.pre": "when name == 'anything'  deny", // prompts were never listed: not checked
+			"when tool.name == 'echo'  set request.params.arguments.x = 1\n", // 7: never runs
+		"prompts/get.pre": "when prompt.name == 'anything'  deny", // prompts were never listed: not checked
 	}
 	got := map[string]string{}
 	for _, p := range Lint(text, catalog) {
@@ -161,6 +173,7 @@ func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 	}
 	want := map[string]string{
 		"tools/list.post:2": `no tool named "toss"`, // upstream.name is the server's name, which a rename does not change
+		"tools/list.post:3": "tool.description may be absent",
 		"tools/call.pre:1":  `did you mean "echo"?`,
 		"tools/call.pre:3":  `no tool named "serch"; did you mean "search"?`,
 		"tools/call.pre:4":  "never applies",
@@ -173,6 +186,18 @@ func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("warnings: %v", got)
+	}
+}
+
+// No worked example in a hook's help reads an optional value without a
+// guard: the examples are what people copy.
+func TestNoExampleReadsAnOptionalValueUnguarded(t *testing.T) {
+	for _, h := range List() {
+		for _, p := range Lint(map[string]string{h.Name: h.Example}, nil) {
+			if strings.Contains(p.Message, "may be absent") {
+				t.Errorf("%s line %d: %s", h.Name, p.Line, p.Message)
+			}
+		}
 	}
 }
 
@@ -236,5 +261,72 @@ func TestHooksAreStoredAsTextByProperty(t *testing.T) {
 		if _, err := ParseStored([]byte(bad)); err == nil {
 			t.Errorf("%s was accepted", bad)
 		}
+	}
+}
+
+// Rule text is stored, so text that was saved must keep compiling. The
+// corpus is text as it was saved: it is added to, never edited. A change to
+// the compiler or the tree that breaks an entry here would leave real
+// entitlements exposing nothing.
+func TestSavedTextKeepsCompiling(t *testing.T) {
+	raw, err := os.ReadFile("testdata/saved.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved []struct {
+		Name  string          `json:"name"`
+		Hooks json.RawMessage `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if len(saved) == 0 {
+		t.Fatal("the corpus is empty")
+	}
+	for _, s := range saved {
+		h, err := ParseStored(s.Hooks)
+		if err != nil {
+			t.Errorf("%s: %v", s.Name, err)
+			continue
+		}
+		rules, probs := Compile(h.ByName())
+		if len(probs) > 0 || len(rules) == 0 {
+			t.Errorf("%s: %d rules, problems %+v", s.Name, len(rules), probs)
+		}
+	}
+}
+
+// A // comment ends at the end of its line. The lines of a rule are joined
+// into one expression, and CEL reads a comment to the end of that.
+func TestACommentDoesNotSwallowAContinuationLine(t *testing.T) {
+	rules, probs := Compile(map[string]string{"tools/list.post": "when tool.name == 'a' // or the other one\n  || tool.name == 'b'\n  deny\n"})
+	if len(probs) > 0 || rules[0].When != "tool.name == 'a' || tool.name == 'b'" {
+		t.Fatalf("when = %q, problems %+v", rules[0].When, probs)
+	}
+	rules, probs = Compile(map[string]string{"tools/call.pre": "when tool.name == 'a'\n  set request.params.arguments.limit = 5 // cap\n    + 100\n"})
+	if len(probs) > 0 || rules[0].Then["request.params.arguments.limit"] != "5 + 100" {
+		t.Fatalf("then = %+v, problems %+v", rules[0].Then, probs)
+	}
+	// A // inside a string is text, and a comment may follow a confirm.
+	rules, probs = Compile(map[string]string{"tools/call.pre": "when tool.name.startsWith('http://') // links\n  confirm \"Open http://x?\" // ask first\n"})
+	if len(probs) > 0 || rules[0].When != "tool.name.startsWith('http://')" || !strings.Contains(rules[0].Then["confirm"], "Open http://x?") {
+		t.Fatalf("rule = %+v, problems %+v", rules, probs)
+	}
+}
+
+// A rule either denies or asks. With both, the deny would always win and
+// the question would never be asked.
+func TestARuleCannotBothDenyAndConfirm(t *testing.T) {
+	_, probs := Compile(map[string]string{"tools/call.pre": "when true\n  confirm \"Sure?\"\n  deny \"no\"\n"})
+	if len(probs) == 0 || !strings.Contains(probs[0].Message, "either denies or asks") {
+		t.Fatalf("problems = %+v", probs)
+	}
+}
+
+// A brace inside a string in a question's {expression} is text.
+func TestABraceInAStringInAQuestion(t *testing.T) {
+	rules, probs := Compile(map[string]string{"tools/call.pre": "when true\n  confirm \"Run {request.params.arguments['}']}?\"\n"})
+	if len(probs) > 0 || !strings.Contains(rules[0].Then["confirm"], `"v1": request.params.arguments['}']`) {
+		t.Fatalf("rule = %+v, problems %+v", rules, probs)
 	}
 }

@@ -75,6 +75,9 @@ type Gateway struct {
 	// metaIn and metaOut are the _meta keys allowed through to servers and
 	// back to clients; see SetMetaAllow.
 	metaIn, metaOut []string
+	// ruleHeaders are the HTTP request headers rules may read; see
+	// SetRuleHeaders.
+	ruleHeaders []string
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -89,6 +92,50 @@ func New(s Store, conn *upstream.Connector, rec *audit.Recorder, cw *cache.Write
 }
 
 type routeKey struct{}
+
+type headersKey struct{}
+
+// credentialHeader reports a header that carries a credential, by what its
+// name says. Such a header is never shown to a rule, even if an operator
+// puts it on the allow-list: authorization, cookie, x-api-key, x-auth-token,
+// x-amz-security-token and the like.
+func credentialHeader(name string) bool {
+	for _, part := range []string{"auth", "cookie", "token", "secret", "password", "credential", "signature", "api-key", "apikey", "session"} {
+		if strings.Contains(name, part) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetRuleHeaders sets the HTTP request headers rules may read, as
+// request.headers. The list starts empty: a rule sees no header unless the
+// operator names it. A header that carries a credential is never shown.
+func (g *Gateway) SetRuleHeaders(names []string) {
+	g.ruleHeaders = nil
+	for _, n := range names {
+		if n = strings.ToLower(strings.TrimSpace(n)); n != "" && !credentialHeader(n) {
+			g.ruleHeaders = append(g.ruleHeaders, n)
+		}
+	}
+}
+
+// headersFor picks the allow-listed headers out of a request, by lower-case
+// name. A header sent more than once is joined with ", ", as HTTP reads it.
+func (g *Gateway) headersFor(h http.Header) map[string]string {
+	out := map[string]string{}
+	for _, n := range g.ruleHeaders {
+		if vs := h.Values(n); len(vs) > 0 {
+			out[n] = strings.Join(vs, ", ")
+		}
+	}
+	return out
+}
+
+func ruleHeaders(ctx context.Context) map[string]string {
+	h, _ := ctx.Value(headersKey{}).(map[string]string)
+	return h
+}
 
 // MuxHandler serves /mcp.
 func (g *Gateway) MuxHandler() http.Handler { return g.handler("mux") }
@@ -123,6 +170,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			audit.SetTarget(r.Context(), srv.ID, srv.Slug)
 		}
 		ctx := context.WithValue(r.Context(), routeKey{}, route)
+		ctx = context.WithValue(ctx, headersKey{}, g.headersFor(r.Header))
 		if r.URL.Query().Get("search") == "true" {
 			ctx = withSearchMode(ctx)
 		}

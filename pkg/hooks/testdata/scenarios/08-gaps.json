@@ -1,19 +1,19 @@
 [
 {"name":"RH-SRV-10 the progress switch is a server.settings value","ids":["RH-SRV-10"],
- "servers":[{"slug":"a","rules":[{"hook":"server.settings","when":"caller.type == 'key'","then":{"progress":"false"}}],"catalog":{}}],
+ "servers":[{"slug":"a","rules":[{"hook":"server.settings","when":"request.caller.type == 'key'","then":{"settings.progress":"false"}}],"catalog":{}}],
  "steps":[
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."}], "op":"config","caller":{"type":"user"},"expect":[{"path":"outcome.result.progress","equals":true}]},
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The config step asks the harness gateway for the server.settings switches of the server, through a test-hook method. An SDK sends only protocol methods."}], "op":"config","caller":{"type":"key"},"expect":[{"path":"outcome.result.progress","equals":false},{"path":"outcome.result.tools","equals":true}]}]},
 {"name":"ADV-03 a revoked grant cannot be resumed with valid state","ids":["ADV-03"],"route":"mux","caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
- "servers":[{"slug":"docs","generation":"1","rules":[{"hook":"tools/call.pre","when":"!has(input.ok)","then":{"result":"elicit('ok','Delete?')"}}],"catalog":{"tools":[{"name":"delete_page","inputSchema":{"type":"object"}}]}},
+ "servers":[{"slug":"docs","generation":"1","rules":[{"hook":"tools/call.pre","when":"true","then":{"confirm":"elicit('ok','Delete?')"}}],"catalog":{"tools":[{"name":"delete_page","inputSchema":{"type":"object"}}]}},
             {"slug":"other","catalog":{}}],
  "steps":[
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call docs__delete_page is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], "op":"tools/call","params":{"name":"docs__delete_page"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], "op":"tools/call","slugs":["other"],"params":{"name":"docs__delete_page","requestState":"${steps.0.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.code","equals":-32602},{"path":"outcome.forward","exists":false}]}]},
 {"name":"ADV-22 state cannot move between methods or targets; a changed policy generation invalidates it","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
  "servers":[{"slug":"a","generation":"1","rules":[
-   {"hook":"tools/call.pre","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}},
-   {"hook":"resources/read.pre","when":"!has(input.ok)","then":{"result":"elicit('ok','Read?')"}}],
+   {"hook":"tools/call.pre","when":"true","then":{"confirm":"elicit('ok','Go?')"}},
+   {"hook":"resources/read.pre","when":"true","then":{"confirm":"elicit('ok','Read?')"}}],
   "catalog":{"tools":[{"name":"t1","inputSchema":{"type":"object"}},{"name":"t2","inputSchema":{"type":"object"}}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t1 is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], "op":"tools/call","params":{"name":"t1"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
@@ -21,13 +21,12 @@
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The reply to this tools/call t1 is input_required. An SDK never hands that to its caller: it asks its own elicitation handler and sends the next round itself. This step checks the intermediate reply (outcome.result.resultType), which only the raw client can see."}], "op":"tools/call","params":{"name":"t1"},"expect":[{"path":"outcome.result.resultType","equals":"input_required"}]},
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"${steps.2.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], "op":"resources/read","params":{"uri":"file:///r","requestState":"${steps.2.outcome.result.requestState}","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.message","contains":"another request"}]}]},
 {"name":"ADV-22 a policy change between prompt and retry invalidates the state","ids":["ADV-22"],"caller":{"userId":"u1"},"client":{"capabilities":{"elicitation":{}}},
- "servers":[{"slug":"a","generation":"2","rules":[{"hook":"tools/call.pre","when":"!has(input.ok)","then":{"result":"elicit('ok','Go?')"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
- "secret":"fixed",
+ "servers":[{"slug":"a","generation":"2","rules":[{"hook":"tools/call.pre","when":"true","then":{"confirm":"elicit('ok','Go?')"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "This step sends a continuation written by hand (requestState \"eyJjIjoiMSIsIm0iOiJ0b29scy9jYWxsIiwidSI6InUxIi…; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."}], "op":"tools/call","params":{"name":"t","requestState":"eyJjIjoiMSIsIm0iOiJ0b29scy9jYWxsIiwidSI6InUxIiwiZSI6ImEiLCJ0IjoidCIsImgiOiIiLCJnIjoiMSIsIngiOjk5OTk5OTk5OTl9.x","inputResponses":{"bifrost.ok":{"action":"accept","content":{"confirm":true}}}},"expect":[{"path":"outcome.error.code","equals":-32602}]}]},
 {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the harness gateway does not serve the Skills extension, which is deferred, so the skills/get step has no endpoint to reach"}], "name":"ADV-30 the rewrite pipeline never touches a file the caller cannot read","ids":["ADV-30"],
  "servers":[{"slug":"a","rules":[
-   {"hook":"resources/list.post","when":"uri.endsWith('secret.md')","then":{"decision":"'deny'"}},
-   {"hook":"resources/read.post.result","when":"true","then":{"text":"result.text + ' (reviewed)'"}}],
+   {"hook":"resources/list.post","when":"resource.uri.endsWith('secret.md')","then":{"decision":"'deny'"}},
+   {"hook":"resources/read.post.result","when":"true","then":{"response.result.contents":"response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + ' (reviewed)'} : c)"}}],
   "catalog":{"skills":[{"uri":"skill://s/SKILL.md","frontmatter":{"name":"s","description":"d"},
     "resources":[{"uri":"skill://s/SKILL.md","digest":"sha256:aa","size":30},{"uri":"skill://s/secret.md","digest":"sha256:bb","size":6}],
     "files":{"skill://s/SKILL.md":{"text":"---\nname: s\ndescription: d\n---\n"},"skill://s/secret.md":{"text":"secret"}}}]}}],
@@ -37,8 +36,8 @@
    {"path":"outcome.hits[*].item","notContains":"skill://s/secret.md"}]}]},
 {"name":"ADV-39 audit rules never become enforcement, even when they fail","ids":["ADV-39","RH-EVAL-07"],
  "servers":[{"slug":"a","rules":[
-   {"mode":"audit","hook":"tools/call.pre","when":"args.missing.deep == 1","then":{"decision":"'deny'"}},
-   {"mode":"audit","hook":"tools/call.pre","when":"true","then":{"args.x":"1"}}],
+   {"mode":"audit","hook":"tools/call.pre","when":"request.params.arguments.missing.deep == 1","then":{"decision":"'deny'"}},
+   {"mode":"audit","hook":"tools/call.pre","when":"true","then":{"request.params.arguments.x":"1"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],
  "steps":[{"op":"tools/call","params":{"name":"t","arguments":{"y":2}},"expect":[{"path":"outcome.forward.params.arguments","equals":{"y":2}},{"path":"outcome.hits[*].effect","equals":["would error","would set"]}]}]}
 ]

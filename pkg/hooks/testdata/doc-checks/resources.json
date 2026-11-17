@@ -8,7 +8,7 @@
      {
       "name": "Hide changelog",
       "hook": "resources/list.post",
-      "when": "uri == 'file:///CHANGELOG.md'",
+      "when": "resource.uri == 'file:///CHANGELOG.md'",
       "then": {
        "decision": "'deny'"
       }
@@ -74,7 +74,7 @@
      {
       "name": "No env files",
       "hook": "resources/list.post",
-      "when": "uri.endsWith('.env') || uri.contains('/.git/')",
+      "when": "resource.uri.endsWith('.env') || resource.uri.contains('/.git/')",
       "then": {
        "decision": "'deny'"
       }
@@ -133,7 +133,7 @@
      {
       "name": "No large binaries",
       "hook": "resources/list.post",
-      "when": "!mimeType.startsWith('text/') && size > 1048576",
+      "when": "!resource.mimeType.startsWith('text/') && resource.size > 1048576",
       "then": {
        "decision": "'deny'"
       }
@@ -183,7 +183,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "mimeType == ''",
+      "when": "resource.mimeType == ''",
       "then": {
        "decision": "'deny'"
       }
@@ -246,9 +246,9 @@
      {
       "name": "ENG titles",
       "hook": "resources/list.post",
-      "when": "uri.startsWith('confluence://ENG/')",
+      "when": "resource.uri.startsWith('confluence://ENG/')",
       "then": {
-       "title": "'ENG wiki: ' + (title != '' ? title : name)"
+       "resource.title": "'ENG wiki: ' + resource.?title.orValue(resource.name)"
       }
      }
     ],
@@ -302,10 +302,10 @@
      {
       "name": "Assistant only",
       "hook": "resources/list.post",
-      "when": "uri.endsWith('.json')",
+      "when": "resource.uri.endsWith('.json')",
       "then": {
-       "annotations.audience": "['assistant']",
-       "annotations.priority": "0.2"
+       "resource.annotations.audience": "['assistant']",
+       "resource.annotations.priority": "0.2"
       }
      }
     ],
@@ -351,7 +351,7 @@
       "hook": "resources/list.post",
       "when": "true",
       "then": {
-       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+       "resource.description": "regex.replace(resource.description, '(?i)confluence', 'the wiki')"
       }
      }
     ],
@@ -392,7 +392,7 @@
       "hook": "resources/list.post",
       "when": "true",
       "then": {
-       "name": "'x'"
+       "resource.name": "'x'"
       }
      }
     ],
@@ -405,7 +405,7 @@
     "expect": [
      {
       "path": "problems.a[0].message",
-      "equals": "resources/list.post cannot set \"name\""
+      "contains": "resource.name cannot be changed on resources/list.post"
      }
     ]
    }
@@ -420,7 +420,7 @@
      {
       "name": "No HR template",
       "hook": "resources/templates/list.post",
-      "when": "uriTemplate.startsWith('confluence://HR/')",
+      "when": "template.uriTemplate.startsWith('confluence://HR/')",
       "then": {
        "decision": "'deny'"
       }
@@ -494,7 +494,7 @@
      {
       "name": "Users only",
       "hook": "resources/templates/list.post",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
        "decision": "'deny'"
       }
@@ -622,10 +622,10 @@
      {
       "name": "Describe page template",
       "hook": "resources/templates/list.post",
-      "when": "uriTemplate.startsWith('confluence://ENG/')",
+      "when": "template.uriTemplate.startsWith('confluence://ENG/')",
       "then": {
-       "title": "'ENG wiki page'",
-       "description": "'A page in the ENG space. Replace {page} with the page ID.'"
+       "template.title": "'ENG wiki page'",
+       "template.description": "'A page in the ENG space. Replace {page} with the page ID.'"
       }
      }
     ],
@@ -671,7 +671,7 @@
       "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
-       "annotations": "{'audience': ['assistant'], 'priority': 0.1}"
+       "template.annotations": "{'audience': ['assistant'], 'priority': 0.1}"
       }
      }
     ],
@@ -718,7 +718,7 @@
       "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
-       "title": "'Repository file'"
+       "template.title": "'Repository file'"
       }
      }
     ],
@@ -757,7 +757,7 @@
      {
       "name": "ENG via search",
       "hook": "resources/read.pre",
-      "when": "uri.startsWith('confluence://ENG/')",
+      "when": "resource.uri.startsWith('confluence://ENG/')",
       "then": {
        "decision": "'deny'",
        "reason": "'ENG pages are available only through the search tool.'"
@@ -823,9 +823,9 @@
      {
       "name": "Confirm read",
       "hook": "resources/read.pre",
-      "when": "uri.startsWith('file:///secrets/') && !has(input.ok)",
+      "when": "resource.uri.startsWith('file:///secrets/')",
       "then": {
-       "result": "elicit('ok', 'Share {uri} with the assistant?', {'uri': uri})"
+       "confirm": "elicit('ok', 'Share {uri} with the assistant?', {'uri': resource.uri})"
       }
      }
     ],
@@ -965,7 +965,7 @@
      {
       "name": "Skills for users",
       "hook": "resources/read.pre",
-      "when": "caller.type == 'key' && uri.startsWith('skill://')",
+      "when": "request.caller.type == 'key' && resource.uri.startsWith('skill://')",
       "then": {
        "decision": "'deny'",
        "reason": "'Skills are available to users only.'"
@@ -1061,7 +1061,7 @@
       "hook": "resources/read.post.elicit",
       "when": "true",
       "then": {
-       "message": "'Drive asks: ' + request.message"
+       "elicitation.params.message": "'Drive asks: ' + elicitation.params.message"
       }
      }
     ],
@@ -1223,7 +1223,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'Confluence', 'the wiki')} : c)"
       }
      }
     ],
@@ -1304,7 +1304,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "slugUris(result.text)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': slugUris(c.text)} : c)"
       }
      }
     ],
@@ -1368,7 +1368,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "slugUris(result.text)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': slugUris(c.text)} : c)"
       }
      }
     ],
@@ -1418,7 +1418,7 @@
      {
       "name": "Withhold keys",
       "hook": "resources/read.post.result",
-      "when": "result.text.contains('BEGIN PRIVATE KEY')",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text.contains('BEGIN PRIVATE KEY')))",
       "then": {
        "decision": "'deny'",
        "reason": "'This file contains a private key and was withheld.'"
@@ -1476,7 +1476,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(result.text, 'Confluence', 'the wiki')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'Confluence', 'the wiki')} : c)"
       }
      }
     ],
@@ -1541,9 +1541,9 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "caller.type == 'user'",
+      "when": "request.caller.type == 'user'",
       "then": {
-       "text": "result.text + '!'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + '!'} : c)"
       }
      }
     ],
@@ -1603,7 +1603,7 @@
      {
       "name": "Allowed skills",
       "hook": "skills/list.post",
-      "when": "!(name in ['notebooks', 'widgets'])",
+      "when": "!(skill.name in ['notebooks', 'widgets'])",
       "then": {
        "decision": "'deny'"
       }
@@ -1738,7 +1738,7 @@
      {
       "name": "Hide support refunds",
       "hook": "skills/list.post",
-      "when": "uri == 'skill://acme/support/refunds/SKILL.md'",
+      "when": "skill.uri == 'skill://acme/support/refunds/SKILL.md'",
       "then": {
        "decision": "'deny'"
       }
@@ -1793,7 +1793,7 @@
      {
       "name": "Internal skills",
       "hook": "skills/list.post",
-      "when": "'internal' in frontmatter.?metadata.?tags.orValue([]) && caller.type == 'key'",
+      "when": "'internal' in skill.frontmatter.?metadata.?tags.orValue([]) && request.caller.type == 'key'",
       "then": {
        "decision": "'deny'"
       }
@@ -1867,7 +1867,7 @@
     "rules": [
      {
       "hook": "skills/list.post",
-      "when": "name == 'widgets'",
+      "when": "skill.name == 'widgets'",
       "then": {
        "decision": "'deny'"
       }
@@ -1975,9 +1975,9 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'file:///b.md'",
+      "when": "resource.uri == 'file:///b.md'",
       "then": {
-       "title": "annotations.missing"
+       "resource.title": "resource._meta.missing"
       }
      }
     ],
@@ -2042,7 +2042,7 @@
      {
       "name": "Team check",
       "hook": "resources/read.pre",
-      "when": "uri == 'file:///b.md' && caller.team == 'x'",
+      "when": "resource.uri == 'file:///b.md' && request.caller.team == 'x'",
       "then": {
        "decision": "'deny'"
       }
@@ -2125,7 +2125,7 @@
     "rules": [
      {
       "hook": "resources/read.post.elicit",
-      "when": "request.missing.deep == 1",
+      "when": "elicitation.params.missing.deep == 1",
       "then": {
        "decision": "'deny'"
       }
@@ -2207,7 +2207,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri.endsWith('.env')",
+      "when": "resource.uri.endsWith('.env')",
       "then": {
        "decision": "'deny'"
       }
@@ -2286,7 +2286,7 @@
     "rules": [
      {
       "hook": "resources/templates/list.post",
-      "when": "name == 'd'",
+      "when": "template.name == 'd'",
       "then": {
        "decision": "'deny'"
       }
@@ -2345,7 +2345,7 @@
     "rules": [
      {
       "hook": "resources/templates/list.post",
-      "when": "name == 'deny'",
+      "when": "template.name == 'deny'",
       "then": {
        "decision": "'deny'"
       }
@@ -2438,7 +2438,7 @@
       "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
-       "title": "annotations.missing"
+       "template.title": "template._meta.missing"
       }
      }
     ],
@@ -2484,28 +2484,28 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "result.text == 'bad' && result.missing.x == 1",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text == 'bad' && response.result._meta.missing.x == 1))",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/read.post.result",
-      "when": "result.text == 'deny'",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text == 'deny'))",
       "then": {
        "decision": "'deny'"
       }
      },
      {
       "hook": "resources/read.post.result",
-      "when": "result.text == ''",
+      "when": "response.result.contents.exists(c, has(c.text) && (c.text == ''))",
       "then": {
-       "text": "'changed'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) && (c.text == '') ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': 'changed'} : c)"
       }
      },
      {
       "hook": "resources/read.post.result",
-      "when": "result.contents[0].mimeType == 'application/x-bad'",
+      "when": "response.result.contents[0].mimeType == 'application/x-bad'",
       "then": {
        "decision": "'deny'",
        "reason": "'Binary withheld.'"
@@ -2636,7 +2636,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "result.text + '!'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + '!'} : c)"
       }
      }
     ],

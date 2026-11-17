@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 )
 
@@ -28,11 +29,15 @@ func toMap(v any) map[string]any {
 	return m
 }
 
+// resolve returns one field of the item as rules have left it, and whether
+// it is there. Nothing is filled in: a field the server did not send, or
+// sent as null, is absent.
 func (it *item) resolve(name string) (any, bool) {
 	if it.bare {
-		// Only the URI is known. `upstream` is the same one field: it must
-		// not be filled in with empty defaults, or `upstream.name == 'x'`
-		// would quietly be false where it should fail.
+		// Only the URI is known, so upstream is the same one field. A rule
+		// that reads its name fails, and a rule that fails denies: a deny
+		// written against a name can never be assumed not to apply to
+		// something with no name.
 		switch name {
 		case "uri":
 			return it.id, true
@@ -41,71 +46,68 @@ func (it *item) resolve(name string) (any, bool) {
 		}
 		return nil, false
 	}
-	if name == "upstream" {
-		return derived(it.kind, it.view.Upstream()), true
+	switch {
+	case name == "upstream":
+		return upstreamOf(it.kind, it.view.Upstream()), true
+	case name == "params":
+		if it.kind != KindPrompt || it.args == nil {
+			return nil, false
+		}
+		return it.args.byName(), true
+	case it.kind == KindSkill && (name == "name" || name == "description"):
+		fm, _ := it.view.Upstream()["frontmatter"].(map[string]any)
+		v, ok := fm[name]
+		return v, ok && !isNil(v)
+	case it.kind == KindPrompt && name == "arguments" && it.args != nil:
+		if len(it.args.cur) == 0 {
+			v, ok := it.view.Get(name)
+			return v, ok && !isNil(v)
+		}
+		return it.args.current(), true
 	}
-	for _, f := range ItemFields[it.kind] {
-		if f != name {
-			continue
-		}
-		if name == "meta" {
-			if v, ok := it.view.Get("_meta"); ok {
-				return v, true
-			}
-			return map[string]any{}, true
-		}
-		if it.kind == KindSkill && (name == "name" || name == "description") {
-			fm, _ := it.view.Upstream()["frontmatter"].(map[string]any)
-			if v, ok := fm[name]; ok {
-				return v, true
-			}
-			return "", true
-		}
-		if it.kind == KindPrompt && name == "arguments" && it.args != nil {
-			return it.args.current(), true
-		}
-		v, ok := it.view.Get(name)
-		if !ok {
-			return defaultFor(name), true
-		}
-		return v, true
-	}
-	return nil, false
+	v, ok := it.view.Get(name)
+	return v, ok && !isNil(v)
 }
 
-func derived(kind ItemKind, m map[string]any) map[string]any {
-	out := make(map[string]any, len(m)+2)
-	for k, v := range m {
-		out[k] = v
+// isNil reports a value that is not there: nil, or a nil map, list or
+// pointer held in an interface, which does not compare equal to nil.
+func isNil(v any) bool {
+	if v == nil {
+		return true
 	}
-	if meta, ok := m["_meta"]; ok {
-		out["meta"] = meta
-	} else {
-		out["meta"] = map[string]any{}
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Pointer, reflect.Interface:
+		return rv.IsNil()
 	}
-	if kind == KindSkill {
-		fm, _ := m["frontmatter"].(map[string]any)
-		out["name"], out["description"] = fm["name"], fm["description"]
+	return false
+}
+
+// upstreamOf is an item's canonical definition: what the server sent. A
+// skill's name and description live in its frontmatter; they are shown
+// beside it, as they are on the item.
+func upstreamOf(kind ItemKind, m map[string]any) map[string]any {
+	if kind != KindSkill {
+		return m
 	}
-	for _, f := range ItemFields[kind] {
-		if _, ok := out[f]; !ok {
-			out[f] = defaultFor(f)
+	out := copyMap(m)
+	fm, _ := m["frontmatter"].(map[string]any)
+	for _, k := range []string{"name", "description"} {
+		if v, ok := fm[k]; ok && v != nil {
+			out[k] = v
 		}
 	}
 	return out
 }
 
+// set changes one path inside the item. A prompt's params are the gateway's
+// view of its arguments, by name.
 func (it *item) set(key string, val any) error {
 	parts := splitPath(key)
-	switch parts[0] {
-	case "meta":
-		if val == nil {
-			it.view.Delete(append([]string{"_meta"}, parts[1:]...))
-		} else {
-			it.view.Set(append([]string{"_meta"}, parts[1:]...), val)
-		}
-	case "arguments":
+	switch {
+	case parts[0] == "params" && it.args != nil:
 		return it.args.set(parts[1], parts[2], val)
+	case val == nil:
+		it.view.Delete(parts)
 	default:
 		it.view.Set(parts, val)
 	}
@@ -139,8 +141,7 @@ func (s *Set) listItems(ctx context.Context, kind ItemKind, hook string, idKey s
 		if kind == KindPrompt {
 			it.args = newArgState(base)
 		}
-		vars := c.vars()
-		o := s.run(ctx, hook, id, it.resolve, vars, it.set)
+		o := s.run(ctx, hook, id, it.resolve, c.roots(hookMethod(hook), nil), it.set)
 		results[i].hits = append(results[i].hits, o.hits...)
 		if o.denied {
 			results[i].hidden = true
@@ -249,6 +250,17 @@ func (as *argState) set(name, op string, val any) error {
 		as.desc[name] = val.(string)
 	}
 	return nil
+}
+
+// byName is the arguments as the gateway's params view: each argument under
+// its current name.
+func (as *argState) byName() map[string]any {
+	out := make(map[string]any, len(as.cur))
+	for _, x := range as.current() {
+		m := x.(map[string]any)
+		out[m["name"].(string)] = m
+	}
+	return out
 }
 
 func (as *argState) current() []any {

@@ -63,9 +63,9 @@ func BenchmarkToolMap(b *testing.B) {
 }
 
 func BenchmarkSingleRuleEval(b *testing.B) {
-	set, _ := Compile([]Rule{{Hook: "tools/list.post", When: "name.startsWith('delete_') && caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}}})
+	set, _ := Compile([]Rule{{Hook: "tools/list.post", When: "tool.name.startsWith('delete_') && request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}}})
 	ts := newToolState(prepare(&mcp.Tool{Name: "get_page", InputSchema: map[string]any{"type": "object"}}))
-	vars := Context{Caller: map[string]any{"role": "member"}}.vars()
+	vars := Context{Caller: map[string]any{"role": "member"}}.roots("tools/list", nil)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -76,7 +76,7 @@ func BenchmarkSingleRuleEval(b *testing.B) {
 func BenchmarkCallCorpusPolicy(b *testing.B) {
 	tools := realTools(b)
 	set, _ := Compile(realisticRules())
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "dd", Rules: set, Catalog: Catalog{Tools: tools}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "role": "member"}}
 	name := tools[0].Name

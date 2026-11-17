@@ -9,8 +9,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Follow-up to codex-v3-review-response.md. Known failures are opt-in with
-// HOOKS_KNOWN_GAPS=1; controls run normally. Engine code is unchanged.
+// Regressions from the third review's fix pass (November 15, 2026): each
+// test reproduced a finding and now holds its fix.
 
 func TestCodexV3FixUnknownFlushOnConsumerExit(t *testing.T) { // V3F-G01
 	for _, panics := range []bool{false, true} {
@@ -95,18 +95,18 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 	for _, hook := range []string{"tools/call.post.result", "tools/call.post.elicit", "tools/call.post.progress"} {
 		for _, exposed := range []bool{false, true} {
 			name := hook + "/upstream_control"
-			when := "upstream.name == 't'"
+			when := "tool.upstream.name == 't'"
 			if exposed {
 				name = hook + "/exposed_name"
-				when = "name == 'public' && upstream.name == 't'"
+				when = "tool.name == 'public' && tool.upstream.name == 't'"
 			}
 			t.Run(name, func(t *testing.T) {
 				if exposed {
 				}
 				c := newStreamCase(t, "direct", nil, Limits{})
 				c.r.Servers[0].Rules = codexSet(t,
-					Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"name": "'public'"}},
-					Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
+					Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.name": "'public'"}},
+					Rule{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
 					Rule{Hook: hook, When: when, Then: map[string]string{"decision": "'deny'"}},
 				)
 				c.params.Name = "public"
@@ -148,10 +148,10 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 
 func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 	for _, expr := range []string{
-		"has(.flags.debug)", "['search'].exists(k, flags[k])",
-		"[flags].exists(f, f.search)", "flags.exists(k, k == 'search')",
-		"[1].all(x, has(flags.debug))", "(true ? flags : {}).search",
-		".flags['search']", "has(.flags.serach)",
+		"has(.request.flags.debug)", "['search'].exists(k, request.flags[k])",
+		"[request.flags].exists(f, f.search)", "request.flags.exists(k, k == 'search')",
+		"[1].all(x, has(request.flags.debug))", "(true ? request.flags : {}).search",
+		"request.flags['serach']", "has(.request.flags.serach)",
 	} {
 		t.Run("reject/"+expr, func(t *testing.T) {
 			if _, problems := Compile([]Rule{{Hook: "tools/list.post", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems == nil {
@@ -160,8 +160,8 @@ func TestCodexV3FixFlagsCompilerEdges(t *testing.T) { // V3F-C01
 		})
 	}
 	for _, expr := range []string{
-		"[1].all(x, flags.search)", "has(.flags.search) && .flags.search",
-		"[{'search': true}].exists(flags, flags.search)",
+		"[1].all(x, request.flags.search)", "has(.request.flags.search) && .request.flags.search",
+		"request.flags['search']", "[{'search': true}].exists(flags, flags.search)",
 	} {
 		t.Run("accept/"+expr, func(t *testing.T) {
 			if _, problems := Compile([]Rule{{Hook: "tools/list.post", When: expr, Then: map[string]string{"decision": "'deny'"}}}); problems != nil {
@@ -177,12 +177,12 @@ func TestCodexV3FixPromptReplyKeepsUpstreamIdentity(t *testing.T) { // V3F-G04
 			s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent},
 				Catalog: Catalog{Prompts: []*mcp.Prompt{{Name: "original"}}},
 				Rules: codexSet(t,
-					Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"name": "'public'"}},
-					Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-					Rule{Hook: hook, When: "upstream.name == 'original'", Then: map[string]string{"decision": "'deny'"}},
+					Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"prompt.name": "'public'"}},
+					Rule{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
+					Rule{Hook: hook, When: "prompt.upstream.name == 'original'", Then: map[string]string{"decision": "'deny'"}},
 				),
 			}
-			e := &Engine{Signer: Signer{Key: []byte("review-only-test-key")}}
+			e := &Engine{}
 			r := reviewRequest("direct", s)
 			p := &mcp.GetPromptParams{Name: "public"}
 			first := e.GetPrompt(context.Background(), r, p)
@@ -213,9 +213,9 @@ func TestCodexV3FixResourceHooksKeepUpstreamFields(t *testing.T) { // V3F-G05
 	for _, hook := range []string{"resources/read.pre", "resources/read.post.result", "resources/read.post.elicit", "resources/read.post.progress"} {
 		t.Run(hook, func(t *testing.T) {
 			e, r, p := codexV3ReadSetup(t,
-				Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"title": "'Public'"}},
-				Rule{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-				Rule{Hook: hook, When: "upstream.title == 'Original'", Then: map[string]string{"decision": "'deny'"}},
+				Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"resource.title": "'Public'"}},
+				Rule{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
+				Rule{Hook: hook, When: "resource.upstream.title == 'Original'", Then: map[string]string{"decision": "'deny'"}},
 			)
 			r.Servers[0].Catalog.Resources = []*mcp.Resource{{Name: "secret", URI: p.URI, Title: "Original"}}
 			first := e.ReadResource(context.Background(), r, p)

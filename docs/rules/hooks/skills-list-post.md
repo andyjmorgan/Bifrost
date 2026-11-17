@@ -4,33 +4,40 @@
 
 ## When it runs
 
-`skills/list.post` runs on each upstream skill entry, after [server.settings](server-settings.md). Skills follow the `resources` switch. The hook runs on:
+`skills/list.post` runs on each skill entry from the server, after [server.settings](server-settings.md). Skills follow `settings.resources`. The hook runs on:
 
 - `skills/list` and `skills/get`
 - `resources/list`, to drop resources under denied folders
 - `resources/read` and directory reads, to refuse URIs under denied folders
 - [fallback resolution](overview.md#fallback-resolution) on the mux route
 
-## Variables
+## What a rule can read
 
-| Variable | Type | Description |
-| --- | --- | --- |
-| `uri` | string | The skill's URI, such as `skill://notebooks/SKILL.md`, without the mux prefix |
-| `frontmatter` | map | The parsed `SKILL.md` frontmatter |
-| `resources` | list or string | The manifest: a list of `{uri, digest, size}`, or `"dynamic"` |
-| `name` | string | `frontmatter.name`, or `''` |
-| `description` | string | `frontmatter.description`, or `''` |
-| `upstream` | map | The entry as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
+| Branch | Notable fields |
+| --- | --- |
+| `skill` | `skill.uri`, the skill's URI, such as `skill://notebooks/SKILL.md`, without the mux prefix. `skill.frontmatter`, the parsed `SKILL.md` frontmatter. `skill.name` and `skill.description`, from the frontmatter. `skill.resources`, the manifest: a list of `{uri, digest, size}`, or `"dynamic"` |
+| `skill.upstream` | The entry as the server sent it |
+| `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
+| `server` | `server.slug` and what the gateway knows about the server |
+| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
 
-## Fields
+Only `skill.uri` is always present. Read the other fields with the [optional forms](overview.md#optional-values):
 
-| Field | Type | Effect |
+| Read | Use |
+| --- | --- |
+| The name, or `''` | `skill.?name.orValue('')` |
+| A value deep in the frontmatter | `skill.?frontmatter.?metadata.?tags.orValue([])` |
+
+## What a rule can set
+
+A rule here sets no path. It can only deny, and every `skills/list.post` rule must set `decision`.
+
+| Key | Value | Effect |
 | --- | --- | --- |
 | `decision` | `'deny'` | Deny the skill's folder. Stops evaluation |
 | `reason` | string | Recorded in audit only |
 
-This hook can only hide. Every `skills/list.post` rule must set `decision`.
+A rule here cannot ask the user to confirm. A rule without `decision` is refused when saved, with `a skills/list.post rule must set decision: "deny"`.
 
 ## What the client sees
 
@@ -44,16 +51,6 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 | `resources/read` | `-32602`, `not found: <uri>`, even when a template matches |
 | Directory read | Children under the folder are dropped. A read of the folder itself returns `not found` |
 
-## Nuances and limits
-
-- A rule can match any field, but the effect is always the whole folder. To deny a single file, use [resources/list.post](resources-list-post.md).
-- Skills nested under a denied skill are denied with it.
-- A template allow cannot override a skill deny.
-- Skill names are not unique. A rule on `name` that matches two skills denies both folders. Match `uri` to target one.
-- Denying a single file inside a skill is allowed, but can break the skill, because its manifest and `SKILL.md` still reference the file.
-- Skill names never change. A `resources/read.post.result` rewrite of the skill's own root `SKILL.md` that changes `name` is rejected, and the whole skill keeps its upstream bytes.
-- `skills/list` is sorted by slug, then by skill URI, whatever order the upstream sends.
-
 ## Examples
 
 ### Allow only listed skills
@@ -62,12 +59,12 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 {
   "name": "Allowed skills",
   "hook": "skills/list.post",
-  "when": "!(name in ['notebooks', 'widgets'])",
+  "when": "!(skill.?name.orValue('') in ['notebooks', 'widgets'])",
   "then": { "decision": "'deny'" }
 }
 ```
 
-`skills/list` shows only `skill://notebooks/SKILL.md`. For the `billing` skill, `skills/get` returns `-32602`, `unknown skill skill://billing/SKILL.md`. The upstream also lists `skill://billing/refunds.md` as a resource, but `resources/list` omits it. A read of it returns `not found`, even though the template `skill://{+path}` matches it.
+`skills/list` shows only `skill://notebooks/SKILL.md`. For the `billing` skill, `skills/get` returns `-32602`, `unknown skill skill://billing/SKILL.md`. The server also lists `skill://billing/refunds.md` as a resource, but `resources/list` omits it. A read of it returns `not found`, even though the template `skill://{+path}` matches it.
 
 ### Deny one of two skills with the same name
 
@@ -75,7 +72,7 @@ The denied folder is the skill's `uri` without `/SKILL.md`. Every URI equal to o
 {
   "name": "Hide support refunds",
   "hook": "skills/list.post",
-  "when": "uri == 'skill://acme/support/refunds/SKILL.md'",
+  "when": "skill.uri == 'skill://acme/support/refunds/SKILL.md'",
   "then": { "decision": "'deny'" }
 }
 ```
@@ -88,12 +85,23 @@ Two skills are named `refunds`. Only `skill://acme/billing/refunds/SKILL.md` sta
 {
   "name": "Internal skills",
   "hook": "skills/list.post",
-  "when": "'internal' in frontmatter.?metadata.?tags.orValue([]) && caller.type == 'key'",
+  "when": "'internal' in skill.?frontmatter.?metadata.?tags.orValue([]) && request.caller.type == 'apikey'",
   "then": { "decision": "'deny'" }
 }
 ```
 
-For API keys, a skill whose frontmatter has `metadata.tags: [internal]` is hidden. The optional selectors `.?` make the rule safe for skills without `metadata`. Users see every skill.
+For API keys, a skill whose frontmatter has `metadata.tags: [internal]` is hidden. The optional selectors `.?` make the rule safe for skills without `metadata`. Other callers see every skill.
+
+## Nuances and limits
+
+- A rule can match any field, but the effect is always the whole folder. To deny a single file, use [resources/list.post](resources-list-post.md).
+- Skills nested under a denied skill are denied with it.
+- A template that is allowed cannot override a skill deny.
+- Skill names are not unique. A rule on `skill.name` that matches two skills denies both folders. Match `skill.uri` to target one.
+- A rule that fails to evaluate hides the skill. A plain read of `skill.name` fails on a skill whose frontmatter has no name.
+- Denying a single file inside a skill is allowed, but can break the skill, because its manifest and `SKILL.md` still reference the file.
+- Skill names never change. A `resources/read.post.result` rewrite of the skill's own root `SKILL.md` that changes `name` is rejected, and the whole skill keeps the server's bytes.
+- `skills/list` is sorted by slug, then by skill URI, whatever order the server sends.
 
 ## Related pages
 

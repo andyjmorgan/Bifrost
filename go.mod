@@ -6,6 +6,7 @@ require (
 	cel.dev/cel-go v0.32.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -17,7 +18,6 @@ require (
 	cel.dev/expr v0.25.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

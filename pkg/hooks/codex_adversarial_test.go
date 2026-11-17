@@ -34,13 +34,13 @@ func codexRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
 	s := &Server{Slug: "a", Entitlement: map[string]any{"id": "entitlement-a"}, Generation: "1", Rules: codexSet(t, rules...), Catalog: Catalog{
 		Tools: []*mcp.Tool{codexTool()}, Prompts: []*mcp.Prompt{{Name: "p"}}, Resources: []*mcp.Resource{{Name: "r", URI: "file:///r"}},
 	}}
-	e := &Engine{Signer: Signer{Key: []byte("codex-review-secret")}}
+	e := &Engine{}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "orgId": "org-a"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}, Now: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
 	return e, r
 }
 
 func codexConfirm() Rule {
-	return Rule{Hook: "tools/call.pre", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Continue?')"}}
+	return Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Continue?')"}}
 }
 
 func codexAccepted(t testing.TB) mcp.InputResponseMap {
@@ -102,7 +102,7 @@ func TestCodexExecuteToolAPIPreservesContinuation(t *testing.T) { // CX-G03; iso
 func TestCodexChangedToolPreservesUntouchedSchemaPointers(t *testing.T) { // CX-G04
 	orig := codexTool()
 	other := orig.InputSchema.(map[string]any)["properties"].(map[string]any)["tenant"]
-	s := codexSet(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.q.description": "'query'"}})
+	s := codexSet(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.params.q.description": "'query'"}})
 	ls := s.ListTools(context.Background(), []*mcp.Tool{orig}, Context{}, 1)
 	if len(ls.Tools) != 1 {
 		t.Fatalf("listing failed: %+v", ls)
@@ -122,7 +122,7 @@ func TestCodexParallelEntitlementsPreserveCatalogAndReversal(t *testing.T) { // 
 	var servers [2]*Server
 	for i, slug := range []string{"a", "b"} {
 		servers[i] = &Server{Slug: slug, Rules: codexSet(t,
-			Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.q.name": fmt.Sprintf("'%squery'", slug), "params.tenant.pin": fmt.Sprintf("'%s'", slug)}},
+			Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.params.q.name": fmt.Sprintf("'%squery'", slug), "tool.params.tenant.pin": fmt.Sprintf("'%s'", slug)}},
 		), Catalog: Catalog{Tools: []*mcp.Tool{orig}}}
 	}
 	var wg sync.WaitGroup
@@ -195,10 +195,10 @@ func TestCodexAuditBudgetNeverChangesCallOutcome(t *testing.T) { // CX-G06
 
 func TestCodexExpiredBudgetStopsOtherSurfaces(t *testing.T) { // CX-G07
 	e, r := codexRequest(t,
-		Rule{Hook: "prompts/get.pre", When: "true", Then: map[string]string{"args.q": "'x'"}},
+		Rule{Hook: "prompts/get.pre", When: "true", Then: map[string]string{"request.params.arguments.q": "'x'"}},
 		Rule{Hook: "resources/read.pre", When: "false", Then: map[string]string{"decision": "'deny'"}},
-		Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"description": "'x'"}},
-		Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"description": "'x'"}},
+		Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"prompt.description": "'x'"}},
+		Rule{Hook: "resources/list.post", When: "true", Then: map[string]string{"resource.description": "'x'"}},
 	)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
@@ -222,7 +222,8 @@ func TestCodexHelperCostsScaleWithTraversal(t *testing.T) { // CX-G08
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _, err := compileExpr(env, "drop(result.structuredContent, ['items.*.secret'])", nil, Options{CostLimit: 1 << 40})
+	ce, err := compileExpr(env, Hooks["tools/call.post.result"], "drop(response.result.structuredContent, ['items.*.secret'])", nil, Options{CostLimit: 1 << 40})
+	p := ce.prg
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +232,7 @@ func TestCodexHelperCostsScaleWithTraversal(t *testing.T) { // CX-G08
 		for i := range rows {
 			rows[i] = map[string]any{"secret": "remove", "public": "keep"}
 		}
-		_, details, err := p.Eval(map[string]any{"result": map[string]any{"structuredContent": map[string]any{"items": rows}}})
+		_, details, err := p.Eval(map[string]any{"response": map[string]any{"result": map[string]any{"structuredContent": map[string]any{"items": rows}}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,8 +260,8 @@ func TestCodexScenarioNumericAssertionsAreExact(t *testing.T) { // CX-G09
 
 func TestCodexHiddenRequiredArgumentCannotRelyOnAuditPatch(t *testing.T) { // CX-G10
 	e, r := codexRequest(t,
-		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"params.tenant.hide": "true"}},
-		Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"args.tenant": "'A'"}},
+		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.params.tenant.hide": "true"}},
+		Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"request.params.arguments.tenant": "'A'"}},
 	)
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["required"] = []any{"tenant"}
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t"})
@@ -283,7 +284,7 @@ func TestCodexFrontmatterParserRejectsInvalidDescriptionAndFence(t *testing.T) {
 }
 
 func TestCodexResponseLargeIntegerSurvivesRuleEdits(t *testing.T) { // CX-G12
-	e, r := codexRequest(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"description": "'changed'"}})
+	e, r := codexRequest(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "'changed'"}})
 	// Native JSON Number is supported by JSON serialization and preserves
 	// the original upstream schema integer exactly.
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["id"] = map[string]any{"const": json.Number("9007199254740993")}
@@ -351,7 +352,7 @@ func TestCodexJSONClientRepresentationsRemainInteroperable(t *testing.T) { // CX
 }
 
 func TestCodexIntegralJSONSpellingsHaveSamePolicyOutcome(t *testing.T) { // CX-G17
-	e, r := codexRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"args.n": "args.n + 1"}})
+	e, r := codexRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"request.params.arguments.n": "request.params.arguments.n + 1"}})
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["n"] = map[string]any{"type": "integer"}
 	for _, number := range []string{"1", "1.0", "1e0", "1E+0", "0.1e1"} {
 		t.Run(number, func(t *testing.T) {

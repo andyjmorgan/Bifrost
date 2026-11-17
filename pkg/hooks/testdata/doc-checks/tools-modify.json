@@ -8,18 +8,18 @@
      {
       "name": "Strip prefix",
       "hook": "tools/list.post",
-      "when": "name.startsWith('confluence_')",
+      "when": "tool.name.startsWith('confluence_')",
       "then": {
-       "name": "regex.replace(name, '^confluence_', '')"
+       "tool.name": "regex.replace(tool.name, '^confluence_', '')"
       }
      },
      {
       "name": "Search is read-only",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'confluence_search'",
+      "when": "tool.upstream.name == 'confluence_search'",
       "then": {
-       "annotations.readOnlyHint": "true",
-       "description": "description + ' (ENG space only)'"
+       "tool.annotations.readOnlyHint": "true",
+       "tool.description": "tool.description + ' (ENG space only)'"
       }
      }
     ],
@@ -109,10 +109,10 @@
      {
       "name": "cql to query",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'search'",
+      "when": "tool.upstream.name == 'search'",
       "then": {
-       "params.cql.name": "'query'",
-       "params.cql.description": "'A CQL query, such as type = page AND space = ENG.'"
+       "tool.params.cql.name": "'query'",
+       "tool.params.cql.description": "'A CQL query, such as type = page AND space = ENG.'"
       }
      }
     ],
@@ -211,10 +211,10 @@
      {
       "name": "Pin space",
       "hook": "tools/list.post",
-      "when": "'space' in params",
+      "when": "'space' in tool.params",
       "then": {
-       "params.space.hide": "true",
-       "params.space.pin": "'ENG'"
+       "tool.params.space.hide": "true",
+       "tool.params.space.pin": "'ENG'"
       }
      }
     ],
@@ -314,10 +314,10 @@
      {
       "name": "Bound limit",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'search_logs'",
+      "when": "tool.upstream.name == 'search_logs'",
       "then": {
-       "params.limit.default": "50",
-       "params.limit.maximum": "500"
+       "tool.params.limit.default": "50",
+       "tool.params.limit.maximum": "500"
       }
      }
     ],
@@ -406,23 +406,23 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 't1'",
+      "when": "tool.upstream.name == 't1'",
       "then": {
-       "params.space.hide": "true"
+       "tool.params.space.hide": "true"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "upstream.name in ['x', 'y']",
+      "when": "tool.upstream.name in ['x', 'y']",
       "then": {
-       "name": "'same'"
+       "tool.name": "'same'"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'z'",
+      "when": "tool.upstream.name == 'z'",
       "then": {
-       "params.a.description": "'d'"
+       "tool.params.a.description": "'d'"
       }
      }
     ],
@@ -514,7 +514,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.assignee.pin": "caller.email"
+       "tool.params.assignee.pin": "request.caller.email"
       }
      }
     ],
@@ -543,8 +543,8 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "meta.internal": "null",
-       "params.reason.add": "{'type': 'string', 'description': 'Why you are calling this tool.'}"
+       "tool._meta.internal": "null",
+       "tool.params.reason.add": "{'type': 'string', 'description': 'Why you are calling this tool.'}"
       }
      }
     ],
@@ -619,9 +619,9 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.no.description": "'never'",
-       "params.env.pin": "'ENG'",
-       "params.big.enum": "[9007199254740992]"
+       "tool.params.no.description": "'never'",
+       "tool.params.env.pin": "'ENG'",
+       "tool.params.big.enum": "[9007199254740992]"
       }
      }
     ],
@@ -734,7 +734,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.owner.hide": "true"
+       "tool.params.owner.hide": "true"
       }
      },
      {
@@ -742,7 +742,7 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "args.owner": "'x'"
+       "request.params.arguments.owner": "'x'"
       }
      }
     ],
@@ -790,16 +790,16 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'all'",
+      "when": "tool.upstream.name == 'all'",
       "then": {
-       "outputSchema": "dropSchema(outputSchema, ['*'])"
+       "tool.outputSchema": "dropSchema(tool.outputSchema, ['*'])"
       }
      },
      {
       "hook": "tools/list.post",
-      "when": "upstream.name == 'ref'",
+      "when": "tool.upstream.name == 'ref'",
       "then": {
-       "outputSchema": "dropSchema(outputSchema, ['a.b'])"
+       "tool.outputSchema": "dropSchema(tool.outputSchema, ['a.b'])"
       }
      }
     ],

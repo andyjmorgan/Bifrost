@@ -298,20 +298,24 @@ func (n *notifications) progress(params json.RawMessage) (json.RawMessage, bool)
 	}
 	s := n.call.Server
 	msg, _ := m["message"].(string)
-	pv := map[string]any{"message": msg, "progress": m["progress"]}
-	if t, ok := m["total"]; ok {
-		pv["total"] = t
+	// The notification as the server sent it: progress, and total, message
+	// and progressToken where it gave them. Nothing is filled in.
+	sent := map[string]any{}
+	for _, k := range []string{"progress", "total", "message", "progressToken"} {
+		if v, ok := m[k]; ok && v != nil {
+			sent[k] = celValue(v)
+		}
 	}
-	vars := n.r.context(s).vars()
-	vars["args"] = celArgs(n.call.Args)
-	vars["progress"] = pv
+	upstream := map[string]any{"params": sent}
+	roots := n.call.roots(n.r)
+	roots["progress"] = map[string]any{"params": sent, "upstream": upstream}
 	changed := false
-	o := s.Rules.run(n.ctx, n.kind.hook, n.label(), n.resolve, vars, func(key string, val any) error {
+	o := s.Rules.run(n.ctx, n.kind.hook, n.label(), n.resolve, roots, func(key string, val any) error {
 		if key == "message" {
 			msg, changed = val.(string), true
-			pv = copyMap(pv)
-			pv["message"] = msg
-			vars["progress"] = pv
+			cur := copyMap(sent)
+			cur["message"] = msg
+			roots["progress"] = map[string]any{"params": cur, "upstream": upstream}
 		}
 		return nil
 	})
@@ -408,15 +412,8 @@ func replyResolve(call *CallContext) func(string) (any, bool) {
 	switch {
 	case call.Transform != nil:
 		up := prepare(upstreamTool(call.Server, call.Transform.Upstream))
-		return func(name string) (any, bool) {
-			if name == "upstream" {
-				return up.derived, true
-			}
-			if toolFieldSet[name] {
-				return up.derived[name], true
-			}
-			return nil, false
-		}
+		ts := newToolState(up)
+		return ts.resolve
 	case call.Method == "prompts/get":
 		it := &item{kind: KindPrompt, view: NewView(call.Item), args: newArgState(call.Item)}
 		return it.resolve
@@ -434,7 +431,7 @@ func itemResolver(it *item, original map[string]any) func(string) (any, bool) {
 	if it.bare || original == nil {
 		return it.resolve
 	}
-	up := derived(it.kind, original)
+	up := upstreamOf(it.kind, original)
 	return func(name string) (any, bool) {
 		if name == "upstream" {
 			return up, true

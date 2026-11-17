@@ -11,15 +11,15 @@
      {
       "name": "rename",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'flip'",
+      "when": "tool.upstream.name == 'flip'",
       "then": {
-       "name": "'toss'"
+       "tool.name": "'toss'"
       }
      },
      {
       "name": "hide",
       "hook": "tools/list.post",
-      "when": "name == 'toss'",
+      "when": "tool.name == 'toss'",
       "then": {
        "decision": "'deny'"
       }
@@ -103,7 +103,7 @@
      {
       "name": "hide",
       "hook": "tools/list.post",
-      "when": "name == 'toss'",
+      "when": "tool.name == 'toss'",
       "then": {
        "decision": "'deny'"
       }
@@ -111,9 +111,9 @@
      {
       "name": "rename",
       "hook": "tools/list.post",
-      "when": "upstream.name == 'flip'",
+      "when": "tool.upstream.name == 'flip'",
       "then": {
-       "name": "'toss'"
+       "tool.name": "'toss'"
       }
      }
     ],
@@ -175,11 +175,11 @@
      {
       "name": "both",
       "hook": "tools/list.post",
-      "when": "name == 'flip'",
+      "when": "tool.name == 'flip'",
       "then": {
        "decision": "'deny'",
        "reason": "'Not offered.'",
-       "name": "'toss'"
+       "tool.name": "'toss'"
       }
      }
     ],
@@ -244,7 +244,7 @@
      {
       "name": "hide",
       "hook": "tools/list.post",
-      "when": "name == 'flip'",
+      "when": "tool.name == 'flip'",
       "then": {
        "decision": "'deny'"
       }
@@ -252,9 +252,9 @@
      {
       "name": "fails",
       "hook": "tools/list.post",
-      "when": "name == 'flip'",
+      "when": "tool.name == 'flip'",
       "then": {
-       "description": "upstream.nothing.here"
+       "tool.description": "tool.upstream.description"
       }
      }
     ],
@@ -306,9 +306,9 @@
      {
       "name": "fails",
       "hook": "tools/list.post",
-      "when": "name == 'flip'",
+      "when": "tool.name == 'flip'",
       "then": {
-       "description": "upstream.nothing.here"
+       "tool.description": "tool.upstream.description"
       }
      }
     ],
@@ -377,15 +377,15 @@
      {
       "name": "retitle",
       "hook": "resources/list.post",
-      "when": "mimeType == 'text/markdown'",
+      "when": "resource.mimeType == 'text/markdown'",
       "then": {
-       "title": "'Docs: ' + name"
+       "resource.title": "'Docs: ' + resource.name"
       }
      },
      {
       "name": "closed",
       "hook": "resources/list.post",
-      "when": "uri.startsWith('docs://closed/')",
+      "when": "resource.uri.startsWith('docs://closed/')",
       "then": {
        "decision": "'deny'"
       }
@@ -454,15 +454,15 @@
      {
       "name": "rename",
       "hook": "prompts/list.post",
-      "when": "upstream.name == 'wiki_summary'",
+      "when": "prompt.upstream.name == 'wiki_summary'",
       "then": {
-       "name": "'summary'"
+       "prompt.name": "'summary'"
       }
      },
      {
       "name": "hide",
       "hook": "prompts/list.post",
-      "when": "name == 'summary' && caller.role != 'admin'",
+      "when": "prompt.name == 'summary' && request.caller.role != 'admin'",
       "then": {
        "decision": "'deny'"
       }

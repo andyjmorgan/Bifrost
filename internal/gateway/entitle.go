@@ -210,12 +210,19 @@ func callerMap(c *auth.Caller) map[string]any {
 	if c == nil {
 		return map[string]any{}
 	}
-	return map[string]any{"userId": c.UserID, "orgId": c.OrgID, "email": c.Email, "name": c.Name, "role": string(c.Role), "type": string(c.Type), "keyName": func() string {
-		if c.Type == auth.ActorAPIKey {
-			return c.Subject
-		}
-		return ""
-	}()}
+	// Nothing is filled in: a field this caller does not have is left out,
+	// so a rule that reads it plainly fails and does not match on "".
+	m := map[string]any{"userId": c.UserID, "orgId": c.OrgID, "role": string(c.Role), "type": string(c.Type)}
+	if c.Email != "" {
+		m["email"] = c.Email
+	}
+	if c.Name != "" {
+		m["name"] = c.Name
+	}
+	if c.Type == auth.ActorAPIKey && c.Subject != "" {
+		m["keyName"] = c.Subject
+	}
+	return m
 }
 
 // cutter applies an exposure's allow lists: the entitlement's selection.

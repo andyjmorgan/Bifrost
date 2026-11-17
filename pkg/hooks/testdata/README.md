@@ -37,7 +37,7 @@ To add a case, add one JSON object to a file. To add a client, add one driver an
 ```json
 {"name": "hide a tool by name",
  "servers": [{"slug": "a",
-              "rules": [{"hook": "tools/list.post", "when": "name == 'delete_page'", "then": {"decision": "'deny'"}}],
+              "rules": [{"hook": "tools/list.post", "when": "tool.name == 'delete_page'", "then": {"decision": "'deny'"}}],
               "catalog": {"tools": [{"name": "echo", "inputSchema": {"type": "object"}},
                                     {"name": "delete_page", "inputSchema": {"type": "object"}}]}}],
  "steps": [
@@ -53,8 +53,8 @@ Case fields:
 | --- | --- |
 | `name` | unique within its file |
 | `route` | `direct` (default) or `mux`. `search` is still read, as the older spelling of `mux` with the search flag on |
-| `flags` | The request's switches, for example `{"search": true}` or `{"cli": true}`. A flag can be set for either route. Rules read them as `flags.search` and `flags.cli` |
-| `caller`, `client`, `now` | the request context. `client` is `{name, version, capabilities}`. A step can override each |
+| `flags` | The request's switches, for example `{"search": true}` or `{"cli": true}`. A flag can be set for either route. Rules read them as `request.flags.search` and `request.flags.cli` |
+| `caller`, `client`, `now` | the request context. Rules read them as `request.caller`, `request.client` and `request.time`. `client` is `{clientInfo, capabilities}`. A step can override each |
 | `limits`, `secret` | engine limits and the signing key |
 | `servers` | the entitlements: `slug`, `rules`, and for a mock a `catalog` (and optionally `info`, `entitlement`, `generation`, `metaAllow`, `unavailable`) |
 | `steps` | the requests, in order |
@@ -168,7 +168,7 @@ The engine harness runs `progress`, `notifications`, `noResponse` and `error` th
 {"name": "tools/list.post rename: rename a tool and call it by the new name",
  "upstream": "reference",
  "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/list.post", "when": "upstream.name == 'echo'", "then": {"name": "'say'"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/list.post", "when": "tool.upstream.name == 'echo'", "then": {"tool.name": "'say'"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "say", "arguments": {"text": "hi"}},
    "expect": [{"path": "client.result.content[0].text", "equals": "hi"}]}

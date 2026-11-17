@@ -3,7 +3,6 @@ package gateway
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,15 +79,13 @@ const (
 	metaClientCaps = "io.modelcontextprotocol/clientCapabilities"
 )
 
-// nsConfirm is the cache namespace that holds pending confirmations.
+// nsConfirm is the cache namespace that holds the state of requests waiting
+// on an answer to a question.
 const nsConfirm = "confirm"
 
 func newEngine(g *Gateway, version string) *hooks.Engine {
-	key := make([]byte, 32)
-	_, _ = rand.Read(key)
 	return &hooks.Engine{
 		Version: version,
-		Signer:  hooks.Signer{Key: key},
 		States:  &cacheStates{g: g},
 		OnFault: func(f hooks.Fault) {
 			// The engine failed closed. This is the record to investigate from.
@@ -158,18 +155,9 @@ func keepMeta(result json.RawMessage, allow []string) json.RawMessage {
 	return out
 }
 
-// SetStateKey sets the key that signs the state the gateway wraps around a
-// server's own question. Every replica must use the same key. Without it
-// the gateway uses a key of its own, which is only right for one replica.
-func (g *Gateway) SetStateKey(key []byte) {
-	if len(key) > 0 {
-		g.engine.Signer = hooks.Signer{Key: key}
-	}
-}
-
-// cacheStates keeps pending confirmations in the gateway's TTL cache, so
-// any replica can redeem a confirmation another replica asked for. Taking
-// one deletes it: a confirmation works once.
+// cacheStates keeps the state of a request that is waiting on an answer in
+// the gateway's TTL cache, so any replica can take up a request another
+// replica asked a question on. Taking a state deletes it: it works once.
 type cacheStates struct{ g *Gateway }
 
 func (s *cacheStates) Put(key string, st hooks.State, ttl time.Duration) {
@@ -338,6 +326,7 @@ func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug str
 		Caller:    callerMap(caller),
 		Principal: caller.OrgID + "/" + caller.UserID,
 		Client:    clientOf(meta),
+		Headers:   ruleHeaders(ctx),
 		Now:       time.Now(),
 	}
 	for _, s := range slugs {
@@ -474,16 +463,12 @@ func (g *Gateway) listFor(ctx context.Context, srv *store.Server, bundle store.C
 	return g.fetchList(ctx, srv, ns, in.ProtocolVersion, false, listFetchers[ns])
 }
 
-// clientOf is the client as it described itself on this request.
+// clientOf is the client as it described itself on this request, in MCP's
+// words: clientInfo when it sent one, and its capabilities.
 func clientOf(meta map[string]any) map[string]any {
-	out := map[string]any{"name": "", "version": "", "capabilities": map[string]any{}}
+	out := map[string]any{"capabilities": map[string]any{}}
 	if ci, ok := meta[metaClientInfo].(map[string]any); ok {
-		if s, ok := ci["name"].(string); ok {
-			out["name"] = s
-		}
-		if s, ok := ci["version"].(string); ok {
-			out["version"] = s
-		}
+		out["clientInfo"] = ci
 	}
 	if caps, ok := meta[metaClientCaps].(map[string]any); ok {
 		out["capabilities"] = caps

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -82,11 +81,8 @@ func main() {
 		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, gateway.InitFrom(ir), cfg.ToolsCacheTTL)
 	}
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
-	// Every replica signs upstream questions with the same key, derived from
-	// the master key so there is nothing more to configure.
-	stateKey := sha256.Sum256(append([]byte("bifrost/hooks/state\x00"), cfg.MasterKey...))
-	gw.SetStateKey(stateKey[:])
 	gw.SetMetaAllow(cfg.MetaAllowIn, cfg.MetaAllowOut)
+	gw.SetRuleHeaders(cfg.RuleHeaders)
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr
 	if !strings.HasPrefix(cfg.ListenAddr, ":") {

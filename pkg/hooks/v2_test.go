@@ -23,7 +23,7 @@ func TestListingIsByteConsistent(t *testing.T) {
 	}
 	// This tests ordering, not the budget; under the race detector the
 	// summed rule time of a parallel listing exceeds the 2 s default.
-	e := &Engine{Signer: Signer{Key: []byte("k")}, Limits: Limits{Budget: time.Minute}}
+	e := &Engine{Limits: Limits{Budget: time.Minute}}
 	list := func(cat []*mcp.Tool) []byte {
 		s := &Server{Slug: "dd", Rules: set, Catalog: Catalog{Tools: cat}}
 		out := e.ListTools(context.Background(), Request{Route: "mux", Servers: []*Server{s}, Caller: map[string]any{"role": "member"}})
@@ -56,7 +56,7 @@ func TestPolicyCallOracle(t *testing.T) {
 	if probs != nil {
 		t.Fatal(probs)
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	cat := []*mcp.Tool{{Name: "search", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"limit": map[string]any{"type": "integer"}, "env": map[string]any{"type": "string"}, "q": map[string]any{"type": "string"}}}}}
 	s := &Server{Slug: "h", Rules: set, Catalog: Catalog{Tools: cat}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "role": "member"}}
@@ -149,18 +149,18 @@ func TestCatalogIsNeverModified(t *testing.T) {
 			"limit": map[string]any{"type": "integer"}}, "required": []any{"cql"}}}
 	cat := append(append([]*mcp.Tool(nil), tools...), extra)
 	rules := append(realisticRules(),
-		Rule{Hook: "tools/list.post", When: "name == 'confluence_search'", Then: map[string]string{
-			"name": "'wiki_search'", "description": "description + ' (wiki)'", "annotations.readOnlyHint": "false",
-			"params.cql.name": "'query'", "params.cql.description": "'CQL query'", "params.debug.hide": "true",
-			"params.space.pin": "'ENG'", "params.limit.maximum": "50", "params.why.add": "{'type': 'string'}"}},
-		Rule{Hook: "tools/call.pre", When: "name == 'wiki_search'", Then: map[string]string{"args.query": "args.query + ' AND type=page'"}})
+		Rule{Hook: "tools/list.post", When: "tool.name == 'confluence_search'", Then: map[string]string{
+			"tool.name": "'wiki_search'", "tool.description": "tool.description + ' (wiki)'", "tool.annotations.readOnlyHint": "false",
+			"tool.params.cql.name": "'query'", "tool.params.cql.description": "'CQL query'", "tool.params.debug.hide": "true",
+			"tool.params.space.pin": "'ENG'", "tool.params.limit.maximum": "50", "tool.params.why.add": "{'type': 'string'}"}},
+		Rule{Hook: "tools/call.pre", When: "tool.name == 'wiki_search'", Then: map[string]string{"request.params.arguments.query": "request.params.arguments.query + ' AND type=page'"}})
 	set, probs := Compile(rules)
 	if probs != nil {
 		t.Fatal(probs)
 	}
 	before, _ := json.Marshal(cat)
 	extraProps := extra.InputSchema.(map[string]any)["properties"].(map[string]any)
-	e := &Engine{Signer: Signer{Key: []byte("k")}, Limits: Limits{Budget: time.Minute}}
+	e := &Engine{Limits: Limits{Budget: time.Minute}}
 	s := &Server{Slug: "a", Rules: set, Catalog: Catalog{Tools: cat}}
 	r := Request{Route: "mux", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "role": "member"}}
 	for i := 0; i < 3; i++ {
@@ -228,14 +228,14 @@ func TestRegexReplaceOnLargeNotebook(t *testing.T) {
 		t.Fatalf("built %d occurrences", n)
 	}
 	rules := []Rule{
-		{Hook: "tools/list.post", When: "'telemetry' in params", Then: map[string]string{"params.telemetry.hide": "true", "params.telemetry.pin": "{'intent': 'mind your own business'}"}},
-		{Hook: "tools/call.pre", When: "name == 'create_datadog_notebook'", Then: map[string]string{
-			"args.cells": "args.cells.map(c, {'type': c.type, 'attributes': {'definition': {'type': 'markdown', 'text': regex.replace(c.attributes.definition.text, '(?i)datadog', 'Bits')}}})"}},
+		{Hook: "tools/list.post", When: "'telemetry' in tool.params", Then: map[string]string{"tool.params.telemetry.hide": "true", "tool.params.telemetry.pin": "{'intent': 'mind your own business'}"}},
+		{Hook: "tools/call.pre", When: "tool.name == 'create_datadog_notebook'", Then: map[string]string{
+			"request.params.arguments.cells": "request.params.arguments.cells.map(c, {'type': c.type, 'attributes': {'definition': {'type': 'markdown', 'text': regex.replace(c.attributes.definition.text, '(?i)datadog', 'Bits')}}})"}},
 	}
 	// The default CEL cost limit (1,000,000) refuses this call: regex.replace
 	// is charged by input size. A 1 MB rewrite needs a higher limit.
 	if def, _ := Compile(rules); def != nil {
-		e := &Engine{Signer: Signer{Key: []byte("k")}}
+		e := &Engine{}
 		s := &Server{Slug: "dd", Rules: def, Catalog: Catalog{Tools: []*mcp.Tool{tool}}}
 		out := e.CallTool(context.Background(), Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}}, &mcp.CallToolParamsRaw{Name: "create_datadog_notebook", Arguments: args})
 		if out.Forward != nil {
@@ -246,7 +246,7 @@ func TestRegexReplaceOnLargeNotebook(t *testing.T) {
 	if probs != nil {
 		t.Fatal(probs)
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "dd", Rules: set, Catalog: Catalog{Tools: []*mcp.Tool{tool}}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}}
 	var ms0, ms1 runtime.MemStats

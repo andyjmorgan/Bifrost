@@ -129,7 +129,7 @@ func TestOverlaysPerItemCount(t *testing.T) { // RH-COW-05
 	for i := 0; i < 1000; i++ {
 		cat = append(cat, &mcp.Tool{Name: fmt.Sprintf("tool_%04d", i), InputSchema: map[string]any{"type": "object"}})
 	}
-	set, probs := Compile([]Rule{{Hook: "tools/list.post", When: "int(name.substring(5)) % 50 == 0", Then: map[string]string{"description": "'changed'"}}})
+	set, probs := Compile([]Rule{{Hook: "tools/list.post", When: "int(tool.name.substring(5)) % 50 == 0", Then: map[string]string{"tool.description": "'changed'"}}})
 	if probs != nil {
 		t.Fatal(probs)
 	}
@@ -180,25 +180,6 @@ func TestDropPathIsImmutable(t *testing.T) { // RH-RES-01
 
 // ---- state (RH-ELI-07, RH-ELI-08, RH-ELI-12) -----------------------------------------
 
-func TestStateTamperingIsRejected(t *testing.T) { // RH-ELI-12
-	sg := Signer{Key: []byte("k")}
-	tok := sg.Seal(State{Challenge: "c", Caller: "u1", Expires: 99})
-	if _, err := sg.Open(tok); err != nil {
-		t.Fatal(err)
-	}
-	payload, sig, _ := strings.Cut(tok, ".")
-	forged := Signer{Key: []byte("k")}.Seal(State{Challenge: "c", Caller: "mallory", Expires: 99})
-	fp, _, _ := strings.Cut(forged, ".")
-	for _, bad := range []string{fp + "." + sig, payload + ".AAAA", payload, "", tok + "x"} {
-		if _, err := sg.Open(bad); err == nil {
-			t.Fatalf("accepted tampered state %q", bad)
-		}
-	}
-	if _, err := (Signer{Key: []byte("other")}).Open(tok); err == nil {
-		t.Fatal("accepted state signed with another key")
-	}
-}
-
 func TestArgsHashIsCanonical(t *testing.T) {
 	a := map[string]any{"b": []any{1.0, map[string]any{"y": 1.0, "x": 2.0}}, "a": "s"}
 	b := map[string]any{"a": "s", "b": []any{1.0, map[string]any{"x": 2.0, "y": 1.0}}}
@@ -218,7 +199,7 @@ func TestTimeBudgetDenies(t *testing.T) { // RH-LIM-03
 	if probs != nil {
 		t.Fatal(probs)
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, Limits: Limits{Budget: time.Millisecond}}
+	e := &Engine{Limits: Limits{Budget: time.Millisecond}}
 	s := &Server{Slug: "a", Rules: set, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	out := e.ListTools(context.Background(), Request{Route: "direct", Servers: []*Server{s}})
 	if out.Error == nil {
@@ -231,10 +212,10 @@ func TestTimeBudgetDenies(t *testing.T) { // RH-LIM-03
 
 func TestStaticDynamicClassification(t *testing.T) { // RH-PRF-01
 	set, probs := Compile([]Rule{
-		{Name: "static", Hook: "tools/list.post", When: "name == 'x' && upstream.description != '' && server.slug == 'a'", Then: map[string]string{"decision": "'deny'"}},
-		{Name: "by-caller", Hook: "tools/list.post", When: "caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}},
-		{Name: "by-client", Hook: "tools/list.post", When: "true", Then: map[string]string{"description": "has(client.capabilities.elicitation) ? 'a' : 'b'"}},
-		{Name: "by-time", Hook: "tools/call.pre", When: "now > timestamp('2026-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "static", Hook: "tools/list.post", When: "tool.name == 'x' && tool.upstream.description != '' && server.slug == 'a'", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "by-caller", Hook: "tools/list.post", When: "request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "by-client", Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "has(request.client.capabilities.elicitation) ? 'a' : 'b'"}},
+		{Name: "by-time", Hook: "tools/call.pre", When: "request.time > timestamp('2026-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'"}},
 	})
 	if probs != nil {
 		t.Fatal(probs)
@@ -278,26 +259,26 @@ func realTools(t testing.TB) []*mcp.Tool {
 // realisticRules is a 20-rule policy of the kind an administrator writes.
 func realisticRules() []Rule {
 	return []Rule{
-		{Hook: "tools/list.post", When: "name.matches('^(delete|drop|purge|destroy)_')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "caller.role != 'admin' && name.startsWith('admin')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "has(annotationsRaw.destructiveHint) && annotationsRaw.destructiveHint == true && caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "description.contains('DEPRECATED')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "size(name) > 64", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "size(description) > 1000", Then: map[string]string{"description": "description.substring(0, 1000)"}},
-		{Hook: "tools/list.post", When: "name.startsWith('datadog_')", Then: map[string]string{"name": "regex.replace(name, '^datadog_', 'dd_')"}},
-		{Hook: "tools/list.post", When: "true", Then: map[string]string{"description": "regex.replace(description, '(?i)confluence', 'the wiki')"}},
-		{Hook: "tools/list.post", When: "'limit' in params", Then: map[string]string{"params.limit.maximum": "100"}},
-		{Hook: "tools/list.post", When: "'query' in params", Then: map[string]string{"params.query.description": "'Search text'"}},
-		{Hook: "tools/list.post", When: "!has(annotationsRaw.readOnlyHint) && name.startsWith('get_')", Then: map[string]string{"annotations.readOnlyHint": "true"}},
-		{Hook: "tools/list.post", When: "name.contains('search')", Then: map[string]string{"title": "'Search: ' + name"}},
-		{Hook: "tools/list.post", When: "'org' in params", Then: map[string]string{"params.org.default": "'acme'"}},
-		{Hook: "tools/list.post", When: "true", Then: map[string]string{"meta.ai\\.bifrost/reviewed": "true"}},
-		{Hook: "tools/list.post", When: "name.endsWith('_v2')", Then: map[string]string{"name": "name.substring(0, size(name) - 3)"}},
-		{Hook: "tools/call.pre", When: "has(args.limit) && args.limit > 100", Then: map[string]string{"args.limit": "100"}},
-		{Hook: "tools/call.pre", When: "has(args.env) && args.env == 'prod' && caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Production is blocked.'"}},
-		{Hook: "tools/call.pre", When: "has(args.from) && has(args.to) && timestamp(args.to) - timestamp(args.from) > duration('168h')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.post.result", When: "has(result.structuredContent)", Then: map[string]string{"content": "[]"}},
-		{Mode: "audit", Hook: "tools/list.post", When: "name.contains('write')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "tool.name.matches('^(delete|drop|purge|destroy)_')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "request.caller.role != 'admin' && tool.name.startsWith('admin')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "tool.?annotations.?destructiveHint.orValue(false) && request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "tool.?description.orValue('').contains('DEPRECATED')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "size(tool.name) > 64", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "size(tool.?description.orValue('')) > 1000", Then: map[string]string{"tool.description": "tool.description.substring(0, 1000)"}},
+		{Hook: "tools/list.post", When: "tool.name.startsWith('datadog_')", Then: map[string]string{"tool.name": "regex.replace(tool.name, '^datadog_', 'dd_')"}},
+		{Hook: "tools/list.post", When: "has(tool.description)", Then: map[string]string{"tool.description": "regex.replace(tool.description, '(?i)confluence', 'the wiki')"}},
+		{Hook: "tools/list.post", When: "'limit' in tool.params", Then: map[string]string{"tool.params.limit.maximum": "100"}},
+		{Hook: "tools/list.post", When: "'query' in tool.params", Then: map[string]string{"tool.params.query.description": "'Search text'"}},
+		{Hook: "tools/list.post", When: "!tool.?annotations.?readOnlyHint.hasValue() && tool.name.startsWith('get_')", Then: map[string]string{"tool.annotations.readOnlyHint": "true"}},
+		{Hook: "tools/list.post", When: "tool.name.contains('search')", Then: map[string]string{"tool.title": "'Search: ' + tool.name"}},
+		{Hook: "tools/list.post", When: "'org' in tool.params", Then: map[string]string{"tool.params.org.default": "'acme'"}},
+		{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool._meta.ai\\.bifrost/reviewed": "true"}},
+		{Hook: "tools/list.post", When: "tool.name.endsWith('_v2')", Then: map[string]string{"tool.name": "tool.name.substring(0, size(tool.name) - 3)"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.limit) && request.params.arguments.limit > 100", Then: map[string]string{"request.params.arguments.limit": "100"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.env) && request.params.arguments.env == 'prod' && request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Production is blocked.'"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.from) && has(request.params.arguments.to) && timestamp(request.params.arguments.to) - timestamp(request.params.arguments.from) > duration('168h')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.result", When: "has(response.result.structuredContent)", Then: map[string]string{"response.result.content": "[]"}},
+		{Mode: "audit", Hook: "tools/list.post", When: "tool.name.contains('write')", Then: map[string]string{"decision": "'deny'"}},
 	}
 }
 
@@ -401,7 +382,7 @@ func TestRealCallExamplesRoundTrip(t *testing.T) {
 		}
 	}
 	set, _ := Compile(nil)
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "h", Rules: set, Catalog: Catalog{Tools: cat}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}}
 	for i, c := range f.Calls {
@@ -466,7 +447,7 @@ func TestRealCallExamplesUnderPolicy(t *testing.T) {
 	if probs != nil {
 		t.Fatal(probs)
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "h", Rules: set, Catalog: Catalog{Tools: cat}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "role": "member"}}
 	counts := map[string]int{}

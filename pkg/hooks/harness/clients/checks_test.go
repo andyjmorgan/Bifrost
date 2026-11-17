@@ -12,7 +12,7 @@ import (
 // The second half of the battery: confirmations, input requests, how calls
 // end, caching, headers, content, and the gateway's own results.
 
-var confirmRule = rule("tools/call.pre", "!has(input.ok)", "result", "elicit('ok', 'Delete it?')")
+var confirmRule = rule("tools/call.pre", "true", "confirm", "elicit('ok', 'Delete it?')")
 
 func init() {
 	checks = append(checks, []check{

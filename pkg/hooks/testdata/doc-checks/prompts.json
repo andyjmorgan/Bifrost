@@ -8,7 +8,7 @@
      {
       "name": "Hide internal",
       "hook": "prompts/list.post",
-      "when": "name.startsWith('internal_')",
+      "when": "prompt.name.startsWith('internal_')",
       "then": {
        "decision": "'deny'"
       }
@@ -72,7 +72,7 @@
      {
       "name": "Users only",
       "hook": "prompts/list.post",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
        "decision": "'deny'"
       }
@@ -127,7 +127,7 @@
      {
       "name": "No raw SQL",
       "hook": "prompts/list.post",
-      "when": "arguments.exists(a, a.name == 'sql')",
+      "when": "prompt.arguments.exists(a, a.name == 'sql')",
       "then": {
        "decision": "'deny'"
       }
@@ -182,11 +182,11 @@
      {
       "name": "Rename summary",
       "hook": "prompts/list.post",
-      "when": "upstream.name == 'confluence_summary'",
+      "when": "prompt.upstream.name == 'confluence_summary'",
       "then": {
-       "name": "'summary'",
-       "arguments.space.name": "'area'",
-       "arguments.space.description": "'The wiki area to summarize, such as ENG.'"
+       "prompt.name": "'summary'",
+       "prompt.params.space.name": "'area'",
+       "prompt.params.space.description": "'The wiki area to summarize, such as ENG.'"
       }
      }
     ],
@@ -281,7 +281,7 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "description": "regex.replace(description, '(?i)confluence', 'the wiki')"
+       "prompt.description": "regex.replace(prompt.description, '(?i)confluence', 'the wiki')"
       }
      }
     ],
@@ -322,7 +322,7 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "title": "'Wiki: ' + (title != '' ? title : name)"
+       "prompt.title": "'Wiki: ' + prompt.?title.orValue(prompt.name)"
       }
      }
     ],
@@ -366,16 +366,16 @@
     "rules": [
      {
       "hook": "prompts/list.post",
-      "when": "name == 'p'",
+      "when": "prompt.name == 'p'",
       "then": {
-       "arguments.a.name": "'b'"
+       "prompt.params.a.name": "'b'"
       }
      },
      {
       "hook": "prompts/list.post",
-      "when": "name in ['x', 'y']",
+      "when": "prompt.name in ['x', 'y']",
       "then": {
-       "name": "'same'"
+       "prompt.name": "'same'"
       }
      }
     ],
@@ -436,7 +436,7 @@
      {
       "name": "No HR",
       "hook": "prompts/get.pre",
-      "when": "has(args.space) && args.space == 'HR'",
+      "when": "has(request.params.arguments.space) && request.params.arguments.space == 'HR'",
       "then": {
        "decision": "'deny'",
        "reason": "'HR prompts are restricted.'"
@@ -512,9 +512,9 @@
      {
       "name": "Default tone",
       "hook": "prompts/get.pre",
-      "when": "!has(args.tone)",
+      "when": "!has(request.params.arguments.tone)",
       "then": {
-       "args.tone": "'neutral'"
+       "request.params.arguments.tone": "'neutral'"
       }
      }
     ],
@@ -594,9 +594,9 @@
      {
       "name": "Confirm export",
       "hook": "prompts/get.pre",
-      "when": "upstream.name == 'export_space' && !has(input.ok)",
+      "when": "prompt.upstream.name == 'export_space'",
       "then": {
-       "result": "elicit('ok', 'Export the whole {space} space?', {'space': args.space})"
+       "confirm": "elicit('ok', 'Export the whole {space} space?', {'space': request.params.arguments.space})"
       }
      }
     ],
@@ -766,19 +766,19 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "arguments.space.name": "'area'"
+       "prompt.params.space.name": "'area'"
       }
      },
      {
       "hook": "prompts/get.pre",
-      "when": "args.area == 'up'",
+      "when": "request.params.arguments.area == 'up'",
       "then": {
-       "args.space": "'x'"
+       "request.params.arguments.space": "'x'"
       }
      },
      {
       "hook": "prompts/get.pre",
-      "when": "args.area == 'no'",
+      "when": "request.params.arguments.area == 'no'",
       "then": {
        "decision": "'deny'"
       }
@@ -897,7 +897,7 @@
       "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
-       "message": "'The wiki asks: ' + request.message"
+       "elicitation.params.message": "'The wiki asks: ' + elicitation.params.message"
       }
      }
     ],
@@ -1008,7 +1008,7 @@
      {
       "name": "No prompts for keys",
       "hook": "prompts/get.post.elicit",
-      "when": "caller.type == 'key'",
+      "when": "request.caller.type == 'key'",
       "then": {
        "decision": "'deny'",
        "reason": "'This prompt needs user input, which API keys cannot give.'"
@@ -1079,20 +1079,20 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "arguments.space.name": "'area'"
+       "prompt.params.space.name": "'area'"
       }
      },
      {
       "hook": "prompts/get.pre",
-      "when": "!has(args.tone)",
+      "when": "!has(request.params.arguments.tone)",
       "then": {
-       "args.tone": "'neutral'"
+       "request.params.arguments.tone": "'neutral'"
       }
      },
      {
       "name": "Team check",
       "hook": "prompts/get.pre",
-      "when": "has(args.area) && args.area == 'X' && caller.team == 'x'",
+      "when": "has(request.params.arguments.area) && request.params.arguments.area == 'X' && request.caller.team == 'x'",
       "then": {
        "decision": "'deny'"
       }
@@ -1101,7 +1101,7 @@
       "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
-       "message": "request.message + ' ' + args.space + ' ' + args.tone"
+       "elicitation.params.message": "elicitation.params.message + ' ' + request.upstream.params.arguments.space + ' ' + request.upstream.params.arguments.tone"
       }
      }
     ],

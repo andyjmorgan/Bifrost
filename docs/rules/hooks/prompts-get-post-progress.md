@@ -1,41 +1,81 @@
 # prompts/get.post.progress
 
-`prompts/get.post.progress` drops or rewords the progress events an upstream server sends while it builds a prompt.
+`prompts/get.post.progress` drops or rewords the progress notifications a server sends while it builds a prompt.
 
 ## When it runs
 
-`prompts/get.post.progress` runs once for each progress event on the reply to a forwarded `prompts/get`, before the event reaches the client. It works the same way as [tools/call.post.progress](tools-call-post-progress.md): the same conditions for relaying progress, the same fields and the same limits.
+`prompts/get.post.progress` runs once for each progress notification on the reply to a forwarded `prompts/get`, before the notification reaches the client. It works the same way as [tools/call.post.progress](tools-call-post-progress.md): the same conditions for relaying progress, the same writable path and the same limits.
 
-## Variables
+## What a rule can read
 
-| Variable | Type | Description |
-| --- | --- | --- |
-| `progress` | map | The event: `progress.progress` (number), `progress.total` (number, present only when the upstream sent it) and `progress.message` (string, `''` when the upstream sent none) |
-| `args` | map | The exact arguments forwarded upstream |
-| `name`, `title`, `description`, `arguments`, `meta`, `icons` | Various | The exposed prompt |
-| `upstream` | map | The prompt as the upstream sent it |
-| `server`, `entitlement`, `caller`, `client`, `route`, `flags`, `now` | Various | The [common variables](overview.md#common-variables) |
+| Branch | Notable fields |
+| --- | --- |
+| `progress` | One notification: `progress.params.progress`, a number. `progress.params.total`, `progress.params.message` and `progress.params.progressToken`, when the server sent them |
+| `progress.upstream` | The notification as the server sent it. It never changes |
+| `request.params` | `request.params.name` and `request.params.arguments`, under the names the client knows |
+| `request.upstream` | The request as the server received it: `request.upstream.params.name` and `request.upstream.params.arguments` |
+| `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
+| `prompt` | The prompt as the client sees it, and `prompt.upstream` as the server declares it |
+| `server` | `server.slug` and what the gateway knows about the server |
+| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
 
-## Fields
+`progress.params.message` and `progress.params.total` are absent when the server sent none. Read them with `progress.params.?message.orValue('')`, or guard with `has(progress.params.message)`.
 
-| Field | Type | Effect | Stops evaluation |
+## What a rule can set
+
+| Path | Type | Effect | Stops evaluation |
 | --- | --- | --- | --- |
-| `decision` | `'deny'` | Drop this event | Yes |
-| `reason` | string | A note for the hit record | No |
-| `message` | string | Replace the event's message | No |
+| `progress.params.message` | string | Replace the notification's message | No |
 
-## Example
+A rule here can deny. It cannot ask the user to confirm.
+
+| Key | Value | Effect | Stops evaluation |
+| --- | --- | --- | --- |
+| `decision` | `'deny'` | Drop this notification | Yes |
+| `reason` | string | A note for the hit record. The client never sees it | No |
+
+## What the client sees
+
+| Outcome | Result |
+| --- | --- |
+| No rule matches | The notification as the server sent it |
+| A rule sets `progress.params.message` | The same notification with the new message. Its numbers are unchanged |
+| A rule denies, or fails to evaluate | Nothing for that notification. Later notifications and the prompt still arrive |
+
+## Examples
+
+### Replace the progress text for one prompt
 
 ```json
 {
   "name": "Plain prompt progress",
   "hook": "prompts/get.post.progress",
-  "when": "name == 'export_space'",
-  "then": { "message": "'Building the prompt'" }
+  "when": "prompt.name == 'export_space'",
+  "then": { "progress.params.message": "'Building the prompt'" }
 }
 ```
 
-Every progress event for `export_space` reaches the client with the message `Building the prompt`. Its numbers are unchanged.
+Every progress notification for `export_space` reaches the client with the message `Building the prompt`. Its numbers are unchanged.
+
+### Drop progress for API keys
+
+```json
+{
+  "name": "No prompt progress for keys",
+  "hook": "prompts/get.post.progress",
+  "when": "request.caller.type == 'apikey' && prompt.name != 'export_space'",
+  "then": { "decision": "'deny'" }
+}
+```
+
+For an API key, progress for every other prompt is dropped. The prompt itself still arrives.
+
+## Nuances and limits
+
+- A progress rule can only affect its own notification. It can never refuse the request.
+- Notifications already sent cannot be taken back.
+- Progress rules have their own time allowance. When it is used up, later notifications are dropped.
+- `prompt.name` is the name the client sees. After a rename in `prompts/list.post`, match the new name, or match `prompt.upstream.name`.
 
 ## Related pages
 

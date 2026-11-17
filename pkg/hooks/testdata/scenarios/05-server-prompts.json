@@ -1,15 +1,15 @@
 [
-{"name":"RH-SRV-01/02 server.session is anonymous by default and can drop elicitation","ids":["RH-SRV-01","RH-SRV-02"],"client":{"name":"claude-code","version":"2.1","capabilities":{"elicitation":{}}},
+{"name":"RH-SRV-01/02 server.session is anonymous by default and can drop elicitation","ids":["RH-SRV-01","RH-SRV-02"],"client":{"clientInfo": {"name": "claude-code", "version": "2.1"}, "capabilities": {"elicitation":{}}},
  "servers":[
   {"slug":"a","catalog":{}},
-  {"slug":"b","rules":[{"hook":"server.session","when":"true","then":{"clientInfo":"client","capabilities.elicitation":"true","meta":"true"}}],"catalog":{}},
-  {"slug":"c","rules":[{"hook":"server.session","when":"true","then":{"capabilities.elicitation":"false"}}],"catalog":{}}],
+  {"slug":"b","rules":[{"hook":"server.session","when":"true","then":{"session.clientInfo":"request.client.clientInfo","session.capabilities.elicitation":"true","session._meta":"true"}}],"catalog":{}},
+  {"slug":"c","rules":[{"hook":"server.session","when":"true","then":{"session.capabilities.elicitation":"false"}}],"catalog":{}}],
  "steps":[
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for a, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"a"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"bifrost"},{"path":"outcome.result.capabilities","equals":{}},{"path":"outcome.result.forwardMeta","equals":false}]},
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for b, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"b"},"expect":[{"path":"outcome.result.clientInfo.name","equals":"claude-code"},{"path":"outcome.result.capabilities.elicitation","equals":{}},{"path":"outcome.result.forwardMeta","equals":true}]},
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "The connect step asks the harness gateway what server.session decided for c, through a test-hook method. An SDK sends only protocol methods."}], "op":"connect","params":{"slug":"c"},"expect":[{"path":"outcome.result.capabilities.elicitation","exists":false}]}]},
 {"name":"RH-SRV-03/04 switching tools, prompts and resources off","ids":["RH-SRV-03","RH-SRV-04"],
- "servers":[{"slug":"a","rules":[{"hook":"server.settings","when":"true","then":{"tools":"false","prompts":"false","resources":"false"}}],
+ "servers":[{"slug":"a","rules":[{"hook":"server.settings","when":"true","then":{"settings.tools":"false","settings.prompts":"false","settings.resources":"false"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}],"resources":[{"uri":"file:///r","name":"r"}]}}],
  "steps":[
   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"tools/list","expect":[{"path":"outcome.result.tools","len":0}]},
@@ -21,7 +21,7 @@
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.capabilities) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.capabilities","equals":{}}]}]},
 {"name":"RH-SRV-05/06/08/09 discover on 1:1: instructions switch and rewrite, listChanged false, no completions or logging","ids":["RH-SRV-05","RH-SRV-06","RH-SRV-08","RH-SRV-09"],
  "servers":[{"slug":"wiki","info":{"name":"atlassian","version":"9","title":"Atlassian","instructions":"Use search first.\n## Confluence\nConfluence details."},
-  "rules":[{"hook":"server/discover.post","when":"true","then":{"instructions":"regex.replace(server.instructions, '(?s)## Confluence.*', '') + 'All writes need a ticket ID.'","title":"'Jira (read only)'"}}],
+  "rules":[{"hook":"server/discover.post","when":"true","then":{"server.instructions":"regex.replace(server.instructions, '(?s)## Confluence.*', '') + 'All writes need a ticket ID.'","server.title":"'Jira (read only)'"}}],
   "catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}]}}],
  "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[
    {"path":"outcome.result.instructions","equals":"Use search first.\nAll writes need a ticket ID."},
@@ -34,7 +34,7 @@
    {"path":"outcome.result.cacheScope","equals":"private"}]}]},
 {"name":"RH-SRV-05 the instructions switch hides them; serverInfo switch exposes the upstream","ids":["RH-SRV-05"],
  "servers":[{"slug":"wiki","info":{"name":"atlassian","version":"9","instructions":"secret"},
-  "rules":[{"hook":"server.settings","when":"true","then":{"instructions":"false","serverInfo":"true"}}],"catalog":{}}],
+  "rules":[{"hook":"server.settings","when":"true","then":{"settings.instructions":"false","settings.serverInfo":"true"}}],"catalog":{}}],
  "steps":[{"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[{"path":"outcome.result.instructions","exists":false},{"path":"outcome.result._meta.io\\.modelcontextprotocol/serverInfo","equals":{"name":"atlassian","version":"9"}}]}]},
 {"name":"RH-SRV-07 instructions are read live: a changed upstream shows at once","ids":["RH-SRV-07"],
  "servers":[{"slug":"wiki","info":{"instructions":"version two"},"catalog":{}}],
@@ -42,10 +42,10 @@
 {"name":"RH-SRV-11/12 mux instructions: labelled excerpts with budgets and get_server_instructions for the full text","ids":["RH-SRV-11","RH-SRV-12"],"route":"mux",
  "limits":{"instructionsPer":30,"instructionsAll":41},
  "servers":[
-  {"slug":"alpha","info":{"instructions":"Alpha instructions are fairly long indeed."},"rules":[{"hook":"server/discover.post","when":"true","then":{"instructions":"server.instructions + ' (reviewed)'"}}],"catalog":{}},
+  {"slug":"alpha","info":{"instructions":"Alpha instructions are fairly long indeed."},"rules":[{"hook":"server/discover.post","when":"true","then":{"server.instructions":"server.instructions + ' (reviewed)'"}}],"catalog":{}},
   {"slug":"beta","info":{"instructions":"Beta short."},"catalog":{}},
   {"slug":"gamma","info":{"instructions":"Gamma gets nothing left."},"catalog":{}},
-  {"slug":"hidden","info":{"instructions":"never shown"},"rules":[{"hook":"server.settings","when":"true","then":{"instructions":"false"}}],"catalog":{}}],
+  {"slug":"hidden","info":{"instructions":"never shown"},"rules":[{"hook":"server.settings","when":"true","then":{"settings.instructions":"false"}}],"catalog":{}}],
  "steps":[
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (outcome.result.instructions) cannot be read through it."}], "op":"discover","expect":[
    {"path":"outcome.result.instructions","contains":"## alpha\n> Alpha instructions are fairly … [truncated"},
@@ -58,9 +58,9 @@
   {"op":"tools/call","params":{"name":"get_server_instructions","arguments":{"slug":"hidden"}},"expect":[{"path":"outcome.result.isError","equals":true}]}]},
 {"name":"RH-PRM-01/02/03 prompts: filter hides from list and get, renames reverse, get deny is a JSON-RPC error; RH-REV-17 arguments","ids":["RH-PRM-01","RH-PRM-02","RH-PRM-03","RH-REV-17"],
  "servers":[{"slug":"a","rules":[
-   {"hook":"prompts/list.post","when":"name == 'internal'","then":{"decision":"'deny'"}},
-   {"hook":"prompts/list.post","when":"upstream.name == 'confluence_summary'","then":{"name":"'summary'","description":"regex.replace(description, '(?i)confluence', 'the wiki')","arguments.space.name":"'area'"}},
-   {"hook":"prompts/get.pre","when":"args.area == 'HR'","then":{"decision":"'deny'","reason":"'HR prompts are restricted.'"}}],
+   {"hook":"prompts/list.post","when":"prompt.name == 'internal'","then":{"decision":"'deny'"}},
+   {"hook":"prompts/list.post","when":"prompt.upstream.name == 'confluence_summary'","then":{"prompt.name":"'summary'","prompt.description":"regex.replace(prompt.description, '(?i)confluence', 'the wiki')","prompt.params.space.name":"'area'"}},
+   {"hook":"prompts/get.pre","when":"request.params.arguments.area == 'HR'","then":{"decision":"'deny'","reason":"'HR prompts are restricted.'"}}],
   "catalog":{"prompts":[{"name":"confluence_summary","description":"Summarize a Confluence space","arguments":[{"name":"space","required":true}]},{"name":"internal"}]}}],
  "steps":[
   {"op":"prompts/list","expect":[{"path":"outcome.result.prompts[*].name","equals":["summary"]},{"path":"outcome.result.prompts[0].description","equals":"Summarize a the wiki space"},{"path":"outcome.result.prompts[0].arguments[0].name","equals":"area"}]},

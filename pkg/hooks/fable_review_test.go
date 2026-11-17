@@ -89,18 +89,18 @@ func mustCompile(t *testing.T, rules []Rule) *Set {
 // value had the type its schema declares.
 func typedRules() []Rule {
 	return []Rule{
-		{Hook: "tools/list.post", When: "'limit' in params", Then: map[string]string{"params.limit.maximum": "100"}},
-		{Hook: "tools/list.post", When: "'org' in params", Then: map[string]string{"params.org.default": "'acme'"}},
-		{Hook: "tools/list.post", When: "'q' in params", Then: map[string]string{"params.q.description": "'Search text'"}},
-		{Hook: "tools/call.pre", When: "has(args.limit) && args.limit > 100", Then: map[string]string{"args.limit": "100"}},
-		{Hook: "tools/call.pre", When: "has(args.q) && size(args.q) > 3", Then: map[string]string{"args.q": "regex.replace(args.q, 'a', 'b')"}},
-		{Hook: "tools/call.pre", When: "has(args.tags) && args.tags.exists(t, t == 'x')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.pre", When: "has(args.opts) && args.opts.depth > 1", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.pre", When: "has(args.from) && timestamp(args.from) > timestamp('2030-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.pre", When: "has(args.flag) && args.flag", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.post.result", When: "has(result.structuredContent)", Then: map[string]string{"structuredContent": "drop(result.structuredContent, ['a.b', 'rows.*.secret'])"}},
-		{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'x', 'y')} : c)"}},
-		{Mode: "audit", Hook: "tools/call.pre", When: "args.limit > 1", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/list.post", When: "'limit' in tool.params", Then: map[string]string{"tool.params.limit.maximum": "100"}},
+		{Hook: "tools/list.post", When: "'org' in tool.params", Then: map[string]string{"tool.params.org.default": "'acme'"}},
+		{Hook: "tools/list.post", When: "'q' in tool.params", Then: map[string]string{"tool.params.q.description": "'Search text'"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.limit) && request.params.arguments.limit > 100", Then: map[string]string{"request.params.arguments.limit": "100"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.q) && size(request.params.arguments.q) > 3", Then: map[string]string{"request.params.arguments.q": "regex.replace(request.params.arguments.q, 'a', 'b')"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.tags) && request.params.arguments.tags.exists(t, t == 'x')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.opts) && request.params.arguments.opts.depth > 1", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.from) && timestamp(request.params.arguments.from) > timestamp('2030-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.pre", When: "has(request.params.arguments.flag) && request.params.arguments.flag", Then: map[string]string{"decision": "'deny'"}},
+		{Hook: "tools/call.post.result", When: "has(response.result.structuredContent)", Then: map[string]string{"response.result.structuredContent": "drop(response.result.structuredContent, ['a.b', 'rows.*.secret'])"}},
+		{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "response.result.content.map(c, c.type == 'text' ? {'type': 'text', 'text': regex.replace(c.text, 'x', 'y')} : c)"}},
+		{Mode: "audit", Hook: "tools/call.pre", When: "request.params.arguments.limit > 1", Then: map[string]string{"decision": "'deny'"}},
 	}
 }
 
@@ -129,7 +129,7 @@ func reviewRequest(route string, servers ...*Server) Request {
 
 // Every JSON kind in every argument, and as the arguments value itself.
 func TestOddArgumentsNeverPanic(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	set := mustCompile(t, typedRules())
 	p := &panicLog{t: t}
 	defer p.done()
@@ -166,7 +166,7 @@ func TestOddArgumentsNeverPanic(t *testing.T) {
 
 // Every JSON kind in every part of an upstream tool result.
 func TestOddToolResultsNeverPanic(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	set := mustCompile(t, typedRules())
 	p := &panicLog{t: t}
 	defer p.done()
@@ -223,9 +223,9 @@ func TestOddToolResultsNeverPanic(t *testing.T) {
 // and calling. Schemas come from upstream servers and are the least
 // reliable input the engine has.
 func TestOddSchemasNeverPanic(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	rules := append(typedRules(),
-		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"outputSchema": "dropSchema(outputSchema, ['limit', 'opts.depth', 'tags.*', '*'])"}},
+		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.outputSchema": "dropSchema(tool.outputSchema, ['limit', 'opts.depth', 'tags.*', '*'])"}},
 	)
 	set := mustCompile(t, rules)
 	p := &panicLog{t: t}
@@ -283,9 +283,9 @@ func TestOddSchemasNeverPanic(t *testing.T) {
 
 // Every JSON kind in every part of a resource read reply.
 func TestOddReadRepliesNeverPanic(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	set := mustCompile(t, []Rule{
-		{Hook: "resources/read.post.result", When: "true", Then: map[string]string{"text": "regex.replace(result.text, 'x', 'y')"}},
+		{Hook: "resources/read.post.result", When: "true", Then: map[string]string{"response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'x', 'y')} : c)"}},
 	})
 	p := &panicLog{t: t}
 	defer p.done()
@@ -334,7 +334,7 @@ func TestOddReadRepliesNeverPanic(t *testing.T) {
 // one value of each JSON kind in turn.
 func TestOddArgumentsOnRealToolsNeverPanic(t *testing.T) {
 	tools := realTools(t)
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	set := mustCompile(t, typedRules())
 	p := &panicLog{t: t}
 	defer p.done()
@@ -437,7 +437,7 @@ func refused(t *testing.T, what string, out Outcome) *Fault {
 // engine's clock while it wraps an upstream's input request.
 func TestEnginePanicFailsClosed(t *testing.T) {
 	log := &faultLog{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add}
+	e := &Engine{OnFault: log.add}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, nil), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	r := reviewRequest("direct", s)
 	params := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"q":"abc"}`)}
@@ -484,7 +484,7 @@ func (panicSchema) MarshalJSON() ([]byte, error) { panic("bad schema") }
 func TestListingWorkerPanicFailsClosed(t *testing.T) {
 	for _, workers := range []int{0, 1, 4} {
 		log := &faultLog{}
-		e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add, Limits: Limits{Workers: workers}}
+		e := &Engine{OnFault: log.add, Limits: Limits{Workers: workers}}
 		var tools []*mcp.Tool
 		for i := 0; i < 40; i++ {
 			tools = append(tools, &mcp.Tool{Name: fmt.Sprintf("t%02d", i), InputSchema: map[string]any{"type": "object"}})
@@ -547,7 +547,7 @@ func boomSet(t *testing.T, hook string, audit bool) *Set {
 // the rule's text and the call.
 func TestRulePanicFailsClosedWithRuleTextAndCall(t *testing.T) {
 	log := &faultLog{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add}
+	e := &Engine{OnFault: log.add}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: boomSet(t, "tools/call.pre", false), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	var out Outcome
 	mustNotPanic(t, "call", func() {
@@ -582,7 +582,7 @@ func TestRulePanicFailsClosedWithRuleTextAndCall(t *testing.T) {
 // The same panic in an audit rule is reported but changes nothing.
 func TestAuditRulePanicIsReportedAndChangesNothing(t *testing.T) {
 	log := &faultLog{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add}
+	e := &Engine{OnFault: log.add}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: boomSet(t, "tools/call.pre", true), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	out := e.CallTool(context.Background(), reviewRequest("direct", s), &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"q":"abc"}`)})
 	if out.Forward == nil {
@@ -600,7 +600,7 @@ func TestAuditRulePanicIsReportedAndChangesNothing(t *testing.T) {
 // its own worker, and the listing still fails closed with one fault.
 func TestRulePanicInListingFailsClosed(t *testing.T) {
 	log := &faultLog{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add}
+	e := &Engine{OnFault: log.add}
 	var tools []*mcp.Tool
 	for i := 0; i < 40; i++ {
 		tools = append(tools, &mcp.Tool{Name: fmt.Sprintf("t%02d", i), InputSchema: map[string]any{"type": "object"}})
@@ -623,7 +623,7 @@ func TestRulePanicInListingFailsClosed(t *testing.T) {
 
 // Arguments in the fault record are cut at the cap.
 func TestFaultArgumentsAreCapped(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: boomSet(t, "tools/call.pre", false), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	big := `{"q":"` + strings.Repeat("é", 100_000) + `"}`
 	out := e.CallTool(context.Background(), reviewRequest("direct", s), &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(big)})
@@ -648,13 +648,13 @@ func TestServerHookPanicsFailClosed(t *testing.T) {
 	yes, _ := env.Program(ast)
 	ast, _ = env.Compile("'not a bool'")
 	text, _ := env.Program(ast)
-	any := &Field{Pattern: "tools", Type: TAny}
-	rule := Rule{Hook: "server.settings", When: "true", Then: map[string]string{"tools": "'not a bool'"}}
-	c := &compiledRule{rule: rule, label: "Bad switch", when: yes, then: []compiledThen{{key: "tools", spec: any, prog: text}}, vars: map[string]bool{}}
+	any := &Field{Pattern: "settings.tools", Type: TAny}
+	rule := Rule{Hook: "server.settings", When: "true", Then: map[string]string{"settings.tools": "'not a bool'"}}
+	c := &compiledRule{rule: rule, label: "Bad switch", when: yes, then: []compiledThen{{key: "settings.tools", spec: any, prog: text}}, vars: map[string]bool{}}
 	set := &Set{byHook: map[string][]*compiledRule{"server.settings": {c}}, opts: Options{CostLimit: DefaultCostLimit}, Fingerprint: "bad"}
 
 	log := &faultLog{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: log.add}
+	e := &Engine{OnFault: log.add}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: set, Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	r := reviewRequest("direct", s)
 
@@ -671,7 +671,7 @@ func TestServerHookPanicsFailClosed(t *testing.T) {
 		t.Errorf("switches %v, hits %+v", sw, hits)
 	}
 	got := log.all()
-	if len(got) != 1 || got[0].Rule == nil || got[0].Rule.Label != "Bad switch" || got[0].Rule.Then["tools"] != "'not a bool'" {
+	if len(got) != 1 || got[0].Rule == nil || got[0].Rule.Label != "Bad switch" || got[0].Rule.Then["settings.tools"] != "'not a bool'" {
 		t.Fatalf("faults after a direct call: %+v", got)
 	}
 
@@ -692,7 +692,7 @@ func TestServerHookPanicsFailClosed(t *testing.T) {
 
 // A fault callback that panics does not undo the recovery.
 func TestPanickingFaultCallbackIsIgnored(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnFault: func(Fault) { panic("logger down") }}
+	e := &Engine{OnFault: func(Fault) { panic("logger down") }}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: boomSet(t, "tools/call.pre", false), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	var out Outcome
 	mustNotPanic(t, "call", func() {
@@ -734,7 +734,7 @@ func TestMemoryStatesTakeOnceAndExpire(t *testing.T) {
 
 // Many clients answering at once: each challenge is redeemed exactly once.
 func TestConfirmationIsRedeemedOnceUnderConcurrency(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	r := reviewRequest("direct", s)
 	ctx := context.Background()
@@ -790,7 +790,7 @@ func (c *countingStates) Take(k string) (State, bool) {
 
 func TestConfirmationsUseTheConfiguredStore(t *testing.T) {
 	store := &countingStates{}
-	e := &Engine{Signer: Signer{Key: []byte("k")}, States: store}
+	e := &Engine{States: store}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	r := reviewRequest("direct", s)
 	ctx := context.Background()
@@ -823,15 +823,15 @@ func TestConfirmationsUseTheConfiguredStore(t *testing.T) {
 // counts as old. Tasks are off for every server.
 func TestVersionGate(t *testing.T) {
 	rules := []Rule{
-		{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}},
-		{Hook: "server.settings", When: "true", Then: map[string]string{"tasks": "true", "progress": "true"}},
+		{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
+		{Hook: "server.settings", When: "true", Then: map[string]string{"settings.tasks": "true", "settings.progress": "true"}},
 	}
 	ask := `{"resultType":"input_required","requestState":"up1","inputRequests":{"q":{"method":"elicitation/create","params":{"message":"Which?","requestedSchema":{"type":"object","properties":{}}}}}}`
 	for _, tc := range []struct {
 		version string
 		current bool
 	}{{"2026-07-28", true}, {"2025-11-25", false}, {"2025-06-18", false}, {"2024-11-05", false}, {"", false}, {"2027-01-01", false}} {
-		e := &Engine{Signer: Signer{Key: []byte("k")}}
+		e := &Engine{}
 		s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: tc.version}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 		r := reviewRequest("direct", s)
 		ctx := context.Background()
@@ -890,8 +890,8 @@ func TestVersionGate(t *testing.T) {
 // declared it, and a server's question never reaches a client that cannot
 // answer.
 func TestElicitationFollowsTheRequestsClient(t *testing.T) {
-	rules := []Rule{{Hook: "server.session", When: "true", Then: map[string]string{"capabilities.elicitation": "true"}}}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	rules := []Rule{{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{
 		Tools: []*mcp.Tool{typedTool()}, Prompts: []*mcp.Prompt{{Name: "p"}}, Resources: []*mcp.Resource{{URI: "file:///doc", Name: "doc"}}}}
 	ctx := context.Background()
@@ -939,7 +939,7 @@ func findUnknown(list []Unknown, kind, name string) *Unknown {
 func TestUnknownsAreRecordedByShapeNeverByValue(t *testing.T) {
 	var mu sync.Mutex
 	var reported []Unknown
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnUnknown: func(u Unknown) {
+	e := &Engine{OnUnknown: func(u Unknown) {
 		mu.Lock()
 		reported = append(reported, u)
 		mu.Unlock()
@@ -1076,7 +1076,7 @@ func TestUnknownsAreRecordedByShapeNeverByValue(t *testing.T) {
 // Nothing known is ever reported, and a callback that panics is ignored.
 func TestKnownThingsAreNotReportedAsUnknown(t *testing.T) {
 	calls := 0
-	e := &Engine{Signer: Signer{Key: []byte("k")}, OnUnknown: func(Unknown) { calls++; panic("logger down") }}
+	e := &Engine{OnUnknown: func(Unknown) { calls++; panic("logger down") }}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, nil), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	r := reviewRequest("direct", s)
 	ctx := context.Background()
@@ -1102,7 +1102,7 @@ func TestKnownThingsAreNotReportedAsUnknown(t *testing.T) {
 // One principal cannot answer another's challenge, and with no principal at
 // all the engine refuses to ask rather than bind a challenge to nobody.
 func TestConfirmationIsBoundToThePrincipal(t *testing.T) {
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	ctx := context.Background()
 	caps := map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}
@@ -1159,8 +1159,8 @@ func TestConfirmationIsBoundToThePrincipal(t *testing.T) {
 
 // Rules see the real time when the gateway does not set one.
 func TestNowDefaultsToTheRealClock(t *testing.T) {
-	rules := []Rule{{Hook: "tools/call.pre", When: "now < timestamp('2020-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'", "reason": "'the clock reads before 2020'"}}}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	rules := []Rule{{Hook: "tools/call.pre", When: "request.time < timestamp('2020-01-01T00:00:00Z')", Then: map[string]string{"decision": "'deny'", "reason": "'the clock reads before 2020'"}}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	p := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"q":"abc"}`)}
 	if out := e.CallTool(context.Background(), reviewRequest("direct", s), p); out.Forward == nil {
@@ -1180,12 +1180,12 @@ func TestNowDefaultsToTheRealClock(t *testing.T) {
 // a separate flag that can be on for either, and rules read it as `search`.
 func TestSearchIsAFlagNotARoute(t *testing.T) {
 	rules := []Rule{
-		{Name: "mux only", Hook: "tools/call.post.result", When: "route == 'mux'", Then: map[string]string{"content": "[{'type': 'text', 'text': 'mux'}]"}},
-		{Name: "direct only", Hook: "tools/call.post.result", When: "route == 'direct'", Then: map[string]string{"content": "[{'type': 'text', 'text': 'direct'}]"}},
-		{Name: "search only", Hook: "tools/call.post.result", When: "flags.search", Then: map[string]string{"structuredContent": "{'search': true}"}},
-		{Name: "never", Hook: "tools/call.post.result", When: "route == 'search'", Then: map[string]string{"decision": "'deny'"}},
+		{Name: "mux only", Hook: "tools/call.post.result", When: "request.route == 'mux'", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'mux'}]"}},
+		{Name: "direct only", Hook: "tools/call.post.result", When: "request.route == 'direct'", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'direct'}]"}},
+		{Name: "search only", Hook: "tools/call.post.result", When: "request.flags.search", Then: map[string]string{"response.result.structuredContent": "{'search': true}"}},
+		{Name: "never", Hook: "tools/call.post.result", When: "request.route == 'search'", Then: map[string]string{"decision": "'deny'"}},
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	ctx := context.Background()
 	for _, tc := range []struct {
@@ -1241,10 +1241,10 @@ func TestSearchIsAFlagNotARoute(t *testing.T) {
 // rule is saved.
 func TestFlagsAreNamedAndChecked(t *testing.T) {
 	rules := []Rule{
-		{Hook: "tools/call.post.result", When: "flags.cli && !flags.search", Then: map[string]string{"content": "[{'type': 'text', 'text': 'cli'}]"}},
-		{Hook: "tools/call.post.result", When: "flags.search && flags.cli", Then: map[string]string{"content": "[{'type': 'text', 'text': 'both'}]"}},
+		{Hook: "tools/call.post.result", When: "request.flags.cli && !request.flags.search", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'cli'}]"}},
+		{Hook: "tools/call.post.result", When: "request.flags.search && request.flags.cli", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'both'}]"}},
 	}
-	e := &Engine{Signer: Signer{Key: []byte("k")}}
+	e := &Engine{}
 	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
 	ctx := context.Background()
 	for _, tc := range []struct {
@@ -1273,78 +1273,24 @@ func TestFlagsAreNamedAndChecked(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{
-		"flags.serach",              // a typo
-		"flags.madeup == true",      // not a flag
-		"'search' in flags",         // must be read by name
-		"flags['search']",           // must be read by name
-		"size(flags) > 0",           // must be read by name
-		"has(flags.debug)",          // not a flag, even under has()
-		"search",                    // the old top-level variable is gone
-		"route == 'mux' && flags.x", // one bad flag in a longer condition
+		"request.flags.serach",                      // a typo
+		"request.flags.madeup == true",              // not a flag
+		"'search' in request.flags",                 // must be read by name
+		"request.flags['serach']",                   // a typo, by key
+		"size(request.flags) > 0",                   // must be read by name
+		"has(request.flags.debug)",                  // not a flag, even under has()
+		"flags.search",                              // flags live under the request
+		"search",                                    // there was never a top-level one
+		"request.route == 'mux' && request.flags.x", // one bad flag in a longer condition
 	} {
 		if _, probs := Compile([]Rule{{Hook: "tools/list.post", When: bad, Then: map[string]string{"decision": "'deny'"}}}); probs == nil {
 			t.Errorf("compiled, but should not: %s", bad)
 		}
 	}
-	for _, good := range []string{"flags.search", "flags.cli", "!flags.cli", "has(flags.cli) && flags.cli", "route == 'mux' && (flags.search || flags.cli)"} {
+	for _, good := range []string{"request.flags.search", "request.flags.cli", "!request.flags.cli", "has(request.flags.cli) && request.flags.cli",
+		"request.flags['search']", "request.route == 'mux' && (request.flags.search || request.flags.cli)"} {
 		if _, probs := Compile([]Rule{{Hook: "tools/list.post", When: good, Then: map[string]string{"decision": "'deny'"}}}); probs != nil {
 			t.Errorf("did not compile: %s: %v", good, probs)
-		}
-	}
-}
-
-// ---- hook schemas and docs stay in step with the registry -------------------------
-
-// Every hook's schema carries the flags struct with exactly the known
-// flags, and the route with its two values.
-func TestEveryHookSchemaHasTheFlagsStruct(t *testing.T) {
-	all := Schema()
-	if len(all) != len(Hooks) {
-		t.Fatalf("%d schemas for %d hooks", len(all), len(Hooks))
-	}
-	for _, name := range Flags {
-		if FlagDocs[name] == "" {
-			t.Errorf("flag %q has no description", name)
-		}
-	}
-	for _, h := range all {
-		var flags, route *VarSchema
-		for i := range h.Variables {
-			switch h.Variables[i].Name {
-			case "flags":
-				flags = &h.Variables[i]
-			case "route":
-				route = &h.Variables[i]
-			}
-			if h.Variables[i].Type == "" || h.Variables[i].Doc == "" {
-				t.Errorf("%s: variable %q has no type or description", h.Hook, h.Variables[i].Name)
-			}
-		}
-		if flags == nil || flags.Type != "struct" || len(flags.Fields) != len(Flags) {
-			t.Errorf("%s: flags = %+v", h.Hook, flags)
-			continue
-		}
-		for _, name := range Flags {
-			if flags.Fields[name] != "bool" {
-				t.Errorf("%s: flags.%s is %q, want bool", h.Hook, name, flags.Fields[name])
-			}
-		}
-		if route == nil || strings.Join(route.Values, ",") != "direct,mux" {
-			t.Errorf("%s: route = %+v", h.Hook, route)
-		}
-		if len(h.Sets) == 0 {
-			t.Errorf("%s: no settable fields", h.Hook)
-		}
-		// The schema says what compiles: a rule reading each flag compiles on
-		// this hook, and one reading a made-up flag does not.
-		then := map[string]string{h.Sets[0].Field: "'deny'"}
-		for _, name := range Flags {
-			if _, probs := compileRule(0, Rule{Hook: h.Hook, When: "flags." + name, Then: then}, Options{CostLimit: DefaultCostLimit}); hasProblem(probs, "when") {
-				t.Errorf("%s: flags.%s does not compile: %v", h.Hook, name, probs)
-			}
-		}
-		if _, probs := compileRule(0, Rule{Hook: h.Hook, When: "flags.madeup", Then: then}, Options{CostLimit: DefaultCostLimit}); !hasProblem(probs, "when") {
-			t.Errorf("%s: a made-up flag compiled", h.Hook)
 		}
 	}
 }
@@ -1356,69 +1302,4 @@ func hasProblem(probs Problems, field string) bool {
 		}
 	}
 	return false
-}
-
-// Every hook has a doc page, and the page names every variable all hooks
-// share, including flags. The overview lists every flag.
-func TestEveryHookPageListsTheCommonVariables(t *testing.T) {
-	dir := "../../docs/rules/hooks/"
-	overview, err := os.ReadFile(dir + "overview.md")
-	if err != nil {
-		t.Skip("docs not present: " + err.Error())
-	}
-	for _, name := range Flags {
-		if !strings.Contains(string(overview), "`flags."+name+"`") {
-			t.Errorf("the overview does not document flags.%s", name)
-		}
-	}
-	for hook := range Hooks {
-		file := strings.NewReplacer("/", "-", ".", "-").Replace(hook)
-		page := dir + file + ".md"
-		b, err := os.ReadFile(page)
-		if err != nil {
-			t.Errorf("%s has no doc page: %v", hook, err)
-			continue
-		}
-		for _, v := range CommonVars {
-			if !strings.Contains(string(b), "`"+v+"`") {
-				t.Errorf("%s does not list the common variable %s", page, v)
-			}
-		}
-		if !strings.Contains(string(overview), "("+file+".md)") {
-			t.Errorf("the overview does not link %s", hook)
-		}
-	}
-}
-
-// A hook's schema says the form of what its rules read: `upstream` lists
-// the item's own fields, and every map a rule reads by key has a shape.
-func TestSchemaShapes(t *testing.T) {
-	for _, h := range Schema() {
-		for _, v := range h.Variables {
-			switch v.Name {
-			case "upstream":
-				if v.Shape == nil || len(v.Shape.Keys) == 0 {
-					t.Errorf("%s: upstream has no shape", h.Hook)
-					continue
-				}
-				for k := range v.Shape.Keys {
-					found := false
-					for _, f := range ItemFields[ItemKind(h.Item)] {
-						found = found || f == k
-					}
-					if !found {
-						t.Errorf("%s: upstream.%s is not a field of the %s", h.Hook, k, h.Item)
-					}
-				}
-			case "result", "request", "server", "entitlement", "client", "args", "annotations", "meta", "icons", "inputSchema", "outputSchema", "params", "arguments":
-				if v.Shape == nil {
-					t.Errorf("%s: %s has no shape", h.Hook, v.Name)
-				}
-			}
-			// A JSON Schema is an any to the engine, and a map in practice.
-			if v.Shape != nil && v.Shape.Type != v.Type && v.Type != "any" {
-				t.Errorf("%s: %s is a %s but its shape is a %s", h.Hook, v.Name, v.Type, v.Shape.Type)
-			}
-		}
-	}
 }

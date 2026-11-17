@@ -27,7 +27,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.id.enum": "[9007199254740992]"
+       "tool.params.id.enum": "[9007199254740992]"
       }
      }
     ]
@@ -87,7 +87,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.id.maximum": "9007199254740992"
+       "tool.params.id.maximum": "9007199254740992"
       }
      }
     ]
@@ -147,7 +147,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.id.minimum": "9007199254740993"
+       "tool.params.id.minimum": "9007199254740993"
       }
      }
     ]
@@ -207,7 +207,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.id.enum": "[{'id': 9007199254740992}]"
+       "tool.params.id.enum": "[{'id': 9007199254740992}]"
       }
      }
     ]
@@ -269,12 +269,12 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.tenant.pin": "'restricted'"
+       "tool.params.tenant.pin": "'restricted'"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.tenant) && args.tenant == 'restricted'",
+      "when": "has(request.params.arguments.tenant) && request.params.arguments.tenant == 'restricted'",
       "then": {
        "decision": "'deny'",
        "reason": "'restricted tenant'"
@@ -335,19 +335,19 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.confirm.add": "{'type':'boolean'}"
+       "tool.params.confirm.add": "{'type':'boolean'}"
       }
      },
      {
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.confirm.default": "false"
+       "tool.params.confirm.default": "false"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "has(args.confirm) && args.confirm == false",
+      "when": "has(request.params.arguments.confirm) && request.params.arguments.confirm == false",
       "then": {
        "decision": "'deny'",
        "reason": "'confirmation required'"
@@ -404,14 +404,14 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.internal.add": "{'type':'string'}"
+       "tool.params.internal.add": "{'type':'string'}"
       }
      },
      {
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.internal.hide": "true"
+       "tool.params.internal.hide": "true"
       }
      }
     ]
@@ -472,7 +472,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.q.description": "'query'"
+       "tool.params.q.description": "'query'"
       }
      }
     ]
@@ -522,14 +522,14 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "args.n": "args.n + 1"
+       "request.params.arguments.n": "request.params.arguments.n + 1"
       }
      },
      {
       "hook": "tools/call.post.result",
       "when": "true",
       "then": {
-       "structuredContent": "{'sent': args.n}"
+       "response.result.structuredContent": "{'sent': request.upstream.params.arguments.n}"
       }
      }
     ]
@@ -593,14 +593,14 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "args.n": "args.n + 1"
+       "request.params.arguments.n": "request.params.arguments.n + 1"
       }
      },
      {
       "hook": "tools/call.post.elicit",
       "when": "true",
       "then": {
-       "message": "string(args.n)"
+       "elicitation.params.message": "string(request.upstream.params.arguments.n)"
       }
      }
     ]
@@ -682,21 +682,21 @@
       "hook": "prompts/list.post",
       "when": "true",
       "then": {
-       "arguments.topic.name": "'subject'"
+       "prompt.params.topic.name": "'subject'"
       }
      },
      {
       "hook": "prompts/get.pre",
       "when": "true",
       "then": {
-       "args.subject": "args.subject + '!'"
+       "request.params.arguments.subject": "request.params.arguments.subject + '!'"
       }
      },
      {
       "hook": "prompts/get.post.elicit",
       "when": "true",
       "then": {
-       "message": "args.topic"
+       "elicitation.params.message": "request.upstream.params.arguments.topic"
       }
      }
     ]
@@ -776,7 +776,7 @@
       "hook": "resources/list.post",
       "when": "true",
       "then": {
-       "description": "caller.missing"
+       "resource.description": "request.caller.missing"
       }
      }
     ]
@@ -840,7 +840,7 @@
       "hook": "resources/templates/list.post",
       "when": "true",
       "then": {
-       "description": "caller.missing"
+       "template.description": "request.caller.missing"
       }
      }
     ]
@@ -1037,7 +1037,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'file:///doc'",
+      "when": "resource.uri == 'file:///doc'",
       "then": {
        "decision": "'deny'"
       }
@@ -1108,7 +1108,7 @@
     "rules": [
      {
       "hook": "resources/templates/list.post",
-      "when": "name == 'private'",
+      "when": "template.name == 'private'",
       "then": {
        "decision": "'deny'"
       }
@@ -1194,7 +1194,7 @@
     "rules": [
      {
       "hook": "resources/templates/list.post",
-      "when": "name == 'public'",
+      "when": "template.name == 'public'",
       "then": {
        "decision": "'deny'"
       }
@@ -1256,7 +1256,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri.startsWith('file:///private/')",
+      "when": "resource.uri.startsWith('file:///private/')",
       "then": {
        "decision": "'deny'"
       }
@@ -1298,7 +1298,7 @@
     "rules": [
      {
       "hook": "resources/list.post",
-      "when": "uri == 'file:///public/hidden'",
+      "when": "resource.uri == 'file:///public/hidden'",
       "then": {
        "decision": "'deny'"
       }
@@ -1359,7 +1359,7 @@
     "rules": [
      {
       "hook": "resources/templates/list.post",
-      "when": "name == 'private'",
+      "when": "template.name == 'private'",
       "then": {
        "decision": "'deny'"
       }
@@ -1530,7 +1530,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "result.text + string(now)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + string(request.time)} : c)"
       }
      }
     ]
@@ -1616,7 +1616,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "result.text + caller.userId"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text + request.caller.userId} : c)"
       }
      }
     ]
@@ -1702,7 +1702,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(regex.replace(result.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(regex.replace(c.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')} : c)"
       }
      }
     ]
@@ -1794,7 +1794,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(regex.replace(result.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(regex.replace(c.text, 'name: widget', 'name: other'), 'ORIGINAL', 'CHANGED')} : c)"
       }
      }
     ]
@@ -1884,9 +1884,9 @@
     "rules": [
      {
       "hook": "resources/read.post.result",
-      "when": "uri.endsWith('guide.txt')",
+      "when": "resource.uri.endsWith('guide.txt')",
       "then": {
-       "text": "'filled'"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': 'filled'} : c)"
       }
      }
     ]
@@ -1982,7 +1982,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(result.text, 'original', 'updated')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'original', 'updated')} : c)"
       }
      }
     ]
@@ -2046,7 +2046,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "regex.replace(result.text, 'original', 'updated')"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': regex.replace(c.text, 'original', 'updated')} : c)"
       }
      }
     ]
@@ -2129,7 +2129,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "\"---\\nname: widget\\n---\\nBody\\n\""
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': \"---\\nname: widget\\n---\\nBody\\n\"} : c)"
       }
      }
     ]
@@ -2335,7 +2335,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "description": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
+       "tool.description": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
       }
      }
     ]
@@ -2489,7 +2489,7 @@
       "hook": "tools/call.post.elicit",
       "when": "true",
       "then": {
-       "message": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
+       "elicitation.params.message": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
       }
      }
     ]
@@ -2826,7 +2826,7 @@
       "hook": "resources/read.post.result",
       "when": "true",
       "then": {
-       "text": "slugUris(result.text)"
+       "response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': slugUris(c.text)} : c)"
       }
      }
     ]
@@ -2900,7 +2900,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "outputSchema": "dropSchema(outputSchema, ['*'])"
+       "tool.outputSchema": "dropSchema(tool.outputSchema, ['*'])"
       }
      }
     ]
@@ -2945,9 +2945,9 @@
     "rules": [
      {
       "hook": "resources/read.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok','Read?')"
+       "confirm": "elicit('ok','Read?')"
       }
      }
     ]
@@ -3027,9 +3027,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Continue?')"
+       "confirm": "elicit('ok', 'Continue?')"
       }
      }
     ]
@@ -3564,9 +3564,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Continue?')"
+       "confirm": "elicit('ok', 'Continue?')"
       }
      }
     ]
@@ -3647,9 +3647,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Continue?')"
+       "confirm": "elicit('ok', 'Continue?')"
       }
      }
     ]
@@ -3753,9 +3753,9 @@
     "rules": [
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Continue?')"
+       "confirm": "elicit('ok', 'Continue?')"
       }
      }
     ]
@@ -3842,14 +3842,14 @@
       "hook": "tools/call.pre",
       "when": "true",
       "then": {
-       "args.n": "args.n + 1"
+       "request.params.arguments.n": "request.params.arguments.n + 1"
       }
      },
      {
       "hook": "tools/call.pre",
-      "when": "!has(input.ok)",
+      "when": "true",
       "then": {
-       "result": "elicit('ok', 'Continue?')"
+       "confirm": "elicit('ok', 'Continue?')"
       }
      }
     ]
@@ -3937,7 +3937,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.q.name": "'hidden'"
+       "tool.params.q.name": "'hidden'"
       },
       "mode": "audit"
      }
@@ -4009,21 +4009,21 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.reason.add": "{'type':'string'}"
+       "tool.params.reason.add": "{'type':'string'}"
       }
      },
      {
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.reason.name": "'why'"
+       "tool.params.reason.name": "'why'"
       }
      },
      {
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.why.name": "'intent'"
+       "tool.params.why.name": "'intent'"
       }
      }
     ]
@@ -4082,7 +4082,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.a\\\\b\\.c.name": "'query'"
+       "tool.params.a\\\\b\\.c.name": "'query'"
       }
      }
     ]
@@ -4182,7 +4182,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name != \"Bash\"",
+      "when": "tool.name != \"Bash\"",
       "then": {
        "decision": "'deny'"
       }
@@ -4191,7 +4191,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.command.name": "\"codex_command\""
+       "tool.params.command.name": "\"codex_command\""
       }
      }
     ],
@@ -4245,7 +4245,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name != \"Read\"",
+      "when": "tool.name != \"Read\"",
       "then": {
        "decision": "'deny'"
       }
@@ -4254,7 +4254,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "params.file_path.name": "\"codex_file_path\""
+       "tool.params.file_path.name": "\"codex_file_path\""
       }
      }
     ],
@@ -4308,7 +4308,7 @@
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "name.startsWith('delete') || name.startsWith('create')",
+      "when": "tool.name.startsWith('delete') || tool.name.startsWith('create')",
       "then": {
        "decision": "'deny'"
       }
@@ -4451,7 +4451,7 @@
       "hook": "tools/call.post.result",
       "when": "true",
       "then": {
-       "structuredContent": "{'trace': result.meta.trace}"
+       "response.result.structuredContent": "{'trace': response.result._meta.trace}"
       }
      }
     ]

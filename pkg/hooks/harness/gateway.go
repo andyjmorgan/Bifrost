@@ -119,7 +119,7 @@ type Gateway struct {
 
 // NewGateway starts a gateway. It stops when the test ends.
 func NewGateway(t testing.TB) *Gateway {
-	e := &hooks.Engine{Signer: hooks.Signer{Key: []byte("harness-key")}, Version: "harness"}
+	e := &hooks.Engine{Version: "harness"}
 	g := &Gateway{
 		Engine:    e,
 		Caller:    map[string]any{"userId": "u1", "email": "u1@example.com"},
@@ -509,9 +509,7 @@ func (g *Gateway) route(r *http.Request) (string, []*hooks.Server, bool) {
 func clientOf(meta map[string]any) map[string]any {
 	c := map[string]any{}
 	if info, ok := meta[metaClient].(map[string]any); ok {
-		for k, v := range info {
-			c[k] = v
-		}
+		c["clientInfo"] = info
 	}
 	if caps, ok := meta[metaCaps]; ok {
 		c["capabilities"] = caps

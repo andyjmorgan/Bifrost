@@ -1,15 +1,17 @@
 import { snippetCompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import type { EditorView } from '@codemirror/view'
-import type { CapabilityDTO, HookInfo, HookSet, HookVariable, Shape } from '../../api'
+import type { CapabilityDTO, HookInfo, HookSet, TreeNode } from '../../api'
 
 // Completion for a rule's CEL: its condition and each value it sets. What a rule may read comes
 // from GET /entitlements/hooks-schema for the rule's hook, so the suggestions cannot drift from
 // the engine. Only the CEL language itself (string methods, macros) and the live values from the
 // server's catalog are added here.
 //
-// Two rules keep the lists short. A name is offered whole and its members only after its dot:
-// `flags`, then `search` after `flags.`. And the first list is names with a one-word type; the
-// descriptions live in the Help panel.
+// What a rule reads is the hook's tree, and the completer walks it: the branches first (tool,
+// request, response), then the members of whatever the path has reached, to any depth. A member
+// that may be absent is inserted in CEL's optional form, tool.?title, because a plain read of an
+// absent value fails the rule. The first list is names with a one-word type; the descriptions live
+// in the Help panel.
 
 /** What the editor page knows that the completer cannot. */
 export interface CelCompletionData {
@@ -23,7 +25,7 @@ export interface CelCompletionData {
   caps: CapabilityDTO[]
   /** In a value: the type of the field being set. */
   setType?: string
-  /** The item the rule's condition names (name == 'flip'), to narrow what the catalog offers. */
+  /** The item the rule's condition names (tool.name == 'flip'), to narrow what the catalog offers. */
   itemName?: string
 }
 
@@ -88,7 +90,6 @@ function methodsFor(type: string): Completion[] {
 type Obj = Record<string, unknown>
 const isObject = (x: unknown): x is Obj => typeof x === 'object' && x !== null && !Array.isArray(x)
 const definition = (c: CapabilityDTO) => (isObject(c.definition) ? c.definition : {})
-const IDENT = /^[A-Za-z_]\w*$/
 
 /** The catalog entries a rule is about: the one its condition names when there is one, or all of the hook's kind. */
 function itemsOf(data: CelCompletionData): Obj[] {
@@ -126,20 +127,6 @@ function schemaNodes(items: Obj[], which: 'inputSchema' | 'outputSchema', path: 
   return nodes
 }
 
-/** The properties of some schema nodes, as completions, then the methods of what the nodes are. */
-function schemaMembers(nodes: Obj[]): Completion[] {
-  const props = new Map<string, string>()
-  const kinds = new Set<string>()
-  for (const n of nodes) {
-    kinds.add(schemaType(n))
-    if (isObject(n.properties)) for (const [k, v] of Object.entries(n.properties)) if (IDENT.test(k) && !props.has(k)) props.set(k, schemaType(v))
-  }
-  const out: Completion[] = [...props].sort(([a], [b]) => a.localeCompare(b)).map(([label, detail]) => ({ label, detail, type: 'property', boost: 1 }))
-  // Methods only when every item agrees on the type, and never the map macros beside real keys.
-  if (kinds.size === 1 && !out.length) out.push(...methodsFor([...kinds][0]))
-  return out
-}
-
 /** The names of what a request passes: a tool's parameters, a prompt's arguments. */
 export function parameterNames(data: CelCompletionData): Map<string, string> {
   const out = new Map<string, string>()
@@ -156,7 +143,7 @@ export function parameterNames(data: CelCompletionData): Map<string, string> {
 export function catalogKeys(data: CelCompletionData, head: string): string[] {
   const out = new Set<string>()
   for (const d of itemsOf(data)) {
-    const source = head === 'meta' ? d._meta : d[head]
+    const source = d[head]
     if (isObject(source)) for (const k of Object.keys(source)) out.add(k)
   }
   return [...out].sort()
@@ -164,49 +151,53 @@ export function catalogKeys(data: CelCompletionData, head: string): string[] {
 
 type Literal = { label: string; detail?: string }
 
-/** The values a string comparison against `path` could use: the schema's enumeration, or what the catalog holds. */
-function literalValues(path: string, data: CelCompletionData): Literal[] {
-  const segs = path.split('.')
+const ITEM_VALUE = /^(?:(?:tool|prompt|resource|template|skill)(?:\.upstream)?|request(?:\.upstream)?\.params)\.(name|uri|uriTemplate|title|mimeType)$/
+
+/** The values a string comparison against `path` could use: a fixed set, a schema's enumeration, or what the catalog holds. */
+function literalValues(path: string, before: string, data: CelCompletionData): Literal[] {
   if (path === 'entitlement.slug') return data.slug ? [{ label: data.slug, detail: 'this entitlement' }] : []
-  if (segs[0] === 'args' && segs.length > 1) {
+  const node = resolve(path.replace(/\.\?/g, '.'), before, data)
+  if (node && 'tree' in node && node.tree.enum) return node.tree.enum.map((label) => ({ label }))
+  if (node && 'schema' in node) {
     const out = new Set<string>()
-    for (const n of schemaNodes(itemsOf(data), 'inputSchema', segs.slice(1))) if (Array.isArray(n.enum)) for (const x of n.enum) if (typeof x === 'string') out.add(x)
+    for (const n of node.schema) if (Array.isArray(n.enum)) for (const x of n.enum) if (typeof x === 'string') out.add(x)
     return [...out].map((label) => ({ label }))
   }
-  // `upstream` is the item as the server sent it, so its fields compare against the same values.
-  if (segs.length === 2 && segs[0] === 'upstream') segs.shift()
-  if (segs.length !== 1) return []
-  const v = data.hook?.reads.find((x) => x.name === segs[0])
-  if (!v) return []
-  if (v.values) return v.values.map((label) => ({ label }))
-  if (v.type !== 'string') return []
+  const field = ITEM_VALUE.exec(path.replace(/\.\?/g, '.'))?.[1]
+  if (!field) return []
   const seen = new Map<string, Literal>()
   // Every item of the kind, not only the one the rule names: this is where the name is chosen.
   for (const c of data.caps) {
     if (c.kind !== data.hook?.item) continue
     const d = definition(c)
-    const value = d[v.name]
+    const value = d[field]
     if (typeof value !== 'string' || !value || seen.has(value)) continue
-    seen.set(value, { label: value, detail: v.name === 'name' && typeof d.title === 'string' ? d.title : undefined })
+    seen.set(value, { label: value, detail: field === 'name' && typeof d.title === 'string' ? d.title : undefined })
   }
   return [...seen.values()]
 }
 
-/* ---------- the schema ---------- */
+/* ---------- the tree ---------- */
 
-const prop = (label: string, detail: string): Completion => ({ label, detail, type: 'property', boost: 1 })
+/** A member a path can continue with. `optional` members are inserted as .?name. */
+interface Member {
+  label: string
+  detail: string
+  optional?: boolean
+}
 
 /**
- * Where a path has got to. A shape is the engine's description of the value. A schema is the
+ * Where a path has got to. A tree node is the engine's description of the value. A schema is the
  * JSON Schema nodes the catalog holds for it: arguments follow a tool's input schema, structured
- * content its output schema. A struct has fixed fields. Past all of those, only a type is known.
+ * content its output schema. Past both, only a type is known.
  */
-type Node = { shape: Shape } | { schema: Obj[] } | { struct: Record<string, string> } | { type: string }
+type Node = { tree: TreeNode } | { schema: Obj[] } | { type: string }
 
 const MACRO_NAMES = 'exists|all|exists_one|filter|map'
-const SEGMENT = /\.([A-Za-z_]\w*)|\[([^\]]*)\]/g
+const SEGMENT = /\.\??([A-Za-z_]\w*)|\[\??([^\]]*)\]/g
+const CHAIN = String.raw`[A-Za-z_]\w*(?:\.\??[A-Za-z_]\w*|\[[^\]]*\])*`
 
-/** Splits `result.content[0].text` into its head and the steps after it; an index step is null. */
+/** Splits `response.result.content[0].?text` into its head and the steps after it; an index step is null. */
 function splitPath(path: string): { head: string; steps: (string | null)[] } {
   const head = /^[A-Za-z_]\w*/.exec(path)?.[0] ?? ''
   const steps: (string | null)[] = []
@@ -217,19 +208,16 @@ function splitPath(path: string): { head: string; steps: (string | null)[] } {
   return { head, steps }
 }
 
-/** The node a JSON Schema reference lands on: the item's schemas, then the properties named. */
+/** The node a JSON Schema reference lands on: the item's schemas. */
 const followed = (which: string, data: CelCompletionData): Node => ({ schema: schemaNodes(itemsOf(data), which as 'inputSchema' | 'outputSchema', []) })
 
+const ofTree = (t: TreeNode, data: CelCompletionData): Node => (t.follows ? followed(t.follows, data) : { tree: t })
+
 function start(head: string, before: string, data: CelCompletionData): Node | null {
-  const v = data.hook?.reads.find((x) => x.name === head)
-  if (v) {
-    if (v.fields) return { struct: v.fields }
-    if (head === 'caller' && data.caller) return { shape: { type: 'map', keys: Object.fromEntries(Object.keys(data.caller).map((k) => [k, { type: 'string' }])) } }
-    if (v.shape?.follows) return followed(v.shape.follows, data)
-    return v.shape ? { shape: v.shape } : { type: v.type }
-  }
-  // A macro's own variable: in result.content.exists(c, c.|) c is one element of result.content.
-  const bound = new RegExp(String.raw`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]*\])*)\.(?:${MACRO_NAMES})\(\s*${head}\s*,`, 'g')
+  const root = data.hook?.tree.keys?.[head]
+  if (root && !root.writeOnly) return ofTree(root, data)
+  // A macro's own variable: in response.result.content.exists(c, c.|) c is one element of the list.
+  const bound = new RegExp(String.raw`(${CHAIN})\.(?:${MACRO_NAMES})\(\s*${head}\s*,`, 'g')
   const last = [...before.matchAll(bound)].pop()
   if (!last) return null
   const over = resolve(last[1], before.slice(0, last.index), data)
@@ -238,16 +226,14 @@ function start(head: string, before: string, data: CelCompletionData): Node | nu
 
 /** One step from a node: a key by name, or an element when the step is null. */
 function step(node: Node, key: string | null, data: CelCompletionData): Node {
-  if ('struct' in node) return { type: key ? (node.struct[key] ?? 'any') : 'any' }
   if ('schema' in node) {
     const next = node.schema.map((n) => (key === null ? n.items : isObject(n.properties) ? n.properties[key] : undefined)).filter(isObject)
     return next.length ? { schema: next } : { type: 'any' }
   }
-  if ('shape' in node) {
-    const sh = node.shape
-    const next = key === null ? (sh.type === 'list' ? sh.items : sh.type === 'map' ? { type: 'string' } : undefined) : (sh.keys?.[key] ?? (sh.names ? (sh.values ?? { type: 'any' }) : undefined))
-    if (!next) return { type: 'any' }
-    return next.follows ? followed(next.follows, data) : { shape: next }
+  if ('tree' in node) {
+    const t = node.tree
+    const next = key === null ? (t.type === 'list' ? t.items : t.values) : (t.keys?.[key] ?? t.values)
+    return next ? ofTree(next, data) : { type: 'any' }
   }
   return { type: 'any' }
 }
@@ -262,10 +248,10 @@ function resolve(path: string, before: string, data: CelCompletionData): Node | 
   return node
 }
 
-/** The names the catalog holds for a shape whose keys come from it. */
+/** The names the catalog holds for a map whose keys come from it. */
 function catalogNames(names: string, data: CelCompletionData): [string, string][] {
   if (names === 'parameters') return [...parameterNames(data)]
-  if (names === 'meta') return catalogKeys(data, 'meta').map((k) => [k, 'seen on the server'])
+  if (names === 'meta') return catalogKeys(data, '_meta').map((k) => [k, 'seen on the server'])
   if (names === 'output') {
     const out = new Map<string, string>()
     for (const n of schemaNodes(itemsOf(data), 'outputSchema', [])) if (isObject(n.properties)) for (const [k, v] of Object.entries(n.properties)) if (!out.has(k)) out.set(k, schemaType(v))
@@ -274,35 +260,59 @@ function catalogNames(names: string, data: CelCompletionData): [string, string][
   return []
 }
 
-/** What can follow `path.`: the keys of what the path reaches, or the methods of its type. */
-function membersOf(path: string, before: string, data: CelCompletionData): Completion[] {
-  if (NAMESPACES[path]) return NAMESPACES[path]
+/** What can follow `path.`: the keys of what the path reaches. The type's methods are offered when it has no keys. */
+function membersOf(path: string, before: string, data: CelCompletionData): { members: Member[]; methods: Completion[] } {
+  const none = { members: [], methods: [] }
+  if (NAMESPACES[path]) return { members: [], methods: NAMESPACES[path] }
   const node = resolve(path, before, data)
-  if (!node) return []
-  if ('struct' in node) return Object.entries(node.struct).map(([name, type]) => prop(name, type))
-  if ('schema' in node) return schemaMembers(node.schema)
-  if ('type' in node) return methodsFor(node.type)
-  const sh = node.shape
-  const keys = new Map<string, string>(Object.entries(sh.keys ?? {}).map(([k, v]) => [k, v.type]))
-  if (sh.names) for (const [k, type] of catalogNames(sh.names, data)) if (!keys.has(k)) keys.set(k, sh.values?.type && sh.values.type !== 'any' ? sh.values.type : type)
-  const out = [...keys].filter(([k]) => IDENT.test(k)).map(([k, type]) => prop(k, type))
-  return out.length ? out : methodsFor(sh.type)
+  if (!node) return none
+  if ('type' in node) return { members: [], methods: methodsFor(node.type) }
+  if ('schema' in node) {
+    const props = new Map<string, string>()
+    const kinds = new Set<string>()
+    for (const n of node.schema) {
+      kinds.add(schemaType(n))
+      if (isObject(n.properties)) for (const [k, v] of Object.entries(n.properties)) if (!props.has(k)) props.set(k, schemaType(v))
+    }
+    const members = [...props].sort(([a], [b]) => a.localeCompare(b)).map(([label, detail]) => ({ label, detail, optional: true }))
+    return { members, methods: members.length || kinds.size !== 1 ? [] : methodsFor([...kinds][0]) }
+  }
+  const t = node.tree
+  const members = new Map<string, Member>()
+  for (const [k, c] of Object.entries(t.keys ?? {})) if (!c.writeOnly) members.set(k, { label: k, detail: c.type, optional: c.optional })
+  if (t.names) {
+    for (const [k, type] of catalogNames(t.names, data)) {
+      if (!members.has(k)) members.set(k, { label: k, detail: t.values?.type && t.values.type !== 'any' ? t.values.type : type, optional: t.values?.optional })
+    }
+  }
+  // request.caller is the gateway's own: its keys come with the schema.
+  if (path.replace(/\.\?/g, '.') === 'request.caller') for (const k of Object.keys(data.caller ?? {})) members.set(k, { label: k, detail: 'string' })
+  const list = [...members.values()]
+  return { members: list, methods: list.length ? [] : methodsFor(t.type) }
 }
 
-/** A request's own values first, then the item, then the context. */
-const ORDER = ['args', 'result', 'request', 'progress', 'input', 'name', 'uri', 'uriTemplate', 'upstream']
+/** The item first, then the request, then what came back, then where it happened. */
+const ORDER = ['tool', 'prompt', 'resource', 'template', 'skill', 'request', 'response', 'progress', 'elicitation', 'server', 'entitlement']
 
 function topLevel(data: CelCompletionData): Completion[] {
   const hook = data.hook
   if (!hook) return FUNCTIONS
   const out: Completion[] = []
-  if (data.setType === 'bool') out.push({ label: 'true', type: 'keyword', detail: 'bool', boost: 6 }, { label: 'false', type: 'keyword', detail: 'bool', boost: 6 })
-  if (data.setType === 'duration') out.push(fn("duration('${30s}')", 'duration', "('30s') duration", 6))
-  out.push(...hook.reads.map((v: HookVariable): Completion => ({ label: v.name, type: 'variable', detail: v.type, boost: ORDER.includes(v.name) ? 3 : 2 })))
+  if (data.setType === 'bool') out.push({ label: 'true', type: 'keyword', detail: 'bool', boost: 12 }, { label: 'false', type: 'keyword', detail: 'bool', boost: 12 })
+  if (data.setType === 'duration') out.push(fn("duration('${30s}')", 'duration', "('30s') duration", 12))
+  const roots = Object.entries(hook.tree.keys ?? {}).filter(([, n]) => !n.writeOnly)
+  roots.sort(([a], [b]) => ORDER.indexOf(a) - ORDER.indexOf(b))
+  roots.forEach(([name, n], i) => out.push({ label: name, type: 'variable', detail: n.type, boost: 10 - i }))
   for (const h of hook.helpers ?? []) out.push(fn(`${h}(\${})`, h, 'helper', 1))
   const seen = new Set(out.map((c) => c.label))
   return [...out, ...FUNCTIONS.filter((c) => !seen.has(c.label))]
 }
+
+/** What an optional value can be turned into. */
+const OPTIONAL_METHODS: Completion[] = [
+  snippetCompletion('orValue(${default})', { label: 'orValue', detail: '(default) the value, or the default when absent', type: 'method', boost: 3 }),
+  snippetCompletion('hasValue()', { label: 'hasValue', detail: '() bool, whether it is there', type: 'method', boost: 2 }),
+]
 
 /* ---------- the source ---------- */
 
@@ -344,7 +354,7 @@ export function openString(text: string): StringScan | null {
   return open && { start: open.start, quote: open.quote }
 }
 
-const PATH = String.raw`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`
+const PATH = String.raw`([A-Za-z_]\w*(?:\.\??[A-Za-z_]\w*|\[[^\]]*\])*)`
 const AFTER_EQ = new RegExp(PATH + String.raw`\s*(?:==|!=)\s*$`)
 const AFTER_IN = new RegExp(PATH + String.raw`\s+in\s*\[(?:[^\]]*,)?\s*$`)
 const AFTER_CALL = new RegExp(PATH + String.raw`\.(?:startsWith|endsWith|contains)\(\s*$`)
@@ -374,7 +384,7 @@ export function completeCel(ctx: CompletionContext, data: CelCompletionData, bas
     const lead = before.slice(0, str.start - str.quote.length)
     const hit = AFTER_EQ.exec(lead) ?? AFTER_IN.exec(lead) ?? AFTER_CALL.exec(lead)
     if (!hit) return null
-    const values = literalValues(hit[1], data)
+    const values = literalValues(hit[1], lead.slice(0, hit.index), data)
     if (!values.length) return null
     return {
       from: base + str.start,
@@ -383,14 +393,28 @@ export function completeCel(ctx: CompletionContext, data: CelCompletionData, bas
     }
   }
 
-  // A member access: flags.se|, args.|, result.content[0].|, description.lowerAscii().|
-  const member = /(\)|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]*\])*)\.(\w*)$/.exec(before)
+  // A member access: tool.na|, request.params.arguments.|, response.result.content[0].|, x.lowerAscii().|
+  const member = new RegExp(String.raw`(\)|${CHAIN})\.(\??)(\w*)$`).exec(before)
   if (member) {
-    const options = member[1] === ')' ? STRING_METHODS : membersOf(member[1], before.slice(0, member.index), data)
+    const from = ctx.pos - member[3].length
+    if (member[1] === ')') return { from, options: STRING_METHODS, validFor: /^\w*$/ }
+    const lead = before.slice(0, member.index)
+    const { members, methods } = membersOf(member[1], lead, data)
+    // Past an optional step the value is an optional: it takes orValue and hasValue, or goes on with .?
+    const optionalChain = /\.\?|\[\?/.test(member[1])
+    // Inside has() a plain path is the guard, so nothing is rewritten there.
+    const tested = /\bhas\(\s*$/.test(lead)
+    const typedMark = member[2] === '?'
+    const options: Completion[] = members.map((x): Completion => {
+      const mark = !typedMark && !tested && (x.optional || optionalChain)
+      return { label: x.label, detail: x.optional ? `${x.detail}, may be absent` : x.detail, type: 'property', boost: 1, apply: mark ? '?' + x.label : x.label }
+    })
+    if (optionalChain) options.push(...OPTIONAL_METHODS)
+    else options.push(...methods)
     if (!options.length) return null
-    return { from: ctx.pos - member[2].length, options, validFor: /^\w*$/ }
+    return { from, options, validFor: /^\w*$/ }
   }
-  if (/[\w\]]\.\w*$/.test(before)) return null
+  if (/[\w\]]\.\??\w*$/.test(before)) return null
 
   // A bare identifier, or the first list on nothing.
   const word = ctx.matchBefore(/[A-Za-z_]\w*$/)
@@ -410,9 +434,9 @@ const ANNOTATIONS: Record<string, string[]> = {
 /** The names a `*` in a set path can stand for, given the path before it. */
 function wildcardNames(before: string[], data: CelCompletionData): string[] {
   const head = before[before.length - 1]
-  if (head === 'args' || head === 'params' || head === 'arguments') return [...parameterNames(data).keys()]
+  if (head === 'params' || head === 'arguments') return [...parameterNames(data).keys()]
   if (head === 'annotations') return [...new Set([...(ANNOTATIONS[data.hook?.item ?? ''] ?? []), ...catalogKeys(data, 'annotations')])]
-  if (head === 'meta') return catalogKeys(data, 'meta')
+  if (head === '_meta') return catalogKeys(data, '_meta')
   return []
 }
 
@@ -425,15 +449,15 @@ export function thenComplete(text: string) {
 }
 
 /**
- * Completes the path after `set`, one part at a time: `params.`, then the parameter, then what
- * to set on it. A part that ends a path inserts ` = ` and opens the values.
+ * Completes the path after `set`, one part at a time: `tool.`, `params.`, then the parameter, then
+ * what to set on it. A part that ends a path inserts ` = ` and opens the values.
  */
 export function completeSetPath(ctx: CompletionContext, typed: string, sets: HookSet[], data: CelCompletionData): CompletionResult | null {
   const done = typed.split('.')
   const partial = done.pop() ?? ''
   const options = new Map<string, Completion>()
   for (const s of sets) {
-    const parts = s.field.split('.')
+    const parts = s.path.split('.')
     if (parts.length <= done.length || !done.every((seg, i) => parts[i] === '*' || parts[i] === seg)) continue
     const last = parts.length === done.length + 1
     const names = parts[done.length] === '*' ? wildcardNames(done, data) : [parts[done.length]]
@@ -450,7 +474,7 @@ export function completeSetPath(ctx: CompletionContext, typed: string, sets: Hoo
 export function setTypeOf(path: string, sets: HookSet[]): string | undefined {
   const segs = path.split('.')
   return sets.find((s) => {
-    const parts = s.field.split('.')
+    const parts = s.path.split('.')
     return parts.length === segs.length && parts.every((p, i) => p === '*' || p === segs[i])
   })?.type
 }

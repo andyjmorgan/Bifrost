@@ -268,12 +268,7 @@ func cannotRun(sc *hooks.Scenario) string {
 		}
 		if params, ok := stepParams(st); ok {
 			if meta, ok := params["_meta"].(map[string]any); ok {
-				identity := map[string]any{}
-				for k, v := range client {
-					if k != "capabilities" {
-						identity[k] = v
-					}
-				}
+				identity, _ := client["clientInfo"].(map[string]any)
 				differs := false
 				if declared, has := meta[metaClient]; has && len(identity) > 0 && exactJSON(declared) != exactJSON(identity) {
 					differs = true
@@ -1009,11 +1004,9 @@ func (p *goldenRun) request(st hooks.Step, params json.RawMessage) (ClientReques
 	// A mock case states its client exactly: no identity given means none
 	// declared, as on the engine harness. A reference case leaves the
 	// identity to each client unless it states one.
-	info := map[string]any{}
-	for k, v := range client {
-		if k != "capabilities" {
-			info[k] = v
-		}
+	info, _ := client["clientInfo"].(map[string]any)
+	if info == nil {
+		info = map[string]any{}
 	}
 	if len(info) > 0 || p.server == "mock" {
 		req.ClientInfo = info

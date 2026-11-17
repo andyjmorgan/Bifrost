@@ -1,11 +1,11 @@
 [
 {"name": "tools/call.post.progress: drop one progress event and reshape the rest", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (slow_count) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.progress", "when": "progress.progress == 2", "then": {"decision": "'deny'"}}, {"hook": "tools/call.post.progress", "when": "progress.message.contains('db-internal')", "then": {"message": "regex.replace(progress.message, 'db-internal-[0-9]+', 'the database')"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.progress", "when": "progress.params.progress == 2", "then": {"decision": "'deny'"}}, {"hook": "tools/call.post.progress", "when": "progress.params.message.contains('db-internal')", "then": {"progress.params.message": "regex.replace(progress.params.message, 'db-internal-[0-9]+', 'the database')"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "slow_count", "arguments": {"steps": 3, "delayMs": 10}}, "progress": true, "expect": [{"path": "client.result.content[0].text", "equals": "counted 3"}, {"path": "client", "refused": false}, {"path": "progress[*].message", "equals": ["step 1 of 3: reading the database", "step 3 of 3: reading the database"]}, {"path": "progress[*].progress", "equals": [1, 3]}, {"path": "progress[*].total", "equals": [3, 3]}, {"path": "hits", "has": {"hook": "tools/call.post.progress", "effect": "deny"}}]}
  ]},
 {"name": "tools/call.post.progress then refusal: progress is relayed, then the result is refused", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (slow_count) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "upstream.name == 'slow_count'", "then": {"decision": "'deny'", "reason": "'Counting is not allowed.'"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "tools/call.post.result", "when": "tool.upstream.name == 'slow_count'", "then": {"decision": "'deny'", "reason": "'Counting is not allowed.'"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "slow_count", "arguments": {"steps": 2, "delayMs": 10}}, "progress": true, "expect": [{"path": "client.result.isError", "equals": true}, {"path": "client.result.content[0].text", "equals": "Counting is not allowed."}, {"path": "progress[*].message", "equals": ["step 1 of 2: reading db-internal-7", "step 2 of 2: reading db-internal-7"]}]}
  ]}

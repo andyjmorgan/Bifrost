@@ -1,6 +1,6 @@
 [
 {"name": "server.settings off: prompts, resources and progress switched off", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tools/list, greet, ref://docs/faq, slow_count) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"prompts": "false", "resources": "false", "progress": "false"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"settings.prompts": "false", "settings.resources": "false", "settings.progress": "false"}}]}],
  "steps": [
   {"op": "tools/list", "expect": [{"path": "client.result.tools[*].name", "contains": "echo"}]},
   {"op": "prompts/get", "params": {"name": "greet", "arguments": {"who": "Ana"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "unknown prompt greet"}]},
@@ -8,7 +8,7 @@
   {"op": "tools/call", "params": {"name": "slow_count", "arguments": {"steps": 2, "delayMs": 10}}, "progress": true, "expect": [{"path": "client.result.content[0].text", "equals": "counted 2"}, {"path": "client", "refused": false}, {"path": "progress", "len": 0}]}
  ]},
 {"name": "server.settings lists off: listings of switched-off kinds are empty", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (tools/list, prompts/list, resources/list, resources/templates/list) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"tools": "false", "prompts": "false", "resources": "false"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"settings.tools": "false", "settings.prompts": "false", "settings.resources": "false"}}]}],
  "steps": [
   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op": "tools/list", "expect": [{"path": "client.result.tools", "len": 0}]},
   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send prompts/list when the discover result did not advertise the prompts capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op": "prompts/list", "expect": [{"path": "client.result.prompts", "len": 0}]},
@@ -16,12 +16,12 @@
   {"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send resources/templates/list when the discover result did not advertise the resources capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op": "resources/templates/list", "expect": [{"path": "client.result.resourceTemplates", "len": 0}]}
  ]},
 {"name": "server.settings tools off: tools switched off: a call is an unknown tool", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (echo) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"tools": "false"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"settings.tools": "false"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "echo", "arguments": {"text": "hi"}}, "expect": [{"path": "client.error.code", "equals": -32602}, {"path": "client.error.message", "contains": "unknown tool echo"}]}
  ]},
 {"name": "server.settings discover: serverInfo on and instructions off, in discover", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (discover) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"serverInfo": "true", "instructions": "false"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.settings", "when": "true", "then": {"settings.serverInfo": "true", "settings.instructions": "false"}}]}],
  "steps": [
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (client.result._meta.io\\.modelcontextprotocol/serverInfo.name) cannot be read through it."}], "op": "discover", "expect": [{"path": "client.result._meta.io\\.modelcontextprotocol/serverInfo.name", "equals": "refserver-${server.language}"}, {"path": "client.result._meta.io\\.modelcontextprotocol/serverInfo.version", "equals": "1.0.0"}, {"path": "client.result.instructions", "exists": false}]}
  ]},
@@ -31,22 +31,22 @@
   {"op": "tools/call", "params": {"name": "inspect", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent.protocolVersion", "equals": "2026-07-28"}, {"path": "client.result.structuredContent.clientInfo.name", "equals": "bifrost"}, {"path": "client.result.structuredContent.capabilities.elicitation", "exists": false}, {"path": "client.result.structuredContent.headers.mcp-name", "equals": "inspect"}]}
  ]},
 {"name": "server.session identity: pass the client's identity through and advertise elicitation", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "client": {"capabilities": {"elicitation": {}}}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (inspect) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"clientInfo": "{'name': client.name, 'version': client.version}", "capabilities.elicitation": "true"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"session.clientInfo": "{'name': request.client.clientInfo.name, 'version': request.client.clientInfo.version}", "session.capabilities.elicitation": "true"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "inspect", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent.clientInfo.name", "equals": "${client.name}"}, {"path": "client.result.structuredContent.capabilities.elicitation", "exists": true}]}
  ]},
 {"name": "server.session no elicit: elicitation is never advertised upstream for a client that cannot answer", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (inspect) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"clientInfo": "{'name': client.name, 'version': client.version}", "capabilities.elicitation": "true"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"session.clientInfo": "{'name': request.client.clientInfo.name, 'version': request.client.clientInfo.version}", "session.capabilities.elicitation": "true"}}]}],
  "steps": [
   {"op": "tools/call", "params": {"name": "inspect", "arguments": {}}, "expect": [{"path": "client.result", "exists": true}, {"path": "client", "refused": false}, {"path": "client.result.structuredContent.clientInfo.name", "equals": "${client.name}"}, {"path": "client.result.structuredContent.capabilities.elicitation", "exists": false}]}
  ]},
 {"name": "server.session meta: meta on forwards the client's _meta, never its identity keys", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (inspect) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"meta": "true"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server.session", "when": "true", "then": {"session._meta": "true"}}]}],
  "steps": [
   {"exclude": [{"harness": "python-sdk", "reason": "This tools/call inspect carries its own _meta (trace). The Python driver's call takes a name and arguments only and does not pass a request _meta on."}], "op": "tools/call", "params": {"name": "inspect", "arguments": {}, "_meta": {"trace": "t-1"}}, "expect": [{"path": "client.result.structuredContent.meta.trace", "equals": "t-1"}, {"path": "client.result.structuredContent.meta.io\\.modelcontextprotocol/clientInfo.name", "equals": "bifrost"}]}
  ]},
 {"name": "server/discover.post discover: title and instructions in discover", "upstream": "reference", "caller": {"userId": "u1", "email": "u1@example.com"}, "exclude": [{"harness": "engine", "reason": "This case drives the real reference servers (discover) over a wire; the engine harness has no connection to a real server."}],
- "servers": [{"slug": "ref", "rules": [{"hook": "server/discover.post", "when": "true", "then": {"title": "'Reference (gated)'", "instructions": "instructions + '\\nAll writes need a ticket.'"}}]}],
+ "servers": [{"slug": "ref", "rules": [{"hook": "server/discover.post", "when": "true", "then": {"server.title": "'Reference (gated)'", "server.instructions": "server.instructions + '\\nAll writes need a ticket.'"}}]}],
  "steps": [
   {"exclude": [{"harness": ["go-sdk", "python-sdk", "typescript-sdk"], "reason": "An SDK sends server/discover itself when it connects and keeps the reply. It has no call that returns the discover result, so what this step checks (client.result._meta.io\\.modelcontextprotocol/serverInfo.title) cannot be read through it."}], "op": "discover", "expect": [{"path": "client.result._meta.io\\.modelcontextprotocol/serverInfo.title", "equals": "Reference (gated)"}, {"path": "client.result.instructions", "equals": "Reference server.\n\n## Notes\nUse search first.\nAll writes need a ticket."}]}
  ]}
