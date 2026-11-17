@@ -114,7 +114,7 @@ export function RulesStages({
     if (!current || !schema) return undefined
     return {
       hook: { hook: current.id, item: current.item, phase: current.side, variables: current.reads, sets: current.sets, helpers: current.helpers },
-      flags: schema.flags,
+      caller: schema.caller,
       slug,
       caps,
       actions: current.actions,

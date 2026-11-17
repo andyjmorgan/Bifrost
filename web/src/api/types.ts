@@ -545,6 +545,8 @@ export interface RuleProblem {
 export interface RulesSchema {
   /** Flag name -> what it means; read in a rule as flags.<name>. */
   flags: Record<string, string>
+  /** Key of `caller` -> what it holds; read in a rule as caller.<key>. */
+  caller?: Record<string, string>
   /** Ordered by hook name. */
   hooks: HookSchema[]
   /** Where rules run, in the order a request meets them. */
@@ -613,6 +615,8 @@ export interface HookVariable {
   values?: string[]
   /** The fields of a struct, each with its type. Reading any other is refused. */
   fields?: Record<string, string>
+  /** The keys a map is known to hold, each with its type. A hint: the map may hold others. */
+  keys?: Record<string, string>
   doc: string
 }
 

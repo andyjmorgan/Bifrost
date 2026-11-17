@@ -367,7 +367,7 @@ func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 // reference and its completions from this, so it cannot drift from the
 // engine.
 func (a *API) rulesSchema(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"flags": hooks.FlagDocs, "hooks": hooks.Schema(), "stages": ruletext.Stages()})
+	writeJSON(w, http.StatusOK, map[string]any{"flags": hooks.FlagDocs, "caller": gateway.CallerKeys, "hooks": hooks.Schema(), "stages": ruletext.Stages()})
 }
 
 func (a *API) deleteEntitlement(w http.ResponseWriter, r *http.Request) {

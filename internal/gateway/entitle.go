@@ -194,6 +194,18 @@ func itemsOf(ns string, raw json.RawMessage) map[string]json.RawMessage {
 
 // ---- the selection cut ----------------------------------------------------------
 
+// CallerKeys describes each key of the `caller` variable rules read: what
+// callerMap supplies. Editors use it to complete caller.<key>.
+var CallerKeys = map[string]string{
+	"userId":  "The caller's user id.",
+	"orgId":   "The caller's organisation id.",
+	"email":   "The caller's email address; empty for an API key.",
+	"name":    "The caller's display name.",
+	"role":    "The caller's role in the organisation: 'admin' or 'member'.",
+	"type":    "How the caller signed in: 'oidc', 'apikey', 'dev' or 'system'.",
+	"keyName": "The API key's name when the caller is a key; empty otherwise.",
+}
+
 func callerMap(c *auth.Caller) map[string]any {
 	if c == nil {
 		return map[string]any{}

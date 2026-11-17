@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, keymap, lineNumbers, placeholder as placeholderExt } from '@codemirror/view'
-import { autocompletion, closeBrackets, closeBracketsKeymap, type Completion, type CompletionContext, type CompletionSource } from '@codemirror/autocomplete'
+import { autocompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, type Completion, type CompletionSource } from '@codemirror/autocomplete'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting, type StringStream } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { tags as t } from '@lezer/highlight'
 import { celHighlight, celTheme, celToken, celTokenTable, type CelState } from './CelEditor'
-import { celCompletionSource, type CelCompletionData } from './celCompletions'
+import { completeCel, completeSetPath, openString, setTypeOf, thenComplete, type CelCompletionData } from './celCompletions'
 import type { HookSet } from '../../api'
 import { cn } from '../../lib'
 
@@ -27,6 +27,8 @@ const WORD = /^(audit|when|deny|confirm|set)(?![\w.(])/
 
 const ruleLanguage = StreamLanguage.define<RuleState>({
   name: 'ruletext',
+  // Ctrl+/ comments lines out, which is how a rule is switched off.
+  languageData: { commentTokens: { line: '#' } },
   startState: () => ({ afterDot: false, lineStart: true }),
   token(stream: StringStream, state: RuleState) {
     if (stream.sol()) state.lineStart = true
@@ -72,34 +74,97 @@ function markedLines(state: EditorState, problems: number[], warnings: number[])
   return Decoration.set(all.map((n) => (bad.has(n) ? problemMark : warningMark).range(state.doc.line(n).from)))
 }
 
-const WORDS: Completion[] = [
-  { label: 'when', type: 'keyword', detail: 'starts a rule', boost: 3 },
-  { label: 'audit when', type: 'keyword', detail: 'a rule that only records', boost: 1 },
+const RULE_START = /^\s*(?:audit\s+)?when(?:\s|$)/
+const NAMED = /(?<![\w.])(?:upstream\.)?name\s*==\s*(['"])([^'"]+)\1/
+const ENDS_OPEN = /(?:&&|\|\||[=!<>+\-*/%,([{?:]|\bin|\bwhen)$/
+
+/** The item the rule around a line names in its condition: `flip` for when name == 'flip'. */
+function namedItem(state: EditorState, lineNo: number): string | undefined {
+  for (let n = lineNo; n >= 1; n--) {
+    const text = state.doc.line(n).text
+    if (RULE_START.test(text)) return NAMED.exec(text)?.[2]
+  }
+  return undefined
+}
+
+/** Whether brackets are balanced in text that holds no open string. */
+function balanced(text: string): boolean {
+  let depth = 0
+  for (const c of text.replace(/'[^']*'|"[^"]*"/g, '')) {
+    if ('([{'.includes(c)) depth++
+    else if (')]}'.includes(c)) depth--
+  }
+  return depth === 0
+}
+
+const WHEN: Completion[] = [
+  { label: 'when', type: 'keyword', detail: 'starts a rule', apply: 'when ', boost: 3 },
+  { label: 'audit when', type: 'keyword', detail: 'a rule that only records', apply: 'audit when ', boost: 1 },
 ]
 
-/** Completes the format's words and set fields at the start of a line, and CEL everywhere else. */
+/** The stage's actions as completions: set opens its fields, confirm leaves the cursor in the question. */
+function actionWords(d: RuleCompletionData, boost: number): Completion[] {
+  return d.actions.map((a): Completion => {
+    if (a === 'set') return { label: 'set', type: 'keyword', detail: 'change a value', apply: thenComplete('set '), boost }
+    if (a === 'confirm') return snippetCompletion('confirm "${Question}?"', { label: 'confirm', type: 'keyword', detail: 'ask the user first', boost })
+    return { label: a, type: 'keyword', detail: d.deny, boost }
+  })
+}
+
+/**
+ * Completes the format's words where they can stand, the path after set one part at a time, and
+ * CEL everywhere else: in a condition, in a value, and inside the braces of a confirm question.
+ */
 function ruleCompletions(data: () => RuleCompletionData | undefined): CompletionSource {
-  const lineFrom = (ctx: CompletionContext) => ctx.state.doc.lineAt(ctx.pos).from
-  const cel = celCompletionSource({ data, from: lineFrom })
   return (ctx) => {
     const line = ctx.state.doc.lineAt(ctx.pos)
     const before = line.text.slice(0, ctx.pos - line.from)
     if (/^\s*#/.test(before)) return null
-    const d = data()
-    const setField = /(?:^|\s)set\s+([\w.*/-]*)$/.exec(before)
-    if (setField && d) {
-      return {
-        from: ctx.pos - setField[1].length,
-        options: d.sets.map((s) => ({ label: s.field, type: 'property', detail: s.type })),
-        validFor: /^[\w.*/-]*$/,
+    const base = data()
+    if (!base) return null
+    const d: RuleCompletionData = { ...base, itemName: namedItem(ctx.state, line.number) }
+    const inString = openString(before)
+
+    // The braces of a confirm question hold CEL; the rest of the question is plain text.
+    const question = /(?:^|\s)confirm\s+(["'])((?:(?!\1).)*)$/.exec(before)
+    if (question) {
+      const open = question[2].lastIndexOf('{')
+      if (open < 0 || question[2].indexOf('}', open) >= 0) return null
+      return completeCel(ctx, d, ctx.pos - (question[2].length - open - 1))
+    }
+
+    if (!inString) {
+      // set <path>: one part of the path at a time.
+      const path = /(?:^|\s)set\s+([\w.*/-]*)$/.exec(before)
+      if (path) return completeSetPath(ctx, path[1], d.sets, d)
+
+      // set <path> = <value>: CEL, knowing the type the field takes.
+      const value = /(?:^|\s)set\s+([\w.*/-]+)\s*=\s*(\S.*)?$/.exec(before)
+      if (value) {
+        const setType = setTypeOf(value[1], d.sets)
+        if (value[2] === undefined) {
+          // Nothing typed yet: offer only what the type calls for, never the whole list.
+          if (setType === 'bool') return { from: ctx.pos, options: ['true', 'false'].map((label) => ({ label, type: 'keyword', detail: 'bool' })) }
+          if (setType === 'duration') return { from: ctx.pos, options: [snippetCompletion("duration('${30s}')", { label: 'duration', type: 'function', detail: "('30s') duration" })] }
+          return ctx.explicit ? completeCel(ctx, { ...d, setType }, ctx.pos) : null
+        }
+        return completeCel(ctx, { ...d, setType }, ctx.pos - value[2].length)
+      }
+
+      // The start of a line: the words that can begin one.
+      const first = /^\s*(\w*)$/.exec(before)
+      if (first) return { from: ctx.pos - first[1].length, options: [...WHEN, ...actionWords(d, 2)], validFor: /^\w*$/ }
+
+      // After a finished condition on a when line: the action that follows it.
+      const tail = /^(.*\S)(\s+)(\w*)$/.exec(before)
+      if (tail && RULE_START.test(before) && !ENDS_OPEN.test(tail[1]) && balanced(tail[1])) {
+        const actions = actionWords(d, 5)
+        if (!tail[3]) return tail[2].length >= 2 || ctx.explicit ? { from: ctx.pos, options: actions, validFor: /^\w*$/ } : null
+        const cel = completeCel(ctx, d, line.from)
+        return { from: ctx.pos - tail[3].length, options: [...actions, ...(cel?.options ?? [])], validFor: /^\w*$/ }
       }
     }
-    const first = /^\s*(\w*)$/.exec(before)
-    if (first && d) {
-      const actions: Completion[] = d.actions.map((a) => ({ label: a, type: 'keyword', detail: a === 'deny' ? d.deny : a === 'confirm' ? 'ask the user first' : 'change a value' }))
-      return { from: ctx.pos - first[1].length, options: [...WORDS, ...actions], validFor: /^\w*$/ }
-    }
-    return cel(ctx)
+    return completeCel(ctx, d, line.from)
   }
 }
 

@@ -1389,3 +1389,35 @@ func TestEveryHookPageListsTheCommonVariables(t *testing.T) {
 		}
 	}
 }
+
+// The key hints in a hook's schema name real keys: `upstream` lists the
+// item's own fields, and `result` and `request` have hints wherever a rule
+// can read them.
+func TestSchemaKeyHints(t *testing.T) {
+	for _, h := range Schema() {
+		for _, v := range h.Variables {
+			switch v.Name {
+			case "upstream":
+				for k := range v.Keys {
+					found := false
+					for _, f := range ItemFields[ItemKind(h.Item)] {
+						found = found || f == k
+					}
+					if !found {
+						t.Errorf("%s: upstream.%s is not a field of the %s", h.Hook, k, h.Item)
+					}
+				}
+				if len(v.Keys) == 0 {
+					t.Errorf("%s: upstream has no key hints", h.Hook)
+				}
+			case "result", "request", "server", "entitlement", "client":
+				if len(v.Keys) == 0 {
+					t.Errorf("%s: %s has no key hints", h.Hook, v.Name)
+				}
+			}
+			if len(v.Keys) > 0 && v.Type != "map" {
+				t.Errorf("%s: %s has key hints but is a %s", h.Hook, v.Name, v.Type)
+			}
+		}
+	}
+}
