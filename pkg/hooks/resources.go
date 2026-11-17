@@ -359,8 +359,17 @@ type skillPlan struct {
 // clock. The plan is all or nothing: a failure or a name change keeps every
 // upstream byte.
 func (e *Engine) planSkill(ctx context.Context, r Request, s *Server, v *resView, sk Skill) *skillPlan {
+	if p, ok := v.plans[sk.URI]; ok {
+		return p
+	}
+	p := e.makeSkillPlan(ctx, r, s, v, sk)
+	v.plans[sk.URI] = p
+	return p
+}
+
+func (e *Engine) makeSkillPlan(ctx context.Context, r Request, s *Server, v *resView, sk Skill) *skillPlan {
 	p := &skillPlan{status: "none", fm: sk.Frontmatter}
-	ms, isManifest := sk.manifest()
+	ms, isManifest := v.manifestOf(sk)
 	p.manifest = ms
 	if !s.Rules.Has("resources/read.post.result") {
 		return p
@@ -470,7 +479,7 @@ func (v *resView) shared(sk Skill, uri string) bool {
 		if other.URI == sk.URI || !underRoot(uri, other.Root()) {
 			continue
 		}
-		if ms, isManifest := other.manifest(); !isManifest || inManifest(ms, uri) {
+		if ms, isManifest := v.manifestOf(other); !isManifest || inManifest(ms, uri) {
 			return true
 		}
 	}
@@ -489,7 +498,7 @@ func (v *resView) vouchedBy(uri string) (Skill, bool) {
 		if !underRoot(uri, sk.Root()) {
 			continue
 		}
-		ms, isManifest := sk.manifest()
+		ms, isManifest := v.manifestOf(sk)
 		if n == normalizeURI(sk.URI) || (isManifest && inManifest(ms, uri)) {
 			return sk, true
 		}
@@ -837,7 +846,7 @@ func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o 
 			if normalizeURI(sk.URI) == n {
 				isExact = true
 			}
-			if ms, ok := sk.manifest(); ok {
+			if ms, ok := v.manifestOf(sk); ok {
 				for _, m := range ms {
 					if normalizeURI(m.URI) == n {
 						isExact = true
@@ -931,7 +940,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	}) {
 		return o
 	}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve, view: v}
 	return o
 }
 
@@ -961,7 +970,10 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		seen.add(UnknownResultType, rt, s.Slug, up, "passed", m)
 	}
 	inputUnknowns(&seen, s.Slug, up, m)
-	v := e.resourceView(ctx, r, s)
+	v := call.view
+	if v == nil {
+		v = e.resourceView(ctx, r, s)
+	}
 	if isInputRequired(m) {
 		if msg, ok := inputAllowed(r, s); !ok {
 			o.Issues = append(o.Issues, s.Slug+": "+up+" asked for input and was refused: "+msg)

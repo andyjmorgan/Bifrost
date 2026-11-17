@@ -444,6 +444,20 @@ type budget struct {
 	auditUsed, auditLimit     time.Duration
 }
 
+// memo holds what one request works out once and then asks for again. A
+// server's resource view runs its list rules over the whole catalog, and a
+// read asks for it when the URI is routed and again when its pre hook runs.
+type memo struct {
+	mu    sync.Mutex
+	views map[*Server]*resView
+}
+
+type memoKey struct{}
+
+func withMemo(ctx context.Context) context.Context {
+	return context.WithValue(ctx, memoKey{}, &memo{views: map[*Server]*resView{}})
+}
+
 type budgetKey struct{}
 
 func withBudget(ctx context.Context, enforce, audit time.Duration) context.Context {

@@ -88,6 +88,19 @@ func (t *uriTemplate) denies(uri string) bool {
 
 // ---- resource visibility --------------------------------------------------------------
 
+// manifest is a skill's list of files. ok is false for a dynamic skill,
+// which has none.
+type manifest struct {
+	files []SkillResource
+	ok    bool
+}
+
+// manifestOf returns a visible skill's manifest.
+func (v *resView) manifestOf(sk Skill) ([]SkillResource, bool) {
+	m := v.manifests[sk.URI]
+	return m.files, m.ok
+}
+
 // resView is one server's resource visibility for one request. Listings,
 // reads, directory children, returned content items and fallback
 // candidates all use it, so they cannot disagree.
@@ -100,16 +113,40 @@ type resView struct {
 	badTemplates []*uriTemplate // denied, failed a change or collided
 	deniedRoots  []string
 	skills       []Skill
+	manifests    map[string]manifest   // each visible skill's manifest, read once, by the skill's URI
+	plans        map[string]*skillPlan // each skill's rewrite plan, made once, by the skill's URI
 	hits         []Hit
 	issues       []string
 }
 
+// resourceView returns a server's resource visibility for this request,
+// working it out the first time it is asked for.
 func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resView {
-	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}, originalRes: map[string]map[string]any{}, hiddenBare: map[string]bool{}}
+	m, _ := ctx.Value(memoKey{}).(*memo)
+	if m == nil {
+		return e.buildResourceView(ctx, r, s)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if v, ok := m.views[s]; ok {
+		return v
+	}
+	v := e.buildResourceView(ctx, r, s)
+	m.views[s] = v
+	return v
+}
+
+func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *resView {
+	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}, originalRes: map[string]map[string]any{}, hiddenBare: map[string]bool{},
+		manifests: map[string]manifest{}, plans: map[string]*skillPlan{}}
 	c := r.context(s)
 	var hits []Hit
 	v.skills, v.deniedRoots, hits = e.skillView(ctx, r, s)
 	v.hits = append(v.hits, hits...)
+	for _, sk := range v.skills {
+		files, ok := sk.manifest()
+		v.manifests[sk.URI] = manifest{files: files, ok: ok}
+	}
 	for _, x := range s.Catalog.Resources {
 		v.listedRes[normalizeURI(x.URI)] = true
 		v.originalRes[normalizeURI(x.URI)] = toMap(x)

@@ -363,6 +363,9 @@ type CallContext struct {
 	// same one, so an item cannot mean one thing in tools/call and another
 	// in tools/call.post.result.
 	resolve func(name string) (any, bool)
+	// view is the server's resource view as the read's pre hook saw it,
+	// for the reply to use without working it out again.
+	view *resView
 	// Params is MCP's part of the request as the client knows it and as the
 	// pre rules left it: the exposed name or URI, the arguments under the
 	// names the client uses, and _meta. Reply hooks read it as
@@ -425,7 +428,7 @@ func (e *Engine) ctx(parent context.Context) (context.Context, context.CancelFun
 	if parent == nil {
 		parent = context.Background()
 	}
-	return withBudget(parent, e.Limits.budget(), e.Limits.auditBudget()), func() {}
+	return withMemo(withBudget(parent, e.Limits.budget(), e.Limits.auditBudget())), func() {}
 }
 
 // ---- tools/list ---------------------------------------------------------------------
