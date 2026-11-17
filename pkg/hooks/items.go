@@ -141,6 +141,12 @@ func (s *Set) listItems(ctx context.Context, kind ItemKind, hook string, idKey s
 		if kind == KindPrompt {
 			it.args = newArgState(base)
 		}
+		// A resource's URI and a template's text are given to rules, and
+		// listed, in canonical form. The server's own spelling stays in
+		// upstream: it is the item as the server sent it.
+		if c := canonicalID(kind, id); c != id {
+			it.view.Set([]string{idKey}, c)
+		}
 		o := s.run(ctx, hook, id, it.resolve, c.roots(hookMethod(hook), nil), it.set)
 		results[i].hits = append(results[i].hits, o.hits...)
 		if o.denied {

@@ -18,8 +18,15 @@ type preCall struct {
 	server *Server
 	method string // tools/call, prompts/get, resources/read or resources/directory/read
 	hook   string // the pre hook
-	target string // the server's name for the item, or the URI
-	label  string // the item as the client names it, for the record
+	// target is what the state of a waiting request is tied to: the
+	// server's name for a tool or prompt, or the URI of a read.
+	target string
+	// label names the item in the record of the rules that ran: the
+	// client's name for a tool or prompt, the URI of a read.
+	label string
+	// asked names the item in the record of a declined confirmation: what
+	// the client asked for, with the mux slug on a read. Empty means label.
+	asked string
 	// args is what a confirmation covers. A rule's set changes it.
 	args map[string]any
 	// state and answers are what the client sent back to continue an
@@ -60,7 +67,11 @@ func (e *Engine) pre(ctx context.Context, r Request, o *Outcome, c preCall) (cle
 	pass := cleared{hash: argsHash(c.args)}
 	st, confirmed, answers, serr := e.continuation(r, c.server, c.method, c.target, pass.hash, c.state, c.answers)
 	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit(c.hook, c.label))
+		name := c.asked
+		if name == "" {
+			name = c.label
+		}
+		o.Hits = append(o.Hits, declinedHit(c.hook, name))
 		c.refuse(o, errDeclined.Message)
 		return pass, false
 	}

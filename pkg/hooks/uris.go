@@ -135,6 +135,9 @@ func canonicalURI(u string) string {
 	if j := strings.IndexByte(authority, '/'); j >= 0 {
 		authority, p = authority[:j], authority[j:]
 	}
+	// Escapes first: %2e%2e is ".." to a URL parser, so it must be a dot
+	// segment by the time the path is cleaned.
+	p = escapes(p)
 	if p != "" {
 		trailing := strings.HasSuffix(p, "/") && len(p) > 1
 		p = path.Clean(p)
@@ -142,7 +145,48 @@ func canonicalURI(u string) string {
 			p += "/"
 		}
 	}
-	return scheme + "://" + canonicalAuthority(scheme, authority) + escapes(p) + query
+	return scheme + "://" + canonicalAuthority(scheme, authority) + p + query
+}
+
+// canonicalID is how an item is named to rules and in a listing: a
+// resource's URI and a template's text in canonical form, anything else as
+// it is. A rule written against https://wiki.example/ then also matches a
+// resource the server lists as https://WIKI.example/…, and a client can ask
+// for it in the one spelling the gateway accepts.
+func canonicalID(kind ItemKind, id string) string {
+	switch kind {
+	case KindResource:
+		return canonicalURI(id)
+	case KindTemplate:
+		return canonicalTemplate(id)
+	}
+	return id
+}
+
+// canonicalTemplate folds a URI template's scheme and, when it has no
+// expression in it, its host and port, as canonicalURI does for a URI. A
+// denied template is matched against URIs in canonical form, so its own
+// fixed text must be in that form too, or https://WIKI.example/secret/{id}
+// would not cover https://wiki.example/secret/1.
+func canonicalTemplate(t string) string {
+	i := strings.IndexAny(t, ":/?{")
+	if i <= 0 || t[i] != ':' {
+		return t
+	}
+	scheme, rest := strings.ToLower(t[:i]), t[i+1:]
+	if !strings.HasPrefix(rest, "//") {
+		return scheme + ":" + rest
+	}
+	a := rest[2:]
+	end := strings.IndexAny(a, "/?{")
+	if end >= 0 && a[end] == '{' {
+		return scheme + ":" + rest // an expression in the host: nothing more to fold
+	}
+	authority, tail := a, ""
+	if end >= 0 {
+		authority, tail = a[:end], a[end:]
+	}
+	return scheme + "://" + canonicalAuthority(scheme, authority) + tail
 }
 
 // canonicalAuthority folds a host and port the way a URL parser does.
@@ -427,8 +471,8 @@ func isUnreserved(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' || b == '.' || b == '_' || b == '~'
 }
 
-// underRoot reports whether uri equals root or sits beneath it, after
-// normalization.
+// underRoot reports whether uri equals root or sits beneath it, both in
+// canonical form.
 func underRoot(uri, root string) bool {
 	u, r := canonicalURI(uri), canonicalURI(root)
 	return u == r || strings.HasPrefix(u, strings.TrimSuffix(r, "/")+"/")

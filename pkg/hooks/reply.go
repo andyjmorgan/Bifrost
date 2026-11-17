@@ -8,8 +8,10 @@ import (
 // What the three reply paths share: reading what a server sent back, and
 // the last checks before a result leaves.
 
-// isInputRequired recognizes both permitted input_required forms: input
-// requests with optional state, and state only.
+// isInputRequired reports a reply that asks the client for input: one
+// whose resultType says so, or one that carries input requests without
+// saying. A reply with state and no input requests counts only when its
+// resultType says input_required.
 func isInputRequired(m map[string]any) bool {
 	if m["resultType"] == "input_required" {
 		return true

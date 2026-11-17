@@ -72,7 +72,7 @@ The engine does no I/O. Your gateway hands it a request and the server's catalog
 - A constant whose form is wrong below its type, such as `duration('0s')` for a timeout, is found when a request arrives.
 - On the mux route a rule reads a tool name or a URI without the slug prefix.
 - On the mux route, while one server's catalog is unavailable, a prefixed URI that the named server does not list is refused. The gateway cannot tell whether it belongs to the server that is down.
-- A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed.
+- A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed. Two resources the server lists under spellings of one URI are both hidden.
 - There is no result hook for `prompts/get`, and no rule sees a JSON-RPC error from a server.
 - Skills and directory reads are in the engine and its tests. Bifrost's front door does not serve them yet.
 

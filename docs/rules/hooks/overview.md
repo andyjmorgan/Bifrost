@@ -598,7 +598,12 @@ Every fallback resolution reports an event for the gateway to audit and count. T
 
 For any other scheme, such as `confluence://ENG/home`, the text after `//` is the server's own and is compared as written; only a port is checked. The query is not checked: it often carries another URL. A hidden resource, a denied template and a denied skill folder are matched without the query.
 
-A server may list a resource under a spelling that is not canonical, such as `https://WIKI.example/private`. The gateway works out the canonical spelling, and that is the one rules read as `resource.uri`, the one in the listing and the one a client asks for. `resource.upstream.uri` keeps the server's spelling, and the read goes to the server in that spelling. So a deny by prefix or by name covers the resource however the server wrote it. A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed, and the gateway records an issue. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
+A server may list a resource under a spelling that is not canonical, such as `https://WIKI.example/private`. The gateway works out the canonical spelling, and that is the one rules read as `resource.uri`, the one in the listing and the one a client asks for. `resource.upstream.uri` keeps the server's spelling on every hook, and the read goes to the server in that spelling. So a deny by prefix or by name covers the resource however the server wrote it. The same holds for a template: `template.uriTemplate` and the listing have its scheme and host in canonical form, and a denied template covers the URIs a client can send.
+
+Two exceptions are refused rather than guessed at:
+
+- A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed, and the gateway records an issue.
+- Two resources the server lists under spellings of one URI, such as `https://WIKI.example/doc` and `https://wiki.example/doc`, are both hidden, whatever the rules say, and the gateway records a collision. A client asking for that URI could not be told which one it gets. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
 
 Reserved escapes, such as `%2F`, stay opaque. The gateway does not decode them, so `file:///a%2Fb` is not under `file:///a/`.
 

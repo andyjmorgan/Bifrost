@@ -331,19 +331,27 @@ func ParseScenarios(b []byte) ([]*Scenario, error) {
 	if err := checkScenarioKeys(b); err != nil {
 		return nil, err
 	}
+	var out []*Scenario
 	t := strings.TrimSpace(string(b))
 	if strings.HasPrefix(t, "[") {
-		var out []*Scenario
-		return out, json.Unmarshal([]byte(t), &out)
-	}
-	dec := json.NewDecoder(strings.NewReader(t))
-	var out []*Scenario
-	for dec.More() {
-		var s Scenario
-		if err := dec.Decode(&s); err != nil {
+		if err := json.Unmarshal([]byte(t), &out); err != nil {
 			return out, err
 		}
-		out = append(out, &s)
+	} else {
+		dec := json.NewDecoder(strings.NewReader(t))
+		for dec.More() {
+			var s Scenario
+			if err := dec.Decode(&s); err != nil {
+				return out, err
+			}
+			out = append(out, &s)
+		}
+	}
+	for _, s := range out {
+		// A misspelt route would run as the direct route without a word.
+		if s.Route != "" && s.Route != "direct" && s.Route != "mux" {
+			return out, fmt.Errorf("case %q: route %q is not a route; it is direct or mux, and search mode is the search flag", s.Name, s.Route)
+		}
 	}
 	return out, nil
 }

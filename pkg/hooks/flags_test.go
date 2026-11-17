@@ -57,7 +57,7 @@ func TestSearchIsAFlagNotARoute(t *testing.T) {
 		}
 	}
 	// The mux's own instructions tool is listed on the plain mux, and not in
-	// search mode, whichever way search mode is spelled.
+	// search mode.
 	lists := func(route string, search bool) bool {
 		r := newRequest(route, s)
 		r.Flags = map[string]bool{FlagSearch: search}
@@ -65,9 +65,9 @@ func TestSearchIsAFlagNotARoute(t *testing.T) {
 		b, _ := json.Marshal(out.Result)
 		return strings.Contains(string(b), InstructionsTool)
 	}
-	if !lists("mux", false) || lists("mux", true) || lists("search", false) || lists("direct", false) || lists("direct", true) {
-		t.Errorf("instructions tool listed: mux %v, mux+search %v, older spelling %v, direct %v, direct+search %v",
-			lists("mux", false), lists("mux", true), lists("search", false), lists("direct", false), lists("direct", true))
+	if !lists("mux", false) || lists("mux", true) || lists("direct", false) || lists("direct", true) {
+		t.Errorf("instructions tool listed: mux %v, mux+search %v, direct %v, direct+search %v",
+			lists("mux", false), lists("mux", true), lists("direct", false), lists("direct", true))
 	}
 }
 

@@ -299,3 +299,82 @@ func FuzzURIPrefixRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+// Two resources a server lists under spellings of one URI cannot be told
+// apart once a client asks in canonical form. A rule may hide one and not
+// the other, so both are hidden, whatever order the server lists them in.
+func TestTwoSpellingsOfOneURIAreBothHidden(t *testing.T) {
+	ctx := context.Background()
+	for _, order := range [][2]string{{"https://WIKI.example/doc", "https://wiki.example/doc"}, {"https://wiki.example/doc", "https://WIKI.example/doc"}} {
+		names := map[string]string{"https://WIKI.example/doc": "open", "https://wiki.example/doc": "secret"}
+		cat := Catalog{Resources: []*mcp.Resource{{URI: order[0], Name: names[order[0]]}, {URI: order[1], Name: names[order[1]]}}}
+		s := newServer(t, cat, Rule{Hook: "resources/list.post", When: "resource.?name.orValue('') == 'secret'", Then: map[string]string{KeyDecision: "'deny'"}})
+		e, r := &Engine{}, newRequest("direct", s)
+		listed := e.ListResources(ctx, r)
+		if got := asJSON(listed.Result); strings.Contains(got, "wiki.example/doc") {
+			t.Errorf("%v: listed %s", order, got)
+		}
+		if !strings.Contains(strings.Join(listed.Issues, "\n"), "collision") {
+			t.Errorf("%v: no issue records the collision: %v", order, listed.Issues)
+		}
+		if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "https://wiki.example/doc"}); o.Forward != nil {
+			t.Errorf("%v: forwarded as %s", order, asJSON(o.Forward.Params))
+		}
+	}
+}
+
+// A denied template is matched in canonical form. A template the server
+// writes with an upper-case host still covers the URIs a client can send.
+func TestADeniedTemplateWithAnOddSpellingStillDenies(t *testing.T) {
+	ctx := context.Background()
+	cat := Catalog{Templates: []*mcp.ResourceTemplate{{URITemplate: "https://WIKI.example/secret/{id}", Name: "secret"}}}
+	for what, rule := range map[string]Rule{
+		"denied by name":   {Hook: "resources/templates/list.post", When: "template.name == 'secret'", Then: map[string]string{KeyDecision: "'deny'"}},
+		"denied by prefix": {Hook: "resources/templates/list.post", When: "template.uriTemplate.startsWith('https://wiki.example/secret/')", Then: map[string]string{KeyDecision: "'deny'"}},
+	} {
+		s := newServer(t, cat, rule)
+		e, r := &Engine{}, newRequest("direct", s)
+		if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "https://wiki.example/secret/1"}); o.Forward != nil {
+			t.Errorf("%s: a URI the template covers was forwarded", what)
+		}
+		if got := asJSON(e.ListTemplates(ctx, r).Result); strings.Contains(got, "secret") {
+			t.Errorf("%s: listed %s", what, got)
+		}
+	}
+	s := newServer(t, cat)
+	if got := asJSON((&Engine{}).ListTemplates(ctx, newRequest("direct", s)).Result); !strings.Contains(got, `"https://wiki.example/secret/{id}"`) {
+		t.Errorf("a template is not listed in canonical form: %s", got)
+	}
+}
+
+// resource.upstream.uri is the server's own spelling on the list hook too,
+// so a rule can be written against exactly what the server sent.
+func TestUpstreamURIIsTheServersSpellingOnTheListHook(t *testing.T) {
+	ctx := context.Background()
+	cat := Catalog{Resources: []*mcp.Resource{{URI: "https://WIKI.example/private/x", Name: "x"}}}
+	s := newServer(t, cat,
+		Rule{Hook: "resources/list.post", When: "resource.upstream.uri == 'https://WIKI.example/private/x'", Then: map[string]string{KeyDecision: "'deny'"}})
+	e, r := &Engine{}, newRequest("direct", s)
+	if got := asJSON(e.ListResources(ctx, r).Result); strings.Contains(got, "/private/") {
+		t.Errorf("a deny on upstream.uri did not hide the resource: %s", got)
+	}
+	if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "https://wiki.example/private/x"}); o.Forward != nil {
+		t.Error("the hidden resource was read")
+	}
+}
+
+// An escaped dot is a dot to a URL parser, so it is folded before the path
+// is cleaned, and the canonical form is stable.
+func TestEscapedDotSegmentsAreFolded(t *testing.T) {
+	for odd, want := range map[string]string{
+		"https://h/a/%2e%2e/secret": "https://h/secret",
+		"https://h/a/%2E%2E/b/":     "https://h/b/",
+		"https://h/.%2e/x":          "https://h/x",
+		"file:///a/%2e/b":           "file:///a/b",
+	} {
+		got := canonicalURI(odd)
+		if got != want || canonicalURI(got) != got || nonCanonical(got) {
+			t.Errorf("canonicalURI(%s) = %s, want %s, stable and accepted", odd, got, want)
+		}
+	}
+}

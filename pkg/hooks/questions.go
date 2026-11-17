@@ -151,8 +151,8 @@ func responseMap(v any) map[string]any {
 	return m
 }
 
-// elicitation turns an elicit() marker into an input_required result, or an
-// error when the client cannot elicit.
+// bindings lists what the user has confirmed, in a fixed order, for the
+// state of the next round.
 func bindings(confirmed map[string]bool) []string {
 	out := make([]string, 0, len(confirmed))
 	for b := range confirmed {
@@ -162,6 +162,11 @@ func bindings(confirmed map[string]bool) []string {
 	return out
 }
 
+// elicitation turns an elicit() marker into the gateway's question: an
+// input_required result whose state is kept in the store. It refuses
+// instead when the client cannot answer questions, when there is no
+// principal to bind the answer to, or when this round answers a server's
+// own question.
 func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, prev *State, confirmed map[string]bool, args, marker map[string]any) (any, error) {
 	key, _ := marker[ElicitKey].(string)
 	msg, _ := marker["message"].(string)
@@ -247,9 +252,10 @@ func (e *Engine) elicitHook(ctx context.Context, r Request, call *CallContext, h
 	return out, hits, nil
 }
 
-// wrapState builds the gateway's envelope around an upstream round: the
-// forwarded call's binding, earlier gateway answers, and the upstream's own
-// state (which may be absent). It needs a policy generation.
+// wrapState keeps the state of a request whose server asked its own
+// question: what the forwarded call is tied to, what the user has confirmed
+// so far, and the server's own state, which may be absent. It returns the
+// key the client sends back. It needs a principal to tie the state to.
 func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken, upstreamState string, reqs mcp.InputRequestMap) (string, error) {
 	if r.principal() == "" {
 		return "", clientMessage("The server asked for input, which is not available without a caller identity.")

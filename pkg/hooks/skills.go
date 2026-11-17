@@ -166,8 +166,12 @@ func (e *Engine) skillEntry(ctx context.Context, r Request, s *Server, v *resVie
 	if ms != nil {
 		var kept []SkillResource
 		for _, m := range ms {
-			if !underRoot(m.URI, sk.Root()) || nonCanonical(m.URI) {
+			if !underRoot(m.URI, sk.Root()) {
 				issues = append(issues, sk.URI+": manifest entry outside the skill folder dropped: "+m.URI)
+				continue
+			}
+			if nonCanonical(m.URI) {
+				issues = append(issues, sk.URI+": manifest entry whose URI is not in canonical form dropped: "+m.URI)
 				continue
 			}
 			kept = append(kept, m)

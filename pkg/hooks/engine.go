@@ -158,6 +158,7 @@ func (e *Engine) version() string {
 type Request struct {
 	// Route is how the client reached the gateway: "direct" for one server,
 	// or "mux" for every server the caller holds. The two are exclusive.
+	// Anything but "mux" is the direct route.
 	Route string
 	// Flags are the switches the client set on this request, such as
 	// ?search=true, by name. They are not routes: any of them can be on for

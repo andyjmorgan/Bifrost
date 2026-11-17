@@ -83,16 +83,12 @@ func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView
 	return cur, o.hits, "", false, nil
 }
 
-// resourceItems are a server's resources as rules see them. Each URI is put
-// in canonical spelling first, so a rule written against
-// https://wiki.example/ also matches a resource the server lists as
-// https://WIKI.example/…. The server's own spelling stays in
-// resource.upstream.uri.
+// resourceItems are a server's resources as it sent them. listItems gives
+// rules each URI in canonical form; see canonicalID.
 func resourceItems(rs []*mcp.Resource) []map[string]any {
 	out := make([]map[string]any, len(rs))
 	for i, x := range rs {
 		out[i] = toMap(x)
-		out[i]["uri"] = canonicalURI(x.URI)
 	}
 	return out
 }
@@ -190,7 +186,9 @@ func (e *Engine) ListTemplates(parent context.Context, r Request) (ret Outcome) 
 			var x mcp.ResourceTemplate
 			b, _ := json.Marshal(l.value)
 			_ = json.Unmarshal(b, &x)
-			x.URITemplate = l.upstreamID
+			// The template in the form its URIs will be read in. A rule
+			// cannot change it, so this is its canonical text.
+			x.URITemplate = l.exposedID
 			if r.mux() {
 				x.URITemplate = PrefixURI(s.Slug, x.URITemplate)
 			}
@@ -236,7 +234,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		params["_meta"] = map[string]any(p.Meta)
 	}
 	c := preCall{
-		server: s, method: method, hook: "resources/read.pre", target: up, label: up,
+		server: s, method: method, hook: "resources/read.pre", target: up, label: up, asked: p.URI,
 		args: args, state: p.RequestState, answers: p.InputResponses, resolve: resolve, roots: r.context(s).roots(method, params),
 		refuse: rpcRefusal, denied: method + " was refused by policy",
 		set: func(string, any) error { return nil }, // a read has nothing a rule may set

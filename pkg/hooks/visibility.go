@@ -2,7 +2,9 @@ package hooks
 
 import (
 	"context"
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -92,10 +94,10 @@ func (t *uriTemplate) denies(uri string) bool {
 // reads, directory children, returned content items and fallback
 // candidates all use it, so they cannot disagree.
 type resView struct {
-	visibleRes   map[string]map[string]any // normalized URI -> exposed resource
-	listedRes    map[string]bool           // normalized URI is in the upstream listing
+	visibleRes   map[string]map[string]any // canonical URI -> the resource as rules left it
+	listedRes    map[string]bool           // canonical URI -> the server lists it
 	hiddenBare   map[string]bool           // a listed resource that is not visible, without its query or trailing slash
-	originalRes  map[string]map[string]any // normalized URI -> the resource as the upstream sent it
+	originalRes  map[string]map[string]any // canonical URI -> the resource as the server sent it
 	okTemplates  []*uriTemplate
 	badTemplates []*uriTemplate // denied, failed a change or collided
 	deniedRoots  []string
@@ -134,9 +136,12 @@ func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *r
 		files, ok := sk.manifest()
 		v.manifests[sk.URI] = manifest{files: files, ok: ok}
 	}
+	spellings := map[string]int{}
 	for _, x := range s.Catalog.Resources {
-		v.listedRes[canonicalURI(x.URI)] = true
-		v.originalRes[canonicalURI(x.URI)] = toMap(x)
+		n := canonicalURI(x.URI)
+		v.listedRes[n] = true
+		v.originalRes[n] = toMap(x)
+		spellings[n]++
 	}
 	ls, issues, hits := s.Rules.listItems(ctx, KindResource, "resources/list.post", "uri", resourceItems(s.Catalog.Resources), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)
@@ -144,6 +149,17 @@ func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *r
 	for _, l := range ls {
 		v.visibleRes[canonicalURI(l.upstreamID)] = l.value
 	}
+	// Two resources the server lists under spellings of one URI cannot be
+	// told apart once a client asks for it in canonical form, and a rule
+	// may have hidden one and not the other. Both are hidden.
+	for n, count := range spellings {
+		if count > 1 {
+			delete(v.visibleRes, n)
+			delete(v.originalRes, n)
+			v.issues = append(v.issues, fmt.Sprintf("collision: %d resources the server lists are one URI, %s; all are hidden", count, n))
+		}
+	}
+	sort.Strings(v.issues)
 	for n := range v.listedRes {
 		if _, visible := v.visibleRes[n]; !visible {
 			v.hiddenBare[bare(n)] = true
@@ -157,7 +173,7 @@ func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *r
 		ok[t.upstreamID] = true
 	}
 	for _, t := range s.Catalog.Templates {
-		ct := compileTemplate(t.URITemplate)
+		ct := compileTemplate(canonicalTemplate(t.URITemplate))
 		if ok[t.URITemplate] {
 			v.okTemplates = append(v.okTemplates, ct)
 		} else {
