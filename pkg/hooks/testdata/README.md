@@ -15,7 +15,7 @@ To add a case, add one JSON object to a file. To add a client, add one driver an
 | `doc-checks/` | the common set: one case per example in `docs/rules/hooks/` |
 | `e2e/` | the common set: cases written against what a client sees |
 | `e2e/outliers/` | outliers: cases that make sense on one harness only |
-| `known-gaps/`, `fuzz/` | not part of the golden set |
+| `fuzz/` | not part of the golden set |
 
 ## Three tiers
 

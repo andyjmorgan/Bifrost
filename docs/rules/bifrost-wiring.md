@@ -1,8 +1,6 @@
 # The rules engine in the Bifrost gateway
 
-Written November 16, 2026. Branch `rules-hooks`, on top of the checkpoint tag `hooks-core-v3-checkpoint` (`63635d6`).
-
-The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every listing, call and reply goes through it. The old allow/deny rules (`internal/rules`) are gone. Deployed to the lab gateway on November 16, 2026, as image `87a05e1`, built from this branch and not from `main`.
+The rules engine (`pkg/hooks`) sits behind Bifrost's front door. Every listing, call and reply goes through it. This page says how Bifrost calls the engine, the decisions that wiring took, and what was tested. It is a worked example for another gateway, which starts from [the handover page](handover.md).
 
 ## How a request flows
 
@@ -25,13 +23,13 @@ The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every 
 ## Decisions made while wiring
 
 - The front door stays the Go SDK server. This is how the Datadog gateway will sit, so it is the arrangement worth proving. Engine results go out through a result type that carries the engine's JSON unchanged.
-- Every upstream call goes through the Go SDK client, whatever version the server speaks (decided November 16, 2026: no raw path, the clients are there for convenience). The gateway opens a session for each forward with the identity and capabilities the rules decided (`Connector.OpenFor`).
+- Every upstream call goes through the Go SDK client, whatever version the server speaks: there is no raw path. The gateway opens a session for each forward with the identity and capabilities the rules decided (`Connector.OpenFor`).
 - The client library would answer a server's own question itself. That is switched off for forwards, so the question comes back as the call's result and goes on to the end client.
 - The client library hands progress to its handler on a queue of its own, so a call can return before its last notifications are handled. The gateway closes the session, which waits for that queue, and only then puts the result in line. Progress therefore always arrives before the result, in order.
 - A reply the client library cannot read ends the call with a JSON-RPC error, the lost-reply error `-32014`, and the cause goes to the record. The main case is a content block of a type the library does not know. Nothing of such a reply is passed on. Fields the library does not know are dropped silently, and notifications it does not know never surface.
 - The client library reports a transport failure, such as a refused connection or an HTTP error, as a JSON-RPC error of its own (`-32005`). The gateway treats those as lost replies, not as the server's answer.
 - A server on an older version gets no questions and no progress, by the earlier decision, so its reply is one result.
-- `_meta` crosses the gateway only through two allowlists (decided November 16, 2026). The input list is for what comes into the gateway from a client: the request `_meta` keys that may go on to a server. A `server.session` rule still has to turn forwarding on; the list bounds what it can forward. The output list is for what comes from downstream: the `_meta` keys a server may send back, on catalog items and on the results of calls, prompts and reads. Both are empty unless set (`MCPGW_META_ALLOW_IN`, `MCPGW_META_ALLOW_OUT`), so by default no `_meta` passes either way. The protocol's own keys and the progress token are written by the gateway itself and cannot be put on either list.
+- `_meta` crosses the gateway only through two allowlists. The input list is for what comes into the gateway from a client: the request `_meta` keys that may go on to a server. A `server.session` rule still has to turn forwarding on; the list bounds what it can forward. The output list is for what comes from downstream: the `_meta` keys a server may send back, on catalog items and on the results of calls, prompts and reads. Both are empty unless set (`MCPGW_META_ALLOW_IN`, `MCPGW_META_ALLOW_OUT`), so by default no `_meta` passes either way. The protocol's own keys and the progress token are written by the gateway itself and cannot be put on either list.
 - HTTP request headers reach rules only through an allow-list. `MCPGW_RULE_HEADERS` names the headers rules may read as `request.headers`, comma separated. It is empty unless set, so by default a rule sees no header. Headers that carry credentials are never shown.
 - Every result names the gateway in `_meta`, under `io.modelcontextprotocol/serverInfo`, as the protocol asks of a server. The SDK server stamps it; the first wiring's result type dropped it. Discovery keeps the identity the rules chose.
 - The state of a request that waits on an answer, to the gateway's question or to a server's, lives in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
@@ -48,7 +46,7 @@ An entitlement keeps its rules as text, in one `jsonb` column on its row (`entit
 }
 ```
 
-- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.Hooks` lists all 19.
+- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.List` lists all 19 hooks.
 - The text is the only stored form. The gateway compiles it to the engine's rules when it loads the entitlement, and keeps the result until the entitlement's generation changes.
 - The API uses the same object, as the entitlement's `hooks`. `GET /entitlements/{id}` returns every property, with null where a hook has no rules. `PATCH` takes `hooks` and replaces all of them. A property that is not a hook's is refused.
 - `POST /entitlements/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
@@ -78,7 +76,7 @@ All Go tests pass under the race detector. The race detector found one old bug, 
 ## Known gaps
 
 - `resources/directory/read` and the skills methods never reach the middleware: the SDK server answers "method not found" itself. Both belong to deferred extensions.
-- The golden set (759 cases) runs against the test gateway, not against this front door. The wiring tests cover the seams, not every rule.
+- The scenario cases (685) run against the test gateway in `pkg/hooks/harness`, not against this front door. The wiring tests cover the seams, not every rule.
 - Faults and unknown shapes are logged and not stored. Rule hits are kept on the request's audit event, up to 100 per request.
 - The engine's record of unknown shapes sees less than it would on a raw path: an unknown content block fails the call before the engine sees it, and unknown fields and notifications are dropped by the client library. Its rules for unknown things still apply to anything the library does pass.
 - Tool names are matched exactly. Only the slug of a mux name is case-insensitive now.

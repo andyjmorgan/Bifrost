@@ -17,7 +17,6 @@ Every test is written in Go and runs with the Go toolchain. There are no Python 
 | Go tests | `pkg/hooks/*_test.go` | Unit, corpus, fuzz, benchmark and soak tests of the engine, including panic safety, confirmations and reply streams | `go test ./pkg/hooks/ -race -count=1` |
 | Scenarios | `pkg/hooks/testdata/scenarios/*.json` | Full requests through the engine with simulated upstream replies. Each scenario lists the IDs it proves | `./bin/hookctl run -summary pkg/hooks/testdata/scenarios/*.json` |
 | Doc checks | `pkg/hooks/testdata/doc-checks/*.json` | Every example rule in `docs/rules/hooks/` behaves as its page says | `./bin/hookctl run -summary pkg/hooks/testdata/doc-checks/*.json` |
-| Known gaps | `pkg/hooks/testdata/known-gaps/*.json` | Behaviour that is decided but not built. These fail until the engine catches up, and sit outside the main folder so it stays green | `./bin/hookctl run -summary pkg/hooks/testdata/known-gaps/*.json` |
 | Harness | `pkg/hooks/harness/` | End to end over real HTTP: the official Go SDK client and a raw HTTP client, through a test gateway built on the engine, to scriptable mock MCP servers | `go test ./pkg/hooks/harness/ -race -count=1` |
 | Soak | `TestSoak` in `pkg/hooks/soak_test.go` | Hours of mixed load with no failure, leak or change to the shared catalog | `HOOKS_SOAK=6h go test ./pkg/hooks/ -run TestSoak -timeout 0` |
 
@@ -30,7 +29,7 @@ go build -o bin/hookctl ./cmd/hookctl
 go test ./pkg/hooks/... -race -count=1
 ```
 
-Some Go tests assert behaviour that is decided but not built. They are skipped unless `HOOKS_KNOWN_GAPS=1` is set, and fail when it is, until the engine catches up.
+Some Go tests assert behaviour the engine does not have yet. They are in `pkg/hooks/known_limits_test.go`, are skipped unless `HOOKS_KNOWN_GAPS=1` is set, and fail when it is. [The handover page](handover.md#known-limits) lists the limits.
 
 Levels in the tables below:
 
