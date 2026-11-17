@@ -1,6 +1,6 @@
 import { snippetCompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete'
 import type { EditorView } from '@codemirror/view'
-import type { CapabilityDTO, HookSchema, HookSet, HookVariable } from '../../api'
+import type { CapabilityDTO, HookSchema, HookSet, HookVariable, Shape } from '../../api'
 
 // Completion for a rule's CEL: its condition and each value it sets. What a rule may read comes
 // from GET /entitlements/rules-schema for the rule's stage, so the suggestions cannot drift from
@@ -202,36 +202,97 @@ function literalValues(path: string, data: CelCompletionData): Literal[] {
 
 const prop = (label: string, detail: string): Completion => ({ label, detail, type: 'property', boost: 1 })
 
-/** What can follow `path.`: the fields of a struct, the known keys of a map, the catalog's names, the methods of the type. */
-function membersOf(path: string, data: CelCompletionData): Completion[] {
-  const [head, ...rest] = path.split('.')
-  if (NAMESPACES[head]) return rest.length ? [] : NAMESPACES[head]
-  const v = data.hook?.variables.find((x) => x.name === head)
-  if (!v) return []
+/**
+ * Where a path has got to. A shape is the engine's description of the value. A schema is the
+ * JSON Schema nodes the catalog holds for it: arguments follow a tool's input schema, structured
+ * content its output schema. A struct has fixed fields. Past all of those, only a type is known.
+ */
+type Node = { shape: Shape } | { schema: Obj[] } | { struct: Record<string, string> } | { type: string }
 
-  // `upstream` holds the item's own fields: past it, complete as for the field.
-  if (head === 'upstream' && rest.length && v.keys?.[rest[0]]) return membersOf(rest.join('.'), data)
+const MACRO_NAMES = 'exists|all|exists_one|filter|map'
+const SEGMENT = /\.([A-Za-z_]\w*)|\[([^\]]*)\]/g
 
-  if (rest.length === 0) {
-    if (v.fields) return Object.entries(v.fields).map(([name, type]) => prop(name, type))
-    if (head === 'caller' && data.caller) return Object.keys(data.caller).map((k) => prop(k, 'string'))
-    if (v.keys) return Object.entries(v.keys).map(([name, type]) => prop(name, type))
-    if (head === 'args' || head === 'params') {
-      const names = [...parameterNames(data)].filter(([k]) => IDENT.test(k)).map(([k, type]) => prop(k, type))
-      return names.length ? names : MACROS
-    }
-    if (head === 'inputSchema' || head === 'outputSchema') return []
-    if (v.type === 'map') {
-      const keys = catalogKeys(data, head).filter((k) => IDENT.test(k))
-      return keys.length ? keys.map((k) => prop(k, 'seen on the server')) : MACROS
-    }
-    return methodsFor(v.type)
+/** Splits `result.content[0].text` into its head and the steps after it; an index step is null. */
+function splitPath(path: string): { head: string; steps: (string | null)[] } {
+  const head = /^[A-Za-z_]\w*/.exec(path)?.[0] ?? ''
+  const steps: (string | null)[] = []
+  for (const m of path.slice(head.length).matchAll(SEGMENT)) {
+    const key = m[2] === undefined ? undefined : /^\s*(['"])(.*)\1\s*$/.exec(m[2])?.[2]
+    steps.push(m[1] ?? key ?? null)
   }
+  return { head, steps }
+}
 
-  if (head === 'args') return schemaMembers(schemaNodes(itemsOf(data), 'inputSchema', rest))
-  if (head === 'result' && rest[0] === 'structuredContent') return schemaMembers(schemaNodes(itemsOf(data), 'outputSchema', rest.slice(1)))
-  if (rest.length === 1) return methodsFor(v.fields?.[rest[0]] ?? v.keys?.[rest[0]] ?? (head === 'caller' && data.caller?.[rest[0]] ? 'string' : ''))
+/** The node a JSON Schema reference lands on: the item's schemas, then the properties named. */
+const followed = (which: string, data: CelCompletionData): Node => ({ schema: schemaNodes(itemsOf(data), which as 'inputSchema' | 'outputSchema', []) })
+
+function start(head: string, before: string, data: CelCompletionData): Node | null {
+  const v = data.hook?.variables.find((x) => x.name === head)
+  if (v) {
+    if (v.fields) return { struct: v.fields }
+    if (head === 'caller' && data.caller) return { shape: { type: 'map', keys: Object.fromEntries(Object.keys(data.caller).map((k) => [k, { type: 'string' }])) } }
+    if (v.shape?.follows) return followed(v.shape.follows, data)
+    return v.shape ? { shape: v.shape } : { type: v.type }
+  }
+  // A macro's own variable: in result.content.exists(c, c.|) c is one element of result.content.
+  const bound = new RegExp(String.raw`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]*\])*)\.(?:${MACRO_NAMES})\(\s*${head}\s*,`, 'g')
+  const last = [...before.matchAll(bound)].pop()
+  if (!last) return null
+  const over = resolve(last[1], before.slice(0, last.index), data)
+  return over ? step(over, null, data) : null
+}
+
+/** One step from a node: a key by name, or an element when the step is null. */
+function step(node: Node, key: string | null, data: CelCompletionData): Node {
+  if ('struct' in node) return { type: key ? (node.struct[key] ?? 'any') : 'any' }
+  if ('schema' in node) {
+    const next = node.schema.map((n) => (key === null ? n.items : isObject(n.properties) ? n.properties[key] : undefined)).filter(isObject)
+    return next.length ? { schema: next } : { type: 'any' }
+  }
+  if ('shape' in node) {
+    const sh = node.shape
+    const next = key === null ? (sh.type === 'list' ? sh.items : sh.type === 'map' ? { type: 'string' } : undefined) : (sh.keys?.[key] ?? (sh.names ? (sh.values ?? { type: 'any' }) : undefined))
+    if (!next) return { type: 'any' }
+    return next.follows ? followed(next.follows, data) : { shape: next }
+  }
+  return { type: 'any' }
+}
+
+function resolve(path: string, before: string, data: CelCompletionData): Node | null {
+  const { head, steps } = splitPath(path)
+  let node = start(head, before, data)
+  for (const s of steps) {
+    if (!node) return null
+    node = step(node, s, data)
+  }
+  return node
+}
+
+/** The names the catalog holds for a shape whose keys come from it. */
+function catalogNames(names: string, data: CelCompletionData): [string, string][] {
+  if (names === 'parameters') return [...parameterNames(data)]
+  if (names === 'meta') return catalogKeys(data, 'meta').map((k) => [k, 'seen on the server'])
+  if (names === 'output') {
+    const out = new Map<string, string>()
+    for (const n of schemaNodes(itemsOf(data), 'outputSchema', [])) if (isObject(n.properties)) for (const [k, v] of Object.entries(n.properties)) if (!out.has(k)) out.set(k, schemaType(v))
+    return [...out]
+  }
   return []
+}
+
+/** What can follow `path.`: the keys of what the path reaches, or the methods of its type. */
+function membersOf(path: string, before: string, data: CelCompletionData): Completion[] {
+  if (NAMESPACES[path]) return NAMESPACES[path]
+  const node = resolve(path, before, data)
+  if (!node) return []
+  if ('struct' in node) return Object.entries(node.struct).map(([name, type]) => prop(name, type))
+  if ('schema' in node) return schemaMembers(node.schema)
+  if ('type' in node) return methodsFor(node.type)
+  const sh = node.shape
+  const keys = new Map<string, string>(Object.entries(sh.keys ?? {}).map(([k, v]) => [k, v.type]))
+  if (sh.names) for (const [k, type] of catalogNames(sh.names, data)) if (!keys.has(k)) keys.set(k, sh.values?.type && sh.values.type !== 'any' ? sh.values.type : type)
+  const out = [...keys].filter(([k]) => IDENT.test(k)).map(([k, type]) => prop(k, type))
+  return out.length ? out : methodsFor(sh.type)
 }
 
 /** A request's own values first, then the item, then the context. */
@@ -328,10 +389,10 @@ export function completeCel(ctx: CompletionContext, data: CelCompletionData, bas
     }
   }
 
-  // A member access: flags.se|, args.|, name.st|, description.lowerAscii().|
-  const member = /(\)|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(\w*)$/.exec(before)
+  // A member access: flags.se|, args.|, result.content[0].|, description.lowerAscii().|
+  const member = /(\)|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]*\])*)\.(\w*)$/.exec(before)
   if (member) {
-    const options = member[1] === ')' ? STRING_METHODS : membersOf(member[1], data)
+    const options = member[1] === ')' ? STRING_METHODS : membersOf(member[1], before.slice(0, member.index), data)
     if (!options.length) return null
     return { from: ctx.pos - member[2].length, options, validFor: /^\w*$/ }
   }

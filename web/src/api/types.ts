@@ -644,9 +644,25 @@ export interface HookVariable {
   values?: string[]
   /** The fields of a struct, each with its type. Reading any other is refused. */
   fields?: Record<string, string>
-  /** The keys a map is known to hold, each with its type. A hint: the map may hold others. */
-  keys?: Record<string, string>
+  /** The form of a map, a list or an any, as far as it is known. */
+  shape?: Shape
   doc: string
+}
+
+/** The form of a value a rule reads. A hint: a map may hold keys the shape does not list. */
+export interface Shape {
+  /** string, bool, number, list, map or any. */
+  type: string
+  /** The keys a map is known to hold. */
+  keys?: Record<string, Shape>
+  /** The form of each element of a list. */
+  items?: Shape
+  /** The map's keys are names from the server's catalog: "parameters", "output" or "meta". */
+  names?: string
+  /** The form of the value under each of those names. */
+  values?: Shape
+  /** The value takes its form from one of the item's JSON Schemas: "inputSchema" or "outputSchema". */
+  follows?: string
 }
 
 export interface HookSet {

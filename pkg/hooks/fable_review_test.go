@@ -1390,15 +1390,18 @@ func TestEveryHookPageListsTheCommonVariables(t *testing.T) {
 	}
 }
 
-// The key hints in a hook's schema name real keys: `upstream` lists the
-// item's own fields, and `result` and `request` have hints wherever a rule
-// can read them.
-func TestSchemaKeyHints(t *testing.T) {
+// A hook's schema says the form of what its rules read: `upstream` lists
+// the item's own fields, and every map a rule reads by key has a shape.
+func TestSchemaShapes(t *testing.T) {
 	for _, h := range Schema() {
 		for _, v := range h.Variables {
 			switch v.Name {
 			case "upstream":
-				for k := range v.Keys {
+				if v.Shape == nil || len(v.Shape.Keys) == 0 {
+					t.Errorf("%s: upstream has no shape", h.Hook)
+					continue
+				}
+				for k := range v.Shape.Keys {
 					found := false
 					for _, f := range ItemFields[ItemKind(h.Item)] {
 						found = found || f == k
@@ -1407,16 +1410,14 @@ func TestSchemaKeyHints(t *testing.T) {
 						t.Errorf("%s: upstream.%s is not a field of the %s", h.Hook, k, h.Item)
 					}
 				}
-				if len(v.Keys) == 0 {
-					t.Errorf("%s: upstream has no key hints", h.Hook)
-				}
-			case "result", "request", "server", "entitlement", "client":
-				if len(v.Keys) == 0 {
-					t.Errorf("%s: %s has no key hints", h.Hook, v.Name)
+			case "result", "request", "server", "entitlement", "client", "args", "annotations", "meta", "icons", "inputSchema", "outputSchema", "params", "arguments":
+				if v.Shape == nil {
+					t.Errorf("%s: %s has no shape", h.Hook, v.Name)
 				}
 			}
-			if len(v.Keys) > 0 && v.Type != "map" {
-				t.Errorf("%s: %s has key hints but is a %s", h.Hook, v.Name, v.Type)
+			// A JSON Schema is an any to the engine, and a map in practice.
+			if v.Shape != nil && v.Shape.Type != v.Type && v.Type != "any" {
+				t.Errorf("%s: %s is a %s but its shape is a %s", h.Hook, v.Name, v.Type, v.Shape.Type)
 			}
 		}
 	}

@@ -16,11 +16,10 @@ type VarSchema struct {
 	// Fields lists the fields of a struct, each with its type. A struct's
 	// fields are fixed: reading any other is refused when the rule is saved.
 	Fields map[string]string `json:"fields,omitempty"`
-	// Keys lists the keys a map is known to hold, each with its type. It is
-	// a hint for editors: a map may hold other keys, and reading one that is
-	// not listed is not refused.
-	Keys map[string]string `json:"keys,omitempty"`
-	Doc  string            `json:"doc"`
+	// Shape is the form of a map, a list or an any, as far as it is known:
+	// the keys it holds, the form of its elements. See Shape.
+	Shape *Shape `json:"shape,omitempty"`
+	Doc   string `json:"doc"`
 }
 
 // SetSchema describes one field a hook's rules can set.
@@ -56,23 +55,19 @@ func flagsSchema() VarSchema {
 }
 
 var commonSchema = map[string]VarSchema{
-	"server": {Type: "map", Doc: "The upstream server: slug, name, title, description, instructions, protocolVersion, url.",
-		Keys: map[string]string{"slug": "string", "name": "string", "title": "string", "description": "string", "instructions": "string", "protocolVersion": "string", "url": "string"}},
-	"entitlement": {Type: "map", Doc: "The entitlement serving the request: id, slug, name.",
-		Keys: map[string]string{"id": "string", "slug": "string", "name": "string"}},
-	"caller": {Type: "map", Doc: "The caller's identity, as the gateway supplies it. Opaque to the engine."},
-	"client": {Type: "map", Doc: "The client, from this request: name, version, capabilities. capabilities is always present.",
-		Keys: map[string]string{"name": "string", "version": "string", "capabilities": "map"}},
-	"route": {Type: "string", Values: []string{"direct", "mux"}, Doc: "How the client reached the gateway. The two values are exclusive."},
-	"now":   {Type: "timestamp", Doc: "The time of the request."},
+	"server":      {Type: "map", Shape: shServer, Doc: "The upstream server: slug, name, title, description, instructions, protocolVersion, url."},
+	"entitlement": {Type: "map", Shape: shEntitlement, Doc: "The entitlement serving the request: id, slug, name."},
+	"caller":      {Type: "map", Doc: "The caller's identity, as the gateway supplies it. Opaque to the engine."},
+	"client":      {Type: "map", Shape: shClient, Doc: "The client, from this request: name, version, capabilities. capabilities is always present."},
+	"route":       {Type: "string", Values: []string{"direct", "mux"}, Doc: "How the client reached the gateway. The two values are exclusive."},
+	"now":         {Type: "timestamp", Doc: "The time of the request."},
 }
 
 var hookVarSchema = map[string]VarSchema{
-	"args":   {Type: "map", Doc: "The request's arguments."},
-	"input":  {Type: "map", Doc: "Confirmed answers to the gateway's own confirmations, by key."},
-	"result": {Type: "map", Doc: "The upstream's result."},
-	"request": {Type: "map", Doc: "One input request from the upstream: key, method and its params.",
-		Keys: map[string]string{"key": "string", "method": "string", "mode": "string", "message": "string", "requestedSchema": "map", "url": "string", "elicitationId": "string"}},
+	"args":     {Type: "map", Doc: "The request's arguments."},
+	"input":    {Type: "map", Doc: "Confirmed answers to the gateway's own confirmations, by key."},
+	"result":   {Type: "map", Doc: "The upstream's result."},
+	"request":  {Type: "map", Shape: shRequest, Doc: "One input request from the upstream: key, method and its params."},
 	"progress": {Type: "struct", Fields: map[string]string{"progress": "number", "total": "number", "message": "string"}, Doc: "One progress event. total is present only when the upstream sent it."},
 	"upstream": {Type: "map", Doc: "The item exactly as the upstream sent it. Never changes."},
 }
@@ -81,33 +76,6 @@ var itemFieldTypes = map[string]string{
 	"name": "string", "title": "string", "description": "string", "instructions": "string", "uri": "string", "uriTemplate": "string", "mimeType": "string",
 	"annotations": "map", "annotationsRaw": "map", "meta": "map", "params": "map", "frontmatter": "map",
 	"inputSchema": "any", "outputSchema": "any", "resources": "any", "size": "number", "icons": "list", "arguments": "list",
-}
-
-// resultKeys are the keys of `result`, by the kind of item the hook works on.
-var resultKeys = map[ItemKind]map[string]string{
-	KindTool:     {"isError": "bool", "content": "list", "structuredContent": "any", "meta": "map", "text": "string"},
-	KindResource: {"text": "string", "contents": "list"},
-}
-
-// notUpstream are item fields `upstream` does not carry: params is the
-// gateway's view of the parameters, built from inputSchema.
-var notUpstream = map[string]bool{"params": true}
-
-// upstreamKeys are the keys of `upstream` for an item kind: the item's
-// fields as the upstream sends them.
-func upstreamKeys(kind ItemKind) map[string]string {
-	out := map[string]string{}
-	for _, f := range ItemFields[kind] {
-		if notUpstream[f] {
-			continue
-		}
-		t := itemFieldTypes[f]
-		if t == "" {
-			t = "any"
-		}
-		out[f] = t
-	}
-	return out
 }
 
 // Schema returns the schema of every hook, ordered by hook name.
@@ -140,9 +108,14 @@ func (h *HookSpec) Schema() HookSchema {
 			c.Name = v
 			switch v {
 			case "result":
-				c.Keys = resultKeys[h.Item]
+				c.Shape = shToolResult
+				if h.Item == KindResource {
+					c.Shape = shReadResult
+				}
 			case "upstream":
-				c.Keys = upstreamKeys(h.Item)
+				c.Shape = upstreamShape(h.Item)
+			case "args":
+				c.Shape = argsShape(h.Item)
 			}
 			s.Variables = append(s.Variables, c)
 		default:
@@ -150,7 +123,7 @@ func (h *HookSpec) Schema() HookSchema {
 			if t == "" {
 				t = "any"
 			}
-			s.Variables = append(s.Variables, VarSchema{Name: v, Type: t, Doc: "A field of the " + string(h.Item) + "."})
+			s.Variables = append(s.Variables, VarSchema{Name: v, Type: t, Shape: itemShape(h.Item, v), Doc: "A field of the " + string(h.Item) + "."})
 		}
 	}
 	for _, f := range h.Fields {
