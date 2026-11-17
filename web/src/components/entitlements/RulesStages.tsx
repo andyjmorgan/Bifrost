@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { CircleHelp } from 'lucide-react'
 import { Button } from '../../ui/components/button'
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
 import { Callout } from '../Callout'
 import { RuleTextEditor, type RuleCompletionData } from './RuleTextEditor'
 import type { CapabilityDTO, RuleStage, RulesSchema, TextProblem } from '../../api'
@@ -7,8 +9,8 @@ import { cn } from '../../lib'
 
 // The Rules tab. Rules are text, written where they run: a stage is a method, a side of it (pre:
 // the request; post: what comes back) and, for a reply, the event. The list on the left is every
-// stage in the order a request meets them; the editor on the right holds one stage's rules, with
-// a worked example of everything that stage can do underneath.
+// stage in the order a request meets them; the editor on the right holds one stage's rules. The
+// Help button opens a panel with a worked example of everything that stage can do.
 
 const RULE_LINE = /^\s*(audit\s+)?when(\s|$)/
 
@@ -94,6 +96,7 @@ export function RulesStages({
   // Open on the first stage that has rules, or on the call's pre stage: the one most rules go in.
   const [picked, setPicked] = useState<string>()
   const current = stages.find((s) => s.id === picked) ?? stages.find((s) => countRules(text[s.id]) > 0) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
+  const [help, setHelp] = useState(false)
 
   const groups = useMemo(() => {
     const out: { group: string; methods: { method: string; stages: RuleStage[] }[] }[] = []
@@ -241,16 +244,22 @@ export function RulesStages({
           </nav>
 
           <div className="min-w-0 space-y-4">
-            <div>
-              <h2 className="font-mono text-sm font-semibold">
-                {current.method} <span className="text-muted-foreground">·</span> {sideLabel(current, stages)}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">{current.summary}</p>
-              {current.notes?.map((n) => (
-                <p key={n} className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {n}
-                </p>
-              ))}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-mono text-sm font-semibold">
+                  {current.method} <span className="text-muted-foreground">·</span> {sideLabel(current, stages)}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">{current.summary}</p>
+                {current.notes?.map((n) => (
+                  <p key={n} className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {n}
+                  </p>
+                ))}
+              </div>
+              <Button variant="secondary" size="sm" className="shrink-0" onClick={() => setHelp(true)}>
+                <CircleHelp className="size-4" />
+                Help
+              </Button>
             </div>
 
             <RuleTextEditor
@@ -278,76 +287,101 @@ export function RulesStages({
               validating && <p className="text-xs text-muted-foreground">Checking…</p>
             )}
 
-            <div className="space-y-2">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                What a rule can do here <span className="ml-1 normal-case tracking-normal">Click a rule to add it.</span>
-              </h3>
-              <div className="rounded-xl border border-border bg-card p-2">
-                {exampleBlocks(current.example).map((b, i) =>
-                  b.kind === 'comment' ? (
-                    <pre key={i} className="whitespace-pre-wrap px-2 pb-0.5 pt-2 font-mono text-xs italic leading-5 text-faint-foreground first:pt-0.5">
-                      {b.text}
-                    </pre>
-                  ) : (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => add(b.text)}
-                      title="Add this rule"
-                      className="block w-full cursor-pointer overflow-x-auto whitespace-pre rounded-md px-2 py-0.5 text-left font-mono text-xs leading-5 text-code-foreground transition-colors hover:bg-elevated"
-                    >
-                      {b.text}
-                    </button>
-                  ),
-                )}
-              </div>
-            </div>
-
-            <dl className="grid gap-x-4 gap-y-2 text-xs leading-5 sm:grid-cols-[5rem_minmax(0,1fr)]">
-              {current.actions.includes('deny') && (
-                <>
-                  <dt className="font-mono text-accent">deny</dt>
-                  <dd className="text-muted-foreground">
-                    {current.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Admins only."</span>
-                  </dd>
-                </>
-              )}
-              {current.actions.includes('confirm') && (
-                <>
-                  <dt className="font-mono text-accent">confirm</dt>
-                  <dd className="text-muted-foreground">
-                    asks the user first and goes ahead once they agree. Values in braces are filled in: <span className="font-mono">confirm "Delete {'{args.id}'}?"</span>
-                  </dd>
-                </>
-              )}
-              {current.actions.includes('set') && (
-                <>
-                  <dt className="font-mono text-accent">set</dt>
-                  <dd className="font-mono text-muted-foreground">
-                    {current.sets.map((s) => (
-                      <span key={s.field} title={s.type} className="mr-3 inline-block">
-                        {s.field}
-                      </span>
-                    ))}
-                  </dd>
-                </>
-              )}
-              <dt className="font-mono text-accent">read</dt>
-              <dd className="font-mono text-muted-foreground">
-                {current.reads.map((v) => (
-                  <span key={v.name} title={v.doc} className="mr-3 inline-block">
-                    {v.name}
-                  </span>
-                ))}
-              </dd>
-              <dt className="font-mono text-accent">audit</dt>
-              <dd className="text-muted-foreground">
-                before when, makes a rule record what it would do and change nothing. A line that starts with # is a comment.
-              </dd>
-            </dl>
           </div>
         </div>
       )}
+      {current && (
+        <StageHelp
+          stage={current}
+          title={`${current.method} · ${sideLabel(current, stages)}`}
+          open={help}
+          onClose={() => setHelp(false)}
+          onAdd={(rule) => {
+            add(rule)
+            setHelp(false)
+          }}
+        />
+      )}
     </section>
+  )
+}
+
+/**
+ * The help for one stage, in a panel that slides in from the right: a worked example of everything
+ * a rule can do there (a click adds the rule and closes the panel), then what each action does and
+ * what a rule may set and read.
+ */
+function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; title: string; open: boolean; onClose: () => void; onAdd: (rule: string) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent onOpenAutoFocus={(ev) => ev.preventDefault()}>
+        <SheetHeader>
+          <SheetTitle className="font-mono text-base">{title}</SheetTitle>
+          <SheetDescription>What a rule can do here. Click a rule to add it.</SheetDescription>
+        </SheetHeader>
+        <SheetBody>
+          <div className="rounded-xl border border-border bg-background p-2">
+            {exampleBlocks(stage.example).map((b, i) =>
+              b.kind === 'comment' ? (
+                <pre key={i} className="whitespace-pre-wrap px-2 pb-0.5 pt-2 font-mono text-xs italic leading-5 text-faint-foreground first:pt-0.5">
+                  {b.text}
+                </pre>
+              ) : (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onAdd(b.text)}
+                  title="Add this rule"
+                  className="block w-full cursor-pointer overflow-x-auto whitespace-pre rounded-md px-2 py-0.5 text-left font-mono text-xs leading-5 text-code-foreground transition-colors hover:bg-elevated"
+                >
+                  {tighten(b.text)}
+                </button>
+              ),
+            )}
+          </div>
+
+          <dl className="grid gap-x-4 gap-y-3 text-xs leading-5 sm:grid-cols-[5rem_minmax(0,1fr)]">
+            {stage.actions.includes('deny') && (
+              <>
+                <dt className="font-mono text-accent">deny</dt>
+                <dd className="text-muted-foreground">
+                  {stage.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Admins only."</span>
+                </dd>
+              </>
+            )}
+            {stage.actions.includes('confirm') && (
+              <>
+                <dt className="font-mono text-accent">confirm</dt>
+                <dd className="text-muted-foreground">
+                  asks the user first and goes ahead once they agree. Values in braces are filled in: <span className="font-mono">confirm "Delete {'{args.id}'}?"</span>
+                </dd>
+              </>
+            )}
+            {stage.actions.includes('set') && (
+              <>
+                <dt className="font-mono text-accent">set</dt>
+                <dd className="font-mono text-muted-foreground">
+                  {stage.sets.map((s) => (
+                    <span key={s.field} title={s.type} className="mr-3 inline-block">
+                      {s.field}
+                    </span>
+                  ))}
+                </dd>
+              </>
+            )}
+            <dt className="font-mono text-accent">read</dt>
+            <dd className="font-mono text-muted-foreground">
+              {stage.reads.map((v) => (
+                <span key={v.name} title={v.doc} className="mr-3 inline-block">
+                  {v.name}
+                </span>
+              ))}
+            </dd>
+            <dt className="font-mono text-accent">audit</dt>
+            <dd className="text-muted-foreground">before when, makes a rule record what it would do and change nothing. A line that starts with # is a comment.</dd>
+          </dl>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   )
 }
