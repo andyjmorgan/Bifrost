@@ -8,34 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-func treeServer(t *testing.T, rules ...Rule) *Server {
-	t.Helper()
-	return &Server{Slug: "a", Generation: "1", Info: ServerInfo{Name: "Docs", ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules),
-		Catalog: Catalog{
-			Tools:     []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"q": map[string]any{"type": "string"}}}}},
-			Prompts:   []*mcp.Prompt{{Name: "p", Arguments: []*mcp.PromptArgument{{Name: "tone"}}}},
-			Resources: []*mcp.Resource{{URI: "docs://a", Name: "a"}},
-		}}
-}
-
-func treeRequest(s *Server) Request {
-	return Request{Route: "direct", Servers: []*Server{s}, Principal: "p",
-		Caller:  map[string]any{"userId": "u", "role": "member"},
-		Client:  map[string]any{"clientInfo": map[string]any{"name": "claude-code", "version": "2.1"}, "capabilities": map[string]any{"elicitation": map[string]any{}}},
-		Headers: map[string]string{"X-Team": "sre"}}
-}
-
-func outcomeText(o Outcome) string {
-	b, _ := json.Marshal(struct {
-		Result any       `json:"result"`
-		Error  *RPCError `json:"error"`
-	}{o.Result, o.Error})
-	return string(b)
-}
 
 // The request branch holds MCP's part under params, as each method spells
 // it, beside what the gateway adds: the caller, the client in MCP's shape,
@@ -46,12 +20,12 @@ func TestTheRequestOnEachMethod(t *testing.T) {
 			" + ' trace=' + request.params._meta.trace + ' client=' + request.client.clientInfo.name + '/' + request.client.clientInfo.version" +
 			" + ' team=' + request.headers['x-team'] + ' route=' + request.route + ' search=' + string(request.flags.search) + ' role=' + request.caller.role"}}
 	}
-	s := treeServer(t,
+	s := newFullServer(t,
 		said("tools/call.pre", "request.params.name + ' q=' + request.params.arguments.q"),
 		said("prompts/get.pre", "request.params.name + ' tone=' + request.params.arguments.tone"),
 		said("resources/read.pre", "request.params.uri"))
 	e := &Engine{}
-	r := treeRequest(s)
+	r := newRequest("direct", s)
 	meta := mcp.Meta{"trace": "abc"}
 	rest := " trace=abc client=claude-code/2.1 team=sre route=direct search=false role=member"
 
@@ -74,15 +48,15 @@ func TestTheRequestOnEachMethod(t *testing.T) {
 // gives the rule's own default.
 func TestHeadersAreOnlyWhatTheGatewayPasses(t *testing.T) {
 	e := &Engine{}
-	plain := treeServer(t, Rule{Hook: "tools/call.pre", When: "request.headers['authorization'] != ''", Then: map[string]string{KeyDecision: "'deny'", KeyReason: "'saw a credential'"}})
-	r := treeRequest(plain)
+	plain := newFullServer(t, Rule{Hook: "tools/call.pre", When: "request.headers['authorization'] != ''", Then: map[string]string{KeyDecision: "'deny'", KeyReason: "'saw a credential'"}})
+	r := newRequest("direct", plain)
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)})
 	if got := outcomeText(out); out.Forward != nil || strings.Contains(got, "saw a credential") || !strings.Contains(got, "refused by policy") {
 		t.Errorf("a read of a header that was not passed: forward=%v %s", out.Forward != nil, got)
 	}
-	guarded := treeServer(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{
+	guarded := newFullServer(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{
 		"request.params.arguments.q": "request.headers[?'authorization'].orValue('none') + '/' + request.headers[?'x-team'].orValue('none')"}})
-	out = e.CallTool(context.Background(), treeRequest(guarded), &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)})
+	out = e.CallTool(context.Background(), newRequest("direct", guarded), &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)})
 	if out.Forward == nil {
 		t.Fatalf("not forwarded: %s", outcomeText(out))
 	}
@@ -167,29 +141,17 @@ func TestTreeNamesAreMCPs(t *testing.T) {
 // same hook's tree gives. The document is built by the functions the engine
 // itself uses, on a real call.
 func TestTheDocumentARuleReadsMatchesItsSchema(t *testing.T) {
-	s := treeServer(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.name": "'renamed'", "tool.title": "'A tool'"}})
+	s := newFullServer(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.name": "'renamed'", "tool.title": "'A tool'"}})
 	e := &Engine{}
-	r := treeRequest(s)
+	r := newRequest("direct", s)
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Meta: mcp.Meta{"trace": "abc"}, Name: "renamed", Arguments: json.RawMessage(`{"q":"x"}`)})
 	if out.Forward == nil || out.Call == nil {
 		t.Fatalf("not forwarded: %s", outcomeText(out))
 	}
 	validate := func(hook string, doc map[string]any) {
 		t.Helper()
-		raw, _ := json.Marshal(Hooks[hook].JSONSchema())
-		var schema jsonschema.Schema
-		if err := json.Unmarshal(raw, &schema); err != nil {
-			t.Fatalf("%s: the schema does not parse: %v", hook, err)
-		}
-		resolved, err := schema.Resolve(nil)
-		if err != nil {
-			t.Fatalf("%s: the schema does not resolve: %v", hook, err)
-		}
-		b, _ := json.Marshal(doc)
-		var instance any
-		_ = json.Unmarshal(b, &instance)
-		if err := resolved.Validate(instance); err != nil {
-			t.Errorf("%s: the document does not match its schema: %v\n%s", hook, err, b)
+		if err := schemaError(t, hook, doc); err != nil {
+			t.Errorf("%s: the document does not match its schema: %v\n%s", hook, err, asJSON(doc))
 		}
 	}
 	item := subject(KindTool, out.Call.resolve)
@@ -220,14 +182,44 @@ func TestTheDocumentARuleReadsMatchesItsSchema(t *testing.T) {
 	// A document with a field the tree does not have is refused by the
 	// schema, so the schema is not just "any object".
 	pre["tool"].(map[string]any)["invented"] = true
-	raw, _ := json.Marshal(Hooks["tools/call.pre"].JSONSchema())
-	var schema jsonschema.Schema
-	_ = json.Unmarshal(raw, &schema)
-	resolved, _ := schema.Resolve(nil)
-	b, _ := json.Marshal(pre)
-	var instance any
-	_ = json.Unmarshal(b, &instance)
-	if err := resolved.Validate(instance); err == nil {
+	if schemaError(t, "tools/call.pre", pre) == nil {
 		t.Error("a tool with an invented field validated")
+	}
+}
+
+// The tree and the document on a reply hook agree. (a) MCP requires content,
+// so the tree marks it always there; a server that leaves it out has sent a
+// result that is not MCP's, and a rule that reads content fails, which
+// refuses the result. (b) The result carries resultType, and the tree has it.
+// (c) elicitation.upstream holds the server's params only: a read of anything
+// else under it is refused or noted when the rule is saved.
+func TestTheResultAndElicitTreesMatchWhatARuleReads(t *testing.T) {
+	when := "response.result.content.exists(c, c.type == 'image')"
+	s := newServer(t, oneTool(), Rule{Hook: "tools/call.post.result", When: when, Then: map[string]string{KeyDecision: "'deny'"}})
+	o := toolReply(t, s, `{"structuredContent":{"a":1}}`)
+	if !strings.Contains(outcomeText(o), "refused by policy") {
+		t.Errorf("(a) a result with no content passed a rule that reads content: %s", outcomeText(o))
+	}
+
+	r := newRequest("direct", s)
+	call := (&Engine{}).CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)})
+	doc := call.Call.roots(r)
+	doc["tool"] = subject(KindTool, call.Call.resolve)
+	result, _ := decodeExact([]byte(`{"content":[{"type":"text","text":"hi"}],"resultType":"complete"}`)).(map[string]any)
+	up := map[string]any{"result": celMap(result)}
+	doc["response"] = map[string]any{"result": up["result"], "upstream": up} // as UpstreamToolReply builds it
+	if err := schemaError(t, "tools/call.post.result", doc); err != nil {
+		t.Errorf("(b) the document of a result that has resultType does not match the hook's schema: %v", err)
+	}
+
+	for _, read := range []string{"elicitation.upstream.method == 'elicitation/create'", "elicitation.upstream.key == 'k'"} {
+		probs, notes := saveRule("tools/call.post.elicit", read, map[string]string{"elicitation.params.message": "'CHANGED'"})
+		if probs != nil || len(notes) > 0 {
+			continue // refused or noted when saved: it never reaches a request
+		}
+		s := newServer(t, oneTool(), Rule{Hook: "tools/call.post.elicit", When: read, Then: map[string]string{"elicitation.params.message": "'CHANGED'"}})
+		if o := toolReply(t, s, serverQuestion); !strings.Contains(outcomeText(o), "CHANGED") {
+			t.Errorf("(c) %s compiled with no note and failed on a real question: %s", read, hitErrors(o.Hits))
+		}
 	}
 }

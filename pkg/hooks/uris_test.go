@@ -3,6 +3,8 @@ package hooks
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -81,7 +83,7 @@ func TestAServersOddSpellingIsOneResource(t *testing.T) {
 			t.Fatal(probs)
 		}
 		s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Catalog: cat, Rules: set}
-		e, r := &Engine{}, treeRequest(s)
+		e, r := &Engine{}, newRequest("direct", s)
 		listed, _ := json.Marshal(e.ListResources(ctx, r).Result)
 		if strings.Contains(string(listed), "/private/") || !strings.Contains(string(listed), `"https://wiki.example/public/y"`) {
 			t.Errorf("%s: listing %s", what, listed)
@@ -103,4 +105,197 @@ func TestAServersOddSpellingIsOneResource(t *testing.T) {
 			t.Errorf("%s: a client's odd spelling was forwarded", what)
 		}
 	}
+}
+
+// A scheme is not case sensitive: a server that parses FILE:///secrets/key
+// reads the same file as file:///secrets/key. A URI whose scheme is written
+// in capitals is therefore refused, so it cannot pass a rule or a denied
+// template written against the lower-case spelling and be forwarded as typed.
+func TestAURIWithASchemeInCapitalsIsRefused(t *testing.T) {
+	ctx := context.Background()
+	if u, err := url.Parse("FILE:///secrets/key"); err != nil || u.Scheme != "file" {
+		t.Fatalf("the stated condition does not hold: net/url reads the scheme as %q", u.Scheme)
+	}
+	cat := Catalog{
+		Resources: []*mcp.Resource{{URI: "file:///listed/secret.txt", Name: "listed"}},
+		Templates: []*mcp.ResourceTemplate{{URITemplate: "file:///vault/{name}", Name: "vault"}},
+	}
+	s := newServer(t, cat,
+		Rule{Hook: "resources/list.post", When: "resource.uri.startsWith('file:///secrets/')", Then: map[string]string{KeyDecision: "'deny'"}},
+		Rule{Hook: "resources/list.post", When: "resource.uri == 'file:///listed/secret.txt'", Then: map[string]string{KeyDecision: "'deny'"}},
+		Rule{Hook: "resources/templates/list.post", When: "template.uriTemplate.startsWith('file:///vault/')", Then: map[string]string{KeyDecision: "'deny'"}},
+	)
+	for _, uri := range []string{"file:///secrets/key", "file:///vault/a", "file:///listed/secret.txt", "FILE:///listed/secret.txt"} {
+		if o := (&Engine{}).ReadResource(ctx, newRequest("direct", s), &mcp.ReadResourceParams{URI: uri}); o.Forward != nil {
+			t.Fatalf("control: %s was forwarded", uri)
+		}
+	}
+	for _, uri := range []string{"FILE:///secrets/key", "File:///secrets/key", "FILE:///vault/a"} {
+		if o := (&Engine{}).ReadResource(ctx, newRequest("direct", s), &mcp.ReadResourceParams{URI: uri}); o.Forward != nil {
+			t.Errorf("%s was forwarded as %s", uri, asJSON(o.Forward.Params))
+		}
+	}
+}
+
+// A scheme in capitals is refused in every form: on the mux with the slug in
+// front, on a scheme with a "+", and with no "//". A dot segment written with
+// escapes is refused too.
+func TestASchemeInCapitalsIsRefusedInEveryForm(t *testing.T) {
+	ctx := context.Background()
+	cat := Catalog{Resources: []*mcp.Resource{{URI: "git+ssh://host/secret", Name: "g"}}}
+	s := newServer(t, cat, Rule{Hook: "resources/list.post", When: "resource.uri.startsWith('git+ssh://host/') || resource.uri.startsWith('file:///secrets/')", Then: map[string]string{KeyDecision: "'deny'"}})
+	s2 := newServer(t, Catalog{})
+	s2.Slug = "b"
+	mux := newRequest("direct", s)
+	mux.Route, mux.Servers = "mux", []*Server{s, s2}
+	for _, uri := range []string{"FILE:/secrets/key", "File:secrets/key", "file:///public/%2E%2E/secrets/key", "GIT+ssh://host/secret", "git+SSH://host/secret"} {
+		if o := (&Engine{}).ReadResource(ctx, newRequest("direct", s), &mcp.ReadResourceParams{URI: uri}); o.Forward != nil {
+			t.Errorf("direct: %s was forwarded", uri)
+		}
+	}
+	for _, uri := range []string{"a+FILE:///secrets/key", "A+file:///secrets/key", "a+git+SSH://host/secret", "a+GIT+ssh://host/secret", "a+git+ssh://host/secret", "git+ssh://host/secret"} {
+		o := (&Engine{}).ReadResource(ctx, mux, &mcp.ReadResourceParams{URI: uri})
+		if o.Forward != nil && strings.Contains(strings.ToLower(asJSON(o.Forward.Params)), `"git+ssh://host/secret"`) {
+			t.Errorf("mux: %s reached the denied resource: %s", uri, asJSON(o.Forward.Params))
+		}
+		if o.Forward != nil && strings.Contains(strings.ToLower(asJSON(o.Forward.Params)), "/secrets/") {
+			t.Errorf("mux: %s was forwarded: %s", uri, asJSON(o.Forward.Params))
+		}
+	}
+}
+
+// A deny written against a URI is not passed by another spelling of the same
+// URI. A server that reads a URI with a URL parser reads the denied resource
+// under each of them: Go's net/url gives the same path for file:/x and
+// file:///x and drops a fragment, and the WHATWG parser (Node, and so the
+// TypeScript SDK's McpServer, which looks a resource up by new
+// URL(uri).toString()) also folds file://localhost/, a leading space, a tab
+// inside the scheme, backslashes, the host's case and a default port. The
+// gateway refuses each such spelling on a read, on both routes, and drops it
+// from what a server returns.
+func TestAnotherSpellingOfADeniedURIIsRefused(t *testing.T) {
+	ctx := context.Background()
+	for _, pair := range [][2]string{{"file:/secrets/key", "file:///secrets/key"}, {"file:///listed/secret.txt#x", "file:///listed/secret.txt"}, {"file:/secrets/../secrets/key", "file:///secrets/key"}} {
+		a, _ := url.Parse(pair[0])
+		b, _ := url.Parse(pair[1])
+		if a == nil || b == nil || a.Scheme != b.Scheme || a.Host != b.Host || a.JoinPath().Path != b.JoinPath().Path {
+			t.Fatalf("the stated condition does not hold: net/url reads %s and %s differently", pair[0], pair[1])
+		}
+	}
+	cat := Catalog{
+		Resources: []*mcp.Resource{{URI: "file:///listed/secret.txt", Name: "listed"}, {URI: "https://wiki.example/private", Name: "w"}, {URI: "file:///listed/a%2Fb", Name: "enc"}},
+		Templates: []*mcp.ResourceTemplate{{URITemplate: "file:///vault/{name}", Name: "vault"}},
+	}
+	s := newServer(t, cat,
+		Rule{Hook: "resources/list.post", When: "resource.uri.startsWith('file:///secrets/')", Then: map[string]string{KeyDecision: "'deny'"}},
+		Rule{Hook: "resources/list.post", When: "resource.uri == 'file:///listed/secret.txt' || resource.uri == 'https://wiki.example/private' || resource.uri == 'file:///listed/a%2Fb'", Then: map[string]string{KeyDecision: "'deny'"}},
+		Rule{Hook: "resources/templates/list.post", When: "template.uriTemplate.startsWith('file:///vault/')", Then: map[string]string{KeyDecision: "'deny'"}},
+	)
+	s2 := newServer(t, Catalog{})
+	s2.Slug = "b"
+	mux := newRequest("direct", s)
+	mux.Route, mux.Servers = "mux", []*Server{s, s2}
+	for _, uri := range []string{"file:///secrets/key", "file:///listed/secret.txt", "https://wiki.example/private", "file:///listed/a%2Fb", "file:///vault/a"} {
+		if o := (&Engine{}).ReadResource(ctx, newRequest("direct", s), &mcp.ReadResourceParams{URI: uri}); o.Forward != nil {
+			t.Fatalf("control: %s was forwarded", uri)
+		}
+	}
+	for what, uris := range map[string][]string{
+		"a prefix deny": {"file:/secrets/key", "file://localhost/secrets/key", " file:///secrets/key", "fi\tle:///secrets/key", `file:\\\secrets\key`,
+			"file:/secrets/../secrets/key", "file:/%73ecrets/key"},
+		"an exact deny of a listed resource": {"file:/listed/secret.txt", "file://localhost/listed/secret.txt", "file:///listed/secret.txt#x", "file:///listed/secret.txt?x=1",
+			"https://WIKI.example/private", "https://wiki.example:443/private", "https://wiki.example/private#x", "file:///listed/a%2fb"},
+		"a denied template": {"file:/vault/a", "file://localhost/vault/a", "file:///vault/a#x", "file:///vault/a?x=1"},
+	} {
+		for _, uri := range uris {
+			if o := (&Engine{}).ReadResource(ctx, newRequest("direct", s), &mcp.ReadResourceParams{URI: uri}); o.Forward != nil {
+				t.Errorf("%s is passed by %q, forwarded as %s", what, uri, asJSON(o.Forward.Params))
+			}
+			if o := (&Engine{}).ReadResource(ctx, mux, &mcp.ReadResourceParams{URI: "a+" + uri}); o.Forward != nil {
+				t.Errorf("%s is passed on the mux by %q", what, "a+"+uri)
+			}
+		}
+	}
+	// The same on what a server returns: an entry for the denied file under
+	// another spelling is not passed to the client.
+	o := readReply(t, s, "file:///ok/a", `{"contents":[{"uri":"file:///ok/a","text":"A"},{"uri":"file:///secrets/key","text":"S0"},{"uri":"file:/secrets/key","text":"S1"},{"uri":"file://localhost/secrets/key","text":"S2"}]}`)
+	if got := outcomeText(o); strings.Contains(got, "S1") || strings.Contains(got, "S2") {
+		t.Errorf("a read result carried the denied file under another spelling: %s", got)
+	}
+}
+
+// A denied URI is not reached through an alias of its host or path: the long
+// form of an IPv6 address, a Unicode host for its punycode, a percent-encoded
+// or full-width host, an IP address written as one number, a port with a
+// leading zero, or a path left unencoded. This holds for a deny by prefix, by
+// exact URI, by the name of a listed resource and by template, on the direct
+// route and on the mux.
+func TestAHostOrPathAliasOfADeniedURIIsRefused(t *testing.T) {
+	pairs := [][2]string{
+		{"https://[::1]/private/x", "https://[0:0:0:0:0:0:0:1]/private/x"},
+		{"https://xn--bcher-kva.example/private/x", "https://bücher.example/private/x"},
+		{"https://wiki.example/private/x", "https://%77iki.example/private/x"},
+		{"https://127.0.0.1/private/x", "https://2130706433/private/x"},
+		{"https://wiki.example/private/x", "https://wiki.example:0443/private/x"},
+		{"https://wiki.example/private/x", "https://ｗｉｋｉ.example/private/x"},
+		{"https://wiki.example/caf%C3%A9/x", "https://wiki.example/café/x"},
+	}
+	for _, pair := range pairs {
+		for _, kind := range []string{"prefix", "exact", "hidden", "template"} {
+			t.Run(kind+"/"+pair[1], func(t *testing.T) {
+				cat := Catalog{}
+				rule := Rule{Hook: "resources/list.post", When: "resource.uri == " + fmt.Sprintf("%q", pair[0]), Then: map[string]string{KeyDecision: "'deny'"}}
+				switch kind {
+				case "prefix":
+					rule.When = "resource.uri.startsWith(" + fmt.Sprintf("%q", strings.TrimSuffix(pair[0], "x")) + ")"
+				case "hidden":
+					cat.Resources = []*mcp.Resource{{URI: pair[0], Name: "secret"}}
+					rule.When = "resource.?name.orValue('') == 'secret'"
+				case "template":
+					cat.Templates = []*mcp.ResourceTemplate{{URITemplate: strings.TrimSuffix(pair[0], "x") + "{id}", Name: "secret"}}
+					rule.Hook, rule.When = "resources/templates/list.post", "true"
+				}
+				s := newServer(t, cat, rule)
+				for _, route := range []string{"direct", "mux"} {
+					r := newRequest("direct", s)
+					r.Route = route
+					uri := func(u string) string {
+						if route == "mux" {
+							return "a+" + u
+						}
+						return u
+					}
+					e := &Engine{}
+					if o := e.ReadResource(context.Background(), r, &mcp.ReadResourceParams{URI: uri(pair[0])}); o.Forward != nil {
+						t.Fatalf("control forwarded: %s", outcomeText(o))
+					}
+					if o := e.ReadResource(context.Background(), r, &mcp.ReadResourceParams{URI: uri(pair[1])}); o.Forward != nil {
+						t.Errorf("%s alias forwarded: %s", route, asJSON(o.Forward.Params))
+					}
+				}
+			})
+		}
+	}
+}
+
+// The URI checks never panic, and a slug put in front of a URI comes off
+// again with the URI unchanged.
+func FuzzURIPrefixRoundTrip(f *testing.F) {
+	for _, s := range []string{"file:///a", "git+ssh://x", "skill://a/../private/SKILL.md", "file:///a%2Fb", "file:///a?q=/../x", "urn:example:a"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, u string) {
+		if len(u) > 4096 {
+			t.Skip()
+		}
+		_ = nonCanonical(u)
+		_ = canonicalURI(u)
+		if strings.IndexByte(u, ':') <= 0 {
+			return
+		}
+		slug, rest, ok := SplitURI(PrefixURI("docs", u))
+		if !ok || slug != "docs" || rest != u {
+			t.Fatalf("prefix round trip lost identity: %q => %q %q %v", u, slug, rest, ok)
+		}
+	})
 }

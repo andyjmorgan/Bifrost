@@ -294,13 +294,8 @@ func soakCatalogFor(cat []*mcp.Tool, name string) []*mcp.Tool {
 	return append(append([]*mcp.Tool(nil), cat...), &mcp.Tool{Name: name, InputSchema: map[string]any{"type": "object"}})
 }
 
-var soakElicitSet = func() *Set {
-	s, _ := Compile([]Rule{{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Go {id}?', {'id': string(request.params.arguments.id)})"}}})
-	return s
-}()
-
 func soakElicit(ctx context.Context, e *Engine, fail func(string)) {
-	s := &Server{Slug: "a", Generation: "1", Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
+	s := &Server{Slug: "a", Generation: "1", Rules: confirmEveryCallSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}}
 	first := e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"id":1}`)})
 	ir, ok := first.Result.(InputRequired)
@@ -427,7 +422,7 @@ var soakStreamSeq atomic.Int64
 // soakAbandonedAsk asks for a confirmation and never answers it. The store
 // must drop the entry when it expires: the heap check finds it if not.
 func soakAbandonedAsk(ctx context.Context, e *Engine, fail func(string)) {
-	s := &Server{Slug: "a", Generation: "1", Rules: soakElicitSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
+	s := &Server{Slug: "a", Generation: "1", Rules: confirmEveryCallSet, Catalog: Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object"}}}}}
 	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}}
 	first := e.CallTool(ctx, r, &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{"id":1}`)})
 	if _, ok := first.Result.(InputRequired); !ok && ctx.Err() == nil {

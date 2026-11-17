@@ -41,6 +41,15 @@ func zero(t ValueType) string {
 	return "'x'"
 }
 
+func hasProblem(probs Problems, field string) bool {
+	for _, p := range probs {
+		if p.Field == field {
+			return true
+		}
+	}
+	return false
+}
+
 // Every hook has the request, with every flag and both routes, and a rule
 // reading a flag that does not exist is refused when it is saved.
 func TestEveryHookHasTheRequest(t *testing.T) {
@@ -135,6 +144,34 @@ func TestASetOnAPathThatCannotBeChangedIsRefused(t *testing.T) {
 		probs := compiles(c.hook, "true", map[string]string{c.key: "'deny'"})
 		if !hasProblem(probs, c.key) || !strings.Contains(probs.Error(), c.has) {
 			t.Errorf("%s set %s: %v, want it to say %q", c.hook, c.key, probs, c.has)
+		}
+	}
+}
+
+// Nothing outside the hook's own branch can be set, and nothing inside it
+// that the tree does not mark.
+func TestOnlyTheHooksOwnBranchCanBeSet(t *testing.T) {
+	for _, c := range [][3]string{
+		{"tools/list.post", "tool.upstream.name", "'x'"}, {"tools/list.post", "tool._meta", "{}"}, {"tools/list.post", "tool._meta.a.b", "'x'"},
+		{"tools/list.post", "tool.annotations", "{}"}, {"tools/list.post", "tool.inputSchema", "{}"}, {"tools/list.post", "tool.inputSchema.properties.q.description", "'x'"},
+		{"tools/list.post", "tool.params.q", "{}"}, {"tools/list.post", "tool.params.q.type", "'x'"}, {"tools/list.post", "tool.params.*.hide", "true"}, {"tools/list.post", "tool.params..hide", "true"},
+		{"tools/list.post", "tool.icons", "[]"}, {"tools/list.post", "request.params.arguments.x", "1"}, {"tools/list.post", "timeout", "duration('1s')"}, {"tools/list.post", KeyConfirm, "{}"},
+		{"tools/call.pre", "tool.name", "'x'"}, {"tools/call.pre", "request.params.name", "'x'"}, {"tools/call.pre", "request.params.arguments", "{}"}, {"tools/call.pre", "request.params._meta.x", "'x'"},
+		{"tools/call.pre", "request.params.arguments.a.b", "'x'"}, {"tools/call.pre", "request.caller.role", "'x'"}, {"tools/call.pre", "request.confirmations.x", "{}"}, {"tools/call.pre", "request.headers.x", "'x'"},
+		{"tools/call.pre", "request.upstream.params.arguments.x", "'x'"}, {"tools/call.pre", "request.params.timeout", "duration('1s')"}, {"tools/call.pre", "timeout.x", "'x'"},
+		{"tools/call.post.result", "response.upstream.result.content", "[]"}, {"tools/call.post.result", "response.result.isError", "false"}, {"tools/call.post.result", "response.result._meta.x", "1"},
+		{"tools/call.post.result", "response.result.content.0", "{}"}, {"tools/call.post.result", "response.result.structuredContent.a", "1"}, {"tools/call.post.result", "response.result", "{}"},
+		{"tools/call.post.result", "request.params.arguments.x", "1"}, {"tools/call.post.result", "tool.name", "'x'"},
+		{"tools/call.post.elicit", "elicitation.params.requestedSchema", "{}"}, {"tools/call.post.elicit", "elicitation.params.foo", "1"}, {"tools/call.post.elicit", "elicitation.upstream.params.message", "'x'"}, {"tools/call.post.elicit", "elicitation.key", "'x'"},
+		{"tools/call.post.progress", "progress.params.progress", "1"}, {"tools/call.post.progress", "progress.upstream.params.message", "'x'"},
+		{"resources/read.post.result", "response.result.contents.0.text", "'x'"}, {"resources/read.post.result", "response.result._meta.x", "'x'"}, {"resources/read.post.result", "response.upstream.result.contents", "[]"},
+		{"resources/read.pre", "request.params.uri", "'x'"}, {"resources/list.post", "resource.uri", "'x'"}, {"resources/list.post", "resource.name", "'x'"}, {"resources/list.post", "resource.upstream.title", "'x'"},
+		{"prompts/list.post", "prompt.arguments", "[]"}, {"prompts/list.post", "prompt.params.tone.required", "true"}, {"prompts/list.post", "prompt.params.tone", "{}"}, {"prompts/list.post", "prompt.upstream.name", "'x'"},
+		{"server/discover.post", "server.slug", "'x'"}, {"server/discover.post", "server.upstream.title", "'x'"}, {"server/discover.post", "server.name", "'x'"},
+		{"server.settings", "settings.nosuch", "true"}, {"server.session", "session.capabilities", "{}"}, {"server.session", "session.capabilities.sampling", "true"}, {"skills/list.post", "skill.name", "'x'"},
+	} {
+		if probs, _ := saveRule(c[0], "true", map[string]string{c[1]: c[2]}); probs == nil {
+			t.Errorf("%s: set %s compiled", c[0], c[1])
 		}
 	}
 }

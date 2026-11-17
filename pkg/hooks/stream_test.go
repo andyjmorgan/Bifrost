@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"iter"
 	"strings"
 	"testing"
 	"time"
@@ -13,93 +12,6 @@ import (
 )
 
 // ---- helpers ---------------------------------------------------------------------
-
-// upstreamSeq plays events as an upstream would, and records how far the
-// engine read and whether it let go of the stream.
-type upstreamSeq struct {
-	events []UpstreamEvent
-	fail   error // yielded after the events, when set
-	pulled int
-	closed bool
-}
-
-func (u *upstreamSeq) seq() iter.Seq2[UpstreamEvent, error] {
-	return func(yield func(UpstreamEvent, error) bool) {
-		defer func() { u.closed = true }()
-		for _, ev := range u.events {
-			u.pulled++
-			if !yield(ev, nil) {
-				return
-			}
-		}
-		if u.fail != nil {
-			yield(UpstreamEvent{}, u.fail)
-		}
-	}
-}
-
-func progressEvent(params string) UpstreamEvent {
-	return UpstreamEvent{Method: ProgressMethod, Params: json.RawMessage(params)}
-}
-
-func resultEvent(result string) UpstreamEvent {
-	return UpstreamEvent{Result: json.RawMessage(result)}
-}
-
-// reply is everything one stream yielded.
-type reply struct {
-	notes []ReplyEvent
-	final *Outcome
-	err   error
-	order []string // "note" or "final", in the order yielded
-}
-
-func collect(seq iter.Seq2[ReplyEvent, error]) reply {
-	var r reply
-	for ev, err := range seq {
-		switch {
-		case err != nil:
-			r.err = err
-		case ev.Final != nil:
-			r.final = ev.Final
-			r.order = append(r.order, "final")
-		default:
-			r.notes = append(r.notes, ev)
-			r.order = append(r.order, "note")
-		}
-	}
-	return r
-}
-
-// streamCase is one tool behind one rule set, with a forwarded call ready
-// for its reply.
-type streamCase struct {
-	e      *Engine
-	r      Request
-	call   *CallContext
-	params *mcp.CallToolParamsRaw
-}
-
-func newStreamCase(t *testing.T, route string, rules []Rule, limits Limits) *streamCase {
-	t.Helper()
-	e := &Engine{Limits: limits}
-	s := &Server{Slug: "a", Generation: "1", Info: ServerInfo{ProtocolVersion: ProtocolCurrent}, Rules: mustCompile(t, rules), Catalog: Catalog{Tools: []*mcp.Tool{typedTool()}}}
-	r := reviewRequest(route, s)
-	name := "t"
-	if route == "mux" {
-		name = "a" + Separator + "t"
-	}
-	p := &mcp.CallToolParamsRaw{Name: name, Arguments: json.RawMessage(`{"q":"abc","limit":5}`)}
-	first := e.CallTool(context.Background(), r, p)
-	if first.Forward == nil {
-		t.Fatalf("the call was not forwarded: %+v %+v", first.Error, first.Result)
-	}
-	return &streamCase{e: e, r: r, call: first.Call, params: p}
-}
-
-func (c *streamCase) run(u *upstreamSeq) reply {
-	return collect(c.e.ToolReplyStream(context.Background(), c.r, c.call, c.params, u.seq()))
-}
 
 func textOf(t *testing.T, o *Outcome) string {
 	t.Helper()
@@ -314,6 +226,53 @@ func TestProgressAllowanceSpentDropsEventsNotTheResult(t *testing.T) {
 	// One flood must not leave one hit per event.
 	if n := len(got.final.Hits); n > 5 {
 		t.Errorf("%d hits for a flood of dropped events", n)
+	}
+}
+
+// Progress fails closed on each method, one event at a time: an event the
+// rule cannot evaluate is dropped, an event the rule denies is dropped, the
+// next event is relayed, and the result is untouched.
+func TestAProgressEventItsRuleCannotJudgeIsDropped(t *testing.T) {
+	for _, family := range []string{"tools/call", "prompts/get", "resources/read"} {
+		t.Run(family, func(t *testing.T) {
+			s := newServer(t, Catalog{Tools: anyArgsTool.Tools, Prompts: []*mcp.Prompt{{Name: "p"}}}, Rule{Hook: family + ".post.progress", When: "progress.params.message == 'secret'", Then: map[string]string{KeyDecision: "'deny'"}})
+			e, r, ctx := &Engine{}, newRequest("direct", s), context.Background()
+			seq := (&upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progress":1}`), progressEvent(`{"progress":2,"message":"secret"}`), progressEvent(`{"progress":3,"message":"public"}`), resultEvent(`{"content":[],"messages":[],"contents":[]}`)}}).seq()
+			var got reply
+			switch family {
+			case "tools/call":
+				p := &mcp.CallToolParamsRaw{Name: "t"}
+				o := e.CallTool(ctx, r, p)
+				got = collect(e.ToolReplyStream(ctx, r, o.Call, p, seq))
+			case "prompts/get":
+				p := &mcp.GetPromptParams{Name: "p"}
+				o := e.GetPrompt(ctx, r, p)
+				got = collect(e.PromptReplyStream(ctx, r, o.Call, p, seq))
+			default:
+				p := &mcp.ReadResourceParams{URI: "docs://a"}
+				o := e.ReadResource(ctx, r, p)
+				got = collect(e.ReadReplyStream(ctx, r, o.Call, p, seq))
+			}
+			if len(got.notes) != 1 || !strings.Contains(string(got.notes[0].Params), "public") || got.final == nil || got.final.Error != nil {
+				t.Errorf("progress did not fail closed independently of the result: %+v", got)
+			}
+		})
+	}
+}
+
+// A progress rule cannot make an event larger than the response size cap, and
+// the result keeps its own allowance.
+func TestARewrittenProgressEventRespectsTheSizeCap(t *testing.T) {
+	c := newStreamCase(t, "direct", []Rule{{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"progress.params.message": "'" + strings.Repeat("x", 4096) + "'"}}}, Limits{MaxResponseBytes: 1024})
+	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1,"message":"small"}`), resultEvent(`{"content":[]}`)}}
+	got := c.run(u)
+	if got.final == nil || got.final.Error != nil {
+		t.Fatalf("final must retain its allowance: %+v", got.final)
+	}
+	for _, ev := range got.notes {
+		if len(ev.Params) > c.e.Limits.maxBytes() {
+			t.Fatalf("shaped progress of %d bytes exceeded the %d byte cap", len(ev.Params), c.e.Limits.maxBytes())
+		}
 	}
 }
 
@@ -537,6 +496,47 @@ func TestConsumerPanicPassesThrough(t *testing.T) {
 	}
 }
 
+// A panic inside a progress rule drops only that event, and it is reported:
+// once to the fault callback and on the final outcome.
+func TestAPanicInAProgressRuleIsReported(t *testing.T) {
+	c := newStreamCase(t, "direct", nil, Limits{})
+	c.call.Server.Rules = boomSet(t, "tools/call.post.progress", false)
+	var faults []Fault
+	c.e.OnFault = func(f Fault) { faults = append(faults, f) }
+	u := &upstreamSeq{events: []UpstreamEvent{progressEvent(`{"progressToken":"p","progress":1}`), resultEvent(`{"content":[]}`)}}
+	got := c.run(u)
+	if len(got.notes) != 0 || got.final == nil || got.final.Error != nil {
+		t.Fatalf("a progress failure must drop only that event: %+v", got)
+	}
+	if len(faults) != 1 || got.final.Fault == nil {
+		t.Fatalf("CEL panic in progress silently omitted from fault reporting: callbacks=%d finalFault=%v hits=%+v", len(faults), got.final.Fault, got.final.Hits)
+	}
+}
+
+// An upstream that panics while it is being closed, after the result was
+// sent, gets one fault report and no second final event.
+func TestAPanicWhileClosingTheUpstreamSendsNoSecondFinal(t *testing.T) {
+	c := newStreamCase(t, "direct", nil, Limits{})
+	var reported int
+	c.e.OnFault = func(Fault) { reported++ }
+	u := func(yield func(UpstreamEvent, error) bool) {
+		defer func() { panic("upstream close failed") }()
+		yield(resultEvent(`{"content":[{"type":"text","text":"done"}]}`), nil)
+	}
+	finals := 0
+	for ev, err := range c.e.ToolReplyStream(context.Background(), c.r, c.call, c.params, u) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.Final != nil {
+			finals++
+		}
+	}
+	if finals != 1 || reported != 1 {
+		t.Fatalf("want one final and one admin fault, got finals=%d faults=%d", finals, reported)
+	}
+}
+
 // ---- the other two families ------------------------------------------------------
 
 func TestPromptAndReadStreamsUseTheirOwnProgressHook(t *testing.T) {
@@ -550,7 +550,7 @@ func TestPromptAndReadStreamsUseTheirOwnProgressHook(t *testing.T) {
 		Prompts:   []*mcp.Prompt{{Name: "summarize"}},
 		Resources: []*mcp.Resource{{URI: "file:///doc", Name: "doc"}},
 	}}
-	r := reviewRequest("direct", s)
+	r := newRequest("direct", s)
 	ctx := context.Background()
 	ev := progressEvent(`{"progressToken":"p","progress":1,"message":"working"}`)
 

@@ -247,41 +247,6 @@ func TestSlugGrammar(t *testing.T) { // RH-MUX-16
 
 // ---- real corpus (RH-PRF-02, RH-PRF-03, ADV-28) ---------------------------------------
 
-func realTools(t testing.TB) []*mcp.Tool {
-	t.Helper()
-	tools, err := loadToolRef("../../internal/e2e/testdata/real", "corpus.json#tools", 0)
-	if err != nil {
-		t.Skip("real corpus not present: run scripts/fixtures")
-	}
-	return tools
-}
-
-// realisticRules is a 20-rule policy of the kind an administrator writes.
-func realisticRules() []Rule {
-	return []Rule{
-		{Hook: "tools/list.post", When: "tool.name.matches('^(delete|drop|purge|destroy)_')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "request.caller.role != 'admin' && tool.name.startsWith('admin')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "tool.?annotations.?destructiveHint.orValue(false) && request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "tool.?description.orValue('').contains('DEPRECATED')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "size(tool.name) > 64", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/list.post", When: "size(tool.?description.orValue('')) > 1000", Then: map[string]string{"tool.description": "tool.description.substring(0, 1000)"}},
-		{Hook: "tools/list.post", When: "tool.name.startsWith('datadog_')", Then: map[string]string{"tool.name": "regex.replace(tool.name, '^datadog_', 'dd_')"}},
-		{Hook: "tools/list.post", When: "has(tool.description)", Then: map[string]string{"tool.description": "regex.replace(tool.description, '(?i)confluence', 'the wiki')"}},
-		{Hook: "tools/list.post", When: "'limit' in tool.params", Then: map[string]string{"tool.params.limit.maximum": "100"}},
-		{Hook: "tools/list.post", When: "'query' in tool.params", Then: map[string]string{"tool.params.query.description": "'Search text'"}},
-		{Hook: "tools/list.post", When: "!tool.?annotations.?readOnlyHint.hasValue() && tool.name.startsWith('get_')", Then: map[string]string{"tool.annotations.readOnlyHint": "true"}},
-		{Hook: "tools/list.post", When: "tool.name.contains('search')", Then: map[string]string{"tool.title": "'Search: ' + tool.name"}},
-		{Hook: "tools/list.post", When: "'org' in tool.params", Then: map[string]string{"tool.params.org.default": "'acme'"}},
-		{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool._meta.ai\\.bifrost/reviewed": "true"}},
-		{Hook: "tools/list.post", When: "tool.name.endsWith('_v2')", Then: map[string]string{"tool.name": "tool.name.substring(0, size(tool.name) - 3)"}},
-		{Hook: "tools/call.pre", When: "has(request.params.arguments.limit) && request.params.arguments.limit > 100", Then: map[string]string{"request.params.arguments.limit": "100"}},
-		{Hook: "tools/call.pre", When: "has(request.params.arguments.env) && request.params.arguments.env == 'prod' && request.caller.role != 'admin'", Then: map[string]string{"decision": "'deny'", "reason": "'Production is blocked.'"}},
-		{Hook: "tools/call.pre", When: "has(request.params.arguments.from) && has(request.params.arguments.to) && timestamp(request.params.arguments.to) - timestamp(request.params.arguments.from) > duration('168h')", Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "tools/call.post.result", When: "has(response.result.structuredContent)", Then: map[string]string{"response.result.content": "[]"}},
-		{Mode: "audit", Hook: "tools/list.post", When: "tool.name.contains('write')", Then: map[string]string{"decision": "'deny'"}},
-	}
-}
-
 func TestCorpusIdentityWithoutRules(t *testing.T) { // RH-PRF-03
 	tools := realTools(t)
 	set, _ := Compile(nil)
