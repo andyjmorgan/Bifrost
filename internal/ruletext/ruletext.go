@@ -275,20 +275,13 @@ func confirmCall(hook, lit string) (call string, err error) {
 		// The expression runs to the matching }, and a brace inside a
 		// string in it is text, not a bracket.
 		depth, j := 1, i+1
-		var quote byte
 		for ; j < len(msg) && depth > 0; j++ {
-			switch c := msg[j]; {
-			case quote != 0:
-				if c == '\\' {
-					j++
-				} else if c == quote {
-					quote = 0
-				}
-			case c == '\'' || c == '"':
-				quote = c
-			case c == '{':
+			switch c := msg[j]; c {
+			case '\'', '"':
+				j = skipString(msg, j) // plain, raw and triple-quoted alike
+			case '{':
 				depth++
-			case c == '}':
+			case '}':
 				depth--
 			}
 		}

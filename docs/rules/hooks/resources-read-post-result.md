@@ -15,8 +15,8 @@ It does not run on directory reads, or when the server replies with `input_requi
 
 | Branch | Notable fields |
 | --- | --- |
-| `response.result` | `response.result.contents`, the list of entries, as earlier rules left it. Each entry has `uri`, and `mimeType`, `text`, `blob` and `_meta` where the server sent them |
-| `response.upstream` | The response as the server produced it: `response.upstream.result.contents`. It holds the entries this caller may read, and never changes |
+| `response.result` | `response.result.contents`, the list of entries, as earlier rules left it. Each entry has `uri`, and `mimeType`, `text`, `blob`, `_meta` and any other key where the server sent them. `response.result.resultType` and `response.result._meta` are there when the server sent them |
+| `response.upstream` | The response as the server produced it: `response.upstream.result`, with the same fields. Its `contents` holds the entries this caller may read, and never changes |
 | `resource` | The resource the read named. Each entry of `contents` has its own `uri` |
 | `resource.upstream` | That resource as the server declares it |
 | `request.params` | `request.params.uri`, the URI the read named |
@@ -76,7 +76,7 @@ For skills, the gateway builds one rewrite plan for each skill. It runs these ru
 - Rules that read `request` are not applied to skill files, because listing and reading would produce different bytes. That includes `request.caller`, `request.client`, `request.time` and `request.route`. The skill is served unchanged, and the listing reports why.
 - Files the caller cannot read are never fetched or rewritten.
 
-On a read, `SKILL.md` and each file that a visible skill's manifest lists keep the bytes the manifest describes, whatever a rule sets at read time. This holds for a file in a nested skill's folder that an outer skill's manifest lists. When a rule's change is set aside this way, the gateway records an issue. A rule can still block the read or drop the entry. A file under the skill's folder that the manifest does not list is an ordinary entry, and a rule's change to it stands. For a dynamic skill, which has no manifest, every file under the folder is served as the server sent it.
+On a read, `SKILL.md` and each file that a visible skill's manifest lists keep the bytes the manifest describes, whatever a rule sets at read time. This holds for a file in a nested skill's folder that an outer skill's manifest lists. When a rule's change is set aside this way, the gateway records an issue. A file that more than one skill answers for is never rewritten, so no manifest promises bytes a read does not return. A second entry in one read for a file a skill vouches for is dropped. A rule can still block the read or drop the entry. A file under the skill's folder that the manifest does not list is an ordinary entry, and a rule's change to it stands. For a dynamic skill, which has no manifest, every file under the folder is served as the server sent it.
 
 `response.upstream` always holds the server's own bytes, also for a skill file that the plan rewrote.
 

@@ -2,9 +2,11 @@ package hooks
 
 import (
 	"fmt"
+	"net/netip"
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -122,26 +124,55 @@ func normalizeURI(u string) string {
 // rule reads a URI as text, and a deny written against file:///secrets/
 // matches only that spelling. A server that reads URIs with a URL parser
 // takes FILE:///secrets/key, file:/secrets/key, file://localhost/secrets/key
-// and file:///secrets/./key for the same file. The gateway does not try to
-// guess what a server folds together: it refuses every spelling but one.
+// and file:///secrets/./key for the same file.
 //
-// The one spelling:
-//   - no spaces, control characters or backslashes
-//   - the scheme in lower case
-//   - "//" after the scheme when the path starts with a slash, and always
-//     for the schemes a URL parser treats as hierarchical
-//   - for those schemes, the host in lower case, with no user, no trailing
-//     dot, no empty or default port, and for file no "localhost"
-//   - in the path: no "." or ".." segments, no empty segments, percent
-//     escapes in upper-case hex, and none for a character that needs none
-//   - no fragment: a fragment is the client's, and never names a resource
+// The gateway does not list the spellings it refuses: every review found
+// one more. It says what a URI must look like, and refuses the rest.
 //
-// The query is left alone. It often carries another URL, such as
-// web://fetch?url=https://example.com/a, and that is not a path.
+//   - Before the query, every character is one a URI may hold as it is:
+//     letters, digits and any of -._~!$&'()*+,;=:@/%[]. Anything else,
+//     such as a brace or a letter that is not ASCII, must be
+//     percent-encoded. There is no fragment.
+//   - A percent escape is "%" and two upper-case hex digits, and never for
+//     a letter, a digit or - . _ ~, which need none.
+//   - The scheme is in lower case.
+//   - "//" follows the scheme when the path starts with a slash, and always
+//     for the schemes a URL parser treats as hierarchical.
+//   - For those schemes the host is a name in lower case, a dotted IPv4
+//     address or an IPv6 address in its shortest form, with no user, and a
+//     port that is not empty, not the default and has no leading zero.
+//     file has no "localhost".
+//   - For any other scheme, such as confluence://ENG/home, what follows
+//     "//" is the server's own text and is compared as written; only a port
+//     is checked.
+//   - The path has no "." or ".." segments and no empty segments.
 func nonCanonical(u string) bool {
+	// Nowhere, the query included: a space, a control character, a
+	// backslash, which a URL parser drops or turns, or a fragment.
 	for i := 0; i < len(u); i++ {
 		if c := u[i]; c <= ' ' || c == 0x7f || c == '\\' || c == '#' {
 			return true
+		}
+	}
+	// The query is the server's to read and is not checked further. It
+	// often carries another URL, such as web://fetch?url=https://x/a/../b.
+	// A hidden resource and a denied template are matched without it.
+	if q := strings.IndexByte(u, '?'); q >= 0 {
+		u = u[:q]
+	}
+	for i := 0; i < len(u); i++ {
+		if !uriChar[u[i]] {
+			return true
+		}
+		if u[i] == '%' {
+			if i+2 >= len(u) {
+				return true
+			}
+			hex := u[i+1 : i+3]
+			b, err := hexByte(hex)
+			if err != nil || isUnreserved(b) || hex != strings.ToUpper(hex) {
+				return true
+			}
 		}
 	}
 	i := strings.IndexAny(u, ":/?")
@@ -149,7 +180,7 @@ func nonCanonical(u string) bool {
 		return false // no scheme: not a URI a server resolves; left to the lookup
 	}
 	scheme, rest := u[:i], u[i+1:]
-	if scheme != strings.ToLower(scheme) {
+	if !validScheme(scheme) {
 		return true
 	}
 	if !strings.HasPrefix(rest, "//") {
@@ -158,51 +189,109 @@ func nonCanonical(u string) bool {
 		return strings.HasPrefix(rest, "/") || hierarchical[scheme]
 	}
 	rest = rest[2:]
-	if q := strings.IndexByte(rest, '?'); q >= 0 {
-		rest = rest[:q]
-	}
-	host, p := rest, ""
+	authority, p := rest, ""
 	if j := strings.IndexByte(rest, '/'); j >= 0 {
-		host, p = rest[:j], rest[j:]
+		authority, p = rest[:j], rest[j:]
 	}
-	// Only for the schemes a URL parser knows does it fold the host. For
-	// any other scheme, such as confluence://ENG/home, what follows "//" is
-	// the server's own text and is compared as written.
-	if hierarchical[scheme] {
-		if host != strings.ToLower(host) || strings.ContainsRune(host, '@') || strings.HasSuffix(host, ".") {
-			return true
-		}
-		if scheme == "file" && host == "localhost" {
-			return true
-		}
-		if j := strings.LastIndexByte(host, ':'); j >= 0 && !strings.HasSuffix(host, "]") {
-			if port := host[j+1:]; port == "" || port == defaultPort[scheme] {
-				return true
-			}
-		}
+	if !validAuthority(scheme, authority) {
+		return true
 	}
 	for _, seg := range strings.Split(p, "/") {
 		if seg == "." || seg == ".." {
 			return true
 		}
 	}
-	if strings.Contains(p, "//") {
+	return strings.Contains(p, "//")
+}
+
+// uriChar marks the characters a URI may hold as they are.
+var uriChar = func() (t [256]bool) {
+	for c := 'a'; c <= 'z'; c++ {
+		t[c], t[c-'a'+'A'] = true, true
+	}
+	for c := '0'; c <= '9'; c++ {
+		t[c] = true
+	}
+	for _, c := range "-._~!$&'()*+,;=:@/?%[]" {
+		t[c] = true
+	}
+	return t
+}()
+
+func validScheme(s string) bool {
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case i > 0 && (c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'):
+		default:
+			return false
+		}
+	}
+	return s != ""
+}
+
+// validAuthority checks what follows "//": a host and perhaps a port.
+func validAuthority(scheme, a string) bool {
+	host, port, hasPort := a, "", false
+	if strings.HasPrefix(a, "[") {
+		end := strings.IndexByte(a, ']')
+		if end < 0 {
+			return false
+		}
+		host = a[:end+1]
+		if tail := a[end+1:]; tail != "" {
+			if tail[0] != ':' {
+				return false
+			}
+			port, hasPort = tail[1:], true
+		}
+	} else if j := strings.LastIndexByte(a, ':'); j >= 0 && (hierarchical[scheme] || a[j+1:] == "" || isDigits(a[j+1:])) {
+		// For another scheme, text after a colon that is not a number is
+		// the server's own and no parser reads it as a port.
+		host, port, hasPort = a[:j], a[j+1:], true
+	}
+	if hasPort {
+		// A URL parser reads a port as a number: 0443 is 443, and an empty
+		// one is none.
+		n, err := strconv.Atoi(port)
+		if err != nil || n > 65535 || port != strconv.Itoa(n) || port == defaultPort[scheme] {
+			return false
+		}
+	}
+	if !hierarchical[scheme] {
 		return true
 	}
-	for j := 0; j < len(p); j++ {
-		if p[j] != '%' {
-			continue
+	switch {
+	case host == "":
+		return scheme == "file" && !hasPort
+	case scheme == "file" && host == "localhost":
+		return false
+	case strings.HasPrefix(host, "["):
+		ip, err := netip.ParseAddr(host[1 : len(host)-1])
+		return err == nil && ip.Is6() && !ip.Is4In6() && ip.Zone() == "" && ip.String() == host[1:len(host)-1]
+	}
+	// A name: labels of lower-case letters, digits and hyphens. That leaves
+	// out a user ("@"), an escape ("%") and anything not ASCII, so a name
+	// in another script comes as punycode.
+	labels := strings.Split(host, ".")
+	for _, l := range labels {
+		if l == "" {
+			return false // a leading, trailing or doubled dot
 		}
-		if j+2 >= len(p) {
-			return true // a "%" with no two hex digits after it
-		}
-		hex := p[j+1 : j+3]
-		b, err := hexByte(hex)
-		if err != nil || isUnreserved(b) || hex != strings.ToUpper(hex) {
-			return true
+		for _, c := range l {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
 		}
 	}
-	return false
+	// A URL parser reads a host that ends in a number as an IPv4 address,
+	// in any of several notations: 2130706433, 0x7f.1 and 127.1 are all
+	// 127.0.0.1. Only the dotted form of four is accepted.
+	if last := labels[len(labels)-1]; isDigits(last) || strings.HasPrefix(last, "0x") {
+		ip, err := netip.ParseAddr(host)
+		return err == nil && ip.Is4() && ip.String() == host
+	}
+	return true
 }
 
 // hierarchical are the schemes a URL parser gives a "//" to when it is
@@ -220,8 +309,10 @@ func bare(u string) string {
 	if q := strings.IndexByte(u, '?'); q >= 0 {
 		u = u[:q]
 	}
-	if _, rest, ok := strings.Cut(u, "://"); ok && strings.Count(rest, "/") > 1 {
-		u = strings.TrimSuffix(u, "/")
+	// https://wiki.example/ and https://wiki.example are one URI to a URL
+	// parser, so the slash after the host goes too.
+	if strings.HasSuffix(u, "/") && !strings.HasSuffix(u, "//") {
+		u = u[:len(u)-1]
 	}
 	return u
 }

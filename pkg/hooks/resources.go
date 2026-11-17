@@ -165,6 +165,9 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 	}
 	ci, chits := e.Connect(ctx, r, s, e.version())
 	o.Hits = append(o.Hits, chits...)
+	if expired(ctx) {
+		return budgetOutcome(o) // the session rules spent what was left
+	}
 	if ci.ForwardMeta {
 		fp.Meta = forwardMeta(p.Meta)
 	}
@@ -409,6 +412,11 @@ func (e *Engine) planSkill(ctx context.Context, r Request, s *Server, v *resView
 		if _, readable, _ := e.checkURI(ctx, r, s, v, m.URI); !readable {
 			continue // never fetch or rewrite a file the caller cannot read
 		}
+		if v.shared(sk, m.URI) {
+			// Another skill answers for this file too. Two plans could
+			// promise different bytes for it, so it keeps the server's.
+			continue
+		}
 		text, hits, denied, err := e.applyResultRules(ctx, r, s, v, m.URI, *f.Text, f.MIMEType)
 		p.hits = append(p.hits, hits...)
 		if err != nil || denied {
@@ -479,6 +487,21 @@ func (e *Engine) skillEntry(ctx context.Context, r Request, s *Server, v *resVie
 	return entry, issues, plan.hits
 }
 
+// shared reports a file that a skill other than sk also answers for: the
+// other skill's manifest lists it, or the other skill is dynamic and the
+// file is under its folder.
+func (v *resView) shared(sk Skill, uri string) bool {
+	for _, other := range v.skills {
+		if other.URI == sk.URI || !underRoot(uri, other.Root()) {
+			continue
+		}
+		if ms, isManifest := other.manifest(); !isManifest || inManifest(ms, uri) {
+			return true
+		}
+	}
+	return false
+}
+
 // vouchedBy returns a visible skill that vouches for the bytes of a file:
 // the file is the skill's SKILL.md, the skill's manifest lists it, or the
 // skill is dynamic, with no manifest, and the file is under its folder.
@@ -512,7 +535,7 @@ func (v *resView) vouchedBy(uri string) (Skill, bool) {
 // entry but not bring in a URI the read did not return: the entries here
 // are already the ones this caller may read, and nothing else may join
 // them.
-func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView, uri string, roots map[string]any, contents, sent []any) (out []any, hits []Hit, reason string, denied bool, err error) {
+func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView, uri string, roots map[string]any, result map[string]any, contents, sent []any) (out []any, hits []Hit, reason string, denied bool, err error) {
 	res := map[string]any{"uri": uri}
 	known, listed := v.visibleRes[normalizeURI(uri)]
 	if listed {
@@ -525,11 +548,19 @@ func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView
 	// has already rewritten a skill's file.
 	original := celValue(sent)
 	cur := contents
-	response := func() map[string]any {
-		return map[string]any{
-			"result":   map[string]any{"contents": celValue(cur)},
-			"upstream": map[string]any{"result": map[string]any{"contents": original}},
+	// result is the server's result. Its other fields, such as resultType
+	// and _meta, are there for a rule to read on both sides; contents is
+	// the one a rule may change.
+	with := func(contents any) map[string]any {
+		m := make(map[string]any, len(result)+1)
+		for k, x := range result {
+			m[k] = x
 		}
+		m["contents"] = contents
+		return m
+	}
+	response := func() map[string]any {
+		return map[string]any{"result": with(celValue(cur)), "upstream": map[string]any{"result": with(original)}}
 	}
 	roots["response"] = response()
 	roots[muxVar] = muxContext(r.route(), s.Slug, v.owned())
@@ -590,7 +621,7 @@ func (e *Engine) applyResultRules(ctx context.Context, r Request, s *Server, v *
 	}
 	roots := r.context(s).roots("resources/read", map[string]any{"uri": uri})
 	requestOf(roots)["upstream"] = map[string]any{"params": map[string]any{"uri": uri}}
-	out, hits, _, denied, err := e.readRules(ctx, r, s, v, uri, roots, []any{content}, []any{content})
+	out, hits, _, denied, err := e.readRules(ctx, r, s, v, uri, roots, nil, []any{content}, []any{content})
 	if denied || err != nil {
 		return text, hits, denied, err
 	}
@@ -707,7 +738,7 @@ func (e *Engine) ListResources(parent context.Context, r Request) (ret Outcome) 
 
 func deniedUnder(uri string, roots []string) bool {
 	for _, root := range roots {
-		if underRoot(uri, root) {
+		if underRoot(uri, root) || underRoot(bare(uri), root) {
 			return true
 		}
 	}
@@ -774,6 +805,9 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 	}
 	if slug, rest, ok := SplitURI(uri); ok {
 		s := r.server(slug)
+		if s != nil && nonCanonical(rest) {
+			return nil, "", o, &RPCError{Code: CodeInvalidParams, Message: "URI is not in canonical form: " + uri}
+		}
 		// A native scheme can contain "+", so a URI with no slug prefix can
 		// look as if it had one: git+ssh://host/repo reads as slug "git".
 		// When the named server does not claim the rest, try the whole URI
@@ -786,7 +820,9 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 			}
 			// Only "nobody claims it" falls through to the prefixed reading.
 			// Two claimants, or a server whose catalog is unavailable, is an
-			// answer in its own right and must reach the client as one.
+			// answer in its own right and must reach the client as one: the
+			// unavailable server may be the one that owns git+ssh://…, and
+			// sending ssh://… to the server named git would be a guess.
 			if out.Fallback != nil && out.Fallback.Outcome != "not_found" {
 				return nil, "", out, ferr
 			}
@@ -847,7 +883,7 @@ func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o 
 		o.Fallback = ev
 		if len(unavailable) > 0 {
 			ev.Outcome = "unavailable"
-			return nil, "", *o, &RPCError{Code: CodeInvalidParams, Message: fmt.Sprintf("cannot resolve %s: %s unavailable; retry with a prefixed URI", uri, strings.Join(unavailable, ", "))}
+			return nil, "", *o, &RPCError{Code: CodeInvalidParams, Message: fmt.Sprintf("cannot resolve %s: %s unavailable, and may be the server this URI belongs to; retry when it is back", uri, strings.Join(unavailable, ", "))}
 		}
 		if len(c) > 1 {
 			ev.Outcome = "ambiguous"
@@ -1051,6 +1087,13 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			// Another file under a skill's folder is an ordinary entry, and
 			// a rule's change to it stands.
 			if sk, vouched := v.vouchedBy(cu); vouched {
+				if _, again := fixed[normalizeURI(cu)]; again {
+					// A file has one set of bytes. A second entry for it
+					// could come back in place of the first after a rule
+					// had dropped it.
+					o.Issues = append(o.Issues, "dropped a second entry for "+cu+": its skill vouches for one")
+					continue
+				}
 				plan := e.planSkill(ctx, r, s, v, sk)
 				if t, changed := plan.files[cu]; plan.status == "applied" && changed {
 					if _, isText := cm["text"].(string); isText {
@@ -1062,7 +1105,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			}
 			kept, sent = append(kept, cm), append(sent, server)
 		}
-		out, hits, reason, denied, err := e.readRules(ctx, r, s, v, up, call.roots(r), kept, sent)
+		out, hits, reason, denied, err := e.readRules(ctx, r, s, v, up, call.roots(r), m, kept, sent)
 		o.Hits = append(o.Hits, hits...)
 		if denied {
 			if reason == "" {

@@ -97,6 +97,7 @@ func (t *uriTemplate) denies(uri string) bool {
 type resView struct {
 	visibleRes   map[string]map[string]any // normalized URI -> exposed resource
 	listedRes    map[string]bool           // normalized URI is in the upstream listing
+	hiddenBare   map[string]bool           // a listed resource that is not visible, without its query or trailing slash
 	originalRes  map[string]map[string]any // normalized URI -> the resource as the upstream sent it
 	okTemplates  []*uriTemplate
 	badTemplates []*uriTemplate // denied, failed a change or collided
@@ -107,7 +108,7 @@ type resView struct {
 }
 
 func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resView {
-	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}, originalRes: map[string]map[string]any{}}
+	v := &resView{visibleRes: map[string]map[string]any{}, listedRes: map[string]bool{}, originalRes: map[string]map[string]any{}, hiddenBare: map[string]bool{}}
 	c := r.context(s)
 	var hits []Hit
 	v.skills, v.deniedRoots, hits = e.skillView(ctx, r, s)
@@ -121,6 +122,11 @@ func (e *Engine) resourceView(ctx context.Context, r Request, s *Server) *resVie
 	v.issues = append(v.issues, issues...)
 	for _, l := range ls {
 		v.visibleRes[normalizeURI(l.upstreamID)] = l.value
+	}
+	for n := range v.listedRes {
+		if _, visible := v.visibleRes[n]; !visible {
+			v.hiddenBare[bare(n)] = true
+		}
 	}
 	ts, issues, hits := s.Rules.listItems(ctx, KindTemplate, "resources/templates/list.post", "uriTemplate", templateItems(s.Catalog.Templates), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)
@@ -170,12 +176,12 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 		}
 		return item, true, nil
 	}
-	// A hidden resource stays hidden with a query or a trailing slash added:
-	// a server that ignores either would hand over the same thing.
-	if b := normalizeURI(bare(uri)); v.listedRes[b] {
-		if _, visible := v.visibleRes[b]; !visible {
-			return nil, false, nil
-		}
+	// A hidden resource stays hidden with a query or a trailing slash
+	// added, changed or taken away: a server that ignores either would hand
+	// over the same thing. A URI the server lists itself was judged by the
+	// rules on its own, above.
+	if v.hiddenBare[normalizeURI(bare(uri))] {
+		return nil, false, nil
 	}
 	probe := map[string]any{"uri": uri}
 	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri, bare: true}

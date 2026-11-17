@@ -79,3 +79,21 @@ Tests: `pkg/hooks/review_verify_test.go`. The ones named `TestReviewVerifyFixedâ
 - A constant whose form is wrong below its type is found when a request arrives (V7).
 - On the mux a rule reads a name or a URI without the slug.
 - No one has attacked rule budgets, panics, search mode or tasks in this round.
+
+## The Codex review
+
+Codex reviewed commit `ba03834` and wrote `review-codex.md`: nine findings. Seven are fixed, and two are by design in whole or in part.
+
+| No. | Finding | Verdict | What was done |
+| --- | --- | --- | --- |
+| C1 | Further URL spellings pass every URI deny (critical) | Valid | Fixed, and the check changed shape. It no longer lists spellings to refuse. It says what a URI must look like: an allowed set of characters before the query, a host that is a lower-case name, a dotted IPv4 address or an IPv6 address in its shortest form, a port with no leading zero. Everything else is refused |
+| C2 | Query and slash protection has missing cases (critical) | Two of four valid | Fixed: the slash after a host, and a denied skill folder with a query. A hidden resource is now matched without its query, whatever the query is. By design: a URI the server lists itself is judged by the rules on its own, so a listed alias that no rule hides is readable. `TestReviewCodexAListedAliasIsJudgedOnItsOwn` |
+| C3 | A dropped skill entry comes back as the retained entry (critical) | Valid | Fixed. A second entry in one read for a file a skill vouches for is dropped |
+| C4 | One confirmation authorises a different exact number (high) | Valid, and caused by the fix for V1's number note | Fixed. Numbers are compared on their digits and never through a float |
+| C5 | Nested skills can promise different bytes for one file (medium) | Valid | Fixed. A file more than one skill answers for is never rewritten, and the read records an issue when a rule's change is set aside |
+| C6 | Resource result hooks lose fields the server supplied (medium) | Valid | Fixed. `response.result` and `response.upstream.result` hold the server's whole result |
+| C7 | A prompt forwards after session rules spend its budget (medium) | Valid | Fixed |
+| C8 | Another server's outage blocks an explicit mux read (medium) | By design | Not changed: it is the behaviour case V3-S13 requires. `a+docs://h/x` may be a URI of the scheme `a+docs` that the unavailable server owns, and the gateway does not guess. A URI the named server lists is not held up. The message no longer says to retry with a prefix. `TestReviewCodexAnOutageHoldsUpOnlyWhatCannotBeTold` |
+| C9 | Confirm interpolation rejects valid CEL strings (low) | Valid, minor | Fixed. A question's `{expression}` may hold triple-quoted and raw strings |
+
+Tests: `pkg/hooks/review_codex_test.go`. The ones named `TestReviewCodexFixedâ€¦` failed before these fixes. The text-layer test is in `internal/ruletext/ruletext_test.go`.

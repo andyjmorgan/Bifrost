@@ -463,7 +463,7 @@ A read is allowed unless something denies it. That includes a URI the server nev
 - a `resources/list.post` deny rule denies it. The deny rules run on every read URI, listed or not. For a URI that no listing contains, they have only `resource.uri` to read
 - it is not in canonical form
 
-To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `resource.uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike, because a URI has one spelling the gateway accepts: see [canonical form](#uri-form). Not listing something does not hide it. A rule that compares with `==` matches one URI only. A listed resource that a rule hides, and a template a rule denies, also cover the same URI with a query or a trailing slash added.
+To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `resource.uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike, because a URI has one spelling the gateway accepts: see [canonical form](#uri-form). Not listing something does not hide it. A rule that compares with `==` matches one URI only. A listed resource that a rule hides, and a template a rule denies, also cover the same URI with a query or a trailing slash added, changed or taken away. The one exception is a URI the server lists itself: a listed resource is judged by the rules on its own.
 
 The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`. It is forwarded exactly as the client sent it, as its own resource.
 
@@ -575,7 +575,7 @@ A URI that no server claims is not found on the mux, even though the same URI wi
 }
 ```
 
-If the catalog of one of the caller's servers is unavailable, the gateway refuses to pick a match and returns `-32602` with `cannot resolve <uri>: <slug> unavailable; retry with a prefixed URI`.
+If the catalog of one of the caller's servers is unavailable, the gateway refuses to pick a match and returns `-32602` with `cannot resolve <uri>: <slug> unavailable, and may be the server this URI belongs to; retry when it is back`. This also holds up a prefixed URI that the named server does not list. `a+docs://h/x` can be server `a` and `docs://h/x`, or a URI of the scheme `a+docs` that the unavailable server owns, and the gateway does not guess. A prefixed URI that the named server lists or covers with a template is not held up.
 
 Every fallback resolution reports an event for the gateway to audit and count. The event has:
 
@@ -586,17 +586,17 @@ Every fallback resolution reports an event for the gateway to audit and count. T
 
 ### Canonical URIs
 
-<a id="uri-form"></a>A rule reads a URI as text, and a server may read several spellings as the same URI. So the gateway accepts one spelling and refuses the rest, on every route:
+<a id="uri-form"></a>A rule reads a URI as text, and a server may read several spellings as the same URI. So the gateway says what a URI must look like and refuses everything else, on every route:
 
-- no spaces, control characters or backslashes
+- before the query, only the characters a URI may hold as they are: letters, digits and `-._~!$&'()*+,;=:@/%[]`. Anything else must be percent-encoded, including a letter that is not ASCII: `caf%C3%A9`, not `café`
+- no spaces, control characters or backslashes anywhere, and no fragment
+- a percent escape is `%` and two upper-case hex digits, and never for a letter, a digit or `-._~`
 - the scheme in lower case
 - `//` after the scheme when the path starts with a slash, and always for `file`, `http`, `https`, `ws`, `wss` and `ftp`: `file:/secrets/key` is refused
-- for those schemes, the host in lower case, with no user, no trailing dot, and no empty or default port; `file://localhost/` is refused
+- for those six schemes, the host is a name in lower case, a dotted IPv4 address, or an IPv6 address in its shortest form. A name in another script comes as punycode. There is no user. A port is not empty, not the default and has no leading zero. `file://localhost/` is refused
 - no dot segments (`.` or `..`) and no empty segments (`//` in the path)
-- percent escapes in upper-case hex, and none for a character that needs none
-- no fragment
 
-For any other scheme, such as `confluence://ENG/home`, the text after `//` is the server's own and is compared as written. The query is not checked. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
+For any other scheme, such as `confluence://ENG/home`, the text after `//` is the server's own and is compared as written; only a port is checked. The query is not checked: it often carries another URL. A hidden resource, a denied template and a denied skill folder are matched without the query. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
 
 Reserved escapes, such as `%2F`, stay opaque. The gateway does not decode them, so `file:///a%2Fb` is not under `file:///a/`.
 

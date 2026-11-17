@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"math"
 	"runtime"
 	"sort"
 	"strconv"
@@ -163,36 +162,57 @@ func canonical(v any) string {
 		b.WriteByte(']')
 		return b.String()
 	}
-	// A number is written one way, so 1, 1.0 and 1e0 hash alike. A whole
-	// number keeps every digit.
-	var f float64
 	switch t := v.(type) {
 	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return strconv.FormatInt(i, 10)
-		}
-		if isDigits(strings.TrimPrefix(t.String(), "-")) {
-			return t.String() // a whole number too big for 64 bits: every digit counts
-		}
-		x, err := t.Float64()
-		if err != nil {
-			return t.String()
-		}
-		f = x
+		return canonNumber(t.String())
 	case float64:
-		f = t
+		return canonNumber(strconv.FormatFloat(t, 'g', -1, 64))
 	case int64:
-		return strconv.FormatInt(t, 10)
+		return canonNumber(strconv.FormatInt(t, 10))
 	case int:
-		return strconv.Itoa(t)
+		return canonNumber(strconv.Itoa(t))
 	case uint64:
-		return strconv.FormatUint(t, 10)
-	default:
-		b, _ := json.Marshal(v)
-		return string(b)
+		return canonNumber(strconv.FormatUint(t, 10))
 	}
-	if f == math.Trunc(f) && math.Abs(f) < 1<<53 {
-		return strconv.FormatInt(int64(f), 10)
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// canonNumber writes a JSON number one way, so 1, 1.0 and 1e0 hash alike,
+// and exactly, so two numbers that differ in any digit hash apart. It works
+// on the digits and never through a float, which would round. The form is
+// the digits with no leading or trailing zeros, "e", and the power of ten.
+func canonNumber(text string) string {
+	t := text
+	neg := strings.HasPrefix(t, "-")
+	t = strings.TrimPrefix(strings.TrimPrefix(t, "-"), "+")
+	mant, exp := t, ""
+	if i := strings.IndexAny(t, "eE"); i >= 0 {
+		mant, exp = t[:i], t[i+1:]
 	}
-	return strconv.FormatFloat(f, 'g', -1, 64)
+	whole, frac, _ := strings.Cut(mant, ".")
+	e := 0
+	if exp != "" {
+		n, err := strconv.Atoi(exp)
+		if err != nil || n > 1<<30 || n < -(1<<30) {
+			return text // not a number this can read: compared as written
+		}
+		e = n
+	}
+	if !isDigits(whole+frac) || (exp == "" && strings.ContainsAny(t, "eE")) {
+		return text
+	}
+	digits := strings.TrimLeft(whole+frac, "0")
+	e -= len(frac)
+	if trimmed := strings.TrimRight(digits, "0"); trimmed != digits {
+		e += len(digits) - len(trimmed)
+		digits = trimmed
+	}
+	if digits == "" {
+		return "0"
+	}
+	if neg {
+		digits = "-" + digits
+	}
+	return digits + "e" + strconv.Itoa(e)
 }

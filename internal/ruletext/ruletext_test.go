@@ -392,3 +392,18 @@ func TestTheSameQuestionTwiceWithASetBetween(t *testing.T) {
 	}
 	t.Error("the gateway kept asking")
 }
+
+// A question's {expression} may hold any CEL string: triple-quoted and raw
+// ones too.
+func TestAQuestionMayHoldAnyCELString(t *testing.T) {
+	for text, want := range map[string]string{
+		`confirm "Value {'''don't'''}?"`: `{"v1": '''don't'''})`,
+		`confirm "Value {r'\\\\'}?"`:     `{"v1": r'\\'})`,
+		`confirm "Value {r'}'}?"`:        `{"v1": r'}'})`,
+	} {
+		rules, probs := Compile(map[string]string{"tools/call.pre": "when true\n  " + text + "\n"})
+		if len(probs) > 0 || !strings.HasSuffix(rules[0].Then["confirm"], want) {
+			t.Errorf("%s: problems %v, rules %+v", text, probs, rules)
+		}
+	}
+}
