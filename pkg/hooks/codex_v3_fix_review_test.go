@@ -19,8 +19,6 @@ func TestCodexV3FixUnknownFlushOnConsumerExit(t *testing.T) { // V3F-G01
 			name = "consumer_panic"
 		}
 		t.Run(name, func(t *testing.T) {
-			if panics {
-			}
 			c := newStreamCase(t, "direct", nil, Limits{})
 			var recorded []Unknown
 			c.e.OnUnknown = func(u Unknown) { recorded = append(recorded, u) }
@@ -77,8 +75,6 @@ func TestCodexV3FixEmptySetNeedsAList(t *testing.T) { // V3F-G02
 		{"error_instead_of_listing", `{"client":{"error":{"code":-32603,"message":"broken"}}}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.name == "error_instead_of_listing" {
-			}
 			var report any
 			if err := json.Unmarshal([]byte(tc.report), &report); err != nil {
 				t.Fatal(err)
@@ -101,8 +97,6 @@ func TestCodexV3FixReplyHooksReadExposedTool(t *testing.T) { // V3F-G03
 				when = "tool.name == 'public' && tool.upstream.name == 't'"
 			}
 			t.Run(name, func(t *testing.T) {
-				if exposed {
-				}
 				c := newStreamCase(t, "direct", nil, Limits{})
 				c.r.Servers[0].Rules = codexSet(t,
 					Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.name": "'public'"}},

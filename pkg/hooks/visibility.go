@@ -65,9 +65,6 @@ func compileTemplate(raw string) *uriTemplate {
 	return t
 }
 
-// matches reports whether uri can be produced by a supported template.
-func (t *uriTemplate) matches(uri string) bool { return t.re != nil && t.re.MatchString(uri) }
-
 // mayCover reports whether a template could produce uri, for routing: an
 // exact match for a template the gateway can parse, the literal prefix for
 // one it cannot. A template with no literal prefix claims nothing.

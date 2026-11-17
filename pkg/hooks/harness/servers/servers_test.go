@@ -114,7 +114,9 @@ func TestStop(t *testing.T) {
 			}
 			t.Run("stdin", func(t *testing.T) {
 				s := Start(t, kind)
-				s.CloseStdin()
+				if err := s.CloseStdin(); err != nil {
+					t.Fatal(err)
+				}
 				select {
 				case <-s.Exited():
 				case <-time.After(5 * time.Second):
@@ -275,7 +277,9 @@ func (c *checker) toolsList(t *testing.T) {
 			var p struct {
 				Type string `json:"type"`
 			}
-			json.Unmarshal(raw, &p)
+			if err := json.Unmarshal(raw, &p); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
 			gotProps[name] = p.Type
 		}
 		if !reflect.DeepEqual(gotProps, spec.props) {
@@ -288,7 +292,9 @@ func (c *checker) toolsList(t *testing.T) {
 				} `json:"properties"`
 				Required []string `json:"required"`
 			}
-			json.Unmarshal(schema.Properties["telemetry"], &tel)
+			if err := json.Unmarshal(schema.Properties["telemetry"], &tel); err != nil {
+				t.Fatal(err)
+			}
 			if tel.Properties["intent"].Type != "string" || !sameSet(tel.Required, []string{"intent"}) {
 				t.Errorf("search telemetry schema = %s, want object with required string intent", schema.Properties["telemetry"])
 			}
@@ -297,7 +303,9 @@ func (c *checker) toolsList(t *testing.T) {
 			var d struct {
 				Default any `json:"default"`
 			}
-			json.Unmarshal(schema.Properties["delayMs"], &d)
+			if err := json.Unmarshal(schema.Properties["delayMs"], &d); err != nil {
+				t.Fatal(err)
+			}
 			if d.Default != float64(20) {
 				t.Errorf("slow_count delayMs default = %v, want 20", d.Default)
 			}

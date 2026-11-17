@@ -123,12 +123,12 @@ func (s *Server) Stop() string {
 			s.stopped = "stdin"
 			return
 		}
-		s.cmd.Process.Signal(syscall.SIGTERM)
+		_ = s.cmd.Process.Signal(syscall.SIGTERM) // if it fails, the kill below follows
 		if s.waitFor(stopStepWait) {
 			s.stopped = "sigterm"
 			return
 		}
-		s.cmd.Process.Kill()
+		_ = s.cmd.Process.Kill() // nothing more to try
 		<-s.exited
 		s.stopped = "kill"
 	})
@@ -197,7 +197,7 @@ func Start(t testing.TB, kind string) *Server {
 	if err != nil {
 		t.Fatalf("servers: %s server startup line: %v\nstderr:\n%s", kind, err, s.Stderr())
 	}
-	go io.Copy(s.extra, stdout)
+	go func() { _, _ = io.Copy(s.extra, stdout) }() // ends when the server's stdout closes
 	if err := json.Unmarshal(line, &s.Startup); err != nil {
 		t.Fatalf("servers: %s server startup line is not JSON: %v\nline: %s", kind, err, line)
 	}

@@ -184,12 +184,3 @@ func (h *HookSpec) field(key string) *Field {
 	}
 	return nil
 }
-
-func (h *HookSpec) hasHelper(name string) bool {
-	for _, x := range h.Helpers {
-		if x == name {
-			return true
-		}
-	}
-	return false
-}

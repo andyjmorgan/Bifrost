@@ -93,8 +93,8 @@ func run(port int, logger *slog.Logger) error {
 		return err
 	}
 	out := bufio.NewWriter(os.Stdout)
-	out.Write(line)
-	out.WriteByte('\n')
+	_, _ = out.Write(line) // a failed write shows up in Flush
+	_ = out.WriteByte('\n')
 	if err := out.Flush(); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func run(port int, logger *slog.Logger) error {
 	signal.Notify(sigs, syscall.SIGTERM, os.Interrupt)
 	go func() { stop <- (<-sigs).String() }()
 	go func() {
-		io.Copy(io.Discard, os.Stdin)
+		_, _ = io.Copy(io.Discard, os.Stdin) // ends when stdin closes, however it ends
 		stop <- "stdin closed"
 	}()
 

@@ -309,7 +309,7 @@ func (e *Engine) muxInstructions(ctx context.Context, r Request, o *Outcome) str
 			limit = all - used
 		}
 		if limit <= 0 {
-			b.WriteString(fmt.Sprintf("\n## %s\n%s\n", s.Slug, TruncationMark))
+			fmt.Fprintf(&b, "\n## %s\n%s\n", s.Slug, TruncationMark)
 			continue
 		}
 		if utf8.RuneCountInString(text) > limit {
@@ -318,7 +318,7 @@ func (e *Engine) muxInstructions(ctx context.Context, r Request, o *Outcome) str
 		} else {
 			used += utf8.RuneCountInString(text)
 		}
-		b.WriteString(fmt.Sprintf("\n## %s\n%s\n", s.Slug, quoteLines(text)))
+		fmt.Fprintf(&b, "\n## %s\n%s\n", s.Slug, quoteLines(text))
 	}
 	return b.String()
 }
@@ -605,7 +605,7 @@ func denyOr(reason, def string) string {
 // state (which may be absent). It needs a policy generation.
 func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken, upstreamState string, reqs mcp.InputRequestMap) (string, error) {
 	if r.principal() == "" {
-		return "", fmt.Errorf("The server asked for input, which is not available without a caller identity.")
+		return "", clientMessage("The server asked for input, which is not available without a caller identity.")
 	}
 	now := r.Now
 	if now.IsZero() {

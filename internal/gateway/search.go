@@ -203,32 +203,6 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 
 // ---- tools/list in search mode ---------------------------------------------
 
-// roster is the up-front view of the namespaces: what is connected and what
-// each is for, so the model searches with intent.
-func roster(entries []catalogEntry) string {
-	var sb strings.Builder
-	for _, e := range entries {
-		fmt.Fprintf(&sb, "- %s: %s", e.srv.Slug, e.srv.Name)
-		if e.srv.Description != "" {
-			sb.WriteString(" — " + strings.TrimSpace(e.srv.Description))
-		}
-		if e.init.Instructions != "" {
-			sb.WriteString(" Server notes: " + oneLine(e.init.Instructions, 300))
-		}
-		if e.err != nil {
-			sb.WriteString(" (unavailable)")
-		} else {
-			if n := len(e.tools); n == 1 {
-				sb.WriteString(" (1 tool)")
-			} else {
-				fmt.Fprintf(&sb, " (%d tools)", n)
-			}
-		}
-		sb.WriteByte('\n')
-	}
-	return sb.String()
-}
-
 func oneLine(s string, max int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if len(s) > max {

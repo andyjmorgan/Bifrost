@@ -279,7 +279,8 @@ func validAuthority(scheme, a string) bool {
 			return false // a leading, trailing or doubled dot
 		}
 		for _, c := range l {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			lower, digit := c >= 'a' && c <= 'z', c >= '0' && c <= '9'
+			if !lower && !digit && c != '-' {
 				return false
 			}
 		}
@@ -440,18 +441,4 @@ func templatePrefix(t string) string {
 		return t[:i]
 	}
 	return t
-}
-
-// matchTemplate reports whether uri can be produced by the template. It
-// compares the literal prefix and, when the template has a literal suffix
-// after its last expression, the suffix.
-func matchTemplate(tpl, uri string) bool {
-	pre := templatePrefix(tpl)
-	if pre == "" || !strings.HasPrefix(uri, pre) {
-		return false
-	}
-	if i := strings.LastIndexByte(tpl, '}'); i >= 0 && i+1 < len(tpl) {
-		return strings.HasSuffix(uri, tpl[i+1:])
-	}
-	return true
 }

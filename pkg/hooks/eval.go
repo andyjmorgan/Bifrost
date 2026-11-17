@@ -458,47 +458,6 @@ func budgetFrom(ctx context.Context) *budget {
 var errBudget = errors.New("rule evaluation exceeded its time budget")
 var errAuditBudget = errors.New("audit allowance exhausted")
 
-// start returns a context bounded by the remaining allowance and a done
-// func that charges the elapsed time. A nil budget means no limit.
-func (b *budget) start(ctx context.Context, audit bool) (context.Context, func(), error) {
-	if ctx.Err() != nil {
-		return ctx, func() {}, ctx.Err()
-	}
-	if b == nil {
-		return ctx, func() {}, nil
-	}
-	b.mu.Lock()
-	var left time.Duration
-	if audit {
-		left = b.auditLimit - b.auditUsed
-	} else {
-		left = b.enforceLimit - b.enforceUsed
-	}
-	b.mu.Unlock()
-	if left <= 0 {
-		if audit {
-			return ctx, func() {}, errAuditBudget
-		}
-		return ctx, func() {}, errBudget
-	}
-	ectx, cancel := context.WithTimeout(ctx, left)
-	t0 := time.Now()
-	once := sync.Once{}
-	return ectx, func() {
-		once.Do(func() {
-			cancel()
-			d := time.Since(t0)
-			b.mu.Lock()
-			if audit {
-				b.auditUsed += d
-			} else {
-				b.enforceUsed += d
-			}
-			b.mu.Unlock()
-		})
-	}, nil
-}
-
 func (b *budget) enforceExhausted() bool {
 	if b == nil {
 		return false
@@ -513,7 +472,6 @@ func (b *budget) enforceExhausted() bool {
 // each rule's elapsed time to the request budget.
 type runBudget struct {
 	b       *budget
-	ctxs    [2]context.Context
 	cancels [2]context.CancelFunc
 }
 

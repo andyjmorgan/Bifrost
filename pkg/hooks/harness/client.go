@@ -23,8 +23,6 @@ type ClientOptions struct {
 	Elicit func(*mcp.ElicitRequest) (*mcp.ElicitResult, error)
 	// Progress receives progress notifications.
 	Progress func(*mcp.ProgressNotificationParams)
-	// Logs receives log notifications.
-	Logs func(*mcp.LoggingMessageParams)
 	// Token is sent as a bearer token.
 	Token string
 	// ManualInput turns off the SDK's automatic handling of input_required,
@@ -68,9 +66,6 @@ func TryConnect(t testing.TB, endpoint string, o ClientOptions) (*mcp.ClientSess
 	}
 	if o.Progress != nil {
 		opts.ProgressNotificationHandler = func(_ context.Context, r *mcp.ProgressNotificationClientRequest) { o.Progress(r.Params) }
-	}
-	if o.Logs != nil {
-		opts.LoggingMessageHandler = func(_ context.Context, r *mcp.LoggingMessageRequest) { o.Logs(r.Params) }
 	}
 	if o.ManualInput {
 		opts.MultiRoundTrip = &mcp.MultiRoundTripOptions{Disabled: true}

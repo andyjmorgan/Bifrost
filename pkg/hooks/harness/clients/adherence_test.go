@@ -196,15 +196,6 @@ func has(list []string, want ...string) bool {
 	return true
 }
 
-func messages(events []map[string]any) []string {
-	out := []string{}
-	for _, p := range events {
-		s, _ := p["message"].(string)
-		out = append(out, s)
-	}
-	return out
-}
-
 func errText(e *Error) string {
 	if e == nil {
 		return "no error"

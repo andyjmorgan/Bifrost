@@ -1131,7 +1131,7 @@ func (p *goldenRun) crossCheckConnect(idx int, req ClientRequest, out map[string
 	}
 	slug, _ := req.Params["slug"].(string)
 	for _, s := range p.servers {
-		if s.slug != slug && !(slug == "" && len(p.servers) == 1) {
+		if s.slug != slug && (slug != "" || len(p.servers) != 1) {
 			continue
 		}
 		method := "initialize"

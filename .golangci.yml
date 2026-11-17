@@ -1,0 +1,7 @@
+# golangci-lint run ./...
+version: "2"
+linters:
+  exclusions:
+    presets:
+      # Close, Remove and the like, whose errors there is nothing to do with.
+      - std-error-handling

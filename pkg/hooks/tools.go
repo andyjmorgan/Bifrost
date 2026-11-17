@@ -25,7 +25,6 @@ import (
 // key could never be collected (V2-F01).
 type preparedTool struct {
 	base     map[string]any
-	derived  map[string]any
 	props    map[string]any
 	upOrder  []string
 	required map[string]bool

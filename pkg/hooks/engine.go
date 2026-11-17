@@ -244,8 +244,15 @@ func (r Request) principal() string {
 	return ""
 }
 
+// clientMessage is a refusal worded for the person at the client: a full
+// sentence the client shows as it is. It travels as an error, and is not
+// one of the engine's own failures.
+type clientMessage string
+
+func (m clientMessage) Error() string { return string(m) }
+
 // errNoPrincipal refuses a confirmation that could not be bound to anyone.
-var errNoPrincipal = errors.New("This request needs confirmation, which is not available without a caller identity.")
+const errNoPrincipal = clientMessage("This request needs confirmation, which is not available without a caller identity.")
 
 func (r Request) mux() bool { return r.Route == "mux" || r.Route == "search" }
 
@@ -894,13 +901,13 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 		// This round answers the server's question, and the rules now ask
 		// one they did not ask before the call was forwarded. Asking it would
 		// lose the server's state and the user's answer to the server.
-		return nil, errors.New("This request needs a confirmation it did not need when it was first sent. Send it again.")
+		return nil, clientMessage("This request needs a confirmation it did not need when it was first sent. Send it again.")
 	}
 	if !r.clientCan("elicitation") {
 		if em, _ := marker["error"].(string); em != "" {
-			return nil, errors.New(em)
+			return nil, clientMessage(em)
 		}
-		return nil, fmt.Errorf("This request needs confirmation (%s), which this client does not support.", msg)
+		return nil, clientMessage(fmt.Sprintf("This request needs confirmation (%s), which this client does not support.", msg))
 	}
 	if r.principal() == "" {
 		return nil, errNoPrincipal

@@ -909,10 +909,8 @@ func (ex Expect) check(out any, extra map[string]any) string {
 		if err != nil {
 			return "bad matches regexp: " + err.Error()
 		}
-		s := fmt.Sprint(v)
-		if sv, ok := v.(string); ok {
-			s = sv
-		} else {
+		s, isStr := v.(string)
+		if !isStr {
 			b, _ := json.Marshal(v)
 			s = string(b)
 		}

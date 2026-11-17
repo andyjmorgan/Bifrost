@@ -49,7 +49,7 @@ func TestSoak(t *testing.T) {
 		m["time"] = time.Now().UTC().Format(time.RFC3339)
 		b, _ := json.Marshal(m)
 		logMu.Lock()
-		logf.Write(append(b, '\n'))
+		_, _ = logf.Write(append(b, '\n')) // a progress log: a lost line does not fail the soak
 		logMu.Unlock()
 	}
 
