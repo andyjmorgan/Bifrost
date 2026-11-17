@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -411,34 +410,4 @@ func rewriteOwnedURIs(text string, mux any) string {
 		}
 		return u
 	})
-}
-
-// ---- fallback resolution ------------------------------------------------------------
-
-// Candidate is one server that could own an unprefixed URI.
-type Candidate struct {
-	Slug  string
-	URI   string // prefixed
-	Exact bool
-}
-
-// AmbiguousError lists the candidates for an ambiguous URI.
-func ambiguousError(uri string, cands []Candidate) *RPCError {
-	var uris []string
-	for _, c := range cands {
-		uris = append(uris, c.URI)
-	}
-	sort.Strings(uris)
-	return &RPCError{Code: CodeInvalidParams,
-		Message: fmt.Sprintf("Ambiguous URI %s: matches %s. Retry with one of these.", uri, strings.Join(uris, ", ")),
-		Data:    map[string]any{"candidates": uris}}
-}
-
-// templatePrefix is the literal part of a URI template before its first
-// expression.
-func templatePrefix(t string) string {
-	if i := strings.IndexByte(t, '{'); i >= 0 {
-		return t[:i]
-	}
-	return t
 }

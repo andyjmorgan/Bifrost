@@ -4,65 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
-
-// parallel runs fn(i) for i in [0,n) on up to workers goroutines. fn must
-// only write to its own slot; that is what makes listing safe to spread.
-func parallel(n, workers int, fn func(i int)) {
-	if workers <= 0 {
-		workers = runtime.GOMAXPROCS(0)
-	}
-	if workers > n {
-		workers = n
-	}
-	if workers <= 1 {
-		for i := 0; i < n; i++ {
-			fn(i)
-		}
-		return
-	}
-	var wg sync.WaitGroup
-	next := make(chan int)
-	var once sync.Once
-	var caught *enginePanic
-	// A panic on a worker goroutine would end the process, and no caller
-	// can recover it. Each item recovers its own, the first one is kept, and
-	// it is raised again on the caller's goroutine once every worker is done.
-	guarded := func(i int) {
-		defer func() {
-			if p := recover(); p != nil {
-				ep := capture(p)
-				once.Do(func() { caught = ep })
-			}
-		}()
-		fn(i)
-	}
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range next {
-				guarded(i)
-			}
-		}()
-	}
-	for i := 0; i < n; i++ {
-		next <- i
-	}
-	close(next)
-	wg.Wait()
-	if caught != nil {
-		panic(caught)
-	}
-}
-
-// ---- elicitation state -------------------------------------------------------------
 
 // KeyPrefix marks the gateway's own input requests so they never collide
 // with an upstream's.
@@ -101,16 +47,6 @@ func binding(marker, args map[string]any) string {
 	msg, _ := marker["message"].(string)
 	sum := sha256.Sum256([]byte(canonical([]any{key, msg, args})))
 	return hex.EncodeToString(sum[:16])
-}
-
-// asked returns the check a pre hook's rules use to learn whether a
-// question has been confirmed on this request. The engine decides that, not
-// the rule: a rule only says when to ask and what. confirmed holds what the
-// user has said yes to, each as a binding, so a yes counts only for the
-// question it answered. The same key asked about other arguments, or with
-// other words, is a new question and is asked.
-func asked(confirmed map[string]bool, args map[string]any) func(map[string]any) bool {
-	return func(marker map[string]any) bool { return confirmed[binding(marker, args)] }
 }
 
 // argsHash hashes arguments canonically: keys sorted at every level, numbers

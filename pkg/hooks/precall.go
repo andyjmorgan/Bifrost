@@ -48,12 +48,6 @@ type cleared struct {
 	answers mcp.InputResponseMap
 }
 
-// toolRefused is what a client is told when a rule refuses a tool call or
-// its result and gives no reason.
-func toolRefused(tool string) string {
-	return "The call to " + tool + " was refused by policy."
-}
-
 // rpcRefusal is refuse for the methods that say no with a JSON-RPC error.
 func rpcRefusal(o *Outcome, message string) {
 	o.Error = &RPCError{Code: CodeInvalidParams, Message: message}

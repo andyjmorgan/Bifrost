@@ -88,19 +88,6 @@ func (t *uriTemplate) denies(uri string) bool {
 
 // ---- resource visibility --------------------------------------------------------------
 
-// manifest is a skill's list of files. ok is false for a dynamic skill,
-// which has none.
-type manifest struct {
-	files []SkillResource
-	ok    bool
-}
-
-// manifestOf returns a visible skill's manifest.
-func (v *resView) manifestOf(sk Skill) ([]SkillResource, bool) {
-	m := v.manifests[sk.URI]
-	return m.files, m.ok
-}
-
 // resView is one server's resource visibility for one request. Listings,
 // reads, directory children, returned content items and fallback
 // candidates all use it, so they cannot disagree.
@@ -265,4 +252,13 @@ func (v *resView) owned() map[string]any {
 		roots = append(roots, sk.Root())
 	}
 	return map[string]any{"exact": exact, "patterns": patterns, "roots": roots}
+}
+
+// templatePrefix is the literal part of a URI template before its first
+// expression.
+func templatePrefix(t string) string {
+	if i := strings.IndexByte(t, '{'); i >= 0 {
+		return t[:i]
+	}
+	return t
 }
