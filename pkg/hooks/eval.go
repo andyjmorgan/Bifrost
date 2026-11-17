@@ -57,7 +57,7 @@ func (c Context) roots(method string, params map[string]any) map[string]any {
 		"request": map[string]any{
 			"method": method, "params": orEmpty(params),
 			"caller": orEmpty(c.Caller), "client": client, "headers": headers,
-			"route": ruleRoute(c.Route), "flags": flagVars(c.Flags), "time": timeOrZero(c.Now),
+			"route": c.Route, "flags": flagVars(c.Flags), "time": timeOrZero(c.Now),
 		},
 	}
 }
@@ -94,15 +94,6 @@ func subject(kind ItemKind, resolve func(string) (any, bool)) map[string]any {
 		}
 	}
 	return out
-}
-
-// ruleRoute is the route as rules see it. Search is a flag, not a route, so
-// the older value "search" reads as "mux".
-func ruleRoute(route string) string {
-	if route == "search" {
-		return "mux"
-	}
-	return route
 }
 
 // Hit records what one rule did, for audit and for scenario output.

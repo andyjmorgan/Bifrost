@@ -24,7 +24,7 @@ import (
 type Scenario struct {
 	Name  string   `json:"name"`
 	IDs   []string `json:"ids,omitempty"`
-	Route string   `json:"route,omitempty"` // direct (default) or mux; "search" is the older spelling of mux with the search flag
+	Route string   `json:"route,omitempty"` // direct (default) or mux
 	// Flags are the switches the request carries, such as {"search": true}
 	// or {"cli": true}. They can be set for either route.
 	Flags   map[string]bool  `json:"flags,omitempty"`

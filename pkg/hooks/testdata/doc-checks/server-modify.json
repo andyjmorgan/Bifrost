@@ -143,7 +143,8 @@
  },
  {
   "name": "server/discover.post: search ranks with the modified title and description when searchRoster is on",
-  "route": "search",
+  "route": "mux",
+  "flags": {"search": true},
   "servers": [
    {
     "slug": "jira",

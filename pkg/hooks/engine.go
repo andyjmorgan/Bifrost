@@ -158,8 +158,6 @@ func (e *Engine) version() string {
 type Request struct {
 	// Route is how the client reached the gateway: "direct" for one server,
 	// or "mux" for every server the caller holds. The two are exclusive.
-	// The value "search" is still accepted and means mux with the search
-	// flag on; it is how older scenario files say it.
 	Route string
 	// Flags are the switches the client set on this request, such as
 	// ?search=true, by name. They are not routes: any of them can be on for
@@ -194,10 +192,10 @@ func (r Request) context(s *Server) Context {
 			delete(srv, k) // nothing is filled in for what the gateway does not know
 		}
 	}
-	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Headers: r.Headers, Route: r.route(), Flags: r.flags(), Now: r.Now}
+	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Headers: r.Headers, Route: r.route(), Flags: r.Flags, Now: r.Now}
 }
 
-// route is the route rules see: "direct" or "mux", never "search".
+// route is the route rules see: "direct" or "mux".
 func (r Request) route() string {
 	if r.mux() {
 		return "mux"
@@ -206,21 +204,7 @@ func (r Request) route() string {
 }
 
 // search reports whether the request is in search mode, on either route.
-func (r Request) search() bool { return r.Flags[FlagSearch] || r.Route == "search" }
-
-// flags is the request's flags with the older spelling of search mode
-// folded in.
-func (r Request) flags() map[string]bool {
-	if r.Route != "search" || r.Flags[FlagSearch] {
-		return r.Flags
-	}
-	out := make(map[string]bool, len(r.Flags)+1)
-	for k, v := range r.Flags {
-		out[k] = v
-	}
-	out[FlagSearch] = true
-	return out
-}
+func (r Request) search() bool { return r.Flags[FlagSearch] }
 
 // plainMux is the mux route without search mode, where the gateway lists
 // its own instructions tool beside the servers' tools.
@@ -247,7 +231,7 @@ type clientMessage string
 
 func (m clientMessage) Error() string { return string(m) }
 
-func (r Request) mux() bool { return r.Route == "mux" || r.Route == "search" }
+func (r Request) mux() bool { return r.Route == "mux" }
 
 func (r Request) server(slug string) *Server {
 	for _, s := range r.Servers {

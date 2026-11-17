@@ -52,7 +52,7 @@ Case fields:
 | Field | Meaning |
 | --- | --- |
 | `name` | unique within its file |
-| `route` | `direct` (default) or `mux`. `search` is still read, as the older spelling of `mux` with the search flag on |
+| `route` | `direct` (default) or `mux`. Search mode is the `search` flag, on either route |
 | `flags` | The request's switches, for example `{"search": true}` or `{"cli": true}`. A flag can be set for either route. Rules read them as `request.flags.search` and `request.flags.cli` |
 | `caller`, `client`, `now` | the request context. Rules read them as `request.caller`, `request.client` and `request.time`. `client` is `{clientInfo, capabilities}`. A step can override each |
 | `limits`, `secret` | engine limits and the signing key |

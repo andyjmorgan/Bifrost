@@ -189,9 +189,6 @@ func (g *Gateway) Direct(slug string) string { return g.srv.URL + "/direct/" + s
 // Mux is the mux endpoint.
 func (g *Gateway) Mux() string { return g.srv.URL + "/mux" }
 
-// Search is the search-mode endpoint.
-func (g *Gateway) Search() string { return g.srv.URL + "/search" }
-
 // AddServer connects to an upstream, fetches its catalog and registers it
 // under a slug with the given rules.
 func (g *Gateway) AddServer(t testing.TB, slug string, u *Upstream, rules ...hooks.Rule) *hooks.Server {
@@ -492,8 +489,6 @@ func (g *Gateway) route(r *http.Request) (string, []*hooks.Server, bool) {
 	switch {
 	case path == "/mux":
 		return "mux", all(), true
-	case path == "/search":
-		return "search", all(), true
 	case strings.HasPrefix(path, "/direct/"):
 		if b := g.backends[strings.TrimPrefix(path, "/direct/")]; b != nil {
 			return "direct", []*hooks.Server{b.server}, true
@@ -526,9 +521,8 @@ func (g *Gateway) handle(ctx context.Context, st *stream, route string, servers 
 	dec.UseNumber()
 	_ = dec.Decode(&env)
 	req := hooks.Request{Route: route, Flags: ov.flags, Caller: g.Caller, Client: clientOf(env.Meta), Now: time.Now(), Servers: servers}
-	// Search mode is a flag on either route. The /search path is the older
-	// way to ask for it on the mux.
-	searching := route == "search" || ov.flags[hooks.FlagSearch]
+	// Search mode is a flag on either route.
+	searching := ov.flags[hooks.FlagSearch]
 	if ov.hasCaller {
 		req.Caller = ov.caller
 	}

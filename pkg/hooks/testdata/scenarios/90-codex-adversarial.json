@@ -2603,7 +2603,8 @@
     }
    }
   ],
-  "route": "search"
+  "route": "mux",
+  "flags": {"search": true}
  },
  {"exclude": [{"harness": ["raw", "go-sdk", "python-sdk", "typescript-sdk"], "reason": "the case invokes search mode's tool_search on the direct route, which the engine harness can do by calling it directly; over a wire that route has no such tool"}], 
   "name": "CX-40 direct search results use names executable on that direct route",
@@ -3615,7 +3616,8 @@
     }
    }
   ],
-  "route": "search",
+  "route": "mux",
+  "flags": {"search": true},
   "client": {
    "capabilities": {
     "elicitation": {}
@@ -4168,7 +4170,8 @@
     }
    }
   ],
-  "route": "search"
+  "route": "mux",
+  "flags": {"search": true}
  },
  {
   "name": "CX-61 real call Bash reverses one property while preserving all other bytes",
@@ -4361,7 +4364,8 @@
     }
    }
   ],
-  "route": "search",
+  "route": "mux",
+  "flags": {"search": true},
   "limits": {
    "budget": 10000000000
   }

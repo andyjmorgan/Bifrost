@@ -36,7 +36,6 @@ func TestSearchIsAFlagNotARoute(t *testing.T) {
 		{"direct with search", "direct", true, "t", "direct", true},
 		{"mux", "mux", false, "a" + Separator + "t", "mux", false},
 		{"mux with search", "mux", true, "a" + Separator + "t", "mux", true},
-		{"the older spelling of mux with search", "search", false, "a" + Separator + "t", "mux", true},
 	} {
 		r := newRequest(tc.route, s)
 		r.Flags = map[string]bool{FlagSearch: tc.search}

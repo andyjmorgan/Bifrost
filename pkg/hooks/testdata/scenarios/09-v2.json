@@ -984,7 +984,8 @@
   "ids": [
    "RH-SRC-01"
   ],
-  "route": "search",
+  "route": "mux",
+  "flags": {"search": true},
   "servers": [
    {
     "slug": "jira",

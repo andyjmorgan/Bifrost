@@ -452,7 +452,7 @@ func rewriteOwnedURIs(text string, mux any) string {
 	m, _ := mux.(map[string]any)
 	route, _ := m["route"].(string)
 	slug, _ := m["slug"].(string)
-	if (route != "mux" && route != "search") || slug == "" {
+	if route != "mux" || slug == "" {
 		return text
 	}
 	owned, _ := m["owned"].(map[string]any)

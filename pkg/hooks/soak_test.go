@@ -166,7 +166,7 @@ func TestSoak(t *testing.T) {
 						catalog.Store(&fresh)
 					case op < 99: // search mode
 						opCounts[5].Add(1)
-						r.Route = "search"
+						r.Route, r.Flags = "mux", map[string]bool{FlagSearch: true}
 						e.ToolSearch(ctx, r, "search issues", 5)
 					default: // the whole scenario suite
 						opCounts[6].Add(1)

@@ -252,7 +252,7 @@ func cannotRun(sc *hooks.Scenario) string {
 		switch {
 		case st.Op == "skills/list" || st.Op == "skills/get":
 			return "the harness gateway does not serve the Skills extension, which is deferred, so the " + st.Op + " step has no endpoint to reach"
-		case searchOps[st.Op] && sc.Route != "search" && !sc.Flags[hooks.FlagSearch]:
+		case searchOps[st.Op] && !sc.Flags[hooks.FlagSearch]:
 			route := sc.Route
 			if route == "" {
 				route = "direct"
@@ -1027,8 +1027,8 @@ func (p *goldenRun) endpoint(st hooks.Step) string {
 	switch {
 	case route == "direct" && len(p.live) == 1:
 		path = "/direct/" + p.live[0].Slug
-	case route == "mux" || route == "search":
-		path = "/" + route
+	case route == "mux":
+		path = "/mux"
 	default:
 		path = "/route/" + route
 	}
