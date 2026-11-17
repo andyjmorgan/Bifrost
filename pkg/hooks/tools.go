@@ -22,7 +22,7 @@ import (
 // modified once handed to the engine.
 //
 // The cache value must never reference the *mcp.Tool itself, or the weak
-// key could never be collected (V2-F01).
+// key could never be collected and the cache would grow without bound.
 type preparedTool struct {
 	base     map[string]any
 	props    map[string]any

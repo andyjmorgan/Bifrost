@@ -136,10 +136,10 @@ type Engine struct {
 	// recognise: an unfamiliar content block, notification, result type,
 	// input request or template form. The same records are on the Outcome.
 	OnUnknown func(Unknown)
-	// States holds the gateway's own confirmation challenges. Nil means the
-	// in-memory stand-in, which is only correct for a single instance.
-	// TODO: the gateway supplies a shared store here (a Redis TTL key or
-	// similar) before it runs more than one instance.
+	// States holds the state of each request that waits for the user's
+	// answer. A gateway with more than one instance must supply one they all
+	// share. Nil means MemoryStates, which is right for a single instance
+	// only.
 	States StateStore
 
 	memOnce sync.Once

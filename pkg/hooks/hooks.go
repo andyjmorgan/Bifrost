@@ -1,11 +1,20 @@
-// Package hooks is the Bifrost rules engine: CEL rules attached to MCP
-// surfaces ("hooks"), evaluated over upstream catalogs and requests. It is a
-// standalone library: it knows nothing about Bifrost's storage, auth or
-// transport. A caller hands it rules, upstream data and request context, and
-// gets back what the client would see and what would be forwarded upstream.
+// Package hooks is a rules engine for an MCP gateway. An entitlement's rules
+// are CEL expressions that run at fixed points in a request, called hooks:
+// when tools are listed, before a call is forwarded, when a result comes
+// back, and so on. A rule can hide an item, refuse a request, ask the user to
+// confirm, or change what its hook lets it change.
 //
-// The design is "v3: Hooks" in the MCP Gateway policy engine note; that
-// document, not this code, is the source of truth.
+// The engine does no I/O and knows nothing of a gateway's storage, auth or
+// transport. A gateway hands it a Request, the servers on the route with
+// their catalogs and compiled rules, and the client's request. The Outcome
+// says what to return to the client, or what to forward to the server. The
+// gateway forwards it and hands the reply back to the matching Upstream…Reply
+// or …ReplyStream method.
+//
+// A gateway must supply a StateStore shared by all its instances, a
+// generation for each server that changes when its entitlement or catalog
+// does, and a principal for each request. docs/rules/handover.md says what
+// else, and docs/rules/hooks describes the rule language.
 package hooks
 
 import (

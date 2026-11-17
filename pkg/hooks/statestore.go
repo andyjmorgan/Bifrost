@@ -13,12 +13,11 @@ import (
 // did. The client holds only the key, which says nothing about the request
 // and cannot be altered.
 //
-// The production implementation is a shared cache with expiring keys, such
-// as Redis; see MemoryStates for the stand-in used until then.
-//
-// Take returns a state and removes it in one step, so a question can be
-// answered once. An implementation shared between gateway instances must
-// keep that atomic.
+// A gateway with more than one instance must supply a store they all share:
+// a cache with expiring keys, such as a Redis key with a TTL. Put stores a
+// state for ttl. Take returns a state and removes it in one step, so a
+// question can be answered once; across instances that step must be atomic,
+// as Redis GETDEL is.
 type StateStore interface {
 	Put(key string, st State, ttl time.Duration)
 	Take(key string) (State, bool)
@@ -37,16 +36,10 @@ func newStateKey() string {
 
 func isStateKey(token string) bool { return strings.HasPrefix(token, stateKeyPrefix) }
 
-// MemoryStates is a StateStore in this process's memory.
-//
-// TODO: replace with a shared store before running more than one gateway
-// instance: a Redis key with a TTL, or similar. Put is a SET with an expiry
-// of StateTTL; Take must be an atomic get-and-delete (GETDEL), so a
-// challenge is answered once across every instance.
-//
-// This is a stand-in. It is the default, and it is only correct for a
-// single instance: a retry that lands on another instance will not find its
-// challenge, and a restart forgets every outstanding one.
+// MemoryStates is a StateStore in this process's memory. It is what the
+// engine uses when a gateway supplies none, and it is right for tests and a
+// single instance only: a retry that lands on another instance does not
+// find its state, and a restart forgets every request that was waiting.
 type MemoryStates struct {
 	mu      sync.Mutex
 	entries map[string]memoryState

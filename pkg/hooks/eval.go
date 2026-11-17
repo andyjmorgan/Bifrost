@@ -166,8 +166,7 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 	if sv, ok := vars["server"].(map[string]any); ok {
 		server, _ = sv["slug"].(string)
 	}
-	bounded := newRunBudget(budgetFrom(ctx))
-	defer bounded.close()
+	bounded := budgetFrom(ctx)
 	for _, r := range s.byHook[hook] {
 		if stopped && !r.audit {
 			continue
@@ -472,44 +471,32 @@ func (b *budget) enforceExhausted() bool {
 	return b.enforceUsed >= b.enforceLimit
 }
 
-// runBudget creates the bounded evaluation context once per run (one item
-// through one hook) and per mode, instead of once per rule, and charges
-// each rule's elapsed time to the request budget.
-type runBudget struct {
-	b       *budget
-	cancels [2]context.CancelFunc
-}
-
-func newRunBudget(b *budget) *runBudget { return &runBudget{b: b} }
-
-func (rb *runBudget) start(ctx context.Context, audit bool) (context.Context, func(), error) {
+// start bounds one rule's evaluation by what is left of the request's
+// allowance for its mode, enforce or audit. The func it returns charges the
+// time the rule took. A nil budget has no limit.
+func (b *budget) start(ctx context.Context, audit bool) (context.Context, func(), error) {
 	if ctx.Err() != nil {
 		return ctx, func() {}, ctx.Err()
 	}
-	if rb.b == nil {
+	if b == nil {
 		return ctx, func() {}, nil
 	}
-	i := 0
-	if audit {
-		i = 1
-	}
-	rb.b.mu.Lock()
+	b.mu.Lock()
 	var left time.Duration
 	if audit {
-		left = rb.b.auditLimit - rb.b.auditUsed
+		left = b.auditLimit - b.auditUsed
 	} else {
-		left = rb.b.enforceLimit - rb.b.enforceUsed
+		left = b.enforceLimit - b.enforceUsed
 	}
-	rb.b.mu.Unlock()
+	b.mu.Unlock()
 	if left <= 0 {
 		if audit {
 			return ctx, func() {}, errAuditBudget
 		}
 		return ctx, func() {}, errBudget
 	}
-	_ = i
-	// A fresh deadline per rule: reusing one across other-mode work would
-	// let audit time expire enforcement (V2-F03).
+	// A fresh deadline per rule: reusing one across work in the other mode
+	// would let time spent on audit rules run out an enforce rule.
 	rctx, cancel := context.WithTimeout(ctx, left)
 	t0 := time.Now()
 	charged := false
@@ -520,20 +507,12 @@ func (rb *runBudget) start(ctx context.Context, audit bool) (context.Context, fu
 		charged = true
 		cancel()
 		d := time.Since(t0)
-		rb.b.mu.Lock()
+		b.mu.Lock()
 		if audit {
-			rb.b.auditUsed += d
+			b.auditUsed += d
 		} else {
-			rb.b.enforceUsed += d
+			b.enforceUsed += d
 		}
-		rb.b.mu.Unlock()
+		b.mu.Unlock()
 	}, nil
-}
-
-func (rb *runBudget) close() {
-	for _, c := range rb.cancels {
-		if c != nil {
-			c()
-		}
-	}
 }
