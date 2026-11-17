@@ -430,7 +430,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	})
 	o.Hits = append(o.Hits, ro.hits...)
 	if ro.denied {
-		o.Result = toolError(denyText(ro.reason, tr.Exposed))
+		o.Result = toolError(denyOr(ro.reason, toolRefused(tr.Exposed)))
 		return e.finishOutcome(ctx, o)
 	}
 	final := view.Materialize()

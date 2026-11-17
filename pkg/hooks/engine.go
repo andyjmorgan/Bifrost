@@ -545,17 +545,6 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	if issue != "" {
 		o.Issues = append(o.Issues, s.Slug+": "+issue)
 	}
-	hash := argsHash(args)
-	st, confirmed, upResponses, serr := e.continuation(r, s, "tools/call", tr.Upstream, hash, p.RequestState, p.InputResponses)
-	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit("tools/call.pre", tr.Exposed))
-		o.Result = toolError(errDeclined.Message)
-		return o
-	}
-	if serr != nil {
-		o.Error = serr
-		return o
-	}
 	var ept *preparedTool
 	if et.Changed {
 		ept = buildPrepared(et.Tool) // a per-request object: do not cache it
@@ -572,35 +561,30 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	}
 	roots := r.context(s).roots("tools/call", callParams(tr.Exposed, celArgs(args), p.Meta))
 	var timeout time.Duration
-	co := s.Rules.runAsking(ctx, "tools/call.pre", tr.Exposed, resolve, roots, asked(confirmed, args), func(key string, val any) error {
-		parts := splitPath(key)
-		switch parts[0] {
-		case "arguments":
-			if err := tr.patchable(parts[1]); err != nil {
-				return err
+	c := preCall{
+		server: s, method: "tools/call", hook: "tools/call.pre", target: tr.Upstream, label: tr.Exposed,
+		args: args, state: p.RequestState, answers: p.InputResponses, resolve: resolve, roots: roots,
+		// A refused call is an error result, not a JSON-RPC error, so the
+		// model can read the reason and change its arguments.
+		refuse: func(o *Outcome, message string) { o.Result = toolError(message) },
+		denied: toolRefused(tr.Exposed),
+		set: func(key string, val any) error {
+			parts := splitPath(key)
+			switch parts[0] {
+			case "arguments":
+				if err := tr.patchable(parts[1]); err != nil {
+					return err
+				}
+				args[parts[1]] = val
+				setParam(roots, "arguments", celArgs(args))
+			case "timeout":
+				timeout = val.(time.Duration)
 			}
-			args[parts[1]] = val
-			setParam(roots, "arguments", celArgs(args))
-		case "timeout":
-			timeout = val.(time.Duration)
-		}
-		return nil
-	})
-	o.Hits = append(o.Hits, co.hits...)
-	if expired(ctx) {
-		return budgetOutcome(o)
+			return nil
+		},
 	}
-	switch {
-	case co.denied:
-		o.Result = toolError(denyText(co.reason, tr.Exposed))
-		return o
-	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "tools/call", tr.Upstream, hash, st, confirmed, args, co.elicit)
-		if err != nil {
-			o.Result = toolError(err.Error())
-			return o
-		}
-		o.Result = res
+	pass, goes := e.pre(ctx, r, &o, c)
+	if !goes {
 		return o
 	}
 	// Pins always win, including over call-rule patches.
@@ -617,32 +601,17 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		o.Issues = append(o.Issues, fmt.Sprintf("%s: hidden required parameters %v were not set by any rule", s.Slug, missing))
 		return o
 	}
-	ci, chits := e.Connect(ctx, r, s, e.version())
-	o.Hits = append(o.Hits, chits...)
 	fp := &mcp.CallToolParams{Name: tr.Upstream, Arguments: upArgs}
-	if ci.ForwardMeta {
-		fp.Meta = forwardMeta(p.Meta)
+	if !e.send(ctx, r, &o, c, pass, fp, p.Meta, func(meta mcp.Meta, state string, answers mcp.InputResponseMap) {
+		fp.Meta, fp.RequestState, fp.InputResponses = meta, state, answers
+	}) {
+		return o
 	}
-	if st != nil && st.UpstreamRound {
-		fp.RequestState = st.Upstream
-		fp.InputResponses = upResponses
-	}
-	if expired(ctx) {
-		return budgetOutcome(o)
-	}
-	o.Forward = &Forward{Slug: s.Slug, Method: "tools/call", Params: fp, Connect: &ci}
 	if timeout > 0 {
 		o.Forward.Timeout = timeout.String()
 	}
-	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve}
 	return o
-}
-
-func denyText(reason, tool string) string {
-	if reason == "" {
-		return fmt.Sprintf("The call to %s was refused by policy.", tool)
-	}
-	return reason
 }
 
 func upstreamTool(s *Server, name string) *mcp.Tool {

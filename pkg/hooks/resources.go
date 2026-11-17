@@ -105,15 +105,6 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
 		return o
 	}
-	hash := argsHash(args)
-	st, confirmed, upResp, serr := e.continuation(r, s, "prompts/get", l.upstreamID, hash, p.RequestState, p.InputResponses)
-	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit("prompts/get.pre", l.exposedID))
-	}
-	if serr != nil {
-		o.Error = serr
-		return o
-	}
 	it := &item{kind: KindPrompt, view: NewView(l.value), args: l.args}
 	up := upstreamPrompt(s, l.upstreamID)
 	resolve := func(name string) (any, bool) {
@@ -123,29 +114,23 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		return it.resolve(name)
 	}
 	roots := r.context(s).roots("prompts/get", callParams(l.exposedID, copyMap(args), p.Meta))
-	co := s.Rules.runAsking(ctx, "prompts/get.pre", l.exposedID, resolve, roots, asked(confirmed, args), func(key string, val any) error {
-		parts := splitPath(key) // arguments.<name>
-		args[parts[1]] = val
-		setParam(roots, "arguments", copyMap(args))
-		return nil
-	})
-	o.Hits = append(o.Hits, co.hits...)
-	switch {
-	case co.denied:
-		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, "prompts/get was refused by policy")}
-		return o
-	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "prompts/get", l.upstreamID, hash, st, confirmed, args, co.elicit)
-		if err != nil {
-			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
-			return o
-		}
-		o.Result = res
+	c := preCall{
+		server: s, method: "prompts/get", hook: "prompts/get.pre", target: l.upstreamID, label: l.exposedID,
+		args: args, state: p.RequestState, answers: p.InputResponses, resolve: resolve, roots: roots,
+		refuse: rpcRefusal, denied: "prompts/get was refused by policy",
+		set: func(key string, val any) error {
+			args[splitPath(key)[1]] = val // arguments.<name>
+			setParam(roots, "arguments", copyMap(args))
+			return nil
+		},
+	}
+	pass, goes := e.pre(ctx, r, &o, c)
+	if !goes {
 		return o
 	}
 	strArgs := map[string]string{}
 	for k, v := range args {
-		if sv, ok := v.(string); ok {
+		if sv, isStr := v.(string); isStr {
 			strArgs[k] = sv
 		} else {
 			strArgs[k] = fmt.Sprint(v)
@@ -157,22 +142,12 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		return o
 	}
 	fp := &mcp.GetPromptParams{Name: l.upstreamID, Arguments: upArgs}
-	if st != nil && st.UpstreamRound {
-		fp.RequestState, fp.InputResponses = st.Upstream, upResp
+	if !e.send(ctx, r, &o, c, pass, fp, p.Meta, func(meta mcp.Meta, state string, answers mcp.InputResponseMap) {
+		fp.Meta, fp.RequestState, fp.InputResponses = meta, state, answers
+	}) {
+		return o
 	}
-	if expired(ctx) {
-		return budgetOutcome(o)
-	}
-	ci, chits := e.Connect(ctx, r, s, e.version())
-	o.Hits = append(o.Hits, chits...)
-	if expired(ctx) {
-		return budgetOutcome(o) // the session rules spent what was left
-	}
-	if ci.ForwardMeta {
-		fp.Meta = forwardMeta(p.Meta)
-	}
-	o.Forward = &Forward{Slug: s.Slug, Method: "prompts/get", Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Params: callParams(l.exposedID, copyMap(args), p.Meta), Args: toAnyMap(upArgs), Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Params: callParams(l.exposedID, copyMap(args), p.Meta), Args: toAnyMap(upArgs), Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve}
 	return o
 }
 
@@ -934,54 +909,29 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return o
 	}
 	args := map[string]any{"uri": up}
-	hash := argsHash(args)
-	st, confirmed, upResp, serr := e.continuation(r, s, method, up, hash, p.RequestState, p.InputResponses)
-	if serr == errDeclined {
-		o.Hits = append(o.Hits, declinedHit("resources/read.pre", p.URI))
-	}
-	if serr != nil {
-		o.Error = serr
-		return o
-	}
 	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[normalizeURI(up)]}
 	resolve := itemResolver(it, v.originalRes[normalizeURI(up)])
 	params := map[string]any{"uri": up}
 	if len(p.Meta) > 0 {
 		params["_meta"] = map[string]any(p.Meta)
 	}
-	roots := r.context(s).roots(method, params)
-	co := s.Rules.runAsking(ctx, "resources/read.pre", up, resolve, roots, asked(confirmed, args), func(string, any) error { return nil })
-	o.Hits = append(o.Hits, co.hits...)
-	if expired(ctx) {
-		return budgetOutcome(o)
+	c := preCall{
+		server: s, method: method, hook: "resources/read.pre", target: up, label: up,
+		args: args, state: p.RequestState, answers: p.InputResponses, resolve: resolve, roots: r.context(s).roots(method, params),
+		refuse: rpcRefusal, denied: method + " was refused by policy",
+		set: func(string, any) error { return nil }, // a read has nothing a rule may set
 	}
-	switch {
-	case co.denied:
-		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, method+" was refused by policy")}
-		return o
-	case co.elicit != nil:
-		out, err := e.elicitation(r, s, method, up, hash, st, confirmed, args, co.elicit)
-		if err != nil {
-			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
-			return o
-		}
-		o.Result = out
+	pass, goes := e.pre(ctx, r, &o, c)
+	if !goes {
 		return o
 	}
 	fp := &mcp.ReadResourceParams{URI: up}
-	if st != nil && st.UpstreamRound {
-		fp.RequestState, fp.InputResponses = st.Upstream, upResp
+	if !e.send(ctx, r, &o, c, pass, fp, p.Meta, func(meta mcp.Meta, state string, answers mcp.InputResponseMap) {
+		fp.Meta, fp.RequestState, fp.InputResponses = meta, state, answers
+	}) {
+		return o
 	}
-	ci, chits := e.Connect(ctx, r, s, e.version())
-	o.Hits = append(o.Hits, chits...)
-	if ci.ForwardMeta {
-		fp.Meta = forwardMeta(p.Meta)
-	}
-	if expired(ctx) {
-		return budgetOutcome(o)
-	}
-	o.Forward = &Forward{Slug: s.Slug, Method: method, Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve}
 	return o
 }
 
