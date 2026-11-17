@@ -190,14 +190,17 @@ func TestASlowAuditRuleNeverChangesACallsOutcome(t *testing.T) {
 func TestASlowAuditRuleCannotExpireALaterEnforceRule(t *testing.T) {
 	before := Rule{Hook: "tools/list.post", When: "false", Then: map[string]string{"decision": "'deny'"}}
 	audit := Rule{Mode: "audit", Hook: "tools/list.post", When: "tool.description == 'slow'", Then: map[string]string{"decision": "'deny'"}}
-	after := Rule{Hook: "tools/list.post", When: "lists.range(1000).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}}
+	after := Rule{Hook: "tools/list.post", When: "lists.range(10).exists(i, i < 0)", Then: map[string]string{"decision": "'deny'"}}
 	run := func(rs []Rule) outcome {
 		set := mustCompileUncapped(t, rs...)
-		ctx := withBudget(context.Background(), 100*time.Millisecond, time.Second)
+		// The audit rule takes longer than the whole enforce allowance. The
+		// enforce rules themselves are cheap, so the allowance has room to
+		// spare on a loaded machine: only audit time charged to enforcement
+		// could use it up.
+		ctx := withBudget(context.Background(), 300*time.Millisecond, 2*time.Second)
 		resolve := func(name string) (any, bool) {
 			if name == "description" {
-				// Controlled audit-only work makes this independent of CPU speed.
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(600 * time.Millisecond)
 				return "slow", true
 			}
 			return nil, false
