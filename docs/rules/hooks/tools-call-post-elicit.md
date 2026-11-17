@@ -10,7 +10,7 @@ The gateway recognizes an `input_required` reply that carries input requests, a 
 
 A server asks for input only if the gateway advertised elicitation to it. That is off by default and controlled by [server.session](server-session.md).
 
-This is the server's own question. A `confirm` rule in [tools/call.pre](tools-call-pre.md) is the gateway's question and does not pass through this hook. Gateway confirmations always resolve before the server is called, so the gateway and the server never ask in the same round.
+This is the server's own question. A `confirm` rule in [tools/call.pre](tools-call-pre.md) is the gateway's question and does not pass through this hook. Gateway confirmations resolve before the server is called. If the rules ask a new question on the round that answers the server's question, the request is refused and must be sent again.
 
 ## What a rule can read
 

@@ -318,7 +318,7 @@
   ]
  },
  {
-  "name": "RT-02 a confirmation covers the arguments a rule set: an answer sent with a changed request is refused",
+  "name": "RT-02 a confirmation covers the arguments a rule set: an answer sent with a changed request is not taken, and the new question is asked",
   "ids": [
    "RT-02"
   ],
@@ -433,9 +433,13 @@
       "exists": false
      },
      {
+      "path": "outcome.result.resultType",
+      "equals": "input_required"
+     },
+     {
       "path": "client",
       "hasText": [
-       "The request changed since the confirmation was asked"
+       "Deploy to \\\"production\\\"?"
       ]
      }
     ]

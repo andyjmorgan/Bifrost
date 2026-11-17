@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -143,15 +144,13 @@ func (s *Set) run(ctx context.Context, hook, itemLabel string, resolve func(stri
 }
 
 // runAsking is run for a hook whose rules can ask the user to confirm.
-// answered says whether a question has been confirmed on this request; it
-// returns a reason when the answer no longer fits and the request is to be
-// refused.
-func (s *Set) runAsking(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, answered func(map[string]any) (bool, string), set setter) outcome {
+// answered says whether a question has been confirmed on this request.
+func (s *Set) runAsking(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, answered func(map[string]any) bool, set setter) outcome {
 	return s.runIf(ctx, hook, itemLabel, resolve, vars, set, nil, answered)
 }
 
 // runIf is run over the rules keep accepts; nil accepts every rule.
-func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter, keep func(*compiledRule) bool, answered func(map[string]any) (bool, string)) outcome {
+func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(string) (any, bool), vars map[string]any, set setter, keep func(*compiledRule) bool, answered func(map[string]any) bool) outcome {
 	var o outcome
 	if s == nil {
 		return o
@@ -250,7 +249,15 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 				break
 			}
 			nv := native(v)
-			if err := checkType(t.spec.Type, nv); err != nil {
+			terr := checkType(t.spec.Type, nv)
+			if m, isMap := nv.(map[string]any); terr == nil && isMap && t.spec.Keys != nil {
+				for k := range m {
+					if !slices.Contains(t.spec.Keys, k) {
+						terr = fmt.Errorf("%s has no %q; it has %s", t.key, k, strings.Join(t.spec.Keys, ", "))
+					}
+				}
+			}
+			if err := terr; err != nil {
 				hit.Effect, hit.Error = "error", fmt.Sprintf("%s: %v", t.key, err)
 				failed = true
 				break
@@ -343,18 +350,9 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 		if elicit {
 			// The question is asked once the rule's own changes are made, so
 			// it covers the arguments as they stand now.
-			done, changed := false, ""
-			if answered != nil {
-				done, changed = answered(marker)
-			}
-			switch {
-			case changed != "":
-				hit.Effect, hit.Reason = "deny", changed
-				o.denied, o.reason = true, changed
-				stopped = true
-			case done:
+			if answered != nil && answered(marker) {
 				hit.Effect = "confirmed"
-			default:
+			} else {
 				o.elicit = marker
 				stopped = true
 			}
@@ -423,6 +421,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
+// joinPath writes path segments as one key, the way splitPath reads them:
+// a dot or a backslash inside a segment is escaped.
 func joinPath(p []string) string {
 	esc := make([]string, len(p))
 	for i, s := range p {

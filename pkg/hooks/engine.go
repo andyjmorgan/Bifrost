@@ -360,11 +360,11 @@ type CallContext struct {
 	// pre rules left it: the exposed name or URI, the arguments under the
 	// names the client uses, and _meta. Reply hooks read it as
 	// request.params.
-	Params  map[string]any
-	Args    map[string]any // exactly what was sent upstream; reply hooks read it as request.upstream.params.arguments
-	Hash    string
-	State   *State
-	Answers map[string]any // gateway answers validated for this request, carried into an upstream round
+	Params    map[string]any
+	Args      map[string]any // exactly what was sent upstream; reply hooks read it as request.upstream.params.arguments
+	Hash      string
+	State     *State
+	Confirmed map[string]bool // what the user has confirmed on this request, carried into an upstream round
 }
 
 // roots builds the branches a reply hook reads: the request with both sides
@@ -539,7 +539,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		o.Issues = append(o.Issues, s.Slug+": "+issue)
 	}
 	hash := argsHash(args)
-	st, answers, upResponses, serr := e.continuation(r, s, "tools/call", tr.Upstream, hash, p.RequestState, p.InputResponses)
+	st, confirmed, upResponses, serr := e.continuation(r, s, "tools/call", tr.Upstream, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
 		o.Hits = append(o.Hits, declinedHit("tools/call.pre", tr.Exposed))
 		o.Result = toolError(errDeclined.Message)
@@ -565,7 +565,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	}
 	roots := r.context(s).roots("tools/call", callParams(tr.Exposed, celArgs(args), p.Meta))
 	var timeout time.Duration
-	co := s.Rules.runAsking(ctx, "tools/call.pre", tr.Exposed, resolve, roots, asked(st, answers, args), func(key string, val any) error {
+	co := s.Rules.runAsking(ctx, "tools/call.pre", tr.Exposed, resolve, roots, asked(confirmed, args), func(key string, val any) error {
 		parts := splitPath(key)
 		switch parts[0] {
 		case "arguments":
@@ -588,7 +588,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		o.Result = toolError(denyText(co.reason, tr.Exposed))
 		return o
 	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "tools/call", tr.Upstream, hash, st, answers, args, co.elicit)
+		res, err := e.elicitation(r, s, "tools/call", tr.Upstream, hash, st, confirmed, args, co.elicit)
 		if err != nil {
 			o.Result = toolError(err.Error())
 			return o
@@ -627,7 +627,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	if timeout > 0 {
 		o.Forward.Timeout = timeout.String()
 	}
-	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
 	return o
 }
 
@@ -767,9 +767,10 @@ func celValue(v any) any {
 // ---- elicitation --------------------------------------------------------------------
 
 // continuation validates a presented requestState and splits inputResponses
-// into the gateway's answers and the upstream's.
-func (e *Engine) continuation(r Request, s *Server, method, target, hash, token string, responses mcp.InputResponseMap) (*State, map[string]any, mcp.InputResponseMap, *RPCError) {
-	answers := map[string]any{}
+// into the gateway's and the upstream's. It returns what the user has
+// confirmed on this request so far, as bindings.
+func (e *Engine) continuation(r Request, s *Server, method, target, hash, token string, responses mcp.InputResponseMap) (*State, map[string]bool, mcp.InputResponseMap, *RPCError) {
+	done := map[string]bool{}
 	var upstream mcp.InputResponseMap
 	gatewayKeys := false
 	for k := range responses {
@@ -784,7 +785,7 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		if len(responses) > 0 {
 			return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "input responses require a request state"}
 		}
-		return nil, answers, nil, nil
+		return nil, done, nil, nil
 	}
 	// Taking the state removes it, so a question can be answered once,
 	// whether the gateway asked it or the server did, and whether or not the
@@ -812,8 +813,8 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 	case st.ArgsHash != hash:
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "arguments changed since the confirmation was requested"}
 	}
-	for k, v := range st.Answers {
-		answers[k] = v
+	for _, b := range st.Confirmed {
+		done[b] = true
 	}
 	pending := map[string]bool{}
 	for _, k := range st.Pending {
@@ -829,11 +830,10 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 			if !pending[key] {
 				return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: fmt.Sprintf("no pending input request %q", k)}
 			}
-			answer := responseMap(v)
-			if !confirmed(answer) {
+			if !confirmed(responseMap(v)) {
 				return nil, nil, nil, errDeclined
 			}
-			answers[key] = answer
+			done[st.Asks[key]] = true // a yes to this question, about these arguments
 			continue
 		}
 		if !upPending[k] {
@@ -844,7 +844,7 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		}
 		upstream[k] = v
 	}
-	return &st, answers, upstream, nil
+	return &st, done, upstream, nil
 }
 
 // errDeclined is returned when the user answered a gateway confirmation
@@ -878,27 +878,24 @@ func responseMap(v any) map[string]any {
 
 // elicitation turns an elicit() marker into an input_required result, or an
 // error when the client cannot elicit.
-// carry brings the confirmations already given on this request into the
-// state of its next round, each with what it covers.
-func (st *State) carry(prev *State, answers map[string]any) {
-	for k, v := range answers {
-		m, ok := v.(map[string]any)
-		if !ok || prev == nil {
-			continue
-		}
-		if st.Answers == nil {
-			st.Answers = map[string]map[string]any{}
-		}
-		if st.Bound == nil {
-			st.Bound = map[string]string{}
-		}
-		st.Answers[k], st.Bound[k] = m, prev.Bound[k]
+func bindings(confirmed map[string]bool) []string {
+	out := make([]string, 0, len(confirmed))
+	for b := range confirmed {
+		out = append(out, b)
 	}
+	sort.Strings(out)
+	return out
 }
 
-func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, prev *State, answers, args, marker map[string]any) (any, error) {
+func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, prev *State, confirmed map[string]bool, args, marker map[string]any) (any, error) {
 	key, _ := marker[ElicitKey].(string)
 	msg, _ := marker["message"].(string)
+	if prev != nil && prev.UpstreamRound {
+		// This round answers the server's question, and the rules now ask
+		// one they did not ask before the call was forwarded. Asking it would
+		// lose the server's state and the user's answer to the server.
+		return nil, errors.New("This request needs a confirmation it did not need when it was first sent. Send it again.")
+	}
 	if !r.clientCan("elicitation") {
 		if em, _ := marker["error"].(string); em != "" {
 			return nil, errors.New(em)
@@ -914,8 +911,7 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 	}
 	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: r.principal(), Entitlement: entitlementID(s),
 		Target: target, ArgsHash: hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Pending: []string{key},
-		Bound: map[string]string{key: binding(marker, args)}}
-	st.carry(prev, answers)
+		Asks: map[string]string{key: binding(marker, args)}, Confirmed: bindings(confirmed)}
 	reqs := mcp.InputRequestMap{KeyPrefix + key: &mcp.ElicitParams{
 		Mode:    "form",
 		Message: msg,

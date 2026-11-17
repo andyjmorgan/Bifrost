@@ -9,7 +9,7 @@
 package hooks
 
 import (
-	"strings"
+	"sort"
 	"sync"
 )
 
@@ -67,6 +67,9 @@ func (t ValueType) String() string {
 type Field struct {
 	Pattern string
 	Type    ValueType
+	// Keys are the only keys a map set on this path may have, when the
+	// path is a map with a fixed set of them, such as annotations.
+	Keys []string
 }
 
 // HookSpec describes a hook. What its rules may read and set is its tree:
@@ -162,14 +165,22 @@ func (h *HookSpec) field(key string) *Field {
 			return nil
 		}
 	}
-	// The key must start with the hook's branch exactly as it is written. A
-	// backslash escapes a dot inside a name; an escape in the branch itself
-	// would name the same node and then not be found by the setter.
-	if len(parts) > 1 && !strings.HasPrefix(key, h.writeRoot()) {
+	// The key must be the path exactly as it is written. A backslash is
+	// there to escape a dot or a backslash inside a name, and for nothing
+	// else: "conten\t" would name the same node as "content" here and then
+	// not be found by the setter.
+	if joinPath(parts) != key {
 		return nil
 	}
 	if n := h.Tree().writablePath(parts); n != nil {
-		return &Field{Pattern: key, Type: valueType(n.Type)}
+		f := &Field{Pattern: key, Type: valueType(n.Type)}
+		if n.Type == "map" && !n.Open && n.Follows == "" {
+			for k := range n.Keys {
+				f.Keys = append(f.Keys, k)
+			}
+			sort.Strings(f.Keys)
+		}
+		return f
 	}
 	return nil
 }

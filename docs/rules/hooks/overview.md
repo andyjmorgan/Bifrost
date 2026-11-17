@@ -114,7 +114,7 @@ Within its branch, a hook lists exactly which paths are writable. Each hook page
 
 ### What the gateway refuses when a rule is saved
 
-The gateway checks every path in a rule against the hook's tree when the rule is saved. A wrong name never waits for a request to be found.
+The gateway checks the paths in a rule against the hook's tree when the rule is saved, so a wrong name is found then. The check follows plain paths, `has()`, index forms, macro variables and `cel.bind`. It does not follow a value through a ternary, a list or map literal, `filter(...)[0]`, or a key worked out when the rule runs. A wrong name there is found when a request arrives: the rule fails, and a failed rule denies.
 
 | Mistake | Message |
 | --- | --- |
@@ -212,9 +212,9 @@ Write the rule with its own default, so that it does not depend on a failure:
 
 Both rules list only tools that declare `destructiveHint: false`. The second one records no error.
 
-A rule that reads an optional value with a plain `.` still saves. The gateway records a note against the rule, saying that it denies when the value is absent. A read that the same expression tests with `has()`, or that follows a `.?` step, gets no note. The check follows macro variables: in `response.result.content.exists(c, c.text.contains('x'))` it knows `c` is a content block and notes that `text` may be absent.
+A rule that reads an optional value with a plain `.` still saves. The gateway records a note against the rule, saying that it denies when the value is absent. A read gets no note where a test guards it: `has(x) && x`, `!has(x) || x`, `has(x) ? x : y`, a `has()` in the condition for the same path in a value, or a step after `.?`. A test guards only what runs when it holds, so `has(x) || x` is noted. The check follows macro variables: in `response.result.content.exists(c, c.text.contains('x'))` it knows `c` is a content block and notes that `text` may be absent.
 
-A value whose type is known when the rule is saved must fit its path. `settings.tools: 'off'` and `tool.name: 5` are refused then, not when a request arrives.
+A value whose type is known when the rule is saved must fit its path. `settings.tools: 'off'`, `tool.name: 5` and `tool.title: null` are refused then, not when a request arrives. A value whose form is wrong below its type, such as a duration that is not positive, is found when a request arrives.
 
 ### Values that are always present
 
@@ -444,7 +444,7 @@ Output is sorted by slug, then by name. The output is the same, byte for byte, w
 7. If the server replies with `input_required`, `tools/call.post.elicit` runs on each question. `tools/call.post.result` does not run.
 8. If the server replies with a result, `tools/call.post.result` shapes it. Then, on the mux route, structured URIs in the result get the slug prefix.
 
-On the post hooks, `request.upstream.params.arguments` holds the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 always resolve before step 6, so the gateway and the server never ask for input in the same round. See [effective arguments](tools-call-pre.md#effective-arguments) and [confirmation](tools-call-pre.md#confirmation).
+On the post hooks, `request.upstream.params.arguments` holds the exact arguments that were forwarded in step 6. Gateway confirmations from step 4 resolve before step 6. If the rules ask a new question on the round that answers a server's question, the request is refused and must be sent again. See [effective arguments](tools-call-pre.md#effective-arguments) and [confirmation](tools-call-pre.md#confirmation).
 
 ### Prompts
 
@@ -463,7 +463,7 @@ A read is allowed unless something denies it. That includes a URI the server nev
 - a `resources/list.post` deny rule denies it. The deny rules run on every read URI, listed or not. For a URI that no listing contains, they have only `resource.uri` to read
 - it is not in canonical form
 
-To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `resource.uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike. Not listing something does not hide it.
+To close a folder, deny its prefix in [resources/list.post](resources-list-post.md), for example `resource.uri.startsWith('file:///secret/')`. That covers listed resources, templates, deeper paths and unlisted URIs alike, because a URI has one spelling the gateway accepts: see [canonical form](#uri-form). Not listing something does not hide it. A rule that compares with `==` matches one URI only. A listed resource that a rule hides, and a template a rule denies, also cover the same URI with a query or a trailing slash added.
 
 The gateway never decodes a URI. `file:///a%2Fb` is not `file:///a/b`. It is forwarded exactly as the client sent it, as its own resource.
 
@@ -586,7 +586,17 @@ Every fallback resolution reports an event for the gateway to audit and count. T
 
 ### Canonical URIs
 
-The gateway refuses URIs with a scheme that is not lower case, dot segments (`.` or `..`), empty segments (`//` in the path) or percent-encoded unreserved characters, on every route. A scheme is not case sensitive, so `FILE:///secrets/key` and `file:///secrets/key` name the same thing to a server. Refusing the first keeps one spelling for a rule to match. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
+<a id="uri-form"></a>A rule reads a URI as text, and a server may read several spellings as the same URI. So the gateway accepts one spelling and refuses the rest, on every route:
+
+- no spaces, control characters or backslashes
+- the scheme in lower case
+- `//` after the scheme when the path starts with a slash, and always for `file`, `http`, `https`, `ws`, `wss` and `ftp`: `file:/secrets/key` is refused
+- for those schemes, the host in lower case, with no user, no trailing dot, and no empty or default port; `file://localhost/` is refused
+- no dot segments (`.` or `..`) and no empty segments (`//` in the path)
+- percent escapes in upper-case hex, and none for a character that needs none
+- no fragment
+
+For any other scheme, such as `confluence://ENG/home`, the text after `//` is the server's own and is compared as written. The query is not checked. The error is `-32602` with `URI is not in canonical form`. Entries and directory children with such URIs are dropped from a server's replies. This stops a server from resolving a path differently from the gateway.
 
 Reserved escapes, such as `%2F`, stay opaque. The gateway does not decode them, so `file:///a%2Fb` is not under `file:///a/`.
 

@@ -1,6 +1,7 @@
 package ruletext
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Every hook's example is real: it compiles with the engine's compiler.
@@ -329,4 +331,64 @@ func TestABraceInAStringInAQuestion(t *testing.T) {
 	if len(probs) > 0 || !strings.Contains(rules[0].Then["confirm"], `"v1": request.params.arguments['}']`) {
 		t.Fatalf("rule = %+v, problems %+v", rules, probs)
 	}
+}
+
+// A string that runs over lines is refused: the lines of a rule are joined
+// with a space, so it would not hold the text that was written.
+func TestAStringMustCloseOnItsLine(t *testing.T) {
+	_, probs := Compile(map[string]string{"tools/list.post": "when tool.description.contains('''see\n  http://x.example\n  ''')\n  deny\n"})
+	if len(probs) == 0 || !strings.Contains(probs[0].Message, "must close on the line") {
+		t.Fatalf("problems = %+v", probs)
+	}
+}
+
+// An escape the question's reader does not know is refused, not read
+// without its backslash.
+func TestAnUnknownEscapeInAQuestionIsRefused(t *testing.T) {
+	_, probs := Compile(map[string]string{"tools/call.pre": "when true\n  confirm \"Caf\\u00e9?\"\n"})
+	if len(probs) == 0 || !strings.Contains(probs[0].Message, "backslash") {
+		t.Fatalf("problems = %+v", probs)
+	}
+	rules, probs := Compile(map[string]string{"tools/call.pre": "when true\n  confirm \"It's \\\"fine\\\" \\\\ ok\"\n"})
+	if len(probs) > 0 || !strings.Contains(rules[0].Then["confirm"], `It's \"fine\" \\ ok`) {
+		t.Fatalf("rules = %+v, problems %+v", rules, probs)
+	}
+}
+
+// The same question asked twice, with a change to the arguments between,
+// is two questions: each is asked and answered.
+func TestTheSameQuestionTwiceWithASetBetween(t *testing.T) {
+	rules, probs := Compile(map[string]string{"tools/call.pre": "when true\n  confirm \"Sure?\"\nwhen true\n  set request.params.arguments.q = 'changed'\nwhen true\n  confirm \"Sure?\"\n"})
+	if len(probs) > 0 {
+		t.Fatalf("problems: %v", probs)
+	}
+	set, eps := hooks.Compile(rules)
+	if eps != nil {
+		t.Fatalf("problems: %v", eps)
+	}
+	s := &hooks.Server{Slug: "a", Generation: "1", Info: hooks.ServerInfo{ProtocolVersion: hooks.ProtocolCurrent}, Rules: set,
+		Catalog: hooks.Catalog{Tools: []*mcp.Tool{{Name: "t", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"q": map[string]any{"type": "string"}}}}}}}
+	r := hooks.Request{Route: "direct", Servers: []*hooks.Server{s}, Principal: "p", Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}}
+	e, ctx := &hooks.Engine{}, context.Background()
+	p := &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}
+	for round := 1; round <= 3; round++ {
+		o := e.CallTool(ctx, r, p)
+		if o.Forward != nil {
+			if round != 3 {
+				t.Fatalf("forwarded on round %d, want two questions first", round)
+			}
+			return
+		}
+		ir, asked := o.Result.(hooks.InputRequired)
+		if !asked {
+			b, _ := json.Marshal(o.Result)
+			t.Fatalf("round %d: refused, and no question to answer: %s", round, b)
+		}
+		in := mcp.InputResponseMap{}
+		for k := range ir.InputRequests {
+			in[k] = &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirm": true}}
+		}
+		p = &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`), RequestState: ir.RequestState, InputResponses: in}
+	}
+	t.Error("the gateway kept asking")
 }

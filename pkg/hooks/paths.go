@@ -73,13 +73,59 @@ type bound struct {
 }
 
 type pathCheck struct {
-	spec *HookSpec
-	// negated is how many ! the walk is inside. !has(x) says x is absent,
-	// so it does not guard a read of x.
-	negated   int
+	spec      *HookSpec
 	unguarded map[string]bool
-	tested    map[string]bool
 	err       error
+}
+
+// guards are the paths known to be there at one point in an expression. A
+// test guards only what runs when it holds: has(x) && x, !has(x) || x,
+// has(x) ? x : y. CEL's && and || do not care about order, so a test on
+// either side guards the other.
+type guards map[string]bool
+
+func (g guards) with(paths []string) guards {
+	if len(paths) == 0 {
+		return g
+	}
+	out := make(guards, len(g)+len(paths))
+	for p := range g {
+		out[p] = true
+	}
+	for _, p := range paths {
+		out[p] = true
+	}
+	return out
+}
+
+// present returns the paths that are there whenever e is true (when want
+// is true) or whenever e is false (when want is false).
+func (c *pathCheck) present(e ast.Expr, want bool, scope map[string]bound) []string {
+	switch e.Kind() {
+	case ast.SelectKind:
+		if want && e.AsSelect().IsTestOnly() {
+			if b := c.resolve(e, scope); b.path != "" {
+				return []string{b.path}
+			}
+		}
+	case ast.CallKind:
+		call := e.AsCall()
+		switch fn := call.FunctionName(); {
+		case fn == "!_" && len(call.Args()) == 1:
+			return c.present(call.Args()[0], !want, scope)
+		case (fn == "_&&_" && want) || (fn == "_||_" && !want):
+			var out []string
+			for _, a := range call.Args() {
+				out = append(out, c.present(a, want, scope)...)
+			}
+			return out
+		case fn == "hasValue" && want && call.IsMemberFunction():
+			if b := c.resolve(call.Target(), scope); b.path != "" {
+				return []string{b.path}
+			}
+		}
+	}
+	return nil
 }
 
 // checkPaths refuses an expression that reads something the hook's tree
@@ -87,19 +133,18 @@ type pathCheck struct {
 // with a plain "." and no guard (reading one that is absent fails the rule,
 // and a rule that fails denies), and the values it tests with has().
 func checkPaths(a *cel.Ast, spec *HookSpec) (unguarded, tested []string, err error) {
-	c := &pathCheck{spec: spec, unguarded: map[string]bool{}, tested: map[string]bool{}}
-	c.walk(a.NativeRep().Expr(), map[string]bound{})
+	c := &pathCheck{spec: spec, unguarded: map[string]bool{}}
+	root := a.NativeRep().Expr()
+	c.walk(root, map[string]bound{}, guards{})
 	if c.err != nil {
 		return nil, nil, c.err
 	}
 	for p := range c.unguarded {
-		if !c.tested[p] { // has(x) && x: the same expression guards it
-			unguarded = append(unguarded, p)
-		}
+		unguarded = append(unguarded, p)
 	}
-	for p := range c.tested {
-		tested = append(tested, p)
-	}
+	// What is there whenever the whole expression is true: for a condition,
+	// that guards the same paths in the rule's values.
+	tested = c.present(root, true, map[string]bound{})
 	sort.Strings(unguarded)
 	sort.Strings(tested)
 	return unguarded, tested, nil
@@ -107,13 +152,13 @@ func checkPaths(a *cel.Ast, spec *HookSpec) (unguarded, tested []string, err err
 
 // walk visits an expression. scope holds the variables the macros around it
 // have bound.
-func (c *pathCheck) walk(e ast.Expr, scope map[string]bound) {
+func (c *pathCheck) walk(e ast.Expr, scope map[string]bound, g guards) {
 	if c.err != nil || e == nil {
 		return
 	}
 	if _, steps, ok := chainOf(e); ok {
 		if len(steps) > 0 {
-			c.chain(e, scope)
+			c.chain(e, scope, g)
 		} else if e.Kind() == ast.IdentKind {
 			c.whole(strings.TrimPrefix(e.AsIdent(), "."), nil, scope)
 		}
@@ -121,37 +166,52 @@ func (c *pathCheck) walk(e ast.Expr, scope map[string]bound) {
 	}
 	switch e.Kind() {
 	case ast.SelectKind:
-		c.walk(e.AsSelect().Operand(), scope)
+		c.walk(e.AsSelect().Operand(), scope, g)
 	case ast.CallKind:
 		call := e.AsCall()
 		if call.IsMemberFunction() {
-			c.walk(call.Target(), scope)
+			c.walk(call.Target(), scope, g)
 		}
-		if call.FunctionName() == "!_" {
-			c.negated++
-			defer func() { c.negated-- }()
-		}
-		for _, a := range call.Args() {
-			c.walk(a, scope)
+		args := call.Args()
+		switch fn := call.FunctionName(); {
+		case fn == "_&&_" || fn == "_||_":
+			// Each side is read knowing what the other sides establish.
+			for i, a := range args {
+				ga := g
+				for j, other := range args {
+					if i != j {
+						ga = ga.with(c.present(other, fn == "_&&_", scope))
+					}
+				}
+				c.walk(a, scope, ga)
+			}
+		case fn == "_?_:_" && len(args) == 3:
+			c.walk(args[0], scope, g)
+			c.walk(args[1], scope, g.with(c.present(args[0], true, scope)))
+			c.walk(args[2], scope, g.with(c.present(args[0], false, scope)))
+		default:
+			for _, a := range args {
+				c.walk(a, scope, g)
+			}
 		}
 	case ast.ListKind:
 		for _, x := range e.AsList().Elements() {
-			c.walk(x, scope)
+			c.walk(x, scope, g)
 		}
 	case ast.MapKind:
 		for _, en := range e.AsMap().Entries() {
 			me := en.AsMapEntry()
-			c.walk(me.Key(), scope)
-			c.walk(me.Value(), scope)
+			c.walk(me.Key(), scope, g)
+			c.walk(me.Value(), scope, g)
 		}
 	case ast.StructKind:
 		for _, f := range e.AsStruct().Fields() {
-			c.walk(f.AsStructField().Value(), scope)
+			c.walk(f.AsStructField().Value(), scope, g)
 		}
 	case ast.ComprehensionKind:
 		comp := e.AsComprehension()
-		c.walk(comp.IterRange(), scope)
-		c.walk(comp.AccuInit(), scope)
+		c.walk(comp.IterRange(), scope, g)
+		c.walk(comp.AccuInit(), scope, g)
 		inner := make(map[string]bound, len(scope)+3)
 		for k, v := range scope {
 			inner[k] = v
@@ -177,9 +237,9 @@ func (c *pathCheck) walk(e ast.Expr, scope map[string]bound) {
 		// cel.bind(x, init, body) binds x to init; other macros keep their
 		// running result there.
 		inner[comp.AccuVar()] = c.resolve(comp.AccuInit(), scope)
-		c.walk(comp.LoopCondition(), inner)
-		c.walk(comp.LoopStep(), inner)
-		c.walk(comp.Result(), inner)
+		c.walk(comp.LoopCondition(), inner, g)
+		c.walk(comp.LoopStep(), inner, g)
+		c.walk(comp.Result(), inner, g)
 	}
 }
 
@@ -249,11 +309,11 @@ func (c *pathCheck) whole(root string, steps []step, scope map[string]bound) {
 }
 
 // chain checks one member chain, taken as a whole.
-func (c *pathCheck) chain(e ast.Expr, scope map[string]bound) {
+func (c *pathCheck) chain(e ast.Expr, scope map[string]bound, g guards) {
 	root, steps, _ := chainOf(e)
 	for _, st := range steps {
 		if st.index != nil {
-			c.walk(st.index, scope) // a computed index is an expression of its own
+			c.walk(st.index, scope, g) // a computed index is an expression of its own
 		}
 	}
 	cur, known := c.start(root, scope)
@@ -286,11 +346,8 @@ func (c *pathCheck) chain(e ast.Expr, scope map[string]bound) {
 		if st.optional {
 			guarded = true
 		}
-		if next.node.Optional && !guarded {
+		if next.node.Optional && !guarded && !g[next.path] {
 			c.unguarded[next.path] = true
-		}
-		if st.tested && c.negated%2 == 0 {
-			c.tested[next.path] = true
 		}
 		cur = next
 	}

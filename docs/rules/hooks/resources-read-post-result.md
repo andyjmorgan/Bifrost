@@ -6,7 +6,7 @@
 
 `resources/read.post.result` runs in two places:
 
-- On each `resources/read` result, once, over every entry the server returned. It runs after the gateway drops entries the caller cannot read, and before the mux URI prefix.
+- On each `resources/read` result, once, over every entry the server returned. It runs after the gateway drops entries the caller cannot read, entries whose URI is not in [canonical form](overview.md#uri-form), and entries that are not objects with a string `uri`. It runs before the mux URI prefix.
 - On `skills/list` and `skills/get`, once for each text file in each visible skill's manifest, as a read that returned that file alone. This builds the skill's [rewrite plan](#skill-files).
 
 It does not run on directory reads, or when the server replies with `input_required`.
@@ -76,7 +76,7 @@ For skills, the gateway builds one rewrite plan for each skill. It runs these ru
 - Rules that read `request` are not applied to skill files, because listing and reading would produce different bytes. That includes `request.caller`, `request.client`, `request.time` and `request.route`. The skill is served unchanged, and the listing reports why.
 - Files the caller cannot read are never fetched or rewritten.
 
-On a read, `SKILL.md` and each file that the skill's manifest lists keep the bytes the manifest describes, whatever a rule sets at read time. A rule can still block the read or drop the entry. A file under the skill's folder that the manifest does not list is an ordinary entry, and a rule's change to it stands. For a dynamic skill, which has no manifest, every file under the folder is served as the server sent it.
+On a read, `SKILL.md` and each file that a visible skill's manifest lists keep the bytes the manifest describes, whatever a rule sets at read time. This holds for a file in a nested skill's folder that an outer skill's manifest lists. When a rule's change is set aside this way, the gateway records an issue. A rule can still block the read or drop the entry. A file under the skill's folder that the manifest does not list is an ordinary entry, and a rule's change to it stands. For a dynamic skill, which has no manifest, every file under the folder is served as the server sent it.
 
 `response.upstream` always holds the server's own bytes, also for a skill file that the plan rewrote.
 

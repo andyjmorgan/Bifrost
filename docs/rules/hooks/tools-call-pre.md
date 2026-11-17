@@ -143,11 +143,13 @@ The gateway's input request is a form with one required boolean, `confirm`:
 
 The gateway decides whether a question has been answered, not the rule. A rule says only when to ask and what to ask. No rule can read an answer.
 
-A confirmation covers two things: the question as the user saw it, and the arguments as they stood when it was asked, after earlier rules had changed them. On the retry the gateway runs the rules again and works both out again. If either differs, the request ends with the error result `The request changed since the confirmation was asked. Send it again.` So a rule that sets an argument from `request.params._meta`, a header or the caller, and then asks about it, cannot be answered for one value and forwarded with another.
+A yes counts only for the question it answered. A question is its words as the user saw them, and the arguments as they stood when it was asked, after earlier rules had changed them. On the retry the gateway runs the rules again and works both out again. If either differs, it is a new question and the user is asked again. So a rule that sets an argument from `request.params._meta`, a header or the caller, and then asks about it, cannot be answered for one value and forwarded with another.
 
-A rule that sets an argument from `request.time` before a question changes the arguments on every round, so its question can never be answered. Ask first, then set.
+What a rule sets after a question is not part of that question. Put the question after the rules that set arguments, and show in it the values that matter.
 
-Several confirmations in a row work: the gateway carries earlier answers into each new round. Two rules that ask the same question under the same key share one answer.
+A rule that sets an argument from `request.time` before a question makes a new question on every round, so the user is asked again each time and the call never goes ahead. Ask first, then set.
+
+Several confirmations in a row work: the gateway carries what the user has confirmed into each new round. The same words asked twice about different arguments are two questions.
 
 A rule cannot both deny and confirm. It is refused when saved.
 

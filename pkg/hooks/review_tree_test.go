@@ -494,7 +494,7 @@ func TestReviewAWrongTypedSetFailsClosed(t *testing.T) {
 	if o := rvEngine().CallTool(ctx, treeRequest(s), &mcp.CallToolParamsRaw{Name: "t", Arguments: json.RawMessage(`{}`)}); o.Forward != nil {
 		t.Error("a call rule that failed let the call through")
 	}
-	s = rvServer(t, rvTools(), Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "null"}})
+	s = rvServer(t, rvTools(), Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "dyn(null)"}})
 	if got := outcomeText(rvToolReply(t, s, `{"content":[{"type":"text","text":"SECRET"}]}`)); strings.Contains(got, "SECRET") {
 		t.Errorf("a result rule that failed let the result through: %s", got)
 	}

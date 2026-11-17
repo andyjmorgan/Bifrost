@@ -159,7 +159,7 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	}
 	n := normalizeURI(uri)
 	for _, t := range v.badTemplates {
-		if t.denies(uri) {
+		if t.denies(uri) || t.denies(bare(uri)) {
 			return nil, false, nil
 		}
 	}
@@ -169,6 +169,13 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 			return nil, false, nil // hidden by a rule, a failed change or a collision
 		}
 		return item, true, nil
+	}
+	// A hidden resource stays hidden with a query or a trailing slash added:
+	// a server that ignores either would hand over the same thing.
+	if b := normalizeURI(bare(uri)); v.listedRes[b] {
+		if _, visible := v.visibleRes[b]; !visible {
+			return nil, false, nil
+		}
 	}
 	probe := map[string]any{"uri": uri}
 	it := &item{kind: KindResource, id: uri, view: NewView(probe), label: uri, bare: true}

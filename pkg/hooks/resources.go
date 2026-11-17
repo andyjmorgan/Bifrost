@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -105,7 +106,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		return o
 	}
 	hash := argsHash(args)
-	st, answers, upResp, serr := e.continuation(r, s, "prompts/get", l.upstreamID, hash, p.RequestState, p.InputResponses)
+	st, confirmed, upResp, serr := e.continuation(r, s, "prompts/get", l.upstreamID, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
 		o.Hits = append(o.Hits, declinedHit("prompts/get.pre", l.exposedID))
 	}
@@ -122,7 +123,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		return it.resolve(name)
 	}
 	roots := r.context(s).roots("prompts/get", callParams(l.exposedID, copyMap(args), p.Meta))
-	co := s.Rules.runAsking(ctx, "prompts/get.pre", l.exposedID, resolve, roots, asked(st, answers, args), func(key string, val any) error {
+	co := s.Rules.runAsking(ctx, "prompts/get.pre", l.exposedID, resolve, roots, asked(confirmed, args), func(key string, val any) error {
 		parts := splitPath(key) // arguments.<name>
 		args[parts[1]] = val
 		setParam(roots, "arguments", copyMap(args))
@@ -134,7 +135,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, "prompts/get was refused by policy")}
 		return o
 	case co.elicit != nil:
-		res, err := e.elicitation(r, s, "prompts/get", l.upstreamID, hash, st, answers, args, co.elicit)
+		res, err := e.elicitation(r, s, "prompts/get", l.upstreamID, hash, st, confirmed, args, co.elicit)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
 			return o
@@ -168,7 +169,7 @@ func (e *Engine) GetPrompt(parent context.Context, r Request, p *mcp.GetPromptPa
 		fp.Meta = forwardMeta(p.Meta)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: "prompts/get", Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Params: callParams(l.exposedID, copyMap(args), p.Meta), Args: toAnyMap(upArgs), Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: "prompts/get", Target: l.upstreamID, Exposed: l.exposedID, Item: l.value, Params: callParams(l.exposedID, copyMap(args), p.Meta), Args: toAnyMap(upArgs), Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
 	return o
 }
 
@@ -478,17 +479,30 @@ func (e *Engine) skillEntry(ctx context.Context, r Request, s *Server, v *resVie
 	return entry, issues, plan.hits
 }
 
-// skillFor returns the visible skill whose folder contains uri, preferring
-// the deepest (a nested skill's own files belong to it for planning).
-func (v *resView) skillFor(uri string) (Skill, bool) {
-	var best Skill
-	found := false
-	for _, sk := range v.skills {
-		if underRoot(uri, sk.Root()) && (!found || len(sk.Root()) > len(best.Root())) {
-			best, found = sk, true
+// vouchedBy returns a visible skill that vouches for the bytes of a file:
+// the file is the skill's SKILL.md, the skill's manifest lists it, or the
+// skill is dynamic, with no manifest, and the file is under its folder.
+// Skills nest, so every skill the file is under is asked, not only the
+// nearest: an outer skill's manifest may list a file in an inner folder.
+func (v *resView) vouchedBy(uri string) (Skill, bool) {
+	n := normalizeURI(uri)
+	var dynamic *Skill
+	for i, sk := range v.skills {
+		if !underRoot(uri, sk.Root()) {
+			continue
+		}
+		ms, isManifest := sk.manifest()
+		if n == normalizeURI(sk.URI) || (isManifest && inManifest(ms, uri)) {
+			return sk, true
+		}
+		if !isManifest && dynamic == nil {
+			dynamic = &v.skills[i]
 		}
 	}
-	return best, found
+	if dynamic != nil {
+		return *dynamic, true
+	}
+	return Skill{}, false
 }
 
 // readRules runs resources/read.post.result once over the contents of a
@@ -746,7 +760,7 @@ func (e *Engine) ListTemplates(parent context.Context, r Request) (ret Outcome) 
 func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Server, string, Outcome, *RPCError) {
 	var o Outcome
 	if nonCanonical(uri) {
-		return nil, "", o, &RPCError{Code: CodeInvalidParams, Message: "URI is not in canonical form (dot segments, empty segments or encoded unreserved characters): " + uri}
+		return nil, "", o, &RPCError{Code: CodeInvalidParams, Message: "URI is not in canonical form: " + uri}
 	}
 	if !r.mux() {
 		if len(r.Servers) != 1 {
@@ -885,7 +899,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	}
 	args := map[string]any{"uri": up}
 	hash := argsHash(args)
-	st, answers, upResp, serr := e.continuation(r, s, method, up, hash, p.RequestState, p.InputResponses)
+	st, confirmed, upResp, serr := e.continuation(r, s, method, up, hash, p.RequestState, p.InputResponses)
 	if serr == errDeclined {
 		o.Hits = append(o.Hits, declinedHit("resources/read.pre", p.URI))
 	}
@@ -900,7 +914,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		params["_meta"] = map[string]any(p.Meta)
 	}
 	roots := r.context(s).roots(method, params)
-	co := s.Rules.runAsking(ctx, "resources/read.pre", up, resolve, roots, asked(st, answers, args), func(string, any) error { return nil })
+	co := s.Rules.runAsking(ctx, "resources/read.pre", up, resolve, roots, asked(confirmed, args), func(string, any) error { return nil })
 	o.Hits = append(o.Hits, co.hits...)
 	if expired(ctx) {
 		return budgetOutcome(o)
@@ -910,7 +924,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		o.Error = &RPCError{Code: CodeInvalidParams, Message: denyOr(co.reason, method+" was refused by policy")}
 		return o
 	case co.elicit != nil:
-		out, err := e.elicitation(r, s, method, up, hash, st, answers, args, co.elicit)
+		out, err := e.elicitation(r, s, method, up, hash, st, confirmed, args, co.elicit)
 		if err != nil {
 			o.Error = &RPCError{Code: CodeInvalidParams, Message: err.Error()}
 			return o
@@ -931,7 +945,7 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return budgetOutcome(o)
 	}
 	o.Forward = &Forward{Slug: s.Slug, Method: method, Params: fp, Connect: &ci}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: hash, State: st, Answers: answers, resolve: resolve}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: hash, State: st, Confirmed: confirmed, resolve: resolve}
 	return o
 }
 
@@ -1008,8 +1022,13 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		// stay as the manifest says.
 		fixed := map[string]map[string]any{}
 		for _, c := range contents {
-			cm, _ := c.(map[string]any)
-			cu, _ := cm["uri"].(string)
+			cm, isMap := c.(map[string]any)
+			cu, isStr := cm["uri"].(string)
+			if _, has := cm["uri"]; !isMap || (has && !isStr) {
+				// Not an entry MCP describes. It is not made into one.
+				o.Issues = append(o.Issues, "dropped content that is not a resource entry")
+				continue
+			}
 			if cu == "" {
 				cu = up
 				cm = copyMap(cm)
@@ -1026,7 +1045,12 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 				}
 			}
 			server := cm
-			if sk, inSkill := v.skillFor(cu); inSkill {
+			// A skill vouches for the bytes of its SKILL.md and of the files
+			// its manifest lists. Applied: the plan already made that file's
+			// rewrite. Skipped or rejected: the server's bytes are served.
+			// Another file under a skill's folder is an ordinary entry, and
+			// a rule's change to it stands.
+			if sk, vouched := v.vouchedBy(cu); vouched {
 				plan := e.planSkill(ctx, r, s, v, sk)
 				if t, changed := plan.files[cu]; plan.status == "applied" && changed {
 					if _, isText := cm["text"].(string); isText {
@@ -1034,17 +1058,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 						cm["text"] = t
 					}
 				}
-				// Only SKILL.md and the files the manifest lists have their
-				// bytes vouched for. Applied: the plan already made that
-				// file's rewrite. Skipped or rejected: the server's bytes are
-				// served. Another file under the skill's folder is an
-				// ordinary entry, and a rule's change to it stands.
-				// A dynamic skill has no manifest, so every file under it is
-				// served as the server sent it.
-				ms, isManifest := sk.manifest()
-				if !isManifest || normalizeURI(cu) == normalizeURI(sk.URI) || inManifest(ms, cu) {
-					fixed[normalizeURI(cu)] = cm
-				}
+				fixed[normalizeURI(cu)] = cm
 			}
 			kept, sent = append(kept, cm), append(sent, server)
 		}
@@ -1066,6 +1080,9 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			cm := c.(map[string]any)
 			cu, _ := cm["uri"].(string)
 			if f, ok := fixed[normalizeURI(cu)]; ok {
+				if !reflect.DeepEqual(cm, f) {
+					o.Issues = append(o.Issues, "a rule's change to "+cu+" was not applied: its skill vouches for its bytes")
+				}
 				cm = f
 			}
 			kept = append(kept, cm)
@@ -1076,7 +1093,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		m = prefixResultURIs(m, s.Slug)
 	}
 	m["ttlMs"], m["cacheScope"] = e.Limits.ttl(), "private"
-	if call.State != nil || len(call.Answers) > 0 {
+	if call.State != nil || len(call.Confirmed) > 0 {
 		// This read was let through by a confirmation or after a question.
 		// A client that cached it would serve the next read itself, and the
 		// user would not be asked again. Tell clients not to cache it.

@@ -118,44 +118,112 @@ func normalizeURI(u string) string {
 	return strings.ToLower(scheme) + "://" + host + p + tail
 }
 
-// nonCanonical reports URIs a server could resolve differently from the
-// gateway: a scheme that is not lower case, dot segments, empty segments, or
-// percent-encoded unreserved characters. The gateway refuses them rather
-// than guess.
+// nonCanonical reports a URI that a server could read as another URI. A
+// rule reads a URI as text, and a deny written against file:///secrets/
+// matches only that spelling. A server that reads URIs with a URL parser
+// takes FILE:///secrets/key, file:/secrets/key, file://localhost/secrets/key
+// and file:///secrets/./key for the same file. The gateway does not try to
+// guess what a server folds together: it refuses every spelling but one.
 //
-// A scheme is not case sensitive, so FILE:///secrets/key and
-// file:///secrets/key name the same thing to a server. A rule reads the URI
-// as text, and a deny written against file:///secrets/ would not match the
-// first. Refusing it keeps one spelling for a rule to match.
+// The one spelling:
+//   - no spaces, control characters or backslashes
+//   - the scheme in lower case
+//   - "//" after the scheme when the path starts with a slash, and always
+//     for the schemes a URL parser treats as hierarchical
+//   - for those schemes, the host in lower case, with no user, no trailing
+//     dot, no empty or default port, and for file no "localhost"
+//   - in the path: no "." or ".." segments, no empty segments, percent
+//     escapes in upper-case hex, and none for a character that needs none
+//   - no fragment: a fragment is the client's, and never names a resource
+//
+// The query is left alone. It often carries another URL, such as
+// web://fetch?url=https://example.com/a, and that is not a path.
 func nonCanonical(u string) bool {
-	if i := strings.IndexAny(u, ":/?#"); i > 0 && u[i] == ':' && u[:i] != strings.ToLower(u[:i]) {
-		return true
-	}
-	_, rest, ok := strings.Cut(u, "://")
-	if !ok {
-		return false
-	}
-	// Only the path is checked. A query often carries another URL, such as
-	// web://fetch?url=https://example.com/a, and that is not a path.
-	if i := strings.IndexAny(rest, "?#"); i >= 0 {
-		rest = rest[:i]
-	}
-	for _, seg := range strings.Split(rest, "/")[1:] {
-		if seg == "." || seg == ".." {
+	for i := 0; i < len(u); i++ {
+		if c := u[i]; c <= ' ' || c == 0x7f || c == '\\' || c == '#' {
 			return true
 		}
 	}
-	if i := strings.IndexByte(rest, '/'); i >= 0 && strings.Contains(rest[i:], "//") {
+	i := strings.IndexAny(u, ":/?")
+	if i <= 0 || u[i] != ':' {
+		return false // no scheme: not a URI a server resolves; left to the lookup
+	}
+	scheme, rest := u[:i], u[i+1:]
+	if scheme != strings.ToLower(scheme) {
 		return true
 	}
-	for i := 0; i+2 < len(rest); i++ {
-		if rest[i] == '%' {
-			if b, err := hexByte(rest[i+1 : i+3]); err == nil && isUnreserved(b) {
+	if !strings.HasPrefix(rest, "//") {
+		// file:/x and file:x are file:///x to a URL parser. A scheme with
+		// no hierarchy, such as urn: or mailto:, has nothing to fold.
+		return strings.HasPrefix(rest, "/") || hierarchical[scheme]
+	}
+	rest = rest[2:]
+	if q := strings.IndexByte(rest, '?'); q >= 0 {
+		rest = rest[:q]
+	}
+	host, p := rest, ""
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		host, p = rest[:j], rest[j:]
+	}
+	// Only for the schemes a URL parser knows does it fold the host. For
+	// any other scheme, such as confluence://ENG/home, what follows "//" is
+	// the server's own text and is compared as written.
+	if hierarchical[scheme] {
+		if host != strings.ToLower(host) || strings.ContainsRune(host, '@') || strings.HasSuffix(host, ".") {
+			return true
+		}
+		if scheme == "file" && host == "localhost" {
+			return true
+		}
+		if j := strings.LastIndexByte(host, ':'); j >= 0 && !strings.HasSuffix(host, "]") {
+			if port := host[j+1:]; port == "" || port == defaultPort[scheme] {
 				return true
 			}
 		}
 	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+	if strings.Contains(p, "//") {
+		return true
+	}
+	for j := 0; j < len(p); j++ {
+		if p[j] != '%' {
+			continue
+		}
+		if j+2 >= len(p) {
+			return true // a "%" with no two hex digits after it
+		}
+		hex := p[j+1 : j+3]
+		b, err := hexByte(hex)
+		if err != nil || isUnreserved(b) || hex != strings.ToUpper(hex) {
+			return true
+		}
+	}
 	return false
+}
+
+// hierarchical are the schemes a URL parser gives a "//" to when it is
+// missing, and defaultPort the port it drops.
+var (
+	hierarchical = map[string]bool{"file": true, "http": true, "https": true, "ws": true, "wss": true, "ftp": true}
+	defaultPort  = map[string]string{"http": "80", "ws": "80", "https": "443", "wss": "443", "ftp": "21"}
+)
+
+// bare is a URI without its query and without a trailing slash: the
+// resource it names when a server ignores both. A listed resource a rule
+// hid, and a template a rule denied, also cover the URIs whose bare form
+// they cover.
+func bare(u string) string {
+	if q := strings.IndexByte(u, '?'); q >= 0 {
+		u = u[:q]
+	}
+	if _, rest, ok := strings.Cut(u, "://"); ok && strings.Count(rest, "/") > 1 {
+		u = strings.TrimSuffix(u, "/")
+	}
+	return u
 }
 
 func hexByte(s string) (byte, error) {

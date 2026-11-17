@@ -8,15 +8,16 @@ The Codex review named in the handover did not run: its sandbox failed before it
 
 - Fixed: 19 findings, each with a test that failed before the fix and passes now.
 - Recorded and not changed: findings 6 and 14, and parts of 7, 16, 20 and 21. Each says why below.
-- Two fixes changed the rule language. `request.confirmations` is gone: the engine decides whether a question has been answered. A URI with a scheme that is not lower case is refused.
+- Two fixes changed the rule language. `request.confirmations` is gone: the engine decides whether a question has been answered. A URI has one spelling the gateway accepts.
+- A second reviewer then verified the fixes and found 15 more problems. Twelve are fixed and three recorded: see "The verification pass".
 
 ## What was done about each finding
 
 | No. | Finding | What was done |
 | --- | --- | --- |
 | 1 | A confirmation can be replayed through a server's own question | Fixed. All request state is kept in the gateway's store, and the client holds a key that works once. The signed envelope and the signer are removed, so there is one mechanism |
-| 2 | A confirmation does not cover an argument a rule set | Fixed. The engine decides whether a question is answered, not the rule. A confirmation covers the question as shown and the arguments as they stood when it was asked. If either differs when the answer arrives, the request is refused. `request.confirmations` is removed from the tree |
-| 3 | A scheme in capitals passes a deny | Fixed. A URI whose scheme is not lower case is refused, like any other URI that is not in canonical form |
+| 2 | A confirmation does not cover an argument a rule set | Fixed. The engine decides whether a question is answered, not the rule. A yes counts only for the question it answered: its words as shown and the arguments as they stood when it was asked. If either differs when the answer arrives, it is a new question and is asked. `request.confirmations` is removed from the tree |
+| 3 | A scheme in capitals passes a deny | Fixed, and widened after the verification pass (V1): a URI has one spelling the gateway accepts |
 | 4 | A `set` key with a backslash in its branch is accepted and does nothing | Fixed. A key must start with the hook's branch as written |
 | 5 | An annotation MCP does not name can be set and is then lost | Fixed. Only the annotations MCP names can be set |
 | 6 | A zero the server sent is absent | Recorded. The catalog reaches the engine in the SDK's types, which drop a zero. Fixing it means carrying the server's raw JSON, which is a separate change. `TestReviewGapAZeroTheServerSentIsAbsent` reproduces it and runs with `HOOKS_KNOWN_GAPS=1` |
@@ -42,3 +43,39 @@ The Codex review named in the handover did not run: its sandbox failed before it
 - `pkg/hooks/testdata/scenarios/16-tree-review.json`: the reviewer's golden cases, with cases for findings 2 and 20.
 - `internal/ruletext/ruletext_test.go`: findings 19 and 20.
 - `internal/gateway/entitle_test.go`: finding 21.
+
+## The verification pass
+
+A second reviewer attacked the fixes and wrote `review-verification.md`: seven fixes were partial, and there were 15 new problems, one critical. This is what was done about each.
+
+| No. | Problem | What was done |
+| --- | --- | --- |
+| V1 | Other spellings of a URI pass a deny (critical) | Fixed. A URI has one accepted spelling: no spaces, control characters or backslashes; the scheme in lower case; `//` where a URL parser would add it; for `file`, `http`, `https`, `ws`, `wss` and `ftp` the host in lower case with no user, trailing dot or default port; no dot or empty segments; percent escapes in upper case; no fragment. A hidden resource and a denied template also cover the URI with a query or a trailing slash added |
+| V2 | An escape after the branch in a `set` key is accepted and does nothing | Fixed. A key must be its path exactly as written |
+| V3 | A gateway question on the round that answers a server's question drops the server's round | Fixed. The request is refused and must be sent again |
+| V4 | The same question twice with a set between can never be answered | Fixed. A yes is kept by what it answered, not by its key, so the second question is asked and answered |
+| V5 | What a rule sets after a question is not covered | Recorded. The user was never shown that value, and a client that sends it on the first round gets the same result. The docs now say to ask after the sets and to show the values that matter |
+| V6 | A file an outer skill's manifest lists is changed under a nested skill | Fixed. Every skill the file is under is asked |
+| V7 | A constant of the wrong type is still saved | Fixed for null and an optional on a typed path. Recorded: a duration that is not positive, list elements of the wrong form, and a wrong value on a path that takes any. Each fails closed |
+| V8 | An annotation MCP does not name is set through the whole map | Fixed. A map set on a path with fixed keys may have only those keys |
+| V9 | A key a server sent on a read entry cannot be read by name | Fixed. An entry of `contents` is an open map |
+| V10 | The unguarded-read note still misses and misfires | Fixed. A test guards only what runs when it holds: `has(x) && x`, `!has(x) \|\| x`, `has(x) ? x : y`, `x.hasValue() && x` |
+| V11 | Wrong names are saved through forms the path check does not follow | Recorded. The docs now name the forms. Each fails when a request arrives, which denies |
+| V12 | A read entry that is not an object is made into one | Fixed. It is dropped with an issue |
+| V13 | A `//` inside a string that runs over lines is cut | Fixed. A string must close on the line it opens on |
+| V14 | A manifest file with no held text is not rewritten, with no issue | Fixed. The bytes stay, and the gateway records an issue when a rule's change is set aside |
+| V15 | An unknown escape in a question loses its backslash | Fixed. It is refused |
+
+Also fixed from the same report: a number hashes alike however it is written (`1`, `1.0`, `1e0`), and a whole number too big for 64 bits keeps every digit.
+
+Tests: `pkg/hooks/review_verify_test.go`. The ones named `TestReviewVerifyFixed…` failed before these fixes. Three stay behind `HOOKS_KNOWN_GAPS=1`, for V5, V7 and V11. The text-layer tests are in `internal/ruletext/ruletext_test.go`.
+
+## Known limits after both passes
+
+- A zero the server sent reads as absent (finding 6).
+- On an unlisted read only the rules that deny are run (finding 14).
+- What a rule sets after a question is not part of the question (V5).
+- The path check does not follow a value through a ternary, a literal, `filter(...)[0]` or a computed key (V11).
+- A constant whose form is wrong below its type is found when a request arrives (V7).
+- On the mux a rule reads a name or a URI without the slug.
+- No one has attacked rule budgets, panics, search mode or tasks in this round.

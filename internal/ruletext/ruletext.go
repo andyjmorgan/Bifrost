@@ -151,7 +151,11 @@ func parseHook(id, text string) (rules []parsed, probs []Problem) {
 		// A // comment ends at the end of its line. Lines are joined into
 		// one expression, so it is taken off here: left in, it would run to
 		// the end of the expression and swallow the lines that continue it.
-		if t = strings.TrimSpace(stripComment(t)); t == "" {
+		t, unclosed := stripComment(t)
+		if unclosed {
+			bad(line, "a string must close on the line it opens on")
+		}
+		if t = strings.TrimSpace(t); t == "" {
 			continue
 		}
 		indented := raw[0] == ' ' || raw[0] == '\t'
@@ -256,7 +260,7 @@ func build(s *Hook, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pro
 func confirmCall(hook, lit string) (call string, err error) {
 	msg, ok := unquote(lit)
 	if !ok || msg == "" {
-		return "", fmt.Errorf(`confirm takes the question in quotes: confirm "Delete {tool.name}?"`)
+		return "", fmt.Errorf(`confirm takes the question in quotes: confirm "Delete {tool.name}?"; inside it a backslash may come only before a quote, a backslash, n or t`)
 	}
 	h := fnv.New32a()
 	h.Write([]byte(hook + "\n" + msg))
@@ -307,17 +311,21 @@ func confirmCall(hook, lit string) (call string, err error) {
 }
 
 // stripComment removes a // comment from the end of a line. A // inside a
-// string, such as 'https://example.com', is text.
-func stripComment(line string) string {
+// string, such as 'https://example.com', is text. open reports a string
+// that does not close on the line: lines are joined with a space, so a
+// string that ran over lines would not hold the text that was written.
+func stripComment(line string) (rest string, open bool) {
 	for i := 0; i < len(line); i++ {
 		switch {
 		case line[i] == '\'' || line[i] == '"':
-			i = skipString(line, i)
+			if i = skipString(line, i); i >= len(line) {
+				return line, true
+			}
 		case line[i] == '/' && i+1 < len(line) && line[i+1] == '/':
-			return line[:i]
+			return line[:i], false
 		}
 	}
-	return line
+	return line, false
 }
 
 // unquote reads a single- or double-quoted string literal.
@@ -343,8 +351,12 @@ func unquote(lit string) (string, bool) {
 			b.WriteByte('\n')
 		case 't':
 			b.WriteByte('\t')
-		default:
+		case '\\', '"', '\'':
 			b.WriteByte(body[i])
+		default:
+			// An escape this reader does not know, such as \u00e9. Dropping
+			// the backslash would ask the user "Cafu00e9?".
+			return "", false
 		}
 	}
 	return b.String(), true

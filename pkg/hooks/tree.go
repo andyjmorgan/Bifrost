@@ -105,7 +105,7 @@ var (
 		"annotations": opt(nAnnotations), "_meta": nMeta,
 	}}
 	// nContents is one entry of a resource read.
-	nContents = object(map[string]*Node{"uri": nStr, "mimeType": opt(nStr), "text": opt(nStr), "blob": opt(nStr), "_meta": nMeta})
+	nContents = &Node{Type: "map", Open: true, Values: opt(nAny), Keys: map[string]*Node{"uri": nStr, "mimeType": opt(nStr), "text": opt(nStr), "blob": opt(nStr), "_meta": nMeta}}
 )
 
 func schemaNode(names string) *Node {

@@ -75,13 +75,19 @@ type compiled struct {
 
 // fits reports whether a value of the type the checker found can be set on
 // a field. A type the checker cannot tell fits: it is checked when the rule
-// runs. Null fits everything: setting a key to null removes it.
+// runs. Null and an optional fit only a path that takes any value.
 func fits(want ValueType, out *cel.Type) bool {
 	if out == nil {
 		return true
 	}
 	switch out.Kind() {
-	case types.DynKind, types.AnyKind, types.TypeParamKind, types.OpaqueKind, types.NullTypeKind, types.ErrorKind:
+	case types.DynKind, types.AnyKind, types.TypeParamKind, types.ErrorKind:
+		return true
+	case types.NullTypeKind, types.OpaqueKind:
+		switch want {
+		case TText, TBool, TNumber, TList, TMap, TDuration:
+			return false
+		}
 		return true
 	}
 	switch want {

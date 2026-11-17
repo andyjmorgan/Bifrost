@@ -613,7 +613,7 @@ func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken,
 	}
 	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: r.principal(), Entitlement: entitlementID(s),
 		Target: call.Target, ArgsHash: call.Hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Upstream: upstreamState, UpstreamRound: true}
-	st.carry(call.State, call.Answers)
+	st.Confirmed = bindings(call.Confirmed)
 	for k := range reqs {
 		st.UpPending = append(st.UpPending, k)
 	}
