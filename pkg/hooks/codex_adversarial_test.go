@@ -411,7 +411,7 @@ func FuzzCodexURI(f *testing.F) {
 			t.Skip()
 		}
 		_ = nonCanonical(u)
-		_ = normalizeURI(u)
+		_ = canonicalURI(u)
 		if strings.IndexByte(u, ':') <= 0 {
 			return
 		}

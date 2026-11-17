@@ -19,12 +19,12 @@ import (
 // them.
 func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView, uri string, roots map[string]any, result map[string]any, contents, sent []any) (out []any, hits []Hit, reason string, denied bool, err error) {
 	res := map[string]any{"uri": uri}
-	known, listed := v.visibleRes[normalizeURI(uri)]
+	known, listed := v.visibleRes[canonicalURI(uri)]
 	if listed {
 		res = known
 	}
 	it := &item{kind: KindResource, id: uri, view: NewView(res), label: uri, bare: !listed}
-	resolve := itemResolver(it, v.originalRes[normalizeURI(uri)])
+	resolve := itemResolver(it, v.originalRes[canonicalURI(uri)])
 	// sent is the same entries with the server's own bytes, for
 	// response.upstream; it differs from contents only where the gateway
 	// has already rewritten a skill's file.
@@ -83,10 +83,16 @@ func (e *Engine) readRules(ctx context.Context, r Request, s *Server, v *resView
 	return cur, o.hits, "", false, nil
 }
 
+// resourceItems are a server's resources as rules see them. Each URI is put
+// in canonical spelling first, so a rule written against
+// https://wiki.example/ also matches a resource the server lists as
+// https://WIKI.example/…. The server's own spelling stays in
+// resource.upstream.uri.
 func resourceItems(rs []*mcp.Resource) []map[string]any {
 	out := make([]map[string]any, len(rs))
 	for i, x := range rs {
 		out[i] = toMap(x)
+		out[i]["uri"] = canonicalURI(x.URI)
 	}
 	return out
 }
@@ -123,6 +129,12 @@ func (e *Engine) ListResources(parent context.Context, r Request) (ret Outcome) 
 		for _, n := range uris {
 			value := v.visibleRes[n]
 			upURI, _ := value["uri"].(string)
+			if nonCanonical(upURI) {
+				// The gateway could not work out a canonical spelling, so
+				// no client could ask for it.
+				o.Issues = append(o.Issues, s.Slug+": "+upURI+" is not listed: its URI cannot be put in canonical form")
+				continue
+			}
 			if _, ok, _ := e.checkURI(ctx, r, s, v, upURI); !ok {
 				continue
 			}
@@ -217,8 +229,8 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 		return o
 	}
 	args := map[string]any{"uri": up}
-	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[normalizeURI(up)]}
-	resolve := itemResolver(it, v.originalRes[normalizeURI(up)])
+	it := &item{kind: KindResource, id: up, view: NewView(res), label: up, bare: !v.listedRes[canonicalURI(up)]}
+	resolve := itemResolver(it, v.originalRes[canonicalURI(up)])
 	params := map[string]any{"uri": up}
 	if len(p.Meta) > 0 {
 		params["_meta"] = map[string]any(p.Meta)
@@ -233,13 +245,15 @@ func (e *Engine) read(parent context.Context, r Request, p *mcp.ReadResourcePara
 	if !goes {
 		return o
 	}
-	fp := &mcp.ReadResourceParams{URI: up}
+	// A listed resource is asked for in the server's own spelling, which may
+	// not be the canonical one the client used.
+	fp := &mcp.ReadResourceParams{URI: v.serverSpelling(up)}
 	if !e.send(ctx, r, &o, c, pass, fp, p.Meta, func(meta mcp.Meta, state string, answers mcp.InputResponseMap) {
 		fp.Meta, fp.RequestState, fp.InputResponses = meta, state, answers
 	}) {
 		return o
 	}
-	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[normalizeURI(up)], Params: params, Args: args, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve, view: v}
+	o.Call = &CallContext{Server: s, Method: method, Target: up, Exposed: p.URI, Item: res, Bare: !v.listedRes[canonicalURI(up)], Params: params, Args: args, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve, view: v}
 	return o
 }
 
@@ -301,7 +315,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		for _, c := range children {
 			cm, _ := c.(map[string]any)
 			cu, _ := cm["uri"].(string)
-			if cu == "" || nonCanonical(cu) || !underRoot(cu, up) || normalizeURI(cu) == normalizeURI(up) {
+			if cu == "" || nonCanonical(cu) || !underRoot(cu, up) || canonicalURI(cu) == canonicalURI(up) {
 				o.Issues = append(o.Issues, "dropped directory entry outside "+up+": "+cu)
 				continue
 			}
@@ -314,6 +328,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 	} else {
 		contents, _ := m["contents"].([]any)
 		kept, sent := []any{}, []any{}
+		theirs := v.serverSpelling(up)
 		// fixed holds the entries a skill's manifest vouches for, by URI.
 		// Rules may refuse the read or drop such an entry, but its bytes
 		// stay as the manifest says.
@@ -326,7 +341,9 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 				o.Issues = append(o.Issues, "dropped content that is not a resource entry")
 				continue
 			}
-			if cu == "" {
+			if cu == "" || cu == theirs {
+				// No URI means the one that was read. So does the server's
+				// own spelling of it, when that is not the canonical one.
 				cu = up
 				cm = copyMap(cm)
 				cm["uri"] = up
@@ -335,7 +352,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 				o.Issues = append(o.Issues, "dropped content with a non-canonical URI: "+cu)
 				continue
 			}
-			if normalizeURI(cu) != normalizeURI(up) {
+			if canonicalURI(cu) != canonicalURI(up) {
 				if _, ok, _ := e.checkURI(ctx, r, s, v, cu); !ok {
 					o.Issues = append(o.Issues, "dropped content for "+cu+": not readable by this caller")
 					continue
@@ -348,7 +365,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 			// Another file under a skill's folder is an ordinary entry, and
 			// a rule's change to it stands.
 			if sk, vouched := v.vouchedBy(cu); vouched {
-				if _, again := fixed[normalizeURI(cu)]; again {
+				if _, again := fixed[canonicalURI(cu)]; again {
 					// A file has one set of bytes. A second entry for it
 					// could come back in place of the first after a rule
 					// had dropped it.
@@ -362,7 +379,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 						cm["text"] = t
 					}
 				}
-				fixed[normalizeURI(cu)] = cm
+				fixed[canonicalURI(cu)] = cm
 			}
 			kept, sent = append(kept, cm), append(sent, server)
 		}
@@ -383,7 +400,7 @@ func (e *Engine) UpstreamReadReply(parent context.Context, r Request, call *Call
 		for _, c := range out {
 			cm := c.(map[string]any)
 			cu, _ := cm["uri"].(string)
-			if f, ok := fixed[normalizeURI(cu)]; ok {
+			if f, ok := fixed[canonicalURI(cu)]; ok {
 				if !reflect.DeepEqual(cm, f) {
 					o.Issues = append(o.Issues, "a rule's change to "+cu+" was not applied: its skill vouches for its bytes")
 				}

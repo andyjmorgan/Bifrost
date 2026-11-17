@@ -66,7 +66,7 @@ func (v *resView) manifestOf(sk Skill) ([]SkillResource, bool) {
 
 func inManifest(ms []SkillResource, uri string) bool {
 	for _, m := range ms {
-		if normalizeURI(m.URI) == normalizeURI(uri) {
+		if canonicalURI(m.URI) == canonicalURI(uri) {
 			return true
 		}
 	}
@@ -141,7 +141,7 @@ func (e *Engine) GetSkill(parent context.Context, r Request, uri string) (ret Ou
 	v := e.resourceView(ctx, r, s)
 	o.Hits = append(o.Hits, v.hits...)
 	for _, sk := range v.skills {
-		if normalizeURI(sk.URI) == normalizeURI(up) {
+		if canonicalURI(sk.URI) == canonicalURI(up) {
 			entry, issues, hits := e.skillEntry(ctx, r, s, v, sk)
 			o.Hits = append(o.Hits, hits...)
 			o.Issues = append(o.Issues, prefixed(s.Slug, issues)...)
@@ -327,14 +327,14 @@ func (v *resView) shared(sk Skill, uri string) bool {
 // Skills nest, so every skill the file is under is asked, not only the
 // nearest: an outer skill's manifest may list a file in an inner folder.
 func (v *resView) vouchedBy(uri string) (Skill, bool) {
-	n := normalizeURI(uri)
+	n := canonicalURI(uri)
 	var dynamic *Skill
 	for i, sk := range v.skills {
 		if !underRoot(uri, sk.Root()) {
 			continue
 		}
 		ms, isManifest := v.manifestOf(sk)
-		if n == normalizeURI(sk.URI) || (isManifest && inManifest(ms, uri)) {
+		if n == canonicalURI(sk.URI) || (isManifest && inManifest(ms, uri)) {
 			return sk, true
 		}
 		if !isManifest && dynamic == nil {

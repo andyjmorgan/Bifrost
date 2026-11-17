@@ -88,26 +88,52 @@ func prefixBlock(x any, slug string) any {
 	return cp
 }
 
-// ---- URI normalization ---------------------------------------------------------------
+// ---- canonical form -----------------------------------------------------------------
 
-// normalizeURI puts a URI in one form for comparing it with listings and
-// folders: the scheme in lower case, and "." and ".." segments and
-// duplicate slashes resolved in the path. It never decodes: a percent
-// escape such as %2F stays as written, so file:///a%2Fb is not file:///a/b.
-// The gateway compares what the client sent with what the server listed; it
-// does not translate between them. The query and fragment are left alone.
-func normalizeURI(u string) string {
-	scheme, rest, ok := strings.Cut(u, "://")
-	if !ok {
+// canonicalURI gives a URI in the one spelling the gateway accepts, where
+// it can work that out. It is what URIs are compared by.
+//
+// A client's URI has passed nonCanonical, so it comes back as it is. A
+// server's own URIs have passed nothing. A server may list
+// https://WIKI.example/private, and a URL parser reads that and
+// https://wiki.example/private as one resource. Indexing the listing by
+// canonical spelling keeps the two together: the rules that hide one hide
+// the other.
+//
+// It folds what a URL parser folds and nothing else: the case of the
+// scheme, for the schemes a parser knows the case of the host, a default
+// port and leading zeros in a port, file's "localhost" and a missing "//",
+// dot segments and doubled slashes, the form of percent escapes, and
+// characters that must be escaped. It drops a fragment. It never decodes a
+// reserved escape: file:///a%2Fb is not file:///a/b. A URI it cannot put in
+// canonical form, such as one with a user or an IPv4 address written as one
+// number, comes back in a form nonCanonical still refuses.
+func canonicalURI(u string) string {
+	if f := strings.IndexByte(u, '#'); f >= 0 {
+		u = u[:f]
+	}
+	i := strings.IndexAny(u, ":/?")
+	if i <= 0 || u[i] != ':' {
 		return u
 	}
-	host, p := rest, ""
-	if i := strings.IndexByte(rest, '/'); i >= 0 {
-		host, p = rest[:i], rest[i:]
+	scheme, rest := strings.ToLower(u[:i]), u[i+1:]
+	query := ""
+	if q := strings.IndexByte(rest, '?'); q >= 0 {
+		rest, query = rest[:q], rest[q:]
 	}
-	tail := ""
-	if i := strings.IndexAny(p, "?#"); i >= 0 {
-		p, tail = p[:i], p[i:]
+	if !strings.HasPrefix(rest, "//") {
+		switch {
+		case scheme == "file" || (!hierarchical[scheme] && strings.HasPrefix(rest, "/")):
+			rest = "///" + strings.TrimLeft(rest, "/") // file:/x and docs:/x have no host
+		case hierarchical[scheme]:
+			rest = "//" + strings.TrimLeft(rest, "/") // http:/host/x
+		default:
+			return scheme + ":" + escapes(rest) + query // urn:, mailto:, data:
+		}
+	}
+	authority, p := rest[2:], ""
+	if j := strings.IndexByte(authority, '/'); j >= 0 {
+		authority, p = authority[:j], authority[j:]
 	}
 	if p != "" {
 		trailing := strings.HasSuffix(p, "/") && len(p) > 1
@@ -116,7 +142,69 @@ func normalizeURI(u string) string {
 			p += "/"
 		}
 	}
-	return strings.ToLower(scheme) + "://" + host + p + tail
+	return scheme + "://" + canonicalAuthority(scheme, authority) + escapes(p) + query
+}
+
+// canonicalAuthority folds a host and port the way a URL parser does.
+func canonicalAuthority(scheme, a string) string {
+	host, port := a, ""
+	if end := strings.IndexByte(a, ']'); strings.HasPrefix(a, "[") && end > 0 {
+		host, port = a[:end+1], strings.TrimPrefix(a[end+1:], ":")
+	} else if j := strings.LastIndexByte(a, ':'); j >= 0 && (a[j+1:] == "" || isDigits(a[j+1:])) {
+		host, port = a[:j], a[j+1:]
+	}
+	if n, err := strconv.Atoi(port); err == nil {
+		port = strconv.Itoa(n)
+	}
+	if port == defaultPort[scheme] {
+		port = ""
+	}
+	if hierarchical[scheme] {
+		host = strings.ToLower(host)
+		if scheme == "file" && host == "localhost" {
+			host = ""
+		}
+		if strings.HasPrefix(host, "[") {
+			if ip, err := netip.ParseAddr(host[1 : len(host)-1]); err == nil && ip.Zone() == "" {
+				host = "[" + ip.String() + "]"
+			}
+		}
+	}
+	if port != "" {
+		return host + ":" + port
+	}
+	return host
+}
+
+// escapes writes percent escapes one way: upper-case hex, none for a
+// character that needs none, and one for each byte a URI may not hold as it
+// is. An escape of a reserved character stays an escape.
+func escapes(s string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '%' && i+2 < len(s):
+			if v, err := hexByte(s[i+1 : i+3]); err == nil {
+				if isUnreserved(v) {
+					b.WriteByte(v)
+				} else {
+					b.WriteString("%" + strings.ToUpper(s[i+1:i+3]))
+				}
+				i += 2
+				continue
+			}
+			b.WriteByte(c) // a "%" that starts no escape: left for nonCanonical to refuse
+		case uriChar[c]:
+			b.WriteByte(c)
+		default:
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&15])
+		}
+	}
+	return b.String()
 }
 
 // nonCanonical reports a URI that a server could read as another URI. A
@@ -342,7 +430,7 @@ func isUnreserved(b byte) bool {
 // underRoot reports whether uri equals root or sits beneath it, after
 // normalization.
 func underRoot(uri, root string) bool {
-	u, r := normalizeURI(uri), normalizeURI(root)
+	u, r := canonicalURI(uri), canonicalURI(root)
 	return u == r || strings.HasPrefix(u, strings.TrimSuffix(r, "/")+"/")
 }
 
@@ -396,7 +484,7 @@ func rewriteOwnedURIs(text string, mux any) string {
 		}
 		trimmed := strings.TrimRight(u, ".,;:!?")
 		tail := u[len(trimmed):]
-		owns := exact[normalizeURI(trimmed)]
+		owns := exact[canonicalURI(trimmed)]
 		for _, re := range pats {
 			if !owns && re.MatchString(trimmed) {
 				owns = true

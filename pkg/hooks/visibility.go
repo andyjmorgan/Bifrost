@@ -135,14 +135,14 @@ func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *r
 		v.manifests[sk.URI] = manifest{files: files, ok: ok}
 	}
 	for _, x := range s.Catalog.Resources {
-		v.listedRes[normalizeURI(x.URI)] = true
-		v.originalRes[normalizeURI(x.URI)] = toMap(x)
+		v.listedRes[canonicalURI(x.URI)] = true
+		v.originalRes[canonicalURI(x.URI)] = toMap(x)
 	}
 	ls, issues, hits := s.Rules.listItems(ctx, KindResource, "resources/list.post", "uri", resourceItems(s.Catalog.Resources), c, e.Limits.Workers)
 	v.hits = append(v.hits, hits...)
 	v.issues = append(v.issues, issues...)
 	for _, l := range ls {
-		v.visibleRes[normalizeURI(l.upstreamID)] = l.value
+		v.visibleRes[canonicalURI(l.upstreamID)] = l.value
 	}
 	for n := range v.listedRes {
 		if _, visible := v.visibleRes[n]; !visible {
@@ -184,7 +184,7 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	if deniedUnder(uri, v.deniedRoots) {
 		return nil, false, nil
 	}
-	n := normalizeURI(uri)
+	n := canonicalURI(uri)
 	for _, t := range v.badTemplates {
 		if t.denies(uri) || t.denies(bare(uri)) {
 			return nil, false, nil
@@ -201,7 +201,7 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	// added, changed or taken away: a server that ignores either would hand
 	// over the same thing. A URI the server lists itself was judged by the
 	// rules on its own, above.
-	if v.hiddenBare[normalizeURI(bare(uri))] {
+	if v.hiddenBare[canonicalURI(bare(uri))] {
 		return nil, false, nil
 	}
 	probe := map[string]any{"uri": uri}
@@ -214,13 +214,25 @@ func (e *Engine) checkURI(ctx context.Context, r Request, s *Server, v *resView,
 	return probe, true, o.hits
 }
 
+// serverSpelling is a URI as the server itself writes it: for a resource it
+// lists, its own spelling, which may not be the canonical one the gateway
+// and the client use.
+func (v *resView) serverSpelling(uri string) string {
+	if listed, ok := v.originalRes[canonicalURI(uri)]; ok {
+		if spelled, _ := listed["uri"].(string); spelled != "" {
+			return spelled
+		}
+	}
+	return uri
+}
+
 // claims reports whether this server gives the gateway a reason to think a
 // URI is its own: it lists it, a template could produce it, or a skill
 // holds it. Fallback resolution uses it to route a URI that carries no slug.
 // It is about routing, not permission: on a route that already names the
 // server, a URI needs no claim to be read.
 func (v *resView) claims(uri string) bool {
-	if v.listedRes[normalizeURI(uri)] {
+	if v.listedRes[canonicalURI(uri)] {
 		return true
 	}
 	for _, t := range v.okTemplates {

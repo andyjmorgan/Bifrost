@@ -250,7 +250,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": \u2026). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.0.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
      }
     ],
     "op": "tools/call",
@@ -894,7 +894,7 @@
   ]
  },
  {
-  "name": "FR-07 a URI whose query carries another URL is listed and readable; odd forms in the path are still refused",
+  "name": "FR-07 a URI whose query carries another URL is listed and readable; a server's odd spelling is listed in canonical form, asked for in the server's own, and refused from a client",
   "ids": [
    "FR-07"
   ],
@@ -930,6 +930,8 @@
      {
       "path": "outcome.result.resources[*].uri",
       "equals": [
+       "web://docs/a/b",
+       "web://docs/~home",
        "web://fetch?url=https://example.com/a//b",
        "web://page?next=..%2F..&tilde=%7E"
       ]
@@ -981,6 +983,30 @@
      {
       "path": "outcome.forward",
       "exists": false
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://docs/a/b"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "web://docs/a//b"
+     }
+    ]
+   },
+   {
+    "op": "resources/read",
+    "params": {
+     "uri": "web://docs/~home"
+    },
+    "expect": [
+     {
+      "path": "outcome.forward.params.uri",
+      "equals": "web://docs/%7Ehome"
      }
     ]
    }
@@ -1784,7 +1810,7 @@
        "python-sdk",
        "typescript-sdk"
       ],
-      "reason": "This step sends a continuation written by hand (requestState \"${steps.1.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": \u2026). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
+      "reason": "This step sends a continuation written by hand (requestState \"${steps.1.outcome.result.requestState}\"; inputResponses {\"bifrost.ok\": {\"action\": \"accept\", \"content\": {\"confirm\": …). An SDK builds requestState and inputResponses itself from the previous reply and gives its caller no way to set them."
      }
     ],
     "op": "resources/read",

@@ -68,7 +68,7 @@ func (e *Engine) route(ctx context.Context, r Request, uri, method string) (*Ser
 func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o *Outcome) (*Server, string, Outcome, *RPCError) {
 	var exact, tmpl []Candidate
 	var unavailable []string
-	n := normalizeURI(uri)
+	n := canonicalURI(uri)
 	for _, s := range sortedServers(r.Servers) {
 		if !e.config(ctx, r, s, "resources", o) {
 			continue
@@ -84,12 +84,12 @@ func (e *Engine) fallback(ctx context.Context, r Request, uri, method string, o 
 		}
 		isExact := v.listedRes[n]
 		for _, sk := range v.skills {
-			if normalizeURI(sk.URI) == n {
+			if canonicalURI(sk.URI) == n {
 				isExact = true
 			}
 			if ms, ok := v.manifestOf(sk); ok {
 				for _, m := range ms {
-					if normalizeURI(m.URI) == n {
+					if canonicalURI(m.URI) == n {
 						isExact = true
 					}
 				}
