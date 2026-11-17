@@ -11,10 +11,10 @@ import (
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
 
-// Problem is something wrong with the text, placed on a line of a stage.
+// Problem is something wrong with the text, placed on a line of a hook's rules.
 type Problem struct {
-	Stage   string `json:"stage"`
-	Line    int    `json:"line"` // 1-based; 0 is the stage as a whole
+	Hook    string `json:"hook"`
+	Line    int    `json:"line"` // 1-based; 0 is the hook's rules as a whole
 	Message string `json:"message"`
 	// Level is "warning" for something that compiles but looks wrong. A
 	// warning never stops a save. Empty means the rules cannot be used.
@@ -37,7 +37,7 @@ type parsed struct {
 
 // origin is where a compiled rule came from, to place the engine's problems.
 type origin struct {
-	stage string
+	hook  string
 	when  int
 	lines map[string]int // then-field -> line
 }
@@ -114,9 +114,9 @@ func skipString(s string, i int) int {
 	return len(s)
 }
 
-func parseStage(id, text string) (rules []parsed, probs []Problem) {
+func parseHook(id, text string) (rules []parsed, probs []Problem) {
 	bad := func(line int, f string, a ...any) {
-		probs = append(probs, Problem{Stage: id, Line: line, Message: fmt.Sprintf(f, a...)})
+		probs = append(probs, Problem{Hook: id, Line: line, Message: fmt.Sprintf(f, a...)})
 	}
 	var cur *parsed
 	var open *string // the expression a continuation line adds to
@@ -179,10 +179,10 @@ func parseStage(id, text string) (rules []parsed, probs []Problem) {
 	return rules, probs
 }
 
-// build turns one stage's parsed rules into engine rules.
-func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Problem) {
+// build turns one hook's parsed rules into engine rules.
+func build(s *Hook, ps []parsed) (rules []hooks.Rule, from []origin, probs []Problem) {
 	bad := func(line int, f string, a ...any) {
-		probs = append(probs, Problem{Stage: s.ID, Line: line, Message: fmt.Sprintf(f, a...)})
+		probs = append(probs, Problem{Hook: s.Name, Line: line, Message: fmt.Sprintf(f, a...)})
 	}
 	for _, p := range ps {
 		if p.when == "" {
@@ -197,7 +197,7 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 		when, ok := p.when, true
 		for _, a := range p.acts {
 			if !contains(s.Actions, a.kind) {
-				bad(a.line, "%s is not available at this stage; it takes %s", a.kind, strings.Join(s.Actions, ", "))
+				bad(a.line, "%s is not available at this hook; it takes %s", a.kind, strings.Join(s.Actions, ", "))
 				ok = false
 				continue
 			}
@@ -215,7 +215,7 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 					put("reason", a.expr)
 				}
 			case "confirm":
-				key, call, err := confirmCall(s.ID, a.expr)
+				key, call, err := confirmCall(s.Name, a.expr)
 				if err != nil {
 					bad(a.line, "%v", err)
 					ok = false
@@ -235,12 +235,12 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 		if !ok {
 			continue
 		}
-		r := hooks.Rule{Name: fmt.Sprintf("%s:%d", s.ID, p.line), Hook: s.ID, When: when, Then: then}
+		r := hooks.Rule{Name: fmt.Sprintf("%s:%d", s.Name, p.line), Hook: s.Name, When: when, Then: then}
 		if p.audit {
 			r.Mode = "audit"
 		}
 		rules = append(rules, r)
-		from = append(from, origin{stage: s.ID, when: p.line, lines: lines})
+		from = append(from, origin{hook: s.Name, when: p.line, lines: lines})
 	}
 	return rules, from, probs
 }
@@ -248,13 +248,13 @@ func build(s *Stage, ps []parsed) (rules []hooks.Rule, from []origin, probs []Pr
 // confirmCall turns confirm "Delete {args.id}?" into the engine's elicit
 // call. Each {expression} becomes a named value, which the engine quotes
 // and truncates so argument text cannot pose as the gateway's own wording.
-func confirmCall(stage, lit string) (key, call string, err error) {
+func confirmCall(hook, lit string) (key, call string, err error) {
 	msg, ok := unquote(lit)
 	if !ok || msg == "" {
 		return "", "", fmt.Errorf(`confirm takes the question in quotes: confirm "Delete {args.id}?"`)
 	}
 	h := fnv.New32a()
-	h.Write([]byte(stage + "\n" + msg))
+	h.Write([]byte(hook + "\n" + msg))
 	key = fmt.Sprintf("confirm_%08x", h.Sum32())
 	var tmpl strings.Builder
 	var vals []string
@@ -320,7 +320,7 @@ func unquote(lit string) (string, bool) {
 	return b.String(), true
 }
 
-// Compile turns the text of each stage into the engine's rules and checks
+// Compile turns the text of each hook, by hook name, into the engine's rules and checks
 // them with the engine's own compiler. Problems come back placed on the
 // line that caused them. The rules are usable only when there are none.
 func Compile(text map[string]string) ([]hooks.Rule, []Problem) {
@@ -328,13 +328,13 @@ func Compile(text map[string]string) ([]hooks.Rule, []Problem) {
 	var from []origin
 	var probs []Problem
 	for id := range text {
-		if _, ok := byID[id]; !ok && strings.TrimSpace(text[id]) != "" {
-			probs = append(probs, Problem{Stage: id, Message: "there is no such stage"})
+		if _, ok := byName[id]; !ok && strings.TrimSpace(text[id]) != "" {
+			probs = append(probs, Problem{Hook: id, Message: "there is no such hook"})
 		}
 	}
-	for i := range stages {
-		s := &stages[i]
-		ps, pp := parseStage(s.ID, text[s.ID])
+	for i := range all {
+		s := &all[i]
+		ps, pp := parseHook(s.Name, text[s.Name])
 		rs, fr, bp := build(s, ps)
 		probs = append(append(probs, pp...), bp...)
 		rules, from = append(rules, rs...), append(from, fr...)
@@ -357,7 +357,7 @@ func Compile(text map[string]string) ([]hooks.Rule, []Problem) {
 			if ep.Field != "" && ep.Field != "when" && ok {
 				msg = ep.Field + ": " + msg
 			}
-			probs = append(probs, Problem{Stage: o.stage, Line: line, Message: msg})
+			probs = append(probs, Problem{Hook: o.hook, Line: line, Message: msg})
 		}
 		return nil, sorted(probs)
 	}
@@ -377,63 +377,14 @@ func tidy(msg string) string {
 
 func sorted(ps []Problem) []Problem {
 	order := map[string]int{}
-	for i, s := range stages {
-		order[s.ID] = i
+	for i, s := range all {
+		order[s.Name] = i
 	}
 	sort.SliceStable(ps, func(a, b int) bool {
-		if ps[a].Stage != ps[b].Stage {
-			return order[ps[a].Stage] < order[ps[b].Stage]
+		if ps[a].Hook != ps[b].Hook {
+			return order[ps[a].Hook] < order[ps[b].Hook]
 		}
 		return ps[a].Line < ps[b].Line
 	})
 	return ps
-}
-
-// Render writes engine rules as text, by stage. It is how rules saved
-// through the API as JSON are shown; it keeps every rule's meaning but not
-// its name. A rule that is switched off is written as a comment.
-func Render(rules []hooks.Rule) map[string]string {
-	out := map[string]string{}
-	for _, r := range rules {
-		s, ok := byID[r.Hook]
-		if !ok {
-			continue
-		}
-		var b strings.Builder
-		head := "when "
-		if r.Mode == "audit" {
-			head = "audit when "
-		}
-		b.WriteString(head + oneExpr(r.When) + "\n")
-		keys := make([]string, 0, len(r.Then))
-		for k := range r.Then {
-			if k != "decision" && k != "reason" {
-				keys = append(keys, k)
-			}
-		}
-		sort.Strings(keys)
-		if _, deny := r.Then["decision"]; deny {
-			b.WriteString(strings.TrimRight("  deny "+oneExpr(r.Then["reason"]), " ") + "\n")
-		} else if reason, ok := r.Then["reason"]; ok {
-			b.WriteString("  set reason = " + reason + "\n")
-		}
-		for _, k := range keys {
-			b.WriteString("  set " + k + " = " + oneExpr(r.Then[k]) + "\n")
-		}
-		block := b.String()
-		if r.Enabled != nil && !*r.Enabled {
-			block = "# Switched off:\n# " + strings.ReplaceAll(strings.TrimRight(block, "\n"), "\n", "\n# ") + "\n"
-		}
-		if out[s.ID] != "" {
-			out[s.ID] += "\n"
-		}
-		out[s.ID] += block
-	}
-	return out
-}
-
-// oneExpr lays an expression out for the text: a line break in it becomes
-// an indented continuation line.
-func oneExpr(e string) string {
-	return strings.ReplaceAll(strings.TrimSpace(e), "\n", "\n      ")
 }

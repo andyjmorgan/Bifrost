@@ -112,7 +112,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/entitlements", a.listEntitlements)
 			r.Get("/entitlements/{id}", a.getEntitlement)
 			r.Post("/entitlements/validate", a.validateRules)
-			r.Get("/entitlements/rules-schema", a.rulesSchema)
+			r.Get("/entitlements/hooks-schema", a.hooksSchema)
 		})
 		// Org membership. Reads for any member; changes for admins; join,
 		// switch and leave for the human themselves.

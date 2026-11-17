@@ -465,7 +465,7 @@ function EntitlementsCard({
                 <Cell label="Selection">
                   <span className="flex min-w-0 items-baseline gap-2 text-xs">
                     <span className="truncate">{selectionSummary(e.selection)}</span>
-                    {rulesPhrase(hasRules(e.rules)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.rules))}</span>}
+                    {rulesPhrase(hasRules(e.hooks)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.hooks))}</span>}
                   </span>
                 </Cell>
                 <RowActions>

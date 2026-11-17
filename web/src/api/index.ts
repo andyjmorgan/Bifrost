@@ -35,9 +35,9 @@ import type {
   GrantInput,
   CapabilityDTO,
   ExposureDTO,
-  RulesDTO,
-  TextCheck,
-  RulesSchema,
+  HooksDTO,
+  RulesCheck,
+  HooksSchema,
   UpdateServerInput,
 } from './types'
 
@@ -144,8 +144,8 @@ export const api = {
     update: (id: string, input: EntitlementInput) => http.patch<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`, input),
     remove: (id: string) => http.delete(`/entitlements/${encodeURIComponent(id)}`),
     /** Checks rule text with the engine's compiler, then the sanity checks. */
-    validateRules: (rules: RulesDTO, catalog?: Record<string, string[]>) => http.post<TextCheck>('/entitlements/validate', { rules, catalog }),
-    rulesSchema: () => http.get<RulesSchema>('/entitlements/rules-schema'),
+    validateRules: (hooks: HooksDTO, catalog?: Record<string, string[]>) => http.post<RulesCheck>('/entitlements/validate', { hooks, catalog }),
+    hooksSchema: () => http.get<HooksSchema>('/entitlements/hooks-schema'),
     putGrants: (id: string, grants: GrantInput[]) => http.put<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}/grants`, { grants }),
   },
 

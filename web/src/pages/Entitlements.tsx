@@ -101,7 +101,7 @@ export function EntitlementsPage() {
                       <span className="truncate" title={selectionDetail(e.selection)}>
                         {selectionSummary(e.selection)}
                       </span>
-                      {rulesPhrase(hasRules(e.rules)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.rules))}</span>}
+                      {rulesPhrase(hasRules(e.hooks)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.hooks))}</span>}
                     </span>
                   </Cell>
                   <Cell label="Grants">

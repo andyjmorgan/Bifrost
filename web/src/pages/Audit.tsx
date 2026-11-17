@@ -326,8 +326,8 @@ function RuleHits({ rules }: { rules: RuleHitsDTO }) {
           return (
             <div key={i} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-3 px-2 py-1 font-mono text-xs leading-5">
               <span className="truncate text-muted-foreground" title={h.rule}>
-                {h.stage}
-                {line && line[1] === h.stage ? ` · line ${line[2]}` : ` · ${h.rule}`}
+                {h.hook}
+                {line && line[1] === h.hook ? ` · line ${line[2]}` : ` · ${h.rule}`}
               </span>
               <span className="min-w-0 break-words">
                 <span className={quiet ? 'text-warning' : bad ? 'text-danger' : 'text-accent'}>{h.effect}</span>

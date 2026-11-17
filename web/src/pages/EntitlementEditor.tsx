@@ -14,7 +14,7 @@ import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
 import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
-import { RulesStages, type RuleText } from '../components/entitlements/RulesStages'
+import { HookRules, type RuleText } from '../components/entitlements/HookRules'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import {
   api,
@@ -26,8 +26,8 @@ import {
   type GrantInput,
   type MemberDTO,
   type OrgRole,
-  type RulesSchema,
-  type TextProblem,
+  type HooksSchema,
+  type RuleProblem,
   type Selection,
 } from '../api'
 import { cn } from '../lib'
@@ -35,7 +35,7 @@ import { cn } from '../lib'
 type SelKey = keyof Selection
 
 /** The page's tabs: the entitlement itself, who holds it, one per kind of capability, then the rules. */
-type PageTab = 'general' | 'grants' | CapabilityKind | 'rules'
+type PageTab = 'general' | 'grants' | CapabilityKind | 'hooks'
 
 /** Per kind: null is everything of that kind (key absent), an array is only what it names. */
 type DraftSelection = Record<SelKey, string[] | null>
@@ -66,15 +66,15 @@ function toDraft(e: EntitlementDTO): Draft {
       resources: s.resources ?? null,
       templates: s.templates ?? null,
     },
-    text: cleanText((e.rules ?? {}) as Record<string, string | null>),
+    text: cleanText((e.hooks ?? {}) as Record<string, string | null>),
     grants: e.grants.map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
   }
 }
 
-function problemsFromError(e: unknown): TextProblem[] | undefined {
+function problemsFromError(e: unknown): RuleProblem[] | undefined {
   if (!(e instanceof ApiError) || e.status !== 400) return undefined
-  const body = e.body as { textProblems?: TextProblem[] } | undefined
-  return Array.isArray(body?.textProblems) ? body.textProblems : undefined
+  const body = e.body as { problems?: RuleProblem[] } | undefined
+  return Array.isArray(body?.problems) ? body.problems : undefined
 }
 
 /** Only hooks that hold something are sent and compared; a hook with no text has no rules. */
@@ -126,8 +126,8 @@ export function EntitlementEditorPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
-  const [problems, setProblems] = useState<TextProblem[]>([])
-  const [warnings, setWarnings] = useState<TextProblem[]>([])
+  const [problems, setProblems] = useState<RuleProblem[]>([])
+  const [warnings, setWarnings] = useState<RuleProblem[]>([])
   // Whether the last check the admin asked for found any rules; undefined once the text changes.
   const [checked, setChecked] = useState<boolean>()
   // The server's catalog by kind, for the check that a rule names something the server has.
@@ -135,7 +135,7 @@ export function EntitlementEditorPage() {
   const [validating, setValidating] = useState(false)
   // Only the latest validation may land; an older one racing it would show stale problems.
   const validateSeq = useRef(0)
-  const [schema, setSchema] = useState<RulesSchema>()
+  const [schema, setSchema] = useState<HooksSchema>()
   const [schemaError, setSchemaError] = useState<string>()
   const [tab, setTab] = useState<PageTab>('general')
 
@@ -156,11 +156,11 @@ export function EntitlementEditorPage() {
     try {
       const r = await api.entitlements.validateRules(sent, catalog.current)
       if (seq === validateSeq.current) {
-        setProblems(r.textProblems ?? [])
+        setProblems(r.problems ?? [])
         setWarnings(r.warnings ?? [])
         if (asked) setChecked(r.hasRules)
       }
-      return !(r.textProblems ?? []).length
+      return !(r.problems ?? []).length
     } catch (e) {
       // A failed validation call should not block editing; the save will report compile errors.
       toast.error('Could not check the rules', { description: errorMessage(e) })
@@ -172,7 +172,7 @@ export function EntitlementEditorPage() {
 
   const loadSchema = useCallback(async () => {
     try {
-      setSchema(await api.entitlements.rulesSchema())
+      setSchema(await api.entitlements.hooksSchema())
       setSchemaError(undefined)
     } catch (err) {
       setSchemaError(errorMessage(err))
@@ -192,7 +192,7 @@ export function EntitlementEditorPage() {
       // Stored rules that do not compile: place each problem on its line.
       if (e.rulesError && Object.keys(d.text).length) void validate(d.text)
       // Stored rules that cannot be used are the thing to fix: open on them.
-      if (e.rulesError) setTab('rules')
+      if (e.rulesError) setTab('hooks')
       const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
       setCaps(c)
       catalog.current = c.reduce<Record<string, string[]>>((by, cap) => ({ ...by, [cap.kind]: [...(by[cap.kind] ?? []), cap.name] }), {})
@@ -228,9 +228,9 @@ export function EntitlementEditorPage() {
   const setText = (text: RuleText) => {
     // A hook whose text changed is unchecked until the next blur or save. Problems name the hook; the text is kept by its property.
     const moved = Object.keys({ ...draft.text, ...text }).filter((prop) => (draft.text[prop] ?? '') !== (text[prop] ?? ''))
-    const changed = new Set(moved.map((prop) => schema?.stages.find((st) => st.property === prop)?.id ?? prop))
-    if (problems.some((p) => changed.has(p.stage))) setProblems(problems.filter((p) => !changed.has(p.stage)))
-    if (warnings.some((p) => changed.has(p.stage))) setWarnings(warnings.filter((p) => !changed.has(p.stage)))
+    const changed = new Set(moved.map((prop) => schema?.hooks.find((h) => h.property === prop)?.name ?? prop))
+    if (problems.some((p) => changed.has(p.hook))) setProblems(problems.filter((p) => !changed.has(p.hook)))
+    if (warnings.some((p) => changed.has(p.hook))) setWarnings(warnings.filter((p) => !changed.has(p.hook)))
     if (changed.size) setChecked(undefined)
     set({ text })
   }
@@ -243,12 +243,12 @@ export function EntitlementEditorPage() {
     const text = cleanText(draft.text)
     if (!(await validate(text))) {
       setSaving(false)
-      setTab('rules')
-      setSaveError('Some rules do not compile. Fix the lines marked on the Rules tab, then save.')
+      setTab('hooks')
+      setSaveError('Some rules do not compile. Fix the lines marked on the Hooks tab, then save.')
       return
     }
     try {
-      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rules: text })
+      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), hooks: text })
       const updated = await api.entitlements.putGrants(ent.id, draft.grants)
       setEnt(updated)
       setDraft(toDraft(updated))
@@ -286,8 +286,8 @@ export function EntitlementEditorPage() {
       return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
     }),
     {
-      key: 'rules',
-      label: 'Rules',
+      key: 'hooks',
+      label: 'Hooks',
       // A dot says the entitlement has rules; rules are not counted.
       icon: rulesBroken ? (
         <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" />
@@ -377,9 +377,9 @@ export function EntitlementEditorPage() {
         </TabPanel>
       )}
 
-      {tab === 'rules' && (
+      {tab === 'hooks' && (
         <TabPanel tabKey="rules">
-          <RulesStages
+          <HookRules
             schema={schema}
             schemaError={schemaError}
             onReloadSchema={() => void loadSchema()}

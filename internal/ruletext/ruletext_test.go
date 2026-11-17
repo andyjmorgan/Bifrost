@@ -10,35 +10,35 @@ import (
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
 
-// Every stage's example is real: it compiles with the engine's compiler.
+// Every hook's example is real: it compiles with the engine's compiler.
 func TestEveryExampleCompiles(t *testing.T) {
-	for _, s := range Stages() {
-		rules, probs := Compile(map[string]string{s.ID: s.Example})
+	for _, s := range List() {
+		rules, probs := Compile(map[string]string{s.Name: s.Example})
 		for _, p := range probs {
-			t.Errorf("%s line %d: %s", p.Stage, p.Line, p.Message)
+			t.Errorf("%s line %d: %s", p.Hook, p.Line, p.Message)
 		}
 		if len(probs) == 0 && len(rules) == 0 {
-			t.Errorf("%s: the example holds no rule", s.ID)
+			t.Errorf("%s: the example holds no rule", s.Name)
 		}
 	}
 }
 
-// A stage is an engine hook and every hook is a stage, so no rule is out of
-// reach and the editor shows the names the engine uses.
-func TestEveryHookIsAStage(t *testing.T) {
+// Every engine hook is described once, under the engine's name, so no rule
+// is out of reach and an editor shows the names the engine uses.
+func TestEveryEngineHookIsDescribed(t *testing.T) {
 	seen := map[string]bool{}
-	for _, s := range Stages() {
-		if seen[s.ID] {
-			t.Errorf("%s is listed twice", s.ID)
+	for _, s := range List() {
+		if seen[s.Name] {
+			t.Errorf("%s is listed twice", s.Name)
 		}
-		seen[s.ID] = true
-		if _, ok := hooks.Hooks[s.ID]; !ok {
-			t.Errorf("stage %s is not an engine hook", s.ID)
+		seen[s.Name] = true
+		if _, ok := hooks.Hooks[s.Name]; !ok {
+			t.Errorf("%s is not an engine hook", s.Name)
 		}
 	}
 	for _, h := range hooks.Schema() {
 		if !seen[h.Hook] {
-			t.Errorf("hook %s has no stage", h.Hook)
+			t.Errorf("hook %s is not described", h.Hook)
 		}
 	}
 }
@@ -83,7 +83,7 @@ func TestConfirmBecomesTheEnginesQuestion(t *testing.T) {
 	if want := `elicit("` + key + `", "Delete {v1} in {v2}?", {"v1": args.id, "v2": args.space})`; r.Then["result"] != want {
 		t.Fatalf("result = %s\n  want %s", r.Then["result"], want)
 	}
-	// The key depends only on the stage and the question, so an answer still
+	// The key depends only on the hook and the question, so an answer still
 	// matches after the rules around it are edited.
 	again, _ := Compile(map[string]string{"tools/call.pre": "when true deny\n\n" + `when name == 'delete_page'  confirm "Delete {args.id} in {args.space}?"`})
 	if again[1].When != r.When {
@@ -93,9 +93,9 @@ func TestConfirmBecomesTheEnginesQuestion(t *testing.T) {
 
 func TestProblemsAreOnTheLineThatCausedThem(t *testing.T) {
 	cases := []struct {
-		name, stage, text string
-		line              int
-		has               string
+		name, hook, text string
+		line             int
+		has              string
 	}{
 		{"bad condition", "tools/call.pre", "when true deny\nwhen nope == 1 deny", 2, "nope"},
 		{"bad value", "tools/call.pre", "when true\n  set args.limit = nope", 2, "args.limit"},
@@ -109,16 +109,16 @@ func TestProblemsAreOnTheLineThatCausedThem(t *testing.T) {
 		{"reason with no deny", "tools/list.post", "when true\n  set reason = 'x'", 2, "beside decision"},
 		{"confirm unquoted", "tools/call.pre", "when true confirm Sure?", 1, "in quotes"},
 		{"set twice", "tools/call.pre", "when true\n  set args.a = 1\n  set args.a = 2", 3, "already sets"},
-		{"no such stage", "tools/call.during", "when true deny", 0, "no such stage"},
+		{"no such hook", "tools/call.during", "when true deny", 0, "no such hook"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rules, probs := Compile(map[string]string{c.stage: c.text})
+			rules, probs := Compile(map[string]string{c.hook: c.text})
 			if rules != nil || len(probs) == 0 {
 				t.Fatalf("compiled: %+v", rules)
 			}
 			p := probs[0]
-			if p.Stage != c.stage || p.Line != c.line || !strings.Contains(p.Message, c.has) {
+			if p.Hook != c.hook || p.Line != c.line || !strings.Contains(p.Message, c.has) {
 				t.Fatalf("problem = %+v, want line %d holding %q", p, c.line, c.has)
 			}
 		})
@@ -134,49 +134,6 @@ func TestAnActionWordInsideTheConditionIsNotAnAction(t *testing.T) {
 	}
 	if want := `name == 'x deny y' || [' set a = 1 '].exists(s, s == name)`; rules[0].When != want {
 		t.Fatalf("when = %s", rules[0].When)
-	}
-}
-
-// Rules saved as JSON are shown as text that compiles back to the same rules.
-func TestRenderRoundTrips(t *testing.T) {
-	off := false
-	in := []hooks.Rule{
-		{Hook: "tools/list.post", When: "name == 'a'", Then: map[string]string{"decision": "'deny'", "reason": "'no'"}},
-		{Hook: "tools/list.post", When: "true", Then: map[string]string{"name": "'b'", "params.q.hide": "true"}},
-		{Hook: "tools/call.pre", Mode: "audit", When: "!has(input.ok)", Then: map[string]string{"result": "elicit('ok', 'Sure?')"}},
-		{Hook: "tools/call.pre", When: "true", Enabled: &off, Then: map[string]string{"decision": "'deny'"}},
-		{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true"}},
-		{Hook: "resources/read.post.result", When: "true", Then: map[string]string{"text": "result.text +\n ' (reviewed)'"}},
-	}
-	text := Render(in)
-	if !strings.Contains(text["tools/call.pre"], "# Switched off:\n# when true\n#   deny\n") {
-		t.Fatalf("the rule that is off is not a comment:\n%s", text["tools/call.pre"])
-	}
-	out, probs := Compile(text)
-	if len(probs) > 0 {
-		t.Fatalf("problems: %+v\n%v", probs, text)
-	}
-	if len(out) != 5 {
-		t.Fatalf("%d rules back, want 5 (the one that is off is a comment)", len(out))
-	}
-	find := func(hook string) hooks.Rule {
-		for i, r := range out {
-			if r.Hook == hook {
-				out = append(out[:i:i], out[i+1:]...) // each rule is found once, in order
-				return r
-			}
-		}
-		t.Fatalf("no %s rule came back", hook)
-		return hooks.Rule{}
-	}
-	for _, w := range []hooks.Rule{in[0], in[1], in[2], in[4]} {
-		g := find(w.Hook)
-		if g.When != w.When || g.Mode != w.Mode || !reflect.DeepEqual(g.Then, w.Then) {
-			t.Errorf("%s came back as %+v, want %+v", w.Hook, g, w)
-		}
-	}
-	if g := find("resources/read.post.result"); g.Then["text"] != "result.text + ' (reviewed)'" {
-		t.Errorf("a value over two lines came back as %q", g.Then["text"])
 	}
 }
 
@@ -200,7 +157,7 @@ func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 		if p.Level != "warning" {
 			t.Errorf("%+v is not a warning", p)
 		}
-		got[fmt.Sprintf("%s:%d", p.Stage, p.Line)] = p.Message
+		got[fmt.Sprintf("%s:%d", p.Hook, p.Line)] = p.Message
 	}
 	want := map[string]string{
 		"tools/list.post:2": `no tool named "toss"`, // upstream.name is the server's name, which a rename does not change
@@ -219,24 +176,24 @@ func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 	}
 }
 
-// Every hook has exactly one property in Rules, named by the one rule, and
-// Rules has no property that is not a hook's.
+// Every hook has exactly one property in Hooks, named by the one rule, and
+// Hooks has no property that is not a hook's.
 func TestEveryHookHasItsProperty(t *testing.T) {
 	seen := map[string]string{}
-	for _, s := range Stages() {
-		if s.Property != Property(s.ID) || s.Property == "" {
-			t.Errorf("%s: property %q", s.ID, s.Property)
+	for _, s := range List() {
+		if s.Property != Property(s.Name) || s.Property == "" {
+			t.Errorf("%s: property %q", s.Name, s.Property)
 		}
 		if other, dup := seen[s.Property]; dup {
-			t.Errorf("%s and %s share the property %s", s.ID, other, s.Property)
+			t.Errorf("%s and %s share the property %s", s.Name, other, s.Property)
 		}
-		seen[s.Property] = s.ID
+		seen[s.Property] = s.Name
 		if _, ok := fieldOf[s.Property]; !ok {
-			t.Errorf("Rules has no field for %s (%s)", s.ID, s.Property)
+			t.Errorf("Hooks has no field for %s (%s)", s.Name, s.Property)
 		}
 	}
-	if len(fieldOf) != len(Stages()) {
-		t.Errorf("Rules has %d properties for %d hooks", len(fieldOf), len(Stages()))
+	if len(fieldOf) != len(List()) {
+		t.Errorf("Hooks has %d properties for %d hooks", len(fieldOf), len(List()))
 	}
 	for hook, want := range map[string]string{
 		"tools/call.post.result": "toolsCallPostResult", "server.settings": "serverSettings",
@@ -248,38 +205,36 @@ func TestEveryHookHasItsProperty(t *testing.T) {
 	}
 }
 
-// Rules go to the API with every property, null where a hook has none, and
-// to the database with only the ones that have text. What comes back is the
-// text exactly as written.
-func TestRulesAreStoredAsTextByProperty(t *testing.T) {
+// Hooks go to the API with every property, null where a hook has no rules,
+// and to the database with only the ones that have text. What comes back is
+// the text exactly as written.
+func TestHooksAreStoredAsTextByProperty(t *testing.T) {
 	text := "# why\nwhen name == 'echo'   deny \"Not today.\"\n\n# when false deny\n"
-	r, err := FromHooks(map[string]string{"tools/call.pre": text, "tools/list.post": "  \n"})
+	in, _ := json.Marshal(map[string]string{"toolsCallPre": text, "toolsListPost": "  \n"})
+	h, err := ParseStored(in)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(r.Stored()) != `{"toolsCallPre":"# why\nwhen name == 'echo'   deny \"Not today.\"\n\n# when false deny\n"}` {
-		t.Fatalf("stored = %s", r.Stored())
+	if string(h.Stored()) != `{"toolsCallPre":"# why\nwhen name == 'echo'   deny \"Not today.\"\n\n# when false deny\n"}` {
+		t.Fatalf("stored = %s", h.Stored())
 	}
-	wire, _ := json.Marshal(r)
+	wire, _ := json.Marshal(h)
 	var all map[string]*string
-	if err := json.Unmarshal(wire, &all); err != nil || len(all) != len(Stages()) || all["toolsListPost"] != nil || *all["toolsCallPre"] != text {
+	if err := json.Unmarshal(wire, &all); err != nil || len(all) != len(List()) || all["toolsListPost"] != nil || *all["toolsCallPre"] != text {
 		t.Fatalf("wire = %s", wire)
 	}
-	back, err := ParseStored(r.Stored())
-	if err != nil || !reflect.DeepEqual(back.ByHook(), map[string]string{"tools/call.pre": text}) {
-		t.Fatalf("back = %v, %v", back.ByHook(), err)
+	back, err := ParseStored(h.Stored())
+	if err != nil || !reflect.DeepEqual(back.ByName(), map[string]string{"tools/call.pre": text}) {
+		t.Fatalf("back = %v, %v", back.ByName(), err)
 	}
 	for _, empty := range []string{"", "null", "{}", `{"toolsCallPre":null}`, `{"toolsCallPre":"  "}`} {
-		if r, err := ParseStored([]byte(empty)); err != nil || !r.Empty() {
-			t.Errorf("%q: %v, %v", empty, r.ByHook(), err)
+		if h, err := ParseStored([]byte(empty)); err != nil || !h.Empty() {
+			t.Errorf("%q: %v, %v", empty, h.ByName(), err)
 		}
 	}
 	for _, bad := range []string{`{"toolsCallPer":"when true deny"}`, `{"tools/call.pre":"when true deny"}`, `[]`, `{"toolsCallPre":"a\u0000b"}`, `{"toolsCallPre":5}`} {
 		if _, err := ParseStored([]byte(bad)); err == nil {
 			t.Errorf("%s was accepted", bad)
 		}
-	}
-	if _, err := FromHooks(map[string]string{"tools/call.during": "when true deny"}); err == nil {
-		t.Error("a name that is not a hook was accepted")
 	}
 }

@@ -59,7 +59,7 @@ type Server struct {
 	EntitlementID   uuid.UUID
 	EntitlementName string
 	Selection       Selection
-	Rules           json.RawMessage // the entitlement's rules: text by hook property
+	Hooks           json.RawMessage // the entitlement's hooks: the text of each hook's rules, by hook property
 	Generation      int
 }
 
@@ -184,8 +184,8 @@ type AuditEvent struct {
 
 // RuleHit is one rule that applied to a request.
 type RuleHit struct {
-	Stage  string   `json:"stage"`            // where the rule ran: tools/call.pre
-	Rule   string   `json:"rule"`             // the rule's name; for a rule written as text, its stage and line
+	Hook   string   `json:"hook"`             // the hook the rule ran on: tools/call.pre
+	Rule   string   `json:"rule"`             // the rule's name: its hook and the line it starts on
 	Server string   `json:"server,omitempty"` // the slug of the server whose rule it is
 	Item   string   `json:"item,omitempty"`   // the tool, prompt or resource it applied to
 	Mode   string   `json:"mode"`             // enforce | audit

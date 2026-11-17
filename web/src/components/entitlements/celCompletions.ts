@@ -1,9 +1,9 @@
-import { snippetCompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from '@codemirror/autocomplete'
+import { snippetCompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import type { EditorView } from '@codemirror/view'
-import type { CapabilityDTO, HookSchema, HookSet, HookVariable, Shape } from '../../api'
+import type { CapabilityDTO, HookInfo, HookSet, HookVariable, Shape } from '../../api'
 
 // Completion for a rule's CEL: its condition and each value it sets. What a rule may read comes
-// from GET /entitlements/rules-schema for the rule's stage, so the suggestions cannot drift from
+// from GET /entitlements/hooks-schema for the rule's hook, so the suggestions cannot drift from
 // the engine. Only the CEL language itself (string methods, macros) and the live values from the
 // server's catalog are added here.
 //
@@ -13,8 +13,8 @@ import type { CapabilityDTO, HookSchema, HookSet, HookVariable, Shape } from '..
 
 /** What the editor page knows that the completer cannot. */
 export interface CelCompletionData {
-  /** The schema of the rule's hook; undefined while the schema loads or when the hook is unknown. */
-  hook?: HookSchema
+  /** The rule's hook; undefined while the schema loads. */
+  hook?: HookInfo
   /** Key of `caller` -> what it holds, from the schema. */
   caller?: Record<string, string>
   /** The entitlement's slug. */
@@ -25,12 +25,6 @@ export interface CelCompletionData {
   setType?: string
   /** The item the rule's condition names (name == 'flip'), to narrow what the catalog offers. */
   itemName?: string
-}
-
-export interface CelCompleterOptions {
-  data: () => CelCompletionData | undefined
-  /** Where the expression under the cursor starts; 0 (the whole document) when absent. */
-  from?: (ctx: CompletionContext) => number
 }
 
 /* ---------- the CEL language ---------- */
@@ -96,7 +90,7 @@ const isObject = (x: unknown): x is Obj => typeof x === 'object' && x !== null &
 const definition = (c: CapabilityDTO) => (isObject(c.definition) ? c.definition : {})
 const IDENT = /^[A-Za-z_]\w*$/
 
-/** The catalog entries a rule is about: the one its condition names when there is one, or all of the stage's kind. */
+/** The catalog entries a rule is about: the one its condition names when there is one, or all of the hook's kind. */
 function itemsOf(data: CelCompletionData): Obj[] {
   const all = data.caps.filter((c) => c.kind === data.hook?.item)
   const named = data.itemName ? all.filter((c) => c.name === data.itemName) : []
@@ -182,7 +176,7 @@ function literalValues(path: string, data: CelCompletionData): Literal[] {
   // `upstream` is the item as the server sent it, so its fields compare against the same values.
   if (segs.length === 2 && segs[0] === 'upstream') segs.shift()
   if (segs.length !== 1) return []
-  const v = data.hook?.variables.find((x) => x.name === segs[0])
+  const v = data.hook?.reads.find((x) => x.name === segs[0])
   if (!v) return []
   if (v.values) return v.values.map((label) => ({ label }))
   if (v.type !== 'string') return []
@@ -227,7 +221,7 @@ function splitPath(path: string): { head: string; steps: (string | null)[] } {
 const followed = (which: string, data: CelCompletionData): Node => ({ schema: schemaNodes(itemsOf(data), which as 'inputSchema' | 'outputSchema', []) })
 
 function start(head: string, before: string, data: CelCompletionData): Node | null {
-  const v = data.hook?.variables.find((x) => x.name === head)
+  const v = data.hook?.reads.find((x) => x.name === head)
   if (v) {
     if (v.fields) return { struct: v.fields }
     if (head === 'caller' && data.caller) return { shape: { type: 'map', keys: Object.fromEntries(Object.keys(data.caller).map((k) => [k, { type: 'string' }])) } }
@@ -304,7 +298,7 @@ function topLevel(data: CelCompletionData): Completion[] {
   const out: Completion[] = []
   if (data.setType === 'bool') out.push({ label: 'true', type: 'keyword', detail: 'bool', boost: 6 }, { label: 'false', type: 'keyword', detail: 'bool', boost: 6 })
   if (data.setType === 'duration') out.push(fn("duration('${30s}')", 'duration', "('30s') duration", 6))
-  out.push(...hook.variables.map((v: HookVariable): Completion => ({ label: v.name, type: 'variable', detail: v.type, boost: ORDER.includes(v.name) ? 3 : 2 })))
+  out.push(...hook.reads.map((v: HookVariable): Completion => ({ label: v.name, type: 'variable', detail: v.type, boost: ORDER.includes(v.name) ? 3 : 2 })))
   for (const h of hook.helpers ?? []) out.push(fn(`${h}(\${})`, h, 'helper', 1))
   const seen = new Set(out.map((c) => c.label))
   return [...out, ...FUNCTIONS.filter((c) => !seen.has(c.label))]
@@ -402,13 +396,6 @@ export function completeCel(ctx: CompletionContext, data: CelCompletionData, bas
   const word = ctx.matchBefore(/[A-Za-z_]\w*$/)
   if (!word && !ctx.explicit && !open) return null
   return { from: word ? word.from : ctx.pos, options: topLevel(data), validFor: /^\w*$/ }
-}
-
-export function celCompletionSource(opts: CelCompleterOptions): CompletionSource {
-  return (ctx) => {
-    const data = opts.data()
-    return data ? completeCel(ctx, data, opts.from?.(ctx) ?? 0) : null
-  }
 }
 
 /* ---------- set paths ---------- */

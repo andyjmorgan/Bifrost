@@ -5,18 +5,18 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, 
 import { HighlightStyle, StreamLanguage, syntaxHighlighting, type StringStream } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { tags as t } from '@lezer/highlight'
-import { celHighlight, celTheme, celToken, celTokenTable, type CelState } from './CelEditor'
+import { celHighlight, celTheme, celToken, celTokenTable, type CelState } from './celLanguage'
 import { completeCel, completeSetPath, openString, setTypeOf, thenComplete, type CelCompletionData } from './celCompletions'
 import type { HookSet } from '../../api'
 import { cn } from '../../lib'
 
-// The editor for one stage's rules, written as text:
+// The editor for one hook's rules, written as text:
 //
 //   when name == 'echo'          deny "Not today."
 //   when !has(args.limit)        set args.limit = 50
 //
 // The words when, audit, deny, confirm and set are the format's own; everything else on a line is
-// CEL, highlighted and completed as in the single-expression editor.
+// CEL.
 
 interface RuleState extends CelState {
   /** Nothing but spaces has been read on this line yet. */
@@ -102,7 +102,7 @@ const WHEN: Completion[] = [
   { label: 'audit when', type: 'keyword', detail: 'a rule that only records', apply: 'audit when ', boost: 1 },
 ]
 
-/** The stage's actions as completions: set opens its fields, confirm leaves the cursor in the question. */
+/** The hook's actions as completions: set opens its fields, confirm leaves the cursor in the question. */
 function actionWords(d: RuleCompletionData, boost: number): Completion[] {
   return d.actions.map((a): Completion => {
     if (a === 'set') return { label: 'set', type: 'keyword', detail: 'change a value', apply: thenComplete('set '), boost }
@@ -169,9 +169,9 @@ function ruleCompletions(data: () => RuleCompletionData | undefined): Completion
 }
 
 export interface RuleCompletionData extends CelCompletionData {
-  /** The actions the stage takes: deny, confirm, set. */
+  /** The actions the hook takes: deny, confirm, set. */
   actions: string[]
-  /** What deny does at the stage. */
+  /** What deny does at the hook. */
   deny?: string
   /** The fields a set action can name. */
   sets: HookSet[]
@@ -191,7 +191,7 @@ export interface RuleTextEditorProps {
   className?: string
 }
 
-/** A multi-line CodeMirror editor for one stage's rules, with line numbers and the lines that have problems marked. */
+/** A multi-line CodeMirror editor for one hook's rules, with line numbers and the lines that have problems marked. */
 export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, warningLines, completions, placeholder, ariaLabel, className }: RuleTextEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -232,7 +232,7 @@ export function RuleTextEditor({ value, onChange, onBlur, problemLines: lines, w
     }
   }, [placeholder, ariaLabel])
 
-  // Text set from outside (another stage, or an example added) replaces the document without echoing.
+  // Text set from outside (another hook, or an example added) replaces the document without echoing.
   useEffect(() => {
     const ev = view.current
     if (!ev) return

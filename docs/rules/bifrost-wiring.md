@@ -35,11 +35,11 @@ The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every 
 - Every result names the gateway in `_meta`, under `io.modelcontextprotocol/serverInfo`, as the protocol asks of a server. The SDK server stamps it; the first wiring's result type dropped it. Discovery keeps the identity the rules chose.
 - Pending confirmations live in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
 - The key that signs the state wrapped around an upstream's own question is derived from the master key, so every replica has the same one.
-- Stored rules in the retired allow/deny format are refused. The entitlement then exposes nothing, and the API reports why in `rulesError`. They are not translated.
+- Stored hooks that cannot be read, or whose rules do not compile, leave the entitlement exposing nothing. The API reports why in `rulesError`.
 
 ## How rules are stored
 
-An entitlement keeps its rules as text, in one `jsonb` column on its row (`entitlements.rules`). The object has one property per hook, and a property that is absent means the hook has no rules:
+An entitlement keeps its rules as text, in one `jsonb` column on its row (`entitlements.hooks`). The object has one property per hook, holding the text of that hook's rules. A property that is absent means the hook has no rules:
 
 ```json
 {
@@ -48,12 +48,14 @@ An entitlement keeps its rules as text, in one `jsonb` column on its row (`entit
 }
 ```
 
-- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.Rules` lists all 19.
-- The text is the only stored form. The gateway compiles it to the engine's rules when it loads the entitlement, and keeps the result until the entitlement's generation changes. Text that does not compile leaves the entitlement exposing nothing.
-- The API uses the same object. `GET /entitlements/{id}` returns every property, with null where a hook has no rules. `PATCH` takes `rules` and replaces all of them. A property that is not a hook's is refused.
+- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.Hooks` lists all 19.
+- The text is the only stored form. The gateway compiles it to the engine's rules when it loads the entitlement, and keeps the result until the entitlement's generation changes.
+- The API uses the same object, as the entitlement's `hooks`. `GET /entitlements/{id}` returns every property, with null where a hook has no rules. `PATCH` takes `hooks` and replaces all of them. A property that is not a hook's is refused.
+- `POST /entitlements/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
+- `GET /entitlements/hooks-schema` describes every hook: what it controls, what a rule there may read and set, and a worked example.
 - The engine's own input is still a list of JSON rules. Only the entitlement API and the database take text.
 - A rule is switched off by commenting it out with `#`.
-- The earlier `policies` column is still on the table and is not read. Migration `0013` filled `rules` from it.
+- Rules are not counted. The API says only whether a hook, or an entitlement, has any.
 
 ## What was tested
 

@@ -204,16 +204,16 @@ func (s *cacheStates) Take(key string) (hooks.State, bool) {
 
 // ---- rules ----------------------------------------------------------------------
 
-// ParseRules reads an entitlement's stored rules and compiles them to the
-// engine's. They are stored as text, one property per hook (ruletext.Rules);
+// ParseRules reads an entitlement's stored hooks and compiles their text to
+// the engine's rules. The text is stored one property per hook (ruletext.Hooks);
 // an error names the hook and line of each problem. Rules that cannot be
 // read or do not compile leave the entitlement exposing nothing.
 func ParseRules(raw json.RawMessage) ([]hooks.Rule, error) {
 	r, err := ruletext.ParseStored(raw)
 	if err != nil {
-		return nil, fmt.Errorf("rules: %w", err)
+		return nil, fmt.Errorf("hooks: %w", err)
 	}
-	rules, probs := ruletext.Compile(r.ByHook())
+	rules, probs := ruletext.Compile(r.ByName())
 	if len(probs) > 0 {
 		return nil, ruletext.ProblemsError(probs)
 	}
@@ -237,7 +237,7 @@ func (g *Gateway) hookRules(srv *store.Server) (*hooks.Set, error) {
 		}
 	}
 	set := noRules
-	rs, err := ParseRules(srv.Rules)
+	rs, err := ParseRules(srv.Hooks)
 	if err == nil {
 		c, probs := hooks.Compile(rs)
 		if len(probs) > 0 {
@@ -513,7 +513,7 @@ func (g *Gateway) note(ctx context.Context, o hooks.Outcome) {
 	}
 	for _, h := range o.Hits {
 		g.log.Debug("rule hit", "hook", h.Hook, "rule", h.Rule, "server", h.Server, "item", h.Item, "mode", h.Mode, "effect", h.Effect)
-		audit.AddRuleHits(ctx, store.RuleHit{Stage: h.Hook, Rule: h.Rule, Server: h.Server, Item: h.Item, Mode: h.Mode, Effect: h.Effect, Fields: h.Fields, Reason: h.Reason, Error: h.Error})
+		audit.AddRuleHits(ctx, store.RuleHit{Hook: h.Hook, Rule: h.Rule, Server: h.Server, Item: h.Item, Mode: h.Mode, Effect: h.Effect, Fields: h.Fields, Reason: h.Reason, Error: h.Error})
 	}
 }
 

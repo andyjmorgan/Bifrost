@@ -4,16 +4,16 @@ import { Button } from '../../ui/components/button'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
 import { Callout } from '../Callout'
 import { RuleTextEditor, type RuleCompletionData } from './RuleTextEditor'
-import type { CapabilityDTO, RuleStage, RulesSchema, TextProblem } from '../../api'
+import type { CapabilityDTO, HookInfo, HooksSchema, RuleProblem } from '../../api'
 
 /** Rule text by hook property; a hook with no text has no key. */
 export type RuleText = Record<string, string>
 import { cn } from '../../lib'
 
-// The Rules tab. Rules are text, written where they run: a stage is a method, a side of it (pre:
-// the request; post: what comes back) and, for a reply, the event. The list on the left is every
-// stage in the order a request meets them; the editor on the right holds one stage's rules. The
-// Help button opens a panel with a worked example of everything that stage can do.
+// The Hooks tab. Rules are text, written on the hook where they run: a hook is a method, a side
+// of it (pre: the request; post: what comes back) and, for a reply, the event. The list on the
+// left is every hook in the order a request meets them; the editor on the right holds one hook's
+// rules. The Help button opens a panel with a worked example of everything that hook can do.
 
 const RULE_LINE = /^\s*(audit\s+)?when(\s|$)/
 
@@ -22,8 +22,8 @@ export function hasText(text: string | undefined): boolean {
   return (text ?? '').trim() !== ''
 }
 
-/** The stage's place under its method: pre, post, or post and the event when the method has several. */
-function sideLabel(s: RuleStage, all: RuleStage[]): string {
+/** The hook's place under its method: pre, post, or post and the event when the method has several. */
+function sideLabel(s: HookInfo, all: HookInfo[]): string {
   if (s.side !== 'post') return s.side
   const posts = all.filter((x) => x.method === s.method && x.side === 'post').length
   return posts > 1 && s.event ? `post · ${s.event}` : 'post'
@@ -34,7 +34,7 @@ interface ExampleBlock {
   text: string
 }
 
-/** Splits a stage's example into its comments and its rules, so a rule can be picked on its own. */
+/** Splits a hook's example into its comments and its rules, so a rule can be picked on its own. */
 function exampleBlocks(example: string): ExampleBlock[] {
   const out: ExampleBlock[] = []
   for (const line of example.split('\n')) {
@@ -55,7 +55,7 @@ function exampleBlocks(example: string): ExampleBlock[] {
 /** Example rules line their actions up in a column; one rule on its own reads better without the gap. */
 const tighten = (rule: string) => rule.replace(/^((?:audit\s+)?when\s.*?\S) {3,}(deny|confirm|set)\b/, '$1  $2')
 
-export function RulesStages({
+export function HookRules({
   schema,
   schemaError,
   onReloadSchema,
@@ -71,15 +71,15 @@ export function RulesStages({
   slug,
   caps,
 }: {
-  schema?: RulesSchema
+  schema?: HooksSchema
   schemaError?: string
   onReloadSchema: () => void
   /** The rules as text, by hook property. */
   text: RuleText
   onChange: (text: RuleText) => void
-  problems: TextProblem[]
+  problems: RuleProblem[]
   /** Rules that compile but look wrong. They do not stop a save. */
-  warnings: TextProblem[]
+  warnings: RuleProblem[]
   validating: boolean
   /** The quiet check, run when an editor loses focus. */
   onValidate: () => void
@@ -91,33 +91,33 @@ export function RulesStages({
   slug: string
   caps: CapabilityDTO[]
 }) {
-  // The methods come first. The server's own stages (settings, session, discover) are not about
+  // The methods come first. The server's own hooks (settings, session, discover) are not about
   // any one method, so they sit at the bottom of the list.
-  const stages = useMemo(() => {
-    const all = schema?.stages ?? []
+  const hooks = useMemo(() => {
+    const all = schema?.hooks ?? []
     return [...all.filter((s) => s.group !== 'Server'), ...all.filter((s) => s.group === 'Server')]
   }, [schema])
-  // Open on the first stage that has rules, or on the call's pre stage: the one most rules go in.
+  // Open on the first hook that has rules, or on tools/call.pre: the one most rules go in.
   const [picked, setPicked] = useState<string>()
-  const current = stages.find((s) => s.id === picked) ?? stages.find((s) => hasText(text[s.property])) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
+  const current = hooks.find((s) => s.name === picked) ?? hooks.find((s) => hasText(text[s.property])) ?? hooks.find((s) => s.name === 'tools/call.pre') ?? hooks[0]
   const [help, setHelp] = useState(false)
 
   const groups = useMemo(() => {
-    const out: { group: string; methods: { method: string; stages: RuleStage[] }[] }[] = []
-    for (const s of stages) {
+    const out: { group: string; methods: { method: string; hooks: HookInfo[] }[] }[] = []
+    for (const s of hooks) {
       let g = out.find((x) => x.group === s.group)
       if (!g) out.push((g = { group: s.group, methods: [] }))
       let m = g.methods.find((x) => x.method === s.method)
-      if (!m) g.methods.push((m = { method: s.method, stages: [] }))
-      m.stages.push(s)
+      if (!m) g.methods.push((m = { method: s.method, hooks: [] }))
+      m.hooks.push(s)
     }
     return out
-  }, [stages])
+  }, [hooks])
 
   const completions = useMemo<RuleCompletionData | undefined>(() => {
     if (!current || !schema) return undefined
     return {
-      hook: { hook: current.id, item: current.item, phase: current.side, variables: current.reads, sets: current.sets, helpers: current.helpers },
+      hook: current,
       caller: schema.caller,
       slug,
       caps,
@@ -127,12 +127,12 @@ export function RulesStages({
     }
   }, [current, schema, slug, caps])
 
-  const general = problems.filter((p) => !stages.some((s) => s.id === p.stage))
+  const general = problems.filter((p) => !hooks.some((s) => s.name === p.hook))
   const findings = [...problems, ...warnings]
-  const here = current ? findings.filter((p) => p.stage === current.id) : []
+  const here = current ? findings.filter((p) => p.hook === current.name) : []
   const title = (id: string) => {
-    const s = stages.find((x) => x.id === id)
-    return s ? `${s.method} · ${sideLabel(s, stages)}` : id
+    const s = hooks.find((x) => x.name === id)
+    return s ? `${s.method} · ${sideLabel(s, hooks)}` : id
   }
   const value = current ? (text[current.property] ?? '') : ''
   const setValue = (v: string) => current && onChange({ ...text, [current.property]: v })
@@ -149,7 +149,7 @@ export function RulesStages({
       {schemaError && (
         <Callout tone="danger">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="min-w-0 break-words">Could not load the stages: {schemaError}</span>
+            <span className="min-w-0 break-words">Could not load the hooks: {schemaError}</span>
             <Button variant="secondary" size="sm" onClick={onReloadSchema}>
               Retry
             </Button>
@@ -163,7 +163,7 @@ export function RulesStages({
       ))}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-3xl text-xs leading-5 text-muted-foreground">
-          A rule runs where you write it: on a method, either before the request is sent (pre) or on what comes back (post). Within a stage, rules run top
+          A rule runs where you write it: on a method, either before the request is sent (pre) or on what comes back (post). Each of those places is a hook. Within a hook, rules run top
           to bottom and a later rule sees what an earlier one set.
         </p>
         {/* Never disabled: leaving the editor to press it starts the quiet check, and a button that
@@ -189,11 +189,11 @@ export function RulesStages({
               <button
                 key={i}
                 type="button"
-                onClick={() => setPicked(p.stage)}
+                onClick={() => setPicked(p.hook)}
                 className="grid w-full cursor-pointer grid-cols-[13rem_4rem_minmax(0,1fr)] gap-3 rounded-md px-2 py-1 text-left font-mono text-xs leading-5 transition-colors hover:bg-elevated"
               >
-                <span className="truncate text-muted-foreground">{title(p.stage)}</span>
-                <span className={p.level === 'warning' ? 'text-warning' : 'text-danger'}>{p.line ? `line ${p.line}` : 'stage'}</span>
+                <span className="truncate text-muted-foreground">{title(p.hook)}</span>
+                <span className={p.level === 'warning' ? 'text-warning' : 'text-danger'}>{p.line ? `line ${p.line}` : 'hook'}</span>
                 <span className={cn('min-w-0 break-words', p.level === 'warning' ? 'text-warning' : 'text-danger')}>{p.message}</span>
               </button>
             ))}
@@ -202,7 +202,7 @@ export function RulesStages({
 
       {current && (
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
-          <nav aria-label="Stages" className="space-y-5 lg:border-r lg:border-border lg:pr-4">
+          <nav aria-label="Hooks" className="space-y-5 lg:border-r lg:border-border lg:pr-4">
             {groups.map((g) => (
               <div key={g.group}>
                 <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{g.group}</h3>
@@ -210,23 +210,23 @@ export function RulesStages({
                   {g.methods.map((m) => (
                     <div key={m.method}>
                       <p className="px-2 font-mono text-[11px] leading-5 text-faint-foreground">{m.method}</p>
-                      {m.stages.map((s) => {
+                      {m.hooks.map((s) => {
                         const has = hasText(text[s.property])
-                        const bad = problems.some((p) => p.stage === s.id)
-                        const warned = !bad && warnings.some((p) => p.stage === s.id)
-                        const active = s.id === current.id
+                        const bad = problems.some((p) => p.hook === s.name)
+                        const warned = !bad && warnings.some((p) => p.hook === s.name)
+                        const active = s.name === current.name
                         return (
                           <button
-                            key={s.id}
+                            key={s.name}
                             type="button"
                             aria-current={active ? 'true' : undefined}
-                            onClick={() => setPicked(s.id)}
+                            onClick={() => setPicked(s.name)}
                             className={cn(
                               'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md py-1 pl-5 pr-2 text-left font-mono text-xs transition-colors',
                               active ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated/60 hover:text-foreground',
                             )}
                           >
-                            <span className="truncate">{sideLabel(s, stages)}</span>
+                            <span className="truncate">{sideLabel(s, hooks)}</span>
                             {(has || bad) && (
                               <span
                                 title={bad ? 'Has problems' : warned ? 'Has warnings' : 'Has rules'}
@@ -247,7 +247,7 @@ export function RulesStages({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="font-mono text-sm font-semibold">
-                  {current.method} <span className="text-muted-foreground">·</span> {sideLabel(current, stages)}
+                  {current.method} <span className="text-muted-foreground">·</span> {sideLabel(current, hooks)}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">{current.summary}</p>
                 {current.notes?.map((n) => (
@@ -263,7 +263,7 @@ export function RulesStages({
             </div>
 
             <RuleTextEditor
-              key={current.id}
+              key={current.name}
               value={value}
               onChange={setValue}
               onBlur={onValidate}
@@ -271,14 +271,14 @@ export function RulesStages({
               warningLines={here.filter((p) => p.level === 'warning').map((p) => p.line)}
               completions={completions}
               placeholder={`when <condition>   ${current.actions.join(' | ')}`}
-              ariaLabel={`Rules for ${current.id}`}
+              ariaLabel={`Rules for ${current.name}`}
             />
 
             {here.length > 0 ? (
               <ul className="space-y-1">
                 {here.map((p, i) => (
                   <li key={i} className={cn('flex gap-3 font-mono text-xs leading-5', p.level === 'warning' ? 'text-warning' : 'text-danger')}>
-                    <span className="shrink-0">{p.line ? `line ${p.line}` : 'stage'}</span>
+                    <span className="shrink-0">{p.line ? `line ${p.line}` : 'hook'}</span>
                     <span className="min-w-0 break-words">{p.message}</span>
                   </li>
                 ))}
@@ -291,9 +291,9 @@ export function RulesStages({
         </div>
       )}
       {current && (
-        <StageHelp
-          stage={current}
-          title={`${current.method} · ${sideLabel(current, stages)}`}
+        <HookHelp
+          hook={current}
+          title={`${current.method} · ${sideLabel(current, hooks)}`}
           open={help}
           onClose={() => setHelp(false)}
           onAdd={(rule) => {
@@ -307,11 +307,11 @@ export function RulesStages({
 }
 
 /**
- * The help for one stage, in a panel that slides in from the right: a worked example of everything
+ * The help for one hook, in a panel that slides in from the right: a worked example of everything
  * a rule can do there (a click adds the rule and closes the panel), then what each action does and
  * what a rule may set and read.
  */
-function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; title: string; open: boolean; onClose: () => void; onAdd: (rule: string) => void }) {
+function HookHelp({ hook, title, open, onClose, onAdd }: { hook: HookInfo; title: string; open: boolean; onClose: () => void; onAdd: (rule: string) => void }) {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent onOpenAutoFocus={(ev) => ev.preventDefault()}>
@@ -321,7 +321,7 @@ function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; t
         </SheetHeader>
         <SheetBody>
           <div className="rounded-xl border border-border bg-background p-2">
-            {exampleBlocks(stage.example).map((b, i) =>
+            {exampleBlocks(hook.example).map((b, i) =>
               b.kind === 'comment' ? (
                 <pre key={i} className="whitespace-pre-wrap px-2 pb-0.5 pt-2 font-mono text-xs italic leading-5 text-faint-foreground first:pt-0.5">
                   {b.text}
@@ -341,15 +341,15 @@ function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; t
           </div>
 
           <dl className="grid gap-x-4 gap-y-3 text-xs leading-5 sm:grid-cols-[5rem_minmax(0,1fr)]">
-            {stage.actions.includes('deny') && (
+            {hook.actions.includes('deny') && (
               <>
                 <dt className="font-mono text-accent">deny</dt>
                 <dd className="text-muted-foreground">
-                  {stage.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Admins only."</span>
+                  {hook.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Admins only."</span>
                 </dd>
               </>
             )}
-            {stage.actions.includes('confirm') && (
+            {hook.actions.includes('confirm') && (
               <>
                 <dt className="font-mono text-accent">confirm</dt>
                 <dd className="text-muted-foreground">
@@ -357,11 +357,11 @@ function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; t
                 </dd>
               </>
             )}
-            {stage.actions.includes('set') && (
+            {hook.actions.includes('set') && (
               <>
                 <dt className="font-mono text-accent">set</dt>
                 <dd className="font-mono text-muted-foreground">
-                  {stage.sets.map((s) => (
+                  {hook.sets.map((s) => (
                     <span key={s.field} title={s.type} className="mr-3 inline-block">
                       {s.field}
                     </span>
@@ -371,7 +371,7 @@ function StageHelp({ stage, title, open, onClose, onAdd }: { stage: RuleStage; t
             )}
             <dt className="font-mono text-accent">read</dt>
             <dd className="font-mono text-muted-foreground">
-              {stage.reads.map((v) => (
+              {hook.reads.map((v) => (
                 <span key={v.name} title={v.doc} className="mr-3 inline-block">
                   {v.name}
                 </span>

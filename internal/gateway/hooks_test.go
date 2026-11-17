@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -210,25 +211,49 @@ func (r *rig) entitle(slug string, u *harness.Upstream, rules ...hooks.Rule) *st
 	r.t.Helper()
 	pol := stored(r.t, rules...)
 	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Server " + slug, Description: "the " + slug + " server", URL: u.URL(), Enabled: true,
-		Slug: slug, EntitlementID: uuid.New(), EntitlementName: "Readers of " + slug, Rules: pol, Generation: 1, UpdatedAt: time.Now()}
+		Slug: slug, EntitlementID: uuid.New(), EntitlementName: "Readers of " + slug, Hooks: pol, Generation: 1, UpdatedAt: time.Now()}
 	r.store.mu.Lock()
 	r.store.servers = append(r.store.servers, s)
 	r.store.mu.Unlock()
 	return s
 }
 
-// stored is rules as an entitlement keeps them: written as text, by hook
-// property. A rule's own name does not survive; it becomes hook:line.
+// stored is rules as an entitlement keeps them: the text of each hook's
+// rules, by hook property. A rule's own name does not survive being written
+// as text; it becomes its hook and line.
 func stored(t testing.TB, rules ...hooks.Rule) []byte {
 	t.Helper()
-	text, err := ruletext.FromHooks(ruletext.Render(rules))
+	text := map[string]string{}
+	for _, r := range rules {
+		head := "when "
+		if r.Mode == "audit" {
+			head = "audit when "
+		}
+		b := head + strings.ReplaceAll(r.When, "\n", " ") + "\n"
+		keys := make([]string, 0, len(r.Then))
+		for k := range r.Then {
+			if k != "decision" && k != "reason" {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		if _, deny := r.Then["decision"]; deny {
+			b += strings.TrimRight("  deny "+r.Then["reason"], " ") + "\n"
+		}
+		for _, k := range keys {
+			b += "  set " + k + " = " + strings.ReplaceAll(r.Then[k], "\n", " ") + "\n"
+		}
+		text[ruletext.Property(r.Hook)] += b
+	}
+	raw, _ := json.Marshal(text)
+	h, err := ruletext.ParseStored(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if back, probs := ruletext.Compile(text.ByHook()); len(probs) > 0 || len(back) != len(rules) {
+	if back, probs := ruletext.Compile(h.ByName()); len(probs) > 0 || len(back) != len(rules) {
 		t.Fatalf("the rules do not survive being written as text: %d of %d back, %+v", len(back), len(rules), probs)
 	}
-	return text.Stored()
+	return h.Stored()
 }
 
 func (r *rig) direct(slug string) string { return r.srv.URL + "/" + slug + "/mcp" }
@@ -401,7 +426,7 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 		return nil
 	}
 	list := r.store.inbound(t, "tools/list", 1)
-	if h := find(list, "tools/list.post:1"); h == nil || h.Stage != "tools/list.post" || h.Effect != "deny" || h.Item != "secret" || h.Server != "a" || h.Mode != "enforce" || h.Reason != "Hidden." {
+	if h := find(list, "tools/list.post:1"); h == nil || h.Hook != "tools/list.post" || h.Effect != "deny" || h.Item != "secret" || h.Server != "a" || h.Mode != "enforce" || h.Reason != "Hidden." {
 		t.Fatalf("the listing's hits = %+v", list.Rules)
 	}
 
@@ -412,7 +437,7 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 	if h := find(called, "tools/call.pre:1"); h == nil || h.Mode != "audit" || h.Effect != "would deny" || h.Item != "t" || h.Reason != "Would block." {
 		t.Fatalf("the call's hits = %+v", called.Rules)
 	}
-	if h := find(called, "tools/call.post.result:1"); h == nil || h.Stage != "tools/call.post.result" || h.Effect != "set" || len(h.Fields) != 1 || h.Fields[0] != "content" {
+	if h := find(called, "tools/call.post.result:1"); h == nil || h.Hook != "tools/call.post.result" || h.Effect != "set" || len(h.Fields) != 1 || h.Fields[0] != "content" {
 		t.Fatalf("the call's hits = %+v", called.Rules)
 	}
 }
@@ -480,7 +505,7 @@ func TestMuxReportsAServerItCannotReach(t *testing.T) {
 	r.entitle("a", a)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusBadGateway) }))
 	t.Cleanup(dead.Close)
-	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", EntitlementID: uuid.New(), Rules: []byte("{}"), Generation: 1}
+	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", EntitlementID: uuid.New(), Hooks: []byte("{}"), Generation: 1}
 	r.store.servers = append(r.store.servers, s)
 
 	rep := harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"})
@@ -688,7 +713,7 @@ func TestTheServerSeesTheIdentityAndMetaTheRulesDecide(t *testing.T) {
 
 	pol := stored(t, hooks.Rule{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true", "clientInfo": "{'name': 'acme', 'version': '7'}"}})
 	r.store.mu.Lock()
-	s.Rules, s.Generation = pol, 2
+	s.Hooks, s.Generation = pol, 2
 	r.store.mu.Unlock()
 	// The rule turns forwarding on, but the gateway's input list bounds what
 	// can be forwarded. With the key not on the list, it still does not go.
@@ -734,7 +759,7 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 // ---- rules that cannot be used ------------------------------------------------------------
 
 func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
-	for name, policies := range map[string]string{
+	for name, stored := range map[string]string{
 		"a list of JSON rules": `[{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]`,
 		"the form before this": `{"text":{"tools/list.post":"when true deny"},"rules":[]}`,
 		"a rule that is wrong": `{"toolsListPost":"when nope == deny"}`,
@@ -747,7 +772,7 @@ func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
 			u := harness.NewUpstream(t, harness.V2026)
 			u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ran")}))
 			s := r.entitle("a", u)
-			s.Rules = []byte(policies)
+			s.Hooks = []byte(stored)
 			if got := names(t, harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}), "tools", "name"); len(got) != 0 {
 				t.Fatalf("an entitlement with unusable rules listed %v", got)
 			}

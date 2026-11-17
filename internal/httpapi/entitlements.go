@@ -32,10 +32,10 @@ type EntitlementDTO struct {
 	Description string          `json:"description"`
 	MCPURL      string          `json:"mcpUrl"`
 	Selection   store.Selection `json:"selection"`
-	// Rules is the rules as the admin writes them: the text of each hook,
-	// under the hook's property (see ruletext.Rules). Every property is
-	// present; null means the hook has no rules.
-	Rules ruletext.Rules `json:"rules"`
+	// Hooks is the rules as the admin writes them: the text of each hook's
+	// rules, under the hook's property (see ruletext.Hooks). Every property
+	// is present; null means the hook has no rules.
+	Hooks ruletext.Hooks `json:"hooks"`
 	// RulesError says why the stored rules cannot be used. While it is set
 	// the entitlement exposes nothing.
 	RulesError string     `json:"rulesError,omitempty"`
@@ -61,25 +61,26 @@ type EntitlementInput struct {
 	Slug        string           `json:"slug"`
 	Description string           `json:"description"`
 	Selection   *store.Selection `json:"selection"`
-	// Rules sets the rules: text by hook property. Nil leaves them as they
-	// are; a null property clears that hook's rules.
-	Rules *ruletext.Rules `json:"rules"`
+	// Hooks sets the rules: the text of each hook's rules, by hook property.
+	// Nil leaves them as they are. What is sent replaces them all: a
+	// property that is null or absent clears that hook's rules.
+	Hooks *ruletext.Hooks `json:"hooks"`
 }
 
-// TextProblems is the 400 body when rules do not compile.
-type TextProblems struct {
+// RuleProblems is the 400 body when rules do not compile.
+type RuleProblems struct {
 	Error    string             `json:"error"`
-	Problems []ruletext.Problem `json:"textProblems"`
+	Problems []ruletext.Problem `json:"problems"`
 }
 
-// rulesFrom turns the rules of a create or update into what is stored. It
-// writes the 400 itself and returns false when they do not compile.
-func rulesFrom(w http.ResponseWriter, in *EntitlementInput) (json.RawMessage, bool) {
-	if _, probs := ruletext.Compile(in.Rules.ByHook()); len(probs) > 0 {
-		writeJSON(w, http.StatusBadRequest, TextProblems{Error: "rules do not compile", Problems: probs})
+// hooksFrom turns the hooks of a create or update into what is stored. It
+// writes the 400 itself and returns false when their rules do not compile.
+func hooksFrom(w http.ResponseWriter, in *EntitlementInput) (json.RawMessage, bool) {
+	if _, probs := ruletext.Compile(in.Hooks.ByName()); len(probs) > 0 {
+		writeJSON(w, http.StatusBadRequest, RuleProblems{Error: "rules do not compile", Problems: probs})
 		return nil, false
 	}
-	return in.Rules.Stored(), true
+	return in.Hooks.Stored(), true
 }
 
 // CapabilityDTO is one thing a server has been seen to offer, with the
@@ -113,11 +114,11 @@ type ExposureDTO struct {
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
 	d := EntitlementDTO{ID: e.ID.String(), ServerID: e.ServerID.String(), ServerName: serverName, Slug: e.Slug, Name: e.Name, Description: e.Description,
 		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
-	if rs, err := ruletext.ParseStored(e.Rules); err != nil {
+	if hs, err := ruletext.ParseStored(e.Hooks); err != nil {
 		d.RulesError = err.Error()
 	} else {
-		d.Rules = rs
-		if _, probs := ruletext.Compile(rs.ByHook()); len(probs) > 0 {
+		d.Hooks = hs
+		if _, probs := ruletext.Compile(hs.ByName()); len(probs) > 0 {
 			d.RulesError = ruletext.ProblemsError(probs).Error()
 		}
 	}
@@ -214,12 +215,12 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
-	if in.Rules != nil {
-		stored, ok := rulesFrom(w, &in)
+	if in.Hooks != nil {
+		stored, ok := hooksFrom(w, &in)
 		if !ok {
 			return
 		}
-		e.Rules = stored
+		e.Hooks = stored
 	}
 	if in.Slug != "" {
 		e.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
@@ -279,12 +280,12 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
-	if in.Rules != nil {
-		stored, ok := rulesFrom(w, &in)
+	if in.Hooks != nil {
+		stored, ok := hooksFrom(w, &in)
 		if !ok {
 			return
 		}
-		e.Rules = stored
+		e.Hooks = stored
 	}
 	if err := a.store.UpdateEntitlement(r.Context(), e); err != nil {
 		writeStoreErr(w, err)
@@ -293,14 +294,14 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.entitlementDTO(r, e, a.serverNames(r, c.OrgID)[e.ServerID]))
 }
 
-// validateRules checks rules without saving them: text by stage, or a rule
-// list. Text is compiled by the engine's compiler, which is what decides
-// whether it can be saved, and then looked over for rules that compile but
-// look wrong; those come back as warnings.
+// validateRules checks rules without saving them. The text is compiled by
+// the engine's compiler, which is what decides whether it can be saved, and
+// then looked over for rules that compile but look wrong; those come back
+// as warnings.
 func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		// Rules is the text to check, by hook property.
-		Rules ruletext.Rules `json:"rules"`
+		// Hooks is the text to check: each hook's rules, by hook property.
+		Hooks ruletext.Hooks `json:"hooks"`
 		// Catalog is the names the server is known to offer, by kind. With
 		// it, a rule that names something the server does not have is
 		// warned about.
@@ -310,7 +311,7 @@ func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	text := in.Rules.ByHook()
+	text := in.Hooks.ByName()
 	rules, probs := ruletext.Compile(text)
 	if probs == nil {
 		probs = []ruletext.Problem{}
@@ -319,15 +320,16 @@ func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 	if warnings == nil {
 		warnings = []ruletext.Problem{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"textProblems": probs, "warnings": warnings, "hasRules": len(rules) > 0})
+	writeJSON(w, http.StatusOK, map[string]any{"problems": probs, "warnings": warnings, "hasRules": len(rules) > 0})
 }
 
-// rulesSchema describes, for every hook, the variables a rule can read and
-// the fields it can set, with the request flags. The rule editor builds its
-// reference and its completions from this, so it cannot drift from the
-// engine.
-func (a *API) rulesSchema(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"flags": hooks.FlagDocs, "caller": gateway.CallerKeys, "hooks": hooks.Schema(), "stages": ruletext.Stages()})
+// hooksSchema describes every hook to someone writing rules on it: what it
+// controls, what a rule there may read and set, and a worked example. It
+// comes from the engine's own registry, so an editor built on it cannot
+// drift from what the engine compiles. Beside the hooks are the request
+// flags and what this gateway puts in `caller`.
+func (a *API) hooksSchema(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"flags": hooks.FlagDocs, "caller": gateway.CallerKeys, "hooks": ruletext.List()})
 }
 
 func (a *API) deleteEntitlement(w http.ResponseWriter, r *http.Request) {
@@ -418,7 +420,7 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 			Enabled: s.Enabled, Selection: s.Selection, Via: []string{}, Capabilities: []string{}}
 		if e, err := a.store.GetEntitlement(r.Context(), c.OrgID, s.EntitlementID); err == nil {
 			d.Description = e.Description
-			if rs, err := ruletext.ParseStored(e.Rules); err != nil || !rs.Empty() {
+			if hs, err := ruletext.ParseStored(e.Hooks); err != nil || !hs.Empty() {
 				d.HasRules = true
 			}
 			for _, g := range e.Grants {

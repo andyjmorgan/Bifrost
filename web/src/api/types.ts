@@ -241,9 +241,9 @@ export interface AuditEventDTO {
 
 /** One rule that applied to a request. */
 export interface RuleHitDTO {
-  /** Where the rule ran, e.g. "tools/call.pre". */
-  stage: string
-  /** The rule's name; for a rule written as text, its stage and line ("tools/call.pre:2"). */
+  /** The hook the rule ran on, e.g. "tools/call.pre". */
+  hook: string
+  /** The rule's name: its hook and the line it starts on ("tools/call.pre:2"). */
   rule: string
   /** The slug of the server whose rule it is. */
   server?: string
@@ -505,8 +505,8 @@ export interface EntitlementDTO {
   description: string
   mcpUrl: string
   selection: Selection
-  /** The rules as text, one property per hook. Every property is present; null means the hook has no rules. */
-  rules: RulesDTO
+  /** The text of each hook's rules, one property per hook. Every property is present; null means the hook has no rules. */
+  hooks: HooksDTO
   /** Why the stored rules cannot be used. While set, the entitlement exposes nothing. */
   rulesError?: string
   generation: number
@@ -522,15 +522,15 @@ export interface EntitlementInput {
   description: string
   selection?: Selection
   /** Omit to leave unchanged. What is sent replaces all the rules: a property that is null or absent clears that hook. */
-  rules?: RulesDTO
+  hooks?: HooksDTO
 }
 
 /**
- * An entitlement's rules: the text of each hook's rules, under the hook's property. The property is
+ * An entitlement's hooks: the text of each hook's rules, under the hook's property. The property is
  * the hook's name with the separators dropped and the parts joined in camel case, so
  * tools/call.post.result is toolsCallPostResult. Null or absent means the hook has no rules.
  */
-export interface RulesDTO {
+export interface HooksDTO {
   serverSettings?: string | null
   serverSession?: string | null
   serverDiscoverPost?: string | null
@@ -552,8 +552,8 @@ export interface RulesDTO {
   skillsListPost?: string | null
 }
 
-/** A hook's property in RulesDTO. */
-export type RuleProperty = keyof RulesDTO
+/** A hook's property in HooksDTO. */
+export type HookProperty = keyof HooksDTO
 
 export type CapabilityKind = 'tool' | 'prompt' | 'resource' | 'template'
 
@@ -567,30 +567,29 @@ export interface CapabilityDTO {
   definition?: unknown
 }
 
-/** GET /entitlements/rules-schema: what a rule on each hook may read and set. */
-export interface RulesSchema {
+/** GET /entitlements/hooks-schema: every hook, described for someone writing rules on it. */
+export interface HooksSchema {
   /** Flag name -> what it means; read in a rule as flags.<name>. */
   flags: Record<string, string>
   /** Key of `caller` -> what it holds; read in a rule as caller.<key>. */
   caller?: Record<string, string>
-  /** Ordered by hook name. */
-  hooks: HookSchema[]
-  /** Where rules run, in the order a request meets them. */
-  stages: RuleStage[]
+  /** Every hook, in the order a request meets them. */
+  hooks: HookInfo[]
 }
 
-/** One place where rules run, which is one engine hook: a method, a side of it and, for a reply, what came back. */
-export interface RuleStage {
-  /** The engine hook's name, e.g. "tools/call.post.result". */
-  id: string
+/** One hook: a place in a request where rules run. A method, a side of it and, for a reply, what came back. */
+export interface HookInfo {
+  /** The engine's name for the hook, e.g. "tools/call.post.result". */
+  name: string
   /** The property the hook's rules are kept under, e.g. "toolsCallPostResult". */
-  property: RuleProperty
+  property: HookProperty
   /** Server, Tools, Prompts or Resources. */
   group: string
   /** e.g. "tools/call"; "server" for the two that are not a method. */
   method: string
   side: 'pre' | 'post' | 'settings' | 'session'
   event?: 'progress' | 'elicit' | 'result'
+  /** What a rule here is about: tool, prompt, resource, template, skill or server. */
   item?: string
   summary: string
   notes?: string[]
@@ -600,39 +599,28 @@ export interface RuleStage {
   deny?: string
   reads: HookVariable[]
   sets: HookSet[]
+  /** Functions only this hook's rules can call. */
   helpers?: string[]
-  /** A full set of rules for the stage, to copy from. Every line compiles. */
+  /** A full set of rules for the hook, to copy from. Every line compiles. */
   example: string
 }
 
-/** A problem in rule text. `line` is 1-based; 0 is the stage as a whole. `stage` is empty for a problem with the rules as a whole. */
-export interface TextProblem {
-  stage: string
+/** A problem in a hook's rules. `line` is 1-based; 0 is the hook's rules as a whole. `hook` is empty for a problem with the rules as a whole. */
+export interface RuleProblem {
+  /** The hook's name, e.g. "tools/call.pre". */
+  hook: string
   line: number
   message: string
   /** "warning": the rule compiles but looks wrong, and does not stop a save. Absent: the rules cannot be used. */
   level?: 'warning'
 }
 
-/** POST /entitlements/validate with text: what the engine's compiler and the sanity checks found. */
-export interface TextCheck {
-  textProblems: TextProblem[]
-  warnings: TextProblem[]
+/** POST /entitlements/validate: what the engine's compiler and the sanity checks found. */
+export interface RulesCheck {
+  problems: RuleProblem[]
+  warnings: RuleProblem[]
   /** Whether the text compiled to any rule; false when it has problems or holds only comments. */
   hasRules: boolean
-}
-
-export interface HookSchema {
-  /** e.g. "tools/list.post". */
-  hook: string
-  /** tool, prompt, resource, template, skill or server; absent on hooks that work on the request alone. */
-  item?: string
-  /** filter, modify, call, input, event, result or server. */
-  phase: string
-  variables: HookVariable[]
-  sets: HookSet[]
-  /** Functions only this hook's rules can call, e.g. elicit. */
-  helpers?: string[]
 }
 
 export interface HookVariable {

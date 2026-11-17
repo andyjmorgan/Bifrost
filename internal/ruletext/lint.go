@@ -13,19 +13,19 @@ import (
 // checked, because the gateway may simply not have listed it yet.
 func Lint(text map[string]string, catalog map[string][]string) []Problem {
 	var out []Problem
-	warn := func(stage string, line int, f string, a ...any) {
-		out = append(out, Problem{Stage: stage, Line: line, Level: "warning", Message: fmt.Sprintf(f, a...)})
+	warn := func(hook string, line int, f string, a ...any) {
+		out = append(out, Problem{Hook: hook, Line: line, Level: "warning", Message: fmt.Sprintf(f, a...)})
 	}
 	parsedBy := map[string][]parsed{}
-	for i := range stages {
-		s := &stages[i]
-		parsedBy[s.ID], _ = parseStage(s.ID, text[s.ID])
+	for i := range all {
+		s := &all[i]
+		parsedBy[s.Name], _ = parseHook(s.Name, text[s.Name])
 	}
 	// A name a list's post rule gives an item is a name later rules may use.
 	renamed := map[string]map[string]bool{}
-	for i := range stages {
-		s := &stages[i]
-		for _, p := range parsedBy[s.ID] {
+	for i := range all {
+		s := &all[i]
+		for _, p := range parsedBy[s.Name] {
 			for _, a := range p.acts {
 				if v, ok := unquote(a.expr); ok && a.kind == "set" && a.path == "name" {
 					if renamed[s.Item] == nil {
@@ -36,17 +36,17 @@ func Lint(text map[string]string, catalog map[string][]string) []Problem {
 			}
 		}
 	}
-	for i := range stages {
-		s := &stages[i]
+	for i := range all {
+		s := &all[i]
 		stopped := 0 // the line of a rule that denies everything
-		for _, p := range parsedBy[s.ID] {
+		for _, p := range parsedBy[s.Name] {
 			if stopped > 0 {
-				warn(s.ID, p.line, "this rule never runs: line %d denies everything before it gets here", stopped)
+				warn(s.Name, p.line, "this rule never runs: line %d denies everything before it gets here", stopped)
 				continue
 			}
 			switch cond := strings.TrimSpace(p.when); {
 			case cond == "false":
-				warn(s.ID, p.line, "this rule never applies: its condition is false")
+				warn(s.Name, p.line, "this rule never applies: its condition is false")
 			case cond == "true" && !p.audit && hasAction(p, "deny"):
 				stopped = p.line
 			}
@@ -62,7 +62,7 @@ func Lint(text map[string]string, catalog map[string][]string) []Problem {
 				if near := nearest(ref.name, names); near != "" {
 					msg += fmt.Sprintf("; did you mean %q?", near)
 				}
-				warn(s.ID, p.line, "%s", msg)
+				warn(s.Name, p.line, "%s", msg)
 			}
 		}
 	}
