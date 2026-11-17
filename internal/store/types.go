@@ -177,6 +177,29 @@ type AuditEvent struct {
 	RequestID       string
 	ErrorType       string
 	HasPayload      bool
+	// Rules is what the entitlement's rules did on this request. Nil when
+	// no rule applied. Inbound events only.
+	Rules *RuleHits
+}
+
+// RuleHit is one rule that applied to a request.
+type RuleHit struct {
+	Stage  string   `json:"stage"`            // where the rule ran: tools/call.pre
+	Rule   string   `json:"rule"`             // the rule's name; for a rule written as text, its stage and line
+	Server string   `json:"server,omitempty"` // the slug of the server whose rule it is
+	Item   string   `json:"item,omitempty"`   // the tool, prompt or resource it applied to
+	Mode   string   `json:"mode"`             // enforce | audit
+	Effect string   `json:"effect"`           // deny | elicit | set | error; "would …" for an audit rule
+	Fields []string `json:"fields,omitempty"` // what a set changed
+	Reason string   `json:"reason,omitempty"`
+	Error  string   `json:"error,omitempty"`
+}
+
+// RuleHits is the rules that applied to one request. Hits is capped; Dropped
+// counts what was left out.
+type RuleHits struct {
+	Hits    []RuleHit `json:"hits"`
+	Dropped int       `json:"dropped,omitempty"`
 }
 
 // AuditPayload holds the redacted bodies and headers for an event.

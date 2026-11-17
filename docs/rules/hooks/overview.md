@@ -128,6 +128,8 @@ To give a group of callers different rules, grant them a different entitlement. 
 
 A rule with `"mode": "audit"` runs and records what it would have done, such as `would deny` or `would set`, but never changes the outcome. Audit rules still run after an enforce rule stops evaluation, so the audit record is complete.
 
+On Bifrost the record is the request's audit event. The Audit page shows a count beside each request that a rule applied to, and the event's detail lists every hit: the stage, the rule (for a rule written as text, its line), the server, the item, the effect and the reason. Enforce rules are listed too. An event keeps 100 hits; when a request has more, plain `set` hits are dropped first and the detail says how many.
+
 An audit rule that fails to evaluate is recorded as `would error` and changes nothing. Audit rules have their own time allowance, separate from the enforcement budget. When the audit allowance runs out, the remaining audit rules are recorded as `would error`, and the request continues as if they did not exist.
 
 ### Errors fail closed

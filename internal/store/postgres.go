@@ -325,18 +325,25 @@ func (p *Postgres) RevokeAPIKey(ctx context.Context, owner string, id uuid.UUID)
 
 const auditCols = `id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, coalesce(api_key_prefix,''), server_id, coalesce(slug,''), route,
 http_method, path, coalesce(mcp_method,''), coalesce(tool_name,''), coalesce(jsonrpc_id,''), coalesce(protocol_version,''), status_code, outcome,
-request_bytes, response_bytes, duration_ms, request_id, coalesce(error_type,''), has_payload, coalesce(actor_user_id,'')`
+request_bytes, response_bytes, duration_ms, request_id, coalesce(error_type,''), has_payload, coalesce(actor_user_id,''), rule_hits`
 
 func scanAudit(row pgx.Row) (*AuditEvent, error) {
 	var e AuditEvent
+	var rules []byte
 	err := row.Scan(&e.ID, &e.OrgID, &e.CreatedAt, &e.Hop, &e.ParentID, &e.ActorType, &e.ActorSubject, &e.APIKeyID, &e.APIKeyPrefix, &e.ServerID, &e.Slug, &e.Route,
 		&e.HTTPMethod, &e.Path, &e.McpMethod, &e.ToolName, &e.JSONRPCID, &e.ProtocolVersion, &e.StatusCode, &e.Outcome,
-		&e.RequestBytes, &e.ResponseBytes, &e.DurationMS, &e.RequestID, &e.ErrorType, &e.HasPayload, &e.ActorUserID)
+		&e.RequestBytes, &e.ResponseBytes, &e.DurationMS, &e.RequestID, &e.ErrorType, &e.HasPayload, &e.ActorUserID, &rules)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
+	}
+	if len(rules) > 0 {
+		var rh RuleHits
+		if json.Unmarshal(rules, &rh) == nil && len(rh.Hits) > 0 {
+			e.Rules = &rh
+		}
 	}
 	return &e, nil
 }
@@ -348,11 +355,15 @@ func (p *Postgres) InsertAuditEvent(ctx context.Context, e *AuditEvent, payload 
 		return fmt.Errorf("store: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var rules []byte // null when no rule applied
+	if e.Rules != nil && len(e.Rules.Hits) > 0 {
+		rules, _ = json.Marshal(e.Rules)
+	}
 	_, err = tx.Exec(ctx, `insert into audit_events (id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, api_key_prefix, server_id, slug, route,
-http_method, path, mcp_method, tool_name, jsonrpc_id, protocol_version, status_code, outcome, request_bytes, response_bytes, duration_ms, request_id, error_type, has_payload, actor_user_id)
-values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,''),$19,$20,$21,$22,$23,$24,nullif($25,''),$26,$27)`,
+http_method, path, mcp_method, tool_name, jsonrpc_id, protocol_version, status_code, outcome, request_bytes, response_bytes, duration_ms, request_id, error_type, has_payload, actor_user_id, rule_hits)
+values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,''),$19,$20,$21,$22,$23,$24,nullif($25,''),$26,$27,$28)`,
 		e.ID, e.OrgID, e.CreatedAt, e.Hop, e.ParentID, e.ActorType, e.ActorSubject, e.APIKeyID, e.APIKeyPrefix, e.ServerID, e.Slug, e.Route,
-		e.HTTPMethod, e.Path, e.McpMethod, e.ToolName, e.JSONRPCID, e.ProtocolVersion, e.StatusCode, e.Outcome, e.RequestBytes, e.ResponseBytes, e.DurationMS, e.RequestID, e.ErrorType, payload != nil, e.ActorUserID)
+		e.HTTPMethod, e.Path, e.McpMethod, e.ToolName, e.JSONRPCID, e.ProtocolVersion, e.StatusCode, e.Outcome, e.RequestBytes, e.ResponseBytes, e.DurationMS, e.RequestID, e.ErrorType, payload != nil, e.ActorUserID, rules)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}

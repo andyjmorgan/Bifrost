@@ -161,6 +161,10 @@ type AuditEventDTO struct {
 	RequestID       string        `json:"requestId"`
 	ErrorType       string        `json:"errorType,omitempty"`
 	HasPayload      bool          `json:"hasPayload"`
+	// RuleHitCount is how many rules applied to the request. Rules holds
+	// them, on a single event only: a listing carries the count alone.
+	RuleHitCount int             `json:"ruleHitCount,omitempty"`
+	Rules        *store.RuleHits `json:"rules,omitempty"`
 }
 
 // AuditPayloadDTO is the stored exchange.
@@ -288,5 +292,16 @@ func auditDTO(e *store.AuditEvent) AuditEventDTO {
 		s := e.ServerID.String()
 		d.ServerID = &s
 	}
+	if e.Rules != nil {
+		d.RuleHitCount = len(e.Rules.Hits) + e.Rules.Dropped
+		d.Rules = e.Rules
+	}
+	return d
+}
+
+// auditRow is an event as a listing shows it: the count of its rules, not the rules.
+func auditRow(e *store.AuditEvent) AuditEventDTO {
+	d := auditDTO(e)
+	d.Rules = nil
 	return d
 }

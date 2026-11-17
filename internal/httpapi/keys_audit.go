@@ -103,7 +103,7 @@ func (a *API) listAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	out := PageDTO[AuditEventDTO]{Items: make([]AuditEventDTO, 0, len(page.Items)), Total: page.Total, Offset: page.Offset, Limit: page.Limit}
 	for _, e := range page.Items {
-		out.Items = append(out.Items, auditDTO(e))
+		out.Items = append(out.Items, auditRow(e))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -125,11 +125,11 @@ func (a *API) getAuditTrace(w http.ResponseWriter, r *http.Request) {
 	}
 	out := AuditTraceDTO{Spans: make([]AuditEventDTO, 0, len(spans))}
 	if root != nil {
-		d := auditDTO(root)
+		d := auditRow(root)
 		out.Root = &d
 	}
 	for _, s := range spans {
-		out.Spans = append(out.Spans, auditDTO(s))
+		out.Spans = append(out.Spans, auditRow(s))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

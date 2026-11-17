@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"context"
 	"net/http"
 	"testing"
+
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 func TestSniff(t *testing.T) {
@@ -48,5 +51,26 @@ func TestOutcome(t *testing.T) {
 	if outcomeFor(200, []byte(`event: message
 data: {"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"nope"}}`)) != "error" {
 		t.Fatal("jsonrpc error in SSE not detected")
+	}
+}
+
+// A request keeps at most MaxRuleHits hits, and a plain set goes first when
+// there are more: a deny or an audit rule's verdict is what an operator
+// came to read.
+func TestRuleHitsAreCappedKeepingWhatMatters(t *testing.T) {
+	ctx := context.WithValue(context.Background(), keyRules, &rules{})
+	if RuleHits(ctx) != nil {
+		t.Fatal("no hits must be nil, so nothing is stored")
+	}
+	for i := 0; i < MaxRuleHits+20; i++ {
+		AddRuleHits(ctx, store.RuleHit{Rule: "set", Effect: "set"})
+	}
+	AddRuleHits(ctx, store.RuleHit{Rule: "deny", Effect: "deny"}, store.RuleHit{Rule: "audit", Effect: "would deny"})
+	got := RuleHits(ctx)
+	if len(got.Hits) != MaxRuleHits || got.Dropped != 22 {
+		t.Fatalf("kept %d, dropped %d", len(got.Hits), got.Dropped)
+	}
+	if got.Hits[0].Rule != "deny" || got.Hits[1].Rule != "audit" {
+		t.Fatalf("the first hits are %q and %q, want the deny and the audit rule", got.Hits[0].Rule, got.Hits[1].Rule)
 	}
 }

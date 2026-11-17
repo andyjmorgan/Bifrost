@@ -43,6 +43,7 @@ import (
 
 type memStore struct {
 	mu      sync.Mutex
+	events  []*store.AuditEvent
 	servers []*store.Server
 	creds   map[uuid.UUID]*store.Credential
 	cache   map[string]memEntry
@@ -167,7 +168,30 @@ func (m *memStore) SetCredentialState(context.Context, uuid.UUID, store.Credenti
 	return nil
 }
 
-func (m *memStore) InsertAuditEvent(context.Context, *store.AuditEvent, *store.AuditPayload) error {
+func (m *memStore) InsertAuditEvent(_ context.Context, e *store.AuditEvent, _ *store.AuditPayload) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, e)
+	return nil
+}
+
+// inbound waits for the audit event of the client's nth request for a method.
+func (m *memStore) inbound(t *testing.T, method string, nth int) *store.AuditEvent {
+	t.Helper()
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		m.mu.Lock()
+		seen := 0
+		for _, e := range m.events {
+			if e.Hop == store.HopInbound && e.McpMethod == method {
+				if seen++; seen == nth {
+					m.mu.Unlock()
+					return e
+				}
+			}
+		}
+		m.mu.Unlock()
+	}
+	t.Fatalf("no audit event for request %d of %s", nth, method)
 	return nil
 }
 
@@ -222,8 +246,8 @@ func newRig(t *testing.T) *rig {
 			next.ServeHTTP(w, req.WithContext(auth.WithCaller(req.Context(), caller)))
 		})
 	})
-	router.Handle("/mcp", gw.MuxHandler())
-	router.Handle("/{slug}/mcp", gw.DirectHandler())
+	router.Handle("/mcp", rec.Inbound("mux", false)(gw.MuxHandler()))
+	router.Handle("/{slug}/mcp", rec.Inbound("direct", false)(gw.DirectHandler()))
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return &rig{t: t, store: ms, srv: srv, gw: gw}
@@ -338,6 +362,46 @@ func TestDirectListAndCallGoThroughTheRules(t *testing.T) {
 	}
 	if n := len(u.Requests("tools/call")); n != 1 {
 		t.Fatalf("the upstream saw %d calls, want 1", n)
+	}
+}
+
+// Every rule that applies to a request is kept on the request's audit event:
+// what it did, on what, and for an audit rule what it would have done.
+func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
+	r := newRig(t)
+	u := harness.NewUpstream(t, harness.V2026)
+	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("served")}))
+	u.Tool(`{"name":"secret","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
+	r.entitle("a", u,
+		hooks.Rule{Name: "hide-secret", Hook: "tools/list.post", When: "name == 'secret'", Then: map[string]string{"decision": "'deny'", "reason": "'Hidden.'"}},
+		hooks.Rule{Name: "try-block", Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'Would block.'"}},
+		hooks.Rule{Name: "reword", Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'reworded'}]"}})
+
+	harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"})
+	find := func(e *store.AuditEvent, rule string) *store.RuleHit {
+		if e.Rules != nil {
+			for i := range e.Rules.Hits {
+				if e.Rules.Hits[i].Rule == rule {
+					return &e.Rules.Hits[i]
+				}
+			}
+		}
+		return nil
+	}
+	list := r.store.inbound(t, "tools/list", 1)
+	if h := find(list, "hide-secret"); h == nil || h.Stage != "tools/list.post" || h.Effect != "deny" || h.Item != "secret" || h.Server != "a" || h.Mode != "enforce" || h.Reason != "Hidden." {
+		t.Fatalf("the listing's hits = %+v", list.Rules)
+	}
+
+	if got := text(harness.Raw(t, r.direct("a"), call("t", nil))); got != "reworded" {
+		t.Fatalf("the call returned %q: an audit rule must block nothing", got)
+	}
+	called := r.store.inbound(t, "tools/call", 1)
+	if h := find(called, "try-block"); h == nil || h.Mode != "audit" || h.Effect != "would deny" || h.Item != "t" || h.Reason != "Would block." {
+		t.Fatalf("the call's hits = %+v", called.Rules)
+	}
+	if h := find(called, "reword"); h == nil || h.Stage != "tools/call.post.result" || h.Effect != "set" || len(h.Fields) != 1 || h.Fields[0] != "content" {
+		t.Fatalf("the call's hits = %+v", called.Rules)
 	}
 }
 

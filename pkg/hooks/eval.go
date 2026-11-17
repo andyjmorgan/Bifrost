@@ -57,8 +57,11 @@ func ruleRoute(route string) string {
 
 // Hit records what one rule did, for audit and for scenario output.
 type Hit struct {
-	Hook   string   `json:"hook"`
-	Rule   string   `json:"rule"`
+	Hook string `json:"hook"`
+	Rule string `json:"rule"`
+	// Server is the slug of the server whose rule this is, when the rules
+	// were run with a server in their context.
+	Server string   `json:"server,omitempty"`
 	Item   string   `json:"item,omitempty"`
 	Mode   string   `json:"mode"`             // enforce | audit
 	Effect string   `json:"effect"`           // deny | elicit | set | error, prefixed "would " in audit mode
@@ -110,6 +113,10 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 		}
 	}()
 	stopped := false
+	server := ""
+	if sv, ok := vars["server"].(map[string]any); ok {
+		server, _ = sv["slug"].(string)
+	}
 	bounded := newRunBudget(budgetFrom(ctx))
 	defer bounded.close()
 	for _, r := range s.byHook[hook] {
@@ -124,7 +131,7 @@ func (s *Set) runIf(ctx context.Context, hook, itemLabel string, resolve func(st
 		if r.audit {
 			mode = ModeAudit
 		}
-		hit := Hit{Hook: hook, Rule: r.label, Item: itemLabel, Mode: mode}
+		hit := Hit{Hook: hook, Rule: r.label, Server: server, Item: itemLabel, Mode: mode}
 		ectx, done, berr := bounded.start(ctx, r.audit)
 		if berr != nil {
 			hit.Effect, hit.Error = "error", berr.Error()

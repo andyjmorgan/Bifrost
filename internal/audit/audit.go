@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,7 @@ const (
 	keyInboundID
 	keyTarget
 	keyIssues
+	keyRules
 )
 
 // issues collects per-request problems that did not fail the exchange
@@ -117,6 +119,49 @@ func Issues(ctx context.Context) []string {
 	is.mu.Lock()
 	defer is.mu.Unlock()
 	return append([]string(nil), is.list...)
+}
+
+// MaxRuleHits caps how many rule hits one event keeps. A listing on the mux
+// route can produce one per item per rule.
+const MaxRuleHits = 100
+
+// rules collects what the entitlement's rules did on a request. Shared by
+// pointer across goroutines.
+type rules struct {
+	mu   sync.Mutex
+	list []store.RuleHit
+}
+
+// AddRuleHits notes rules that applied to the inbound exchange.
+func AddRuleHits(ctx context.Context, hits ...store.RuleHit) {
+	if rs, ok := ctx.Value(keyRules).(*rules); ok && len(hits) > 0 {
+		rs.mu.Lock()
+		rs.list = append(rs.list, hits...)
+		rs.mu.Unlock()
+	}
+}
+
+// RuleHits returns the rules noted so far, capped at MaxRuleHits. When there
+// are more, the ones that changed nothing but a listing's fields go first:
+// a deny, a question, an error and anything an audit rule would have done
+// are kept ahead of a plain set.
+func RuleHits(ctx context.Context) *store.RuleHits {
+	rs, ok := ctx.Value(keyRules).(*rules)
+	if !ok {
+		return nil
+	}
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if len(rs.list) == 0 {
+		return nil
+	}
+	out := &store.RuleHits{Hits: append([]store.RuleHit(nil), rs.list...)}
+	if len(out.Hits) > MaxRuleHits {
+		sort.SliceStable(out.Hits, func(a, b int) bool { return out.Hits[a].Effect != "set" && out.Hits[b].Effect == "set" })
+		out.Dropped = len(out.Hits) - MaxRuleHits
+		out.Hits = out.Hits[:MaxRuleHits]
+	}
+	return out
 }
 
 // Target names the downstream server an exchange is for.
@@ -159,6 +204,9 @@ func Inherit(src, dst context.Context) context.Context {
 	}
 	if is, ok := src.Value(keyIssues).(*issues); ok {
 		dst = context.WithValue(dst, keyIssues, is)
+	}
+	if rs, ok := src.Value(keyRules).(*rules); ok {
+		dst = context.WithValue(dst, keyRules, rs)
 	}
 	return dst
 }
@@ -324,6 +372,7 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 			}
 			eventID := uuid.New()
 			ctx := withIssues(withInboundID(WithRequestID(auth.WithCallerSlot(req.Context()), reqID), eventID))
+			ctx = context.WithValue(ctx, keyRules, &rules{})
 			ctx = WithTarget(ctx, Target{Route: route})
 			req = req.WithContext(ctx)
 
@@ -367,6 +416,7 @@ func (r *Recorder) Inbound(route string, withPayload bool) func(http.Handler) ht
 				}
 				e.Slug = t.Slug
 			}
+			e.Rules = RuleHits(req.Context())
 			e.Outcome = outcomeFor(e.StatusCode, cw.buf.Bytes())
 			if e.Outcome == store.OutcomeSuccess && len(Issues(req.Context())) > 0 {
 				e.Outcome = store.OutcomePartial

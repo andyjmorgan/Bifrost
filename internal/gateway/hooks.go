@@ -541,13 +541,15 @@ func metaOf(req mcp.Request) (meta map[string]any) {
 
 // ---- outcomes -------------------------------------------------------------------
 
-// note records what the engine reported beside its answer.
+// note records what the engine reported beside its answer: its issues, and
+// every rule that applied, which the request's audit event keeps.
 func (g *Gateway) note(ctx context.Context, o hooks.Outcome) {
 	for _, is := range o.Issues {
 		audit.AddIssue(ctx, is)
 	}
 	for _, h := range o.Hits {
-		g.log.Debug("rule hit", "hook", h.Hook, "rule", h.Rule, "item", h.Item, "mode", h.Mode, "effect", h.Effect)
+		g.log.Debug("rule hit", "hook", h.Hook, "rule", h.Rule, "server", h.Server, "item", h.Item, "mode", h.Mode, "effect", h.Effect)
+		audit.AddRuleHits(ctx, store.RuleHit{Stage: h.Hook, Rule: h.Rule, Server: h.Server, Item: h.Item, Mode: h.Mode, Effect: h.Effect, Fields: h.Fields, Reason: h.Reason, Error: h.Error})
 	}
 }
 

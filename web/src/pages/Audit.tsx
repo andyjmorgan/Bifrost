@@ -12,7 +12,7 @@ import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListR
 import { StatusPill, type Tone } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { BodyViewer, findUnavailable } from '../components/PayloadViewer'
-import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type AuditTraceDTO, type Hop, type Outcome } from '../api'
+import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type AuditTraceDTO, type RuleHitsDTO, type Hop, type Outcome } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
 const PAGE = 25
@@ -239,6 +239,11 @@ export function AuditPage() {
                   <span className="block truncate font-mono text-xs">
                     {e.mcpMethod || <span className="text-muted-foreground">{e.httpMethod}</span>}
                     {e.toolName && <span className="text-muted-foreground"> · {e.toolName}</span>}
+                    {!!e.ruleHitCount && (
+                      <span className="ml-2 rounded bg-accent/10 px-1.5 text-[11px] leading-5 text-accent" title="Rules that applied to this request">
+                        {e.ruleHitCount} {e.ruleHitCount === 1 ? 'rule' : 'rules'}
+                      </span>
+                    )}
                   </span>
                 </Cell>
                 <Cell label="Status" at="lg">
@@ -303,6 +308,42 @@ function Headers({ label, headers }: { label: string; headers?: Record<string, s
           </div>
         ))}
     </section>
+  )
+}
+
+const STAGE_LINE = /^(.+):(\d+)$/
+
+/** What the entitlement's rules did on a request: one row per rule that applied. */
+function RuleHits({ rules }: { rules: RuleHitsDTO }) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Rules that applied</h3>
+      <div className="rounded-xl border border-border bg-background p-2">
+        {rules.hits.map((h, i) => {
+          const line = STAGE_LINE.exec(h.rule)
+          const quiet = h.mode === 'audit'
+          const bad = /deny|error/.test(h.effect)
+          return (
+            <div key={i} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-3 px-2 py-1 font-mono text-xs leading-5">
+              <span className="truncate text-muted-foreground" title={h.rule}>
+                {h.stage}
+                {line && line[1] === h.stage ? ` · line ${line[2]}` : ` · ${h.rule}`}
+              </span>
+              <span className="min-w-0 break-words">
+                <span className={quiet ? 'text-warning' : bad ? 'text-danger' : 'text-accent'}>{h.effect}</span>
+                {h.item && <span className="text-foreground"> {h.item}</span>}
+                {h.server && <span className="text-muted-foreground"> on {h.server}</span>}
+                {h.fields && h.fields.length > 0 && <span className="text-muted-foreground"> · {h.fields.join(', ')}</span>}
+                {h.reason && <span className="text-muted-foreground"> · {h.reason}</span>}
+                {h.error && <span className="text-danger"> · {h.error}</span>}
+              </span>
+            </div>
+          )
+        })}
+        {!!rules.dropped && <p className="px-2 py-1 text-xs text-muted-foreground">{rules.dropped} more applied and were not kept.</p>}
+      </div>
+      <p className="text-xs leading-5 text-muted-foreground">An audit rule records what it would have done and changes nothing.</p>
+    </div>
   )
 }
 
@@ -427,6 +468,7 @@ function AuditDetailSheet({ event, onPick, onClose }: { event?: AuditEventDTO; o
             </>
           )}
           {mode === 'detail' && error && <Callout tone="danger">{error}</Callout>}
+          {mode === 'detail' && e?.rules && <RuleHits rules={e.rules} />}
           {mode === 'detail' && e?.hasPayload && !payload && !error && <p className="text-xs text-muted-foreground">Loading exchange…</p>}
           {mode === 'detail' && e && !e.hasPayload && <p className="text-xs text-muted-foreground">No payload was recorded for this event.</p>}
           {mode === 'detail' && payload && (

@@ -233,6 +233,35 @@ export interface AuditEventDTO {
   requestId: string
   errorType?: string
   hasPayload: boolean
+  /** How many of the entitlement's rules applied to the request. */
+  ruleHitCount?: number
+  /** The rules that applied; on a single event only, a listing carries the count alone. */
+  rules?: RuleHitsDTO
+}
+
+/** One rule that applied to a request. */
+export interface RuleHitDTO {
+  /** Where the rule ran, e.g. "tools/call.pre". */
+  stage: string
+  /** The rule's name; for a rule written as text, its stage and line ("tools/call.pre:2"). */
+  rule: string
+  /** The slug of the server whose rule it is. */
+  server?: string
+  /** The tool, prompt or resource it applied to. */
+  item?: string
+  mode: 'enforce' | 'audit'
+  /** deny, elicit, set or error; "would …" for an audit rule. */
+  effect: string
+  /** What a set changed. */
+  fields?: string[]
+  reason?: string
+  error?: string
+}
+
+export interface RuleHitsDTO {
+  hits: RuleHitDTO[]
+  /** How many more applied than are kept. */
+  dropped?: number
 }
 
 export interface AuditPayloadDTO {
