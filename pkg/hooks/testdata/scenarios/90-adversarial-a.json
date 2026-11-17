@@ -4194,7 +4194,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "tool.params.command.name": "\"codex_command\""
+       "tool.params.command.name": "\"shell_command\""
       }
      }
     ],
@@ -4212,7 +4212,7 @@
      {
       "path": "outcome.forward.params.arguments",
       "equals": {
-       "command": "cd /home/localuser/source/sluice-gateway && grep -rn \"go:generate\" --include=*.go protocols/ models/ contracts/ | head && echo \"=== tygo\" && cat tygo.yaml | head -40 && echo \"=== makefile py-compat\" && grep -n \"py-compat:\" -A 5 Makefile"
+       "command": "cd /srv/app && grep -rn \"go:generate\" --include=*.go api/ models/ | head && echo \"=== config\" && cat config.yaml | head -40 && echo \"=== make\" && grep -n \"build:\" -A 5 Makefile"
       }
      },
      {
@@ -4227,7 +4227,7 @@
     "params": {
      "name": "Bash",
      "arguments": {
-      "codex_command": "cd /home/localuser/source/sluice-gateway && grep -rn \"go:generate\" --include=*.go protocols/ models/ contracts/ | head && echo \"=== tygo\" && cat tygo.yaml | head -40 && echo \"=== makefile py-compat\" && grep -n \"py-compat:\" -A 5 Makefile"
+      "shell_command": "cd /srv/app && grep -rn \"go:generate\" --include=*.go api/ models/ | head && echo \"=== config\" && cat config.yaml | head -40 && echo \"=== make\" && grep -n \"build:\" -A 5 Makefile"
      }
     }
    }
@@ -4257,7 +4257,7 @@
       "hook": "tools/list.post",
       "when": "true",
       "then": {
-       "tool.params.file_path.name": "\"codex_file_path\""
+       "tool.params.file_path.name": "\"path_to_read\""
       }
      }
     ],
@@ -4275,7 +4275,7 @@
      {
       "path": "outcome.forward.params.arguments",
       "equals": {
-       "file_path": "/home/sandbox/.claude/skills/lab-cluster-access/health-check/references/schema.md"
+       "file_path": "/srv/app/docs/references/schema.md"
       }
      },
      {
@@ -4290,7 +4290,7 @@
     "params": {
      "name": "Read",
      "arguments": {
-      "codex_file_path": "/home/sandbox/.claude/skills/lab-cluster-access/health-check/references/schema.md"
+      "path_to_read": "/srv/app/docs/references/schema.md"
      }
     }
    }
