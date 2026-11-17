@@ -16,7 +16,7 @@ import { IconTile } from '../components/IconTile'
 import { FormField } from '../components/FormField'
 import { CatalogCard } from '../components/entitlements/CatalogCard'
 import { NewEntitlementDialog } from '../components/entitlements/NewEntitlementDialog'
-import { rulesPhrase, selectionSummary } from '../components/entitlements/selection'
+import { hasRules, rulesPhrase, selectionSummary } from '../components/entitlements/selection'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
@@ -465,7 +465,7 @@ function EntitlementsCard({
                 <Cell label="Selection">
                   <span className="flex min-w-0 items-baseline gap-2 text-xs">
                     <span className="truncate">{selectionSummary(e.selection)}</span>
-                    {rulesPhrase(e.rules?.length) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(e.rules?.length)}</span>}
+                    {rulesPhrase(hasRules(e.rules)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.rules))}</span>}
                   </span>
                 </Cell>
                 <RowActions>

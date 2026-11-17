@@ -5,6 +5,9 @@ import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTit
 import { Callout } from '../Callout'
 import { RuleTextEditor, type RuleCompletionData } from './RuleTextEditor'
 import type { CapabilityDTO, RuleStage, RulesSchema, TextProblem } from '../../api'
+
+/** Rule text by hook property; a hook with no text has no key. */
+export type RuleText = Record<string, string>
 import { cn } from '../../lib'
 
 // The Rules tab. Rules are text, written where they run: a stage is a method, a side of it (pre:
@@ -14,9 +17,9 @@ import { cn } from '../../lib'
 
 const RULE_LINE = /^\s*(audit\s+)?when(\s|$)/
 
-/** How many rules a stage's text holds: its when lines that are not commented out. */
-export function countRules(text: string | undefined): number {
-  return (text ?? '').split('\n').filter((l) => RULE_LINE.test(l)).length
+/** Whether a hook has a value: any text at all. Rules are not counted. */
+export function hasText(text: string | undefined): boolean {
+  return (text ?? '').trim() !== ''
 }
 
 /** The stage's place under its method: pre, post, or post and the event when the method has several. */
@@ -71,8 +74,9 @@ export function RulesStages({
   schema?: RulesSchema
   schemaError?: string
   onReloadSchema: () => void
-  text: Record<string, string>
-  onChange: (text: Record<string, string>) => void
+  /** The rules as text, by hook property. */
+  text: RuleText
+  onChange: (text: RuleText) => void
   problems: TextProblem[]
   /** Rules that compile but look wrong. They do not stop a save. */
   warnings: TextProblem[]
@@ -81,8 +85,8 @@ export function RulesStages({
   onValidate: () => void
   /** The check the admin asks for with the button. */
   onCheck: () => void
-  /** How many rules the last check asked for compiled to; undefined when none was asked for, or the text changed since. */
-  checked?: number
+  /** Whether the last check the admin asked for found any rules; undefined when none was asked for, or the text changed since. */
+  checked?: boolean
   rulesError?: string
   slug: string
   caps: CapabilityDTO[]
@@ -95,7 +99,7 @@ export function RulesStages({
   }, [schema])
   // Open on the first stage that has rules, or on the call's pre stage: the one most rules go in.
   const [picked, setPicked] = useState<string>()
-  const current = stages.find((s) => s.id === picked) ?? stages.find((s) => countRules(text[s.id]) > 0) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
+  const current = stages.find((s) => s.id === picked) ?? stages.find((s) => hasText(text[s.property])) ?? stages.find((s) => s.id === 'tools/call.pre') ?? stages[0]
   const [help, setHelp] = useState(false)
 
   const groups = useMemo(() => {
@@ -130,8 +134,8 @@ export function RulesStages({
     const s = stages.find((x) => x.id === id)
     return s ? `${s.method} · ${sideLabel(s, stages)}` : id
   }
-  const value = current ? (text[current.id] ?? '') : ''
-  const setValue = (v: string) => current && onChange({ ...text, [current.id]: v })
+  const value = current ? (text[current.property] ?? '') : ''
+  const setValue = (v: string) => current && onChange({ ...text, [current.property]: v })
   const add = (rule: string) => setValue((value.trimEnd() ? value.trimEnd() + '\n\n' : '') + tighten(rule) + '\n')
 
   return (
@@ -172,7 +176,7 @@ export function RulesStages({
       {checked !== undefined &&
         (findings.length === 0 ? (
           <p className="text-xs text-accent">
-            {checked === 0 ? 'There are no rules to check.' : `${checked === 1 ? 'The rule passes' : `All ${checked} rules pass`} the engine's checks.`}
+            {checked ? "The rules pass the engine's checks." : 'There are no rules to check.'}
           </p>
         ) : (
           <div className="rounded-xl border border-border bg-card p-2">
@@ -207,7 +211,7 @@ export function RulesStages({
                     <div key={m.method}>
                       <p className="px-2 font-mono text-[11px] leading-5 text-faint-foreground">{m.method}</p>
                       {m.stages.map((s) => {
-                        const n = countRules(text[s.id])
+                        const has = hasText(text[s.property])
                         const bad = problems.some((p) => p.stage === s.id)
                         const warned = !bad && warnings.some((p) => p.stage === s.id)
                         const active = s.id === current.id
@@ -223,15 +227,11 @@ export function RulesStages({
                             )}
                           >
                             <span className="truncate">{sideLabel(s, stages)}</span>
-                            {(n > 0 || bad) && (
+                            {(has || bad) && (
                               <span
-                                className={cn(
-                                  'shrink-0 rounded px-1.5 text-[11px] leading-5',
-                                  bad ? 'bg-danger/15 text-danger' : warned ? 'bg-warning/15 text-warning' : 'bg-accent/10 text-accent',
-                                )}
-                              >
-                                {bad ? `${n} !` : warned ? `${n} ?` : n}
-                              </span>
+                                title={bad ? 'Has problems' : warned ? 'Has warnings' : 'Has rules'}
+                                className={cn('size-1.5 shrink-0 rounded-full', bad ? 'bg-danger' : warned ? 'bg-warning' : 'bg-accent')}
+                              />
                             )}
                           </button>
                         )

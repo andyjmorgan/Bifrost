@@ -108,7 +108,7 @@ export function PortalPage() {
                             {expanded ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
                             {Object.keys(x.selection ?? {}).length === 0 ? 'Everything · ' : ''}
                             {capabilitySummary(x.capabilities)}
-                            {rulesPhrase(x.rules) && <span className="ml-1.5 text-muted-foreground">{rulesPhrase(x.rules)}</span>}
+                            {rulesPhrase(x.hasRules) && <span className="ml-1.5 text-muted-foreground">{rulesPhrase(x.hasRules)}</span>}
                           </span>
                         </Cell>
                         <Cell label="Via">

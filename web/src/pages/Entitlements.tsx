@@ -9,7 +9,7 @@ import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primar
 import { IconTile } from '../components/IconTile'
 import { Callout } from '../components/Callout'
 import { NewEntitlementDialog } from '../components/entitlements/NewEntitlementDialog'
-import { rulesPhrase, selectionDetail, selectionSummary } from '../components/entitlements/selection'
+import { hasRules, rulesPhrase, selectionDetail, selectionSummary } from '../components/entitlements/selection'
 import { api, errorMessage, type EntitlementDTO, type GrantDTO, type ServerDTO } from '../api'
 
 const COLS = 'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.5fr) 56px'
@@ -101,7 +101,7 @@ export function EntitlementsPage() {
                       <span className="truncate" title={selectionDetail(e.selection)}>
                         {selectionSummary(e.selection)}
                       </span>
-                      {rulesPhrase(e.rules?.length) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(e.rules?.length)}</span>}
+                      {rulesPhrase(hasRules(e.rules)) && <span className="shrink-0 text-muted-foreground">{rulesPhrase(hasRules(e.rules))}</span>}
                     </span>
                   </Cell>
                   <Cell label="Grants">

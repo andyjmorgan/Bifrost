@@ -1,4 +1,4 @@
-import type { CapabilityKind, Selection } from '../../api'
+import type { CapabilityKind, RulesDTO, Selection } from '../../api'
 
 export const SLUG_MAX = 24
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?$/
@@ -96,8 +96,12 @@ export function viaLabel(via: string): string {
   return via
 }
 
-/** "1 rule" / "3 rules"; undefined when there are none, so callers render nothing. */
-export function rulesPhrase(n: number | undefined): string | undefined {
-  if (!n) return undefined
-  return `${n} ${n === 1 ? 'rule' : 'rules'}`
+/** Whether any hook has rules: a property with text. */
+export function hasRules(rules: RulesDTO | undefined): boolean {
+  return Object.values(rules ?? {}).some((t) => typeof t === 'string' && t.trim() !== '')
+}
+
+/** "has rules", or undefined when there are none, so callers render nothing. Rules are not counted. */
+export function rulesPhrase(has: boolean | undefined): string | undefined {
+  return has ? 'has rules' : undefined
 }

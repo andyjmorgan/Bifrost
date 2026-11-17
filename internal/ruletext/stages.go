@@ -22,11 +22,14 @@ import (
 
 // Stage is one place where rules run: one engine hook.
 type Stage struct {
-	ID     string `json:"id"`              // the hook's name: tools/call.post.result
-	Group  string `json:"group"`           // Server, Tools, Prompts, Resources
-	Method string `json:"method"`          // tools/call; "server" for the two that are not a method
-	Side   string `json:"side"`            // pre, post, settings or session
-	Event  string `json:"event,omitempty"` // progress, elicit or result
+	ID string `json:"id"` // the hook's name: tools/call.post.result
+	// Property is the property the hook's rules are kept under in Rules:
+	// toolsCallPostResult.
+	Property string `json:"property"`
+	Group    string `json:"group"`           // Server, Tools, Prompts, Resources
+	Method   string `json:"method"`          // tools/call; "server" for the two that are not a method
+	Side     string `json:"side"`            // pre, post, settings or session
+	Event    string `json:"event,omitempty"` // progress, elicit or result
 	// Item is what a rule here is about: tool, prompt, resource, template,
 	// skill or server.
 	Item string `json:"item,omitempty"`
@@ -237,6 +240,10 @@ func init() {
 		h, ok := hooks.Hooks[s.ID]
 		if !ok {
 			panic("ruletext: stage " + s.ID + " is not an engine hook")
+		}
+		s.Property = Property(s.ID)
+		if _, ok := fieldOf[s.Property]; !ok {
+			panic("ruletext: Rules has no field for " + s.ID + " (" + s.Property + ")")
 		}
 		d := h.Schema()
 		s.Item, s.Reads = d.Item, d.Variables

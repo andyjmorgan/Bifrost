@@ -505,10 +505,8 @@ export interface EntitlementDTO {
   description: string
   mcpUrl: string
   selection: Selection
-  /** Hook rules, run top to bottom at their hook. Always an array. */
-  rules: Rule[]
-  /** The rules as text, by stage id. Rules saved as JSON are rendered into it. Always an object. */
-  rulesText: Record<string, string>
+  /** The rules as text, one property per hook. Every property is present; null means the hook has no rules. */
+  rules: RulesDTO
   /** Why the stored rules cannot be used. While set, the entitlement exposes nothing. */
   rulesError?: string
   generation: number
@@ -523,11 +521,39 @@ export interface EntitlementInput {
   slug?: string
   description: string
   selection?: Selection
-  /** Omit to leave unchanged; PATCH sends the full list. */
-  rules?: Rule[]
-  /** The rules as text, by stage id; wins over `rules`. Omit to leave unchanged. */
-  rulesText?: Record<string, string>
+  /** Omit to leave unchanged. What is sent replaces all the rules: a property that is null or absent clears that hook. */
+  rules?: RulesDTO
 }
+
+/**
+ * An entitlement's rules: the text of each hook's rules, under the hook's property. The property is
+ * the hook's name with the separators dropped and the parts joined in camel case, so
+ * tools/call.post.result is toolsCallPostResult. Null or absent means the hook has no rules.
+ */
+export interface RulesDTO {
+  serverSettings?: string | null
+  serverSession?: string | null
+  serverDiscoverPost?: string | null
+  toolsListPost?: string | null
+  toolsCallPre?: string | null
+  toolsCallPostProgress?: string | null
+  toolsCallPostElicit?: string | null
+  toolsCallPostResult?: string | null
+  promptsListPost?: string | null
+  promptsGetPre?: string | null
+  promptsGetPostProgress?: string | null
+  promptsGetPostElicit?: string | null
+  resourcesListPost?: string | null
+  resourcesTemplatesListPost?: string | null
+  resourcesReadPre?: string | null
+  resourcesReadPostProgress?: string | null
+  resourcesReadPostElicit?: string | null
+  resourcesReadPostResult?: string | null
+  skillsListPost?: string | null
+}
+
+/** A hook's property in RulesDTO. */
+export type RuleProperty = keyof RulesDTO
 
 export type CapabilityKind = 'tool' | 'prompt' | 'resource' | 'template'
 
@@ -539,35 +565,6 @@ export interface CapabilityDTO {
   lastSeenAt: string
   /** The tool / prompt / resource / template object exactly as the server last sent it. */
   definition?: unknown
-}
-
-/** A hook rule: a CEL condition on one hook, and the fields it sets when the condition is true. */
-export interface Rule {
-  id?: string
-  /** A label for audit records; clients never see it. */
-  name?: string
-  /** undefined = enabled. */
-  enabled?: boolean
-  /** undefined = enforce. An audit rule records what it would do and changes nothing. */
-  mode?: RuleMode
-  /** The hook the rule runs at, e.g. "tools/list.post". */
-  hook: string
-  /** CEL boolean expression. */
-  when: string
-  /** Field name -> CEL expression, e.g. {"decision": "'deny'"}. */
-  then?: Record<string, string>
-}
-
-export type RuleMode = 'enforce' | 'audit'
-
-/**
- * A compile problem. `rule` is the 0-based index into the submitted list (-1 when the list as a
- * whole failed); `field` is "hook", "when", "then", "mode" or a key of `then`.
- */
-export interface RuleProblem {
-  rule: number
-  field?: string
-  message: string
 }
 
 /** GET /entitlements/rules-schema: what a rule on each hook may read and set. */
@@ -586,6 +583,8 @@ export interface RulesSchema {
 export interface RuleStage {
   /** The engine hook's name, e.g. "tools/call.post.result". */
   id: string
+  /** The property the hook's rules are kept under, e.g. "toolsCallPostResult". */
+  property: RuleProperty
   /** Server, Tools, Prompts or Resources. */
   group: string
   /** e.g. "tools/call"; "server" for the two that are not a method. */
@@ -619,8 +618,8 @@ export interface TextProblem {
 export interface TextCheck {
   textProblems: TextProblem[]
   warnings: TextProblem[]
-  /** How many engine rules the text compiled to; 0 when it has problems. */
-  rules: number
+  /** Whether the text compiled to any rule; false when it has problems or holds only comments. */
+  hasRules: boolean
 }
 
 export interface HookSchema {
@@ -689,6 +688,6 @@ export interface ExposureDTO {
   conflict?: string
   /** "kind:name" this slug exposes (seen on the server and inside the selection). */
   capabilities: string[]
-  /** Count of advanced rules on that entitlement. */
-  rules: number
+  /** Whether that entitlement has rules on some hook. */
+  hasRules: boolean
 }

@@ -14,7 +14,7 @@ import { CopyButton } from '../components/CopyButton'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ListBar, ListCard, ListEmpty, ListRows } from '../components/ListCard'
 import { KINDS, selectionDetail, selectionSummary } from '../components/entitlements/selection'
-import { RulesStages, countRules } from '../components/entitlements/RulesStages'
+import { RulesStages, type RuleText } from '../components/entitlements/RulesStages'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import {
   api,
@@ -45,8 +45,8 @@ interface Draft {
   description: string
   /** Resource lists hold URI patterns, including exact URIs picked from the seen resources. */
   sel: DraftSelection
-  /** The rules as text, by stage id. */
-  text: Record<string, string>
+  /** The rules as text, by hook property: the form the API takes. Only hooks that hold text have a key. */
+  text: RuleText
   grants: GrantInput[]
 }
 
@@ -66,7 +66,7 @@ function toDraft(e: EntitlementDTO): Draft {
       resources: s.resources ?? null,
       templates: s.templates ?? null,
     },
-    text: { ...(e.rulesText ?? {}) },
+    text: cleanText((e.rules ?? {}) as Record<string, string | null>),
     grants: e.grants.map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
   }
 }
@@ -77,12 +77,11 @@ function problemsFromError(e: unknown): TextProblem[] | undefined {
   return Array.isArray(body?.textProblems) ? body.textProblems : undefined
 }
 
-/** Only stages that hold something are sent and compared. */
-function cleanText(text: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(text).filter(([, t]) => t.trim() !== ''))
+/** Only hooks that hold something are sent and compared; a hook with no text has no rules. */
+function cleanText(text: Record<string, string | null | undefined>): RuleText {
+  return Object.fromEntries(Object.entries(text).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].trim() !== ''))
 }
 
-const ruleCount = (text: Record<string, string>) => Object.values(text).reduce((n, t) => n + countRules(t), 0)
 
 /** Only the narrowed kinds become keys; an "Only selected" kind with nothing ticked is []. */
 function toSelection(d: Draft): Selection {
@@ -129,8 +128,8 @@ export function EntitlementEditorPage() {
   const [deleteErr, setDeleteErr] = useState<string>()
   const [problems, setProblems] = useState<TextProblem[]>([])
   const [warnings, setWarnings] = useState<TextProblem[]>([])
-  // How many rules the last check the admin asked for compiled to; undefined once the text changes.
-  const [checked, setChecked] = useState<number>()
+  // Whether the last check the admin asked for found any rules; undefined once the text changes.
+  const [checked, setChecked] = useState<boolean>()
   // The server's catalog by kind, for the check that a rule names something the server has.
   const catalog = useRef<Record<string, string[]>>({})
   const [validating, setValidating] = useState(false)
@@ -144,22 +143,22 @@ export function EntitlementEditorPage() {
    * POST /entitlements/validate: the engine's compiler, then the sanity checks. Returns true when
    * the text compiles; warnings do not count against it. `asked` marks a check the admin asked for.
    */
-  const validate = useCallback(async (text: Record<string, string>, asked = false): Promise<boolean> => {
+  const validate = useCallback(async (text: RuleText, asked = false): Promise<boolean> => {
     const seq = ++validateSeq.current
     const sent = cleanText(text)
     if (!Object.keys(sent).length) {
       setProblems([])
       setWarnings([])
-      if (asked) setChecked(0)
+      if (asked) setChecked(false)
       return true
     }
     setValidating(true)
     try {
-      const r = await api.entitlements.validateText(sent, catalog.current)
+      const r = await api.entitlements.validateRules(sent, catalog.current)
       if (seq === validateSeq.current) {
         setProblems(r.textProblems ?? [])
         setWarnings(r.warnings ?? [])
-        if (asked) setChecked(r.rules)
+        if (asked) setChecked(r.hasRules)
       }
       return !(r.textProblems ?? []).length
     } catch (e) {
@@ -191,7 +190,7 @@ export function EntitlementEditorPage() {
       setDraft(d)
       setLoadError(undefined)
       // Stored rules that do not compile: place each problem on its line.
-      if (e.rulesError && ruleCount(d.text)) void validate(d.text)
+      if (e.rulesError && Object.keys(d.text).length) void validate(d.text)
       // Stored rules that cannot be used are the thing to fix: open on them.
       if (e.rulesError) setTab('rules')
       const [c, org] = await Promise.all([api.capabilities.list(e.serverId), api.org.get()])
@@ -226,9 +225,10 @@ export function EntitlementEditorPage() {
   }
 
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch })
-  const setText = (text: Record<string, string>) => {
-    // A stage whose text changed is unchecked until the next blur or save.
-    const changed = new Set(Object.keys({ ...draft.text, ...text }).filter((id) => (draft.text[id] ?? '') !== (text[id] ?? '')))
+  const setText = (text: RuleText) => {
+    // A hook whose text changed is unchecked until the next blur or save. Problems name the hook; the text is kept by its property.
+    const moved = Object.keys({ ...draft.text, ...text }).filter((prop) => (draft.text[prop] ?? '') !== (text[prop] ?? ''))
+    const changed = new Set(moved.map((prop) => schema?.stages.find((st) => st.property === prop)?.id ?? prop))
     if (problems.some((p) => changed.has(p.stage))) setProblems(problems.filter((p) => !changed.has(p.stage)))
     if (warnings.some((p) => changed.has(p.stage))) setWarnings(warnings.filter((p) => !changed.has(p.stage)))
     if (changed.size) setChecked(undefined)
@@ -248,7 +248,7 @@ export function EntitlementEditorPage() {
       return
     }
     try {
-      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rulesText: text })
+      await api.entitlements.update(ent.id, { name, description: draft.description.trim(), selection: toSelection(draft), rules: text })
       const updated = await api.entitlements.putGrants(ent.id, draft.grants)
       setEnt(updated)
       setDraft(toDraft(updated))
@@ -285,7 +285,16 @@ export function EntitlementEditorPage() {
       const seen = caps.filter((c) => c.kind === k.kind).length
       return { key: k.kind, label: k.label, count: list === null ? seen : list.filter((n) => n.trim()).length }
     }),
-    { key: 'rules', label: 'Rules', count: ruleCount(draft.text), icon: rulesBroken ? <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" /> : undefined },
+    {
+      key: 'rules',
+      label: 'Rules',
+      // A dot says the entitlement has rules; rules are not counted.
+      icon: rulesBroken ? (
+        <span className="size-1.5 rounded-full bg-danger" aria-label="Rules have problems" />
+      ) : Object.keys(cleanText(draft.text)).length ? (
+        <span className="size-1.5 rounded-full bg-accent" aria-label="Has rules" />
+      ) : undefined,
+    },
   ]
   const kind = KINDS.find((k) => k.kind === tab)
 

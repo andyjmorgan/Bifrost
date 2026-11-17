@@ -32,13 +32,12 @@ type EntitlementDTO struct {
 	Description string          `json:"description"`
 	MCPURL      string          `json:"mcpUrl"`
 	Selection   store.Selection `json:"selection"`
-	Rules       []hooks.Rule    `json:"rules"`
-	// RulesText is the rules as the admin writes them: text, by stage (see
-	// internal/ruletext). Rules saved as JSON are rendered into it.
-	RulesText map[string]string `json:"rulesText"`
-	// RulesError says why the stored rules cannot be used, for example
-	// because they are in the retired format. While it is set the
-	// entitlement exposes nothing.
+	// Rules is the rules as the admin writes them: the text of each hook,
+	// under the hook's property (see ruletext.Rules). Every property is
+	// present; null means the hook has no rules.
+	Rules ruletext.Rules `json:"rules"`
+	// RulesError says why the stored rules cannot be used. While it is set
+	// the entitlement exposes nothing.
 	RulesError string     `json:"rulesError,omitempty"`
 	Generation int        `json:"generation"`
 	Grants     []GrantDTO `json:"grants"`
@@ -62,50 +61,25 @@ type EntitlementInput struct {
 	Slug        string           `json:"slug"`
 	Description string           `json:"description"`
 	Selection   *store.Selection `json:"selection"`
-	Rules       *[]hooks.Rule    `json:"rules"`
-	// RulesText sets the rules from text, by stage. It wins over Rules.
-	RulesText *map[string]string `json:"rulesText"`
+	// Rules sets the rules: text by hook property. Nil leaves them as they
+	// are; a null property clears that hook's rules.
+	Rules *ruletext.Rules `json:"rules"`
 }
 
-// RulesProblems is the 400 body when rules do not compile.
-// TextProblems is the 400 body when rules written as text do not compile.
+// TextProblems is the 400 body when rules do not compile.
 type TextProblems struct {
 	Error    string             `json:"error"`
 	Problems []ruletext.Problem `json:"textProblems"`
 }
 
-// policiesFrom turns the rules of a create or update into what is stored.
-// It writes the 400 itself and returns false when they do not compile.
-func policiesFrom(w http.ResponseWriter, in *EntitlementInput) (json.RawMessage, bool) {
-	if in.RulesText != nil {
-		rules, probs := ruletext.Compile(*in.RulesText)
-		if len(probs) > 0 {
-			writeJSON(w, http.StatusBadRequest, TextProblems{Error: "rules do not compile", Problems: probs})
-			return nil, false
-		}
-		text := map[string]string{}
-		for id, t := range *in.RulesText {
-			if strings.TrimSpace(t) != "" {
-				text[id] = t
-			}
-		}
-		if rules == nil {
-			rules = []hooks.Rule{}
-		}
-		b, _ := json.Marshal(gateway.StoredRules{Text: text, Rules: rules})
-		return b, true
-	}
-	if _, probs := hooks.Compile(*in.Rules); probs != nil {
-		writeJSON(w, http.StatusBadRequest, RulesProblems{Error: "rules do not compile", Problems: probs})
+// rulesFrom turns the rules of a create or update into what is stored. It
+// writes the 400 itself and returns false when they do not compile.
+func rulesFrom(w http.ResponseWriter, in *EntitlementInput) (json.RawMessage, bool) {
+	if _, probs := ruletext.Compile(in.Rules.ByHook()); len(probs) > 0 {
+		writeJSON(w, http.StatusBadRequest, TextProblems{Error: "rules do not compile", Problems: probs})
 		return nil, false
 	}
-	b, _ := json.Marshal(*in.Rules)
-	return b, true
-}
-
-type RulesProblems struct {
-	Error    string         `json:"error"`
-	Problems hooks.Problems `json:"problems"`
+	return in.Rules.Stored(), true
 }
 
 // CapabilityDTO is one thing a server has been seen to offer, with the
@@ -133,26 +107,19 @@ type ExposureDTO struct {
 	Via          []string        `json:"via"` // "user" or "role:member"
 	Conflict     string          `json:"conflict,omitempty"`
 	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and in the allow lists (rules not applied here)
-	Rules        int             `json:"rules"`        // advanced rules on the entitlement
+	HasRules     bool            `json:"hasRules"`     // the entitlement has rules on some hook
 }
 
 func (a *API) entitlementDTO(r *http.Request, e *store.Entitlement, serverName string) EntitlementDTO {
 	d := EntitlementDTO{ID: e.ID.String(), ServerID: e.ServerID.String(), ServerName: serverName, Slug: e.Slug, Name: e.Name, Description: e.Description,
-		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Rules: []hooks.Rule{}, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
-	d.RulesText = map[string]string{}
-	if rs, text, err := gateway.ParseStored(e.Policies); err != nil {
+		MCPURL: a.publicBase + "/" + e.Slug + "/mcp", Selection: e.Selection, Generation: e.Generation, Grants: []GrantDTO{}, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt}
+	if rs, err := ruletext.ParseStored(e.Rules); err != nil {
 		d.RulesError = err.Error()
-	} else if rs != nil {
+	} else {
 		d.Rules = rs
-		if _, probs := hooks.Compile(rs); len(probs) > 0 {
-			d.RulesError = probs.Error()
+		if _, probs := ruletext.Compile(rs.ByHook()); len(probs) > 0 {
+			d.RulesError = ruletext.ProblemsError(probs).Error()
 		}
-		if text == nil {
-			text = ruletext.Render(rs)
-		}
-		d.RulesText = text
-	} else if text != nil {
-		d.RulesText = text
 	}
 	members := map[string]*store.Member{}
 	if ms, err := a.store.ListMembers(r.Context(), uuid.MustParse(e.OrgID)); err == nil {
@@ -247,12 +214,12 @@ func (a *API) createEntitlement(w http.ResponseWriter, r *http.Request) {
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
-	if in.Rules != nil || in.RulesText != nil {
-		pol, ok := policiesFrom(w, &in)
+	if in.Rules != nil {
+		stored, ok := rulesFrom(w, &in)
 		if !ok {
 			return
 		}
-		e.Policies = pol
+		e.Rules = stored
 	}
 	if in.Slug != "" {
 		e.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
@@ -312,12 +279,12 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 	if in.Selection != nil {
 		e.Selection = *in.Selection
 	}
-	if in.Rules != nil || in.RulesText != nil {
-		pol, ok := policiesFrom(w, &in)
+	if in.Rules != nil {
+		stored, ok := rulesFrom(w, &in)
 		if !ok {
 			return
 		}
-		e.Policies = pol
+		e.Rules = stored
 	}
 	if err := a.store.UpdateEntitlement(r.Context(), e); err != nil {
 		writeStoreErr(w, err)
@@ -332,8 +299,8 @@ func (a *API) updateEntitlement(w http.ResponseWriter, r *http.Request) {
 // look wrong; those come back as warnings.
 func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Rules []hooks.Rule       `json:"rules"`
-		Text  *map[string]string `json:"text"`
+		// Rules is the text to check, by hook property.
+		Rules ruletext.Rules `json:"rules"`
 		// Catalog is the names the server is known to offer, by kind. With
 		// it, a rule that names something the server does not have is
 		// warned about.
@@ -343,23 +310,16 @@ func (a *API) validateRules(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if in.Text != nil {
-		rules, probs := ruletext.Compile(*in.Text)
-		if probs == nil {
-			probs = []ruletext.Problem{}
-		}
-		warnings := ruletext.Lint(*in.Text, in.Catalog)
-		if warnings == nil {
-			warnings = []ruletext.Problem{}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"textProblems": probs, "warnings": warnings, "rules": len(rules)})
-		return
-	}
-	_, probs := hooks.Compile(in.Rules)
+	text := in.Rules.ByHook()
+	rules, probs := ruletext.Compile(text)
 	if probs == nil {
-		probs = hooks.Problems{}
+		probs = []ruletext.Problem{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"problems": probs})
+	warnings := ruletext.Lint(text, in.Catalog)
+	if warnings == nil {
+		warnings = []ruletext.Problem{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"textProblems": probs, "warnings": warnings, "hasRules": len(rules) > 0})
 }
 
 // rulesSchema describes, for every hook, the variables a rule can read and
@@ -458,8 +418,8 @@ func (a *API) listExposures(w http.ResponseWriter, r *http.Request) {
 			Enabled: s.Enabled, Selection: s.Selection, Via: []string{}, Capabilities: []string{}}
 		if e, err := a.store.GetEntitlement(r.Context(), c.OrgID, s.EntitlementID); err == nil {
 			d.Description = e.Description
-			if rs, err := gateway.ParseRules(e.Policies); err == nil {
-				d.Rules = len(rs)
+			if rs, err := ruletext.ParseStored(e.Rules); err != nil || !rs.Empty() {
+				d.HasRules = true
 			}
 			for _, g := range e.Grants {
 				if g.SubjectType == "user" && g.SubjectID == c.UserID {

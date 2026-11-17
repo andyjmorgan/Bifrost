@@ -1,6 +1,7 @@
 package ruletext
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -215,5 +216,70 @@ func TestLintWarnsAboutRulesThatLookWrong(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("warnings: %v", got)
+	}
+}
+
+// Every hook has exactly one property in Rules, named by the one rule, and
+// Rules has no property that is not a hook's.
+func TestEveryHookHasItsProperty(t *testing.T) {
+	seen := map[string]string{}
+	for _, s := range Stages() {
+		if s.Property != Property(s.ID) || s.Property == "" {
+			t.Errorf("%s: property %q", s.ID, s.Property)
+		}
+		if other, dup := seen[s.Property]; dup {
+			t.Errorf("%s and %s share the property %s", s.ID, other, s.Property)
+		}
+		seen[s.Property] = s.ID
+		if _, ok := fieldOf[s.Property]; !ok {
+			t.Errorf("Rules has no field for %s (%s)", s.ID, s.Property)
+		}
+	}
+	if len(fieldOf) != len(Stages()) {
+		t.Errorf("Rules has %d properties for %d hooks", len(fieldOf), len(Stages()))
+	}
+	for hook, want := range map[string]string{
+		"tools/call.post.result": "toolsCallPostResult", "server.settings": "serverSettings",
+		"server/discover.post": "serverDiscoverPost", "resources/templates/list.post": "resourcesTemplatesListPost",
+	} {
+		if got := Property(hook); got != want {
+			t.Errorf("Property(%s) = %s, want %s", hook, got, want)
+		}
+	}
+}
+
+// Rules go to the API with every property, null where a hook has none, and
+// to the database with only the ones that have text. What comes back is the
+// text exactly as written.
+func TestRulesAreStoredAsTextByProperty(t *testing.T) {
+	text := "# why\nwhen name == 'echo'   deny \"Not today.\"\n\n# when false deny\n"
+	r, err := FromHooks(map[string]string{"tools/call.pre": text, "tools/list.post": "  \n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(r.Stored()) != `{"toolsCallPre":"# why\nwhen name == 'echo'   deny \"Not today.\"\n\n# when false deny\n"}` {
+		t.Fatalf("stored = %s", r.Stored())
+	}
+	wire, _ := json.Marshal(r)
+	var all map[string]*string
+	if err := json.Unmarshal(wire, &all); err != nil || len(all) != len(Stages()) || all["toolsListPost"] != nil || *all["toolsCallPre"] != text {
+		t.Fatalf("wire = %s", wire)
+	}
+	back, err := ParseStored(r.Stored())
+	if err != nil || !reflect.DeepEqual(back.ByHook(), map[string]string{"tools/call.pre": text}) {
+		t.Fatalf("back = %v, %v", back.ByHook(), err)
+	}
+	for _, empty := range []string{"", "null", "{}", `{"toolsCallPre":null}`, `{"toolsCallPre":"  "}`} {
+		if r, err := ParseStored([]byte(empty)); err != nil || !r.Empty() {
+			t.Errorf("%q: %v, %v", empty, r.ByHook(), err)
+		}
+	}
+	for _, bad := range []string{`{"toolsCallPer":"when true deny"}`, `{"tools/call.pre":"when true deny"}`, `[]`, `{"toolsCallPre":"a\u0000b"}`, `{"toolsCallPre":5}`} {
+		if _, err := ParseStored([]byte(bad)); err == nil {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+	if _, err := FromHooks(map[string]string{"tools/call.during": "when true deny"}); err == nil {
+		t.Error("a name that is not a hook was accepted")
 	}
 }

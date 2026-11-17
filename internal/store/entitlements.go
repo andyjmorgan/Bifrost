@@ -57,7 +57,7 @@ type Entitlement struct {
 	Name        string
 	Description string
 	Selection   Selection
-	Policies    json.RawMessage // entitlement policies (rules), opaque to the store
+	Rules       json.RawMessage // the rules as text by hook property (ruletext.Rules), opaque to the store
 	Generation  int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -90,12 +90,12 @@ type Seen struct {
 	Definition  json.RawMessage
 }
 
-const entCols = `id, org_id, server_id, slug, name, description, selection, policies, generation, created_at, updated_at`
+const entCols = `id, org_id, server_id, slug, name, description, selection, rules, generation, created_at, updated_at`
 
 func scanEntitlement(row pgx.Row) (*Entitlement, error) {
 	var e Entitlement
 	var sel []byte
-	err := row.Scan(&e.ID, &e.OrgID, &e.ServerID, &e.Slug, &e.Name, &e.Description, &sel, &e.Policies, &e.Generation, &e.CreatedAt, &e.UpdatedAt)
+	err := row.Scan(&e.ID, &e.OrgID, &e.ServerID, &e.Slug, &e.Name, &e.Description, &sel, &e.Rules, &e.Generation, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -106,8 +106,8 @@ func scanEntitlement(row pgx.Row) (*Entitlement, error) {
 	if e.Selection == nil {
 		e.Selection = Selection{}
 	}
-	if len(e.Policies) == 0 {
-		e.Policies = json.RawMessage("[]")
+	if len(e.Rules) == 0 {
+		e.Rules = json.RawMessage("{}")
 	}
 	return &e, nil
 }
@@ -118,12 +118,12 @@ func (p *Postgres) CreateEntitlement(ctx context.Context, e *Entitlement) error 
 		e.Selection = Selection{}
 	}
 	sel, _ := json.Marshal(e.Selection)
-	if len(e.Policies) == 0 {
-		e.Policies = json.RawMessage("[]")
+	if len(e.Rules) == 0 {
+		e.Rules = json.RawMessage("{}")
 	}
-	err := p.pool.QueryRow(ctx, `insert into entitlements (id, org_id, server_id, slug, name, description, selection, policies)
+	err := p.pool.QueryRow(ctx, `insert into entitlements (id, org_id, server_id, slug, name, description, selection, rules)
 		values ($1,$2,$3,$4,$5,$6,$7,$8) returning generation, created_at, updated_at`,
-		e.ID, e.OrgID, e.ServerID, e.Slug, e.Name, e.Description, sel, e.Policies).Scan(&e.Generation, &e.CreatedAt, &e.UpdatedAt)
+		e.ID, e.OrgID, e.ServerID, e.Slug, e.Name, e.Description, sel, e.Rules).Scan(&e.Generation, &e.CreatedAt, &e.UpdatedAt)
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -133,18 +133,18 @@ func (p *Postgres) CreateEntitlement(ctx context.Context, e *Entitlement) error 
 	return nil
 }
 
-// UpdateEntitlement writes name, description, selection and policies (not
+// UpdateEntitlement writes name, description, selection and rules (not
 // the slug) and bumps the generation.
 func (p *Postgres) UpdateEntitlement(ctx context.Context, e *Entitlement) error {
 	if e.Selection == nil {
 		e.Selection = Selection{}
 	}
 	sel, _ := json.Marshal(e.Selection)
-	if len(e.Policies) == 0 {
-		e.Policies = json.RawMessage("[]")
+	if len(e.Rules) == 0 {
+		e.Rules = json.RawMessage("{}")
 	}
-	err := p.pool.QueryRow(ctx, `update entitlements set name=$3, description=$4, selection=$5, policies=$6, generation=generation+1, updated_at=now()
-		where org_id=$1 and id=$2 returning generation, updated_at`, e.OrgID, e.ID, e.Name, e.Description, sel, e.Policies).Scan(&e.Generation, &e.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update entitlements set name=$3, description=$4, selection=$5, rules=$6, generation=generation+1, updated_at=now()
+		where org_id=$1 and id=$2 returning generation, updated_at`, e.OrgID, e.ID, e.Name, e.Description, sel, e.Rules).Scan(&e.Generation, &e.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -265,7 +265,7 @@ func (p *Postgres) SetGrants(ctx context.Context, org string, id uuid.UUID, gran
 // and the server's live cache. The gateway only ever reaches a server
 // through one of these. A system caller (no user) holds nothing.
 const exposureSQL = `select s.id, s.org_id, e.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.created_at, s.updated_at,
-s.exclusive, e.id, e.name, e.selection, e.policies, e.generation,
+s.exclusive, e.id, e.name, e.selection, e.rules, e.generation,
 coalesce(jsonb_object_agg(c.ns, c.value) filter (where c.ns is not null), '{}'::jsonb)
 from entitlements e
 join servers s on s.id = e.server_id
@@ -279,7 +279,7 @@ func scanExposure(row pgx.Row) (*Server, CacheBundle, error) {
 	var s Server
 	var sel, raw []byte
 	err := row.Scan(&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.CreatedAt, &s.UpdatedAt,
-		&s.Exclusive, &s.EntitlementID, &s.EntitlementName, &sel, &s.Policies, &s.Generation, &raw)
+		&s.Exclusive, &s.EntitlementID, &s.EntitlementName, &sel, &s.Rules, &s.Generation, &raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}

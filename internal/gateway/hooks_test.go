@@ -24,6 +24,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/cache"
 	"github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
@@ -207,16 +208,27 @@ type rig struct {
 // entitle registers an entitlement on an upstream, with its rules.
 func (r *rig) entitle(slug string, u *harness.Upstream, rules ...hooks.Rule) *store.Server {
 	r.t.Helper()
-	pol, _ := json.Marshal(rules)
-	if len(rules) == 0 {
-		pol = []byte("[]")
-	}
+	pol := stored(r.t, rules...)
 	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Server " + slug, Description: "the " + slug + " server", URL: u.URL(), Enabled: true,
-		Slug: slug, EntitlementID: uuid.New(), EntitlementName: "Readers of " + slug, Policies: pol, Generation: 1, UpdatedAt: time.Now()}
+		Slug: slug, EntitlementID: uuid.New(), EntitlementName: "Readers of " + slug, Rules: pol, Generation: 1, UpdatedAt: time.Now()}
 	r.store.mu.Lock()
 	r.store.servers = append(r.store.servers, s)
 	r.store.mu.Unlock()
 	return s
+}
+
+// stored is rules as an entitlement keeps them: written as text, by hook
+// property. A rule's own name does not survive; it becomes hook:line.
+func stored(t testing.TB, rules ...hooks.Rule) []byte {
+	t.Helper()
+	text, err := ruletext.FromHooks(ruletext.Render(rules))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back, probs := ruletext.Compile(text.ByHook()); len(probs) > 0 || len(back) != len(rules) {
+		t.Fatalf("the rules do not survive being written as text: %d of %d back, %+v", len(back), len(rules), probs)
+	}
+	return text.Stored()
 }
 
 func (r *rig) direct(slug string) string { return r.srv.URL + "/" + slug + "/mcp" }
@@ -373,9 +385,9 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("served")}))
 	u.Tool(`{"name":"secret","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
 	r.entitle("a", u,
-		hooks.Rule{Name: "hide-secret", Hook: "tools/list.post", When: "name == 'secret'", Then: map[string]string{"decision": "'deny'", "reason": "'Hidden.'"}},
-		hooks.Rule{Name: "try-block", Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'Would block.'"}},
-		hooks.Rule{Name: "reword", Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'reworded'}]"}})
+		hooks.Rule{Hook: "tools/list.post", When: "name == 'secret'", Then: map[string]string{"decision": "'deny'", "reason": "'Hidden.'"}},
+		hooks.Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'Would block.'"}},
+		hooks.Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"content": "[{'type': 'text', 'text': 'reworded'}]"}})
 
 	harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"})
 	find := func(e *store.AuditEvent, rule string) *store.RuleHit {
@@ -389,7 +401,7 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 		return nil
 	}
 	list := r.store.inbound(t, "tools/list", 1)
-	if h := find(list, "hide-secret"); h == nil || h.Stage != "tools/list.post" || h.Effect != "deny" || h.Item != "secret" || h.Server != "a" || h.Mode != "enforce" || h.Reason != "Hidden." {
+	if h := find(list, "tools/list.post:1"); h == nil || h.Stage != "tools/list.post" || h.Effect != "deny" || h.Item != "secret" || h.Server != "a" || h.Mode != "enforce" || h.Reason != "Hidden." {
 		t.Fatalf("the listing's hits = %+v", list.Rules)
 	}
 
@@ -397,10 +409,10 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 		t.Fatalf("the call returned %q: an audit rule must block nothing", got)
 	}
 	called := r.store.inbound(t, "tools/call", 1)
-	if h := find(called, "try-block"); h == nil || h.Mode != "audit" || h.Effect != "would deny" || h.Item != "t" || h.Reason != "Would block." {
+	if h := find(called, "tools/call.pre:1"); h == nil || h.Mode != "audit" || h.Effect != "would deny" || h.Item != "t" || h.Reason != "Would block." {
 		t.Fatalf("the call's hits = %+v", called.Rules)
 	}
-	if h := find(called, "reword"); h == nil || h.Stage != "tools/call.post.result" || h.Effect != "set" || len(h.Fields) != 1 || h.Fields[0] != "content" {
+	if h := find(called, "tools/call.post.result:1"); h == nil || h.Stage != "tools/call.post.result" || h.Effect != "set" || len(h.Fields) != 1 || h.Fields[0] != "content" {
 		t.Fatalf("the call's hits = %+v", called.Rules)
 	}
 }
@@ -468,7 +480,7 @@ func TestMuxReportsAServerItCannotReach(t *testing.T) {
 	r.entitle("a", a)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusBadGateway) }))
 	t.Cleanup(dead.Close)
-	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", EntitlementID: uuid.New(), Policies: []byte("[]"), Generation: 1}
+	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", EntitlementID: uuid.New(), Rules: []byte("{}"), Generation: 1}
 	r.store.servers = append(r.store.servers, s)
 
 	rep := harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"})
@@ -674,9 +686,9 @@ func TestTheServerSeesTheIdentityAndMetaTheRulesDecide(t *testing.T) {
 		t.Fatalf("the server was told capabilities %v by default", caps)
 	}
 
-	pol, _ := json.Marshal([]hooks.Rule{{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true", "clientInfo": "{'name': 'acme', 'version': '7'}"}}})
+	pol := stored(t, hooks.Rule{Hook: "server.session", When: "true", Then: map[string]string{"meta": "true", "capabilities.elicitation": "true", "clientInfo": "{'name': 'acme', 'version': '7'}"}})
 	r.store.mu.Lock()
-	s.Policies, s.Generation = pol, 2
+	s.Rules, s.Generation = pol, 2
 	r.store.mu.Unlock()
 	// The rule turns forwarding on, but the gateway's input list bounds what
 	// can be forwarded. With the key not on the list, it still does not go.
@@ -723,16 +735,19 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 
 func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
 	for name, policies := range map[string]string{
-		"the retired format":   `[{"id":"r1","action":"deny","kinds":["tool"],"when":"tool.name == 'x'"}]`,
-		"a rule that is wrong": `[{"hook":"tools/list.post","when":"nope ==","then":{"decision":"'deny'"}}]`,
-		"an unknown hook":      `[{"hook":"tools/nope","when":"true","then":{"decision":"'deny'"}}]`,
+		"a list of JSON rules": `[{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]`,
+		"the form before this": `{"text":{"tools/list.post":"when true deny"},"rules":[]}`,
+		"a rule that is wrong": `{"toolsListPost":"when nope == deny"}`,
+		"a line that is wrong": `{"toolsListPost":"allow everything"}`,
+		"an unknown property":  `{"toolsNope":"when true deny"}`,
+		"a hook name as a key": `{"tools/list.post":"when true deny"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t)
 			u := harness.NewUpstream(t, harness.V2026)
 			u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ran")}))
 			s := r.entitle("a", u)
-			s.Policies = []byte(policies)
+			s.Rules = []byte(policies)
 			if got := names(t, harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}), "tools", "name"); len(got) != 0 {
 				t.Fatalf("an entitlement with unusable rules listed %v", got)
 			}
@@ -1127,26 +1142,23 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 	})
 }
 
-// Rules written as text are stored with the text beside the rules the
-// engine runs. Both shapes of stored rules read back, and the retired
-// format is still refused inside the new shape.
-func TestStoredRulesKeepTheirText(t *testing.T) {
-	rules := []hooks.Rule{{Hook: "tools/list.post", When: "true", Then: map[string]string{"decision": "'deny'"}}}
-	bare, _ := json.Marshal(rules)
-	withText, _ := json.Marshal(gateway.StoredRules{Text: map[string]string{"tools/list.post": "when true deny"}, Rules: rules})
-	for name, raw := range map[string][]byte{"a bare list": bare, "text and rules": withText} {
-		rs, text, err := gateway.ParseStored(raw)
-		if err != nil || len(rs) != 1 || rs[0].Hook != "tools/list.post" {
-			t.Fatalf("%s: rules %+v, err %v", name, rs, err)
-		}
-		if name == "text and rules" && text["tools/list.post"] != "when true deny" {
-			t.Fatalf("the text was lost: %v", text)
+// Stored rules are text by hook property, and the engine's rules are
+// compiled from it when the entitlement loads. A rule's name is its hook
+// and the line it starts on.
+func TestStoredTextCompilesToTheEnginesRules(t *testing.T) {
+	rs, err := gateway.ParseRules([]byte(`{"toolsListPost":"# hidden for now\nwhen name == 'x'  deny\n","toolsCallPre":"audit when true  deny \"Would block.\""}`))
+	if err != nil || len(rs) != 2 {
+		t.Fatalf("rules %+v, err %v", rs, err)
+	}
+	if rs[0].Hook != "tools/list.post" || rs[0].Name != "tools/list.post:2" || rs[1].Hook != "tools/call.pre" || rs[1].Mode != "audit" {
+		t.Fatalf("rules %+v", rs)
+	}
+	for _, none := range []string{"", "null", "{}", `{"toolsCallPre":null}`, `{"toolsCallPre":"# when true deny\n"}`} {
+		if rs, err := gateway.ParseRules([]byte(none)); err != nil || len(rs) != 0 {
+			t.Fatalf("%q: rules %+v, err %v", none, rs, err)
 		}
 	}
-	if _, _, err := gateway.ParseStored([]byte(`{"text":{},"rules":[{"allow":["x"]}]}`)); err == nil {
-		t.Fatal("rules in the retired format were accepted")
-	}
-	if rs, text, err := gateway.ParseStored([]byte(`{"text":{"tools/call.pre":"# nothing yet"},"rules":[]}`)); err != nil || len(rs) != 0 || len(text) != 1 {
-		t.Fatalf("text with no rules: %v %v %v", rs, text, err)
+	if _, err := gateway.ParseRules([]byte(`{"toolsCallPre":"when nope == 1 deny"}`)); err == nil || !strings.Contains(err.Error(), "tools/call.pre line 1") {
+		t.Fatalf("the error does not place the problem: %v", err)
 	}
 }

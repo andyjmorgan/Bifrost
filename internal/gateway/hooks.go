@@ -21,6 +21,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
@@ -203,57 +204,20 @@ func (s *cacheStates) Take(key string) (hooks.State, bool) {
 
 // ---- rules ----------------------------------------------------------------------
 
-// ParseRules reads an entitlement's stored rules. Rules written for the
-// retired allow/deny engine are refused: the entitlement then exposes
-// nothing until an admin rewrites them.
+// ParseRules reads an entitlement's stored rules and compiles them to the
+// engine's. They are stored as text, one property per hook (ruletext.Rules);
+// an error names the hook and line of each problem. Rules that cannot be
+// read or do not compile leave the entitlement exposing nothing.
 func ParseRules(raw json.RawMessage) ([]hooks.Rule, error) {
-	rs, _, err := ParseStored(raw)
-	return rs, err
-}
-
-// StoredRules is how an entitlement's rules are kept when they were written
-// as text: the text, by stage, beside the engine rules it compiled to. The
-// engine runs Rules; Text is what the admin sees again.
-type StoredRules struct {
-	Text  map[string]string `json:"text"`
-	Rules []hooks.Rule      `json:"rules"`
-}
-
-// ParseStored reads an entitlement's stored rules and, when they were
-// written as text, the text. Rules saved as a bare list have no text.
-func ParseStored(raw json.RawMessage) ([]hooks.Rule, map[string]string, error) {
-	t := bytes.TrimSpace(raw)
-	if len(t) == 0 || string(t) == "null" || string(t) == "[]" || string(t) == "{}" {
-		return nil, nil, nil
+	r, err := ruletext.ParseStored(raw)
+	if err != nil {
+		return nil, fmt.Errorf("rules: %w", err)
 	}
-	var text map[string]string
-	if t[0] == '{' {
-		var st struct {
-			Text  map[string]string `json:"text"`
-			Rules json.RawMessage   `json:"rules"`
-		}
-		if err := json.Unmarshal(t, &st); err != nil {
-			return nil, nil, fmt.Errorf("rules: %w", err)
-		}
-		text, t = st.Text, bytes.TrimSpace(st.Rules)
-		if len(t) == 0 || string(t) == "null" {
-			return nil, text, nil
-		}
+	rules, probs := ruletext.Compile(r.ByHook())
+	if len(probs) > 0 {
+		return nil, ruletext.ProblemsError(probs)
 	}
-	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(t, &items); err != nil {
-		return nil, text, fmt.Errorf("rules are not a list: %w", err)
-	}
-	for i, it := range items {
-		if _, ok := it["hook"]; !ok {
-			return nil, text, fmt.Errorf("rule %d is in the retired allow/deny format; rewrite it as a hook rule", i+1)
-		}
-	}
-	var rs []hooks.Rule
-	if err := json.Unmarshal(t, &rs); err != nil {
-		return nil, text, fmt.Errorf("rules: %w", err)
-	}
-	return rs, text, nil
+	return rules, nil
 }
 
 type compiledHooks struct {
@@ -273,7 +237,7 @@ func (g *Gateway) hookRules(srv *store.Server) (*hooks.Set, error) {
 		}
 	}
 	set := noRules
-	rs, err := ParseRules(srv.Policies)
+	rs, err := ParseRules(srv.Rules)
 	if err == nil {
 		c, probs := hooks.Compile(rs)
 		if len(probs) > 0 {

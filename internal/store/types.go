@@ -59,7 +59,7 @@ type Server struct {
 	EntitlementID   uuid.UUID
 	EntitlementName string
 	Selection       Selection
-	Policies        json.RawMessage
+	Rules           json.RawMessage // the entitlement's rules: text by hook property
 	Generation      int
 }
 

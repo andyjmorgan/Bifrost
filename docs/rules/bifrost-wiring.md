@@ -37,6 +37,24 @@ The rules engine (`pkg/hooks`) now sits behind Bifrost's real front door. Every 
 - The key that signs the state wrapped around an upstream's own question is derived from the master key, so every replica has the same one.
 - Stored rules in the retired allow/deny format are refused. The entitlement then exposes nothing, and the API reports why in `rulesError`. They are not translated.
 
+## How rules are stored
+
+An entitlement keeps its rules as text, in one `jsonb` column on its row (`entitlements.rules`). The object has one property per hook, and a property that is absent means the hook has no rules:
+
+```json
+{
+  "toolsListPost": "when name == 'flip'\n  set name = 'toss'\n",
+  "toolsCallPre": "when name == 'pick'\n  confirm \"Pick one?\"\n"
+}
+```
+
+- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.Rules` lists all 19.
+- The text is the only stored form. The gateway compiles it to the engine's rules when it loads the entitlement, and keeps the result until the entitlement's generation changes. Text that does not compile leaves the entitlement exposing nothing.
+- The API uses the same object. `GET /entitlements/{id}` returns every property, with null where a hook has no rules. `PATCH` takes `rules` and replaces all of them. A property that is not a hook's is refused.
+- The engine's own input is still a list of JSON rules. Only the entitlement API and the database take text.
+- A rule is switched off by commenting it out with `#`.
+- The earlier `policies` column is still on the table and is not read. Migration `0013` filled `rules` from it.
+
 ## What was tested
 
 | Test | What it proves |
@@ -58,7 +76,7 @@ All Go tests pass under the race detector. The race detector found one old bug, 
 
 - `resources/directory/read` and the skills methods never reach the middleware: the SDK server answers "method not found" itself. Both belong to deferred extensions.
 - The golden set (759 cases) runs against the test gateway, not against this front door. The wiring tests cover the seams, not every rule.
-- Rule hits are logged at debug level and not stored with the audit event. Issues are stored. Faults and unknown shapes are logged.
+- Faults and unknown shapes are logged and not stored. Rule hits are kept on the request's audit event, up to 100 per request.
 - The engine's record of unknown shapes sees less than it would on a raw path: an unknown content block fails the call before the engine sees it, and unknown fields and notifications are dropped by the client library. Its rules for unknown things still apply to anything the library does pass.
 - Tool names are matched exactly. Only the slug of a mux name is case-insensitive now.
 - The upstream timeout bounds a whole streamed reply.
