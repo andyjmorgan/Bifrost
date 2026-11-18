@@ -347,6 +347,142 @@ func TestADeniedTemplateWithAnOddSpellingStillDenies(t *testing.T) {
 	}
 }
 
+// A denied template covers every spelling of the URIs it spells. Its fixed
+// text may be written oddly, carry an expression in its host or port, or
+// end in a query or a slash; a client reads the canonical URI, and a server
+// that folds the difference would hand over the same thing. The read is
+// refused, and the URI is dropped from another read's reply.
+func TestADeniedTemplateCoversEverySpellingOfWhatItSpells(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct{ name, template, uri string }{
+		{"escaped letter", "https://wiki.example/%73ecret/{id}", "https://wiki.example/secret/1"},
+		{"dot segment", "https://wiki.example/a/../secret/{id}", "https://wiki.example/secret/1"},
+		{"doubled slash", "https://wiki.example//secret/{id}", "https://wiki.example/secret/1"},
+		{"letter not escaped", "https://wiki.example/café/{id}", "https://wiki.example/caf%C3%A9/1"},
+		{"escape in lower case", "https://wiki.example/a%2fb/{id}", "https://wiki.example/a%2Fb/1"},
+		{"file with one slash", "file:/secret/{id}", "file:///secret/1"},
+		{"expression in the host", "https://WIKI.{domain}/secret/{id}", "https://wiki.example/secret/1"},
+		{"expression in the port", "https://WIKI.example:{port}/secret/{id}", "https://wiki.example:8443/secret/1"},
+		{"port that may be the default", "https://wiki.example:{port}/secret/{id}", "https://wiki.example/secret/1"},
+		{"climbs after an expression", "https://wiki.example/a/{id}/../../secret", "https://wiki.example/secret"},
+		{"trailing slash taken away", "https://wiki.example/secret/{id}/", "https://wiki.example/secret/1"},
+		{"query changed", "https://wiki.example/secret/{id}?view=private", "https://wiki.example/secret/1?view=raw"},
+		{"query taken away", "https://wiki.example/secret/{id}?view=private", "https://wiki.example/secret/1"},
+	} {
+		for _, route := range []string{"direct", "mux"} {
+			t.Run(tc.name+"/"+route, func(t *testing.T) {
+				s := newServer(t, Catalog{Templates: []*mcp.ResourceTemplate{{Name: "private", URITemplate: tc.template}}},
+					Rule{Hook: "resources/templates/list.post", When: "template.name == 'private'", Then: map[string]string{KeyDecision: "'deny'"}})
+				e, r := &Engine{}, newRequest(route, s)
+				at := func(u string) string {
+					if route == "mux" {
+						return PrefixURI(s.Slug, u)
+					}
+					return u
+				}
+				if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: at(tc.uri)}); o.Forward != nil {
+					t.Errorf("%s was forwarded under the denied %s", tc.uri, tc.template)
+				}
+				p := &mcp.ReadResourceParams{URI: at("https://docs.example/public")}
+				first := e.ReadResource(ctx, r, p)
+				if first.Forward == nil {
+					t.Fatalf("a read the template does not cover was refused: %s", outcomeText(first))
+				}
+				raw, _ := json.Marshal(map[string]any{"contents": []any{map[string]any{"uri": tc.uri, "text": "SECRET"}}})
+				if got := asJSON(e.UpstreamReadReply(ctx, r, first.Call, p, raw).Result); strings.Contains(got, "SECRET") {
+					t.Errorf("another read's reply carried %s: %s", tc.uri, got)
+				}
+			})
+		}
+	}
+}
+
+// The deny of an odd template errs wide, but not without bound: it covers
+// the canonical fixed text before the first expression, or the host's
+// fixed start when the expression is in the host. It says so in an issue.
+func TestAnOddDeniedTemplateDeniesWideButNotEverything(t *testing.T) {
+	ctx := context.Background()
+	for template, outside := range map[string]string{
+		"https://wiki.example/%73ecret/{id}":  "https://wiki.example/public/1",
+		"https://WIKI.{domain}/secret/{id}":   "https://docs.example/secret/1",
+		"https://wiki.example:{port}/s/{id}":  "https://docs.example/s/1",
+		"https://wiki.example/a/{id}/../../b": "https://docs.example/b",
+	} {
+		s := newServer(t, Catalog{Templates: []*mcp.ResourceTemplate{{Name: "private", URITemplate: template}}},
+			Rule{Hook: "resources/templates/list.post", When: "template.name == 'private'", Then: map[string]string{KeyDecision: "'deny'"}})
+		e, r := &Engine{}, newRequest("direct", s)
+		if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: outside}); o.Forward == nil {
+			t.Errorf("%s: %s, outside its reach, was refused: %s", template, outside, outcomeText(o))
+		}
+		if got := fmt.Sprint(e.ListResources(ctx, r).Issues); !strings.Contains(got, "the deny covers everything under") {
+			t.Errorf("%s: no issue says how far the deny reaches: %s", template, got)
+		}
+	}
+	for template, want := range map[string]string{
+		"https://wiki.example/%73ecret/{id}":       "https://wiki.example/secret/",
+		"https://wiki.example/se%63ret-{id}":       "https://wiki.example/",
+		"file:/secret/{id}":                        "file:///secret/",
+		"https://WIKI.{domain}/x":                  "https://wiki.",
+		"https://WIKI.example:{port}/x":            "https://wiki.example",
+		"https://wiki.example/a/{id}/../../b":      "https://wiki.example",
+		"https://wiki.example//s/{id}?view=%7a{q}": "https://wiki.example/s/",
+	} {
+		if got := denyPrefix(canonicalTemplate(template)); got != want {
+			t.Errorf("denyPrefix(%s) = %s, want %s", template, got, want)
+		}
+	}
+}
+
+// An allowed template whose fixed text is not canonical is not listed, as a
+// resource is not: no URI a client may send could be matched against it.
+// Forms the gateway does not parse, and an expression in the host of a
+// scheme whose host is the server's own text, are listed as before.
+func TestAnOddTemplateIsNotListed(t *testing.T) {
+	ctx := context.Background()
+	s := newServer(t, Catalog{Templates: []*mcp.ResourceTemplate{
+		{Name: "odd", URITemplate: "https://wiki.example/%73ecret/{id}"},
+		{Name: "host", URITemplate: "https://{tenant}.wiki.example/{id}"},
+		{Name: "plain", URITemplate: "https://wiki.example/doc/{id}?view=raw"},
+		{Name: "level3", URITemplate: "https://wiki.example{/path}"},
+		{Name: "opaque", URITemplate: "confluence://{space}/{page}"},
+	}})
+	o := (&Engine{}).ListTemplates(ctx, newRequest("direct", s))
+	got := asJSON(o.Result)
+	for _, gone := range []string{"%73ecret", "{tenant}"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("an odd template was listed: %s", got)
+		}
+	}
+	for _, kept := range []string{"doc/{id}?view=raw", "{/path}", "confluence://{space}/{page}"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("%s is not listed: %s", kept, got)
+		}
+	}
+	if issues := fmt.Sprint(o.Issues); strings.Count(issues, "is not listed: its spelling is not canonical") != 2 {
+		t.Errorf("issues: %s", issues)
+	}
+}
+
+// A denied template covers what it spells, not what a server makes of a
+// value. A server that expands id=".." in file:///public/{id}/secret
+// builds a path that folds to file:///secret, but no client can send the
+// unfolded path, and file:///secret is not a URI the template spells. It is
+// an ordinary read, refused only if a rule denies file:///secret.
+func TestADeniedTemplateCoversWhatItSpellsNotWhatAServerMakesOfAValue(t *testing.T) {
+	ctx := context.Background()
+	for _, template := range []string{"file:///public/{id}/secret", "file:///public/{+path}"} {
+		s := newServer(t, Catalog{Templates: []*mcp.ResourceTemplate{{Name: "private", URITemplate: template}}},
+			Rule{Hook: "resources/templates/list.post", When: "template.name == 'private'", Then: map[string]string{KeyDecision: "'deny'"}})
+		e, r := &Engine{}, newRequest("direct", s)
+		if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "file:///secret"}); o.Forward == nil {
+			t.Errorf("%s: file:///secret was refused: %s", template, outcomeText(o))
+		}
+		if o := e.ReadResource(ctx, r, &mcp.ReadResourceParams{URI: "file:///public/../secret"}); o.Forward != nil {
+			t.Errorf("%s: a dot segment was forwarded", template)
+		}
+	}
+}
+
 // resource.upstream.uri is the server's own spelling on the list hook too,
 // so a rule can be written against exactly what the server sent.
 func TestUpstreamURIIsTheServersSpellingOnTheListHook(t *testing.T) {

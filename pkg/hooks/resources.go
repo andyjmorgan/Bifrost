@@ -183,6 +183,11 @@ func (e *Engine) ListTemplates(parent context.Context, r Request) (ret Outcome) 
 			}
 		}
 		for _, l := range ls {
+			if oddTemplate(l.exposedID) {
+				// No URI a client may send could be matched against it.
+				o.Issues = append(o.Issues, s.Slug+": "+l.upstreamID+" is not listed: its spelling is not canonical")
+				continue
+			}
 			var x mcp.ResourceTemplate
 			b, _ := json.Marshal(l.value)
 			_ = json.Unmarshal(b, &x)

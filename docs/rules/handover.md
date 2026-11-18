@@ -72,7 +72,7 @@ The engine does no I/O. Your gateway hands it a request and the server's catalog
 - A constant whose form is wrong below its type, such as `duration('0s')` for a timeout, is found when a request arrives.
 - On the mux route a rule reads a tool name or a URI without the slug prefix.
 - On the mux route, while one server's catalog is unavailable, a prefixed URI that the named server does not list is refused. The gateway cannot tell whether it belongs to the server that is down.
-- A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed. Two resources the server lists under spellings of one URI are both hidden.
+- A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed. Nor is a template whose fixed text is not canonical, or that has an expression in its host or port; a deny on one covers everything under its fixed start. Two resources the server lists under spellings of one URI are both hidden.
 - There is no result hook for `prompts/get`, and no rule sees a JSON-RPC error from a server.
 - Skills and directory reads are in the engine and its tests. Bifrost's front door does not serve them yet.
 
@@ -87,7 +87,7 @@ Tests for the limits that are bugs are in `pkg/hooks/known_limits_test.go`. They
 
 - 685 scenario cases run through the engine, and again over real HTTP through the Go, Python and TypeScript client SDKs.
 - Every example rule in the hook pages is run and checked against what its page says.
-- Three independent reviews attacked the engine after the last redesign. They made 45 findings between them. Each is fixed, with a test that failed first, or is one of the limits and decisions on this page. The reports are in the repository's history, last at commit `f5b0034`, under `docs/rules/`.
+- Four independent reviews attacked the engine after the last redesign. They made 48 findings between them. Each is fixed, with a test that failed first, or is one of the limits and decisions on this page. The first three reports are in the repository's history at commit `f5b0034`, under `docs/rules/`. The fourth found three ways past a template deny; its cases are the template tests in `pkg/hooks/uris_test.go`.
 
 Run everything:
 

@@ -189,6 +189,135 @@ func canonicalTemplate(t string) string {
 	return scheme + "://" + canonicalAuthority(scheme, authority) + tail
 }
 
+// oddTemplate reports a template whose fixed text a URL parser could read
+// as other text: a spelling that is not canonical, or, for a scheme whose
+// host a parser folds, an expression in the host or port. The gateway
+// cannot match a URI against such a template by text. Each expression
+// stands in as a plain value of its kind.
+func oddTemplate(t string) bool {
+	if authorityExpr(t) {
+		return true
+	}
+	return nonCanonical(exprRe.ReplaceAllStringFunc(t, func(e string) string {
+		if len(e) < 3 {
+			return "x"
+		}
+		switch e[1] {
+		case '/':
+			return "/x"
+		case '.':
+			return ".x"
+		case '?':
+			return "?x=x"
+		case '&', ';':
+			return string(e[1]) + "x=x"
+		case '#':
+			return ""
+		}
+		return "x"
+	}))
+}
+
+// authorityExpr reports an expression in the host or port of a template
+// whose scheme has a host a URL parser folds. An expression that starts the
+// path or the query is not in the authority.
+func authorityExpr(t string) bool {
+	i := strings.IndexAny(t, ":/?{")
+	if i <= 0 || t[i] != ':' || !hierarchical[strings.ToLower(t[:i])] || !strings.HasPrefix(t[i+1:], "//") {
+		return false
+	}
+	a := t[i+3:]
+	end := strings.IndexAny(a, "/?#{")
+	if end < 0 || a[end] != '{' {
+		return false
+	}
+	return end+1 >= len(a) || !strings.ContainsRune("/?&#", rune(a[end+1]))
+}
+
+// denyPrefix is how far the deny of an odd template reaches: everything
+// under the canonical form of its fixed text, up to the last "/" before its
+// first expression. When an expression is in the host or port, it is
+// everything under the fixed start of the host. When fixed text after an
+// expression climbs with "..", it is the whole host. It errs wide: a deny
+// is never lost to a spelling.
+func denyPrefix(t string) string {
+	i := strings.IndexAny(t, ":/?{")
+	if i <= 0 || t[i] != ':' {
+		return ""
+	}
+	scheme := strings.ToLower(t[:i])
+	if authorityExpr(t) {
+		host := t[i+3:]
+		host = host[:strings.IndexByte(host, '{')]
+		if k := strings.LastIndexByte(host, '@'); k >= 0 {
+			host = host[k+1:]
+		}
+		if j := strings.IndexByte(host, ':'); j >= 0 && !strings.HasPrefix(host, "[") {
+			host = host[:j]
+		}
+		return scheme + "://" + strings.ToLower(host)
+	}
+	fixed := templatePrefix(t)
+	if q := strings.IndexByte(fixed, '?'); q >= 0 {
+		fixed = fixed[:q]
+	}
+	c := canonicalURI(fixed)
+	hostEnd := len(c)
+	if rest := c[len(scheme)+1:]; strings.HasPrefix(rest, "//") {
+		if j := strings.IndexByte(rest[2:], '/'); j >= 0 {
+			hostEnd = len(scheme) + 3 + j
+		}
+	} else {
+		hostEnd = len(scheme) + 1
+	}
+	if climbs(t[len(templatePrefix(t)):]) {
+		return c[:hostEnd]
+	}
+	if j := strings.LastIndexByte(c, '/'); j >= hostEnd {
+		return c[:j+1]
+	}
+	return c
+}
+
+// climbs reports a ".." segment in a template's text after its first
+// expression, before its query.
+func climbs(rest string) bool {
+	if q := strings.IndexByte(rest, '?'); q >= 0 {
+		rest = rest[:q]
+	}
+	for _, seg := range strings.Split(escapes(exprRe.ReplaceAllString(rest, "/")), "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// bareTemplate is a template without its fixed query and trailing slash,
+// as bare is for a URI. A query inside an expression is not fixed text.
+func bareTemplate(t string) string {
+	depth := 0
+	for i := 0; i < len(t); i++ {
+		switch t[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		case '?':
+			if depth == 0 {
+				t = t[:i]
+				i = len(t)
+			}
+		}
+	}
+	if strings.HasSuffix(t, "/") && !strings.HasSuffix(t, "//") {
+		t = t[:len(t)-1]
+	}
+	return t
+}
+
 // canonicalAuthority folds a host and port the way a URL parser does.
 func canonicalAuthority(scheme, a string) string {
 	host, port := a, ""

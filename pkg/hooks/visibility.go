@@ -173,14 +173,33 @@ func (e *Engine) buildResourceView(ctx context.Context, r Request, s *Server) *r
 		ok[t.upstreamID] = true
 	}
 	for _, t := range s.Catalog.Templates {
-		ct := compileTemplate(canonicalTemplate(t.URITemplate))
-		if ok[t.URITemplate] {
-			v.okTemplates = append(v.okTemplates, ct)
-		} else {
-			v.badTemplates = append(v.badTemplates, ct)
+		c := canonicalTemplate(t.URITemplate)
+		switch {
+		case !ok[t.URITemplate]:
+			if oddTemplate(c) {
+				v.issues = append(v.issues, fmt.Sprintf("%s is denied and its spelling is not canonical: the deny covers everything under %q", t.URITemplate, denyPrefix(c)))
+			}
+			v.badTemplates = append(v.badTemplates, denyMatchers(c)...)
+		case !oddTemplate(c):
+			v.okTemplates = append(v.okTemplates, compileTemplate(c))
 		}
 	}
 	return v
+}
+
+// denyMatchers are what a denied template covers. A URI is matched with and
+// without its query and trailing slash, and so is the template: a server
+// that ignores either would hand over the same thing. An odd template is
+// matched by a prefix wide enough to hold every spelling; see denyPrefix.
+func denyMatchers(t string) []*uriTemplate {
+	if oddTemplate(t) {
+		return []*uriTemplate{{raw: t, prefix: denyPrefix(t), unsupported: "a spelling that is not canonical"}}
+	}
+	out := []*uriTemplate{compileTemplate(t)}
+	if b := bareTemplate(t); b != t {
+		out = append(out, compileTemplate(b))
+	}
+	return out
 }
 
 // check decides one URI. A read is allowed unless something denies it: a
