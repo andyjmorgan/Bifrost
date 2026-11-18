@@ -87,7 +87,7 @@ Tests for the limits that are bugs are in `pkg/hooks/known_limits_test.go`. They
 
 - 685 scenario cases run through the engine, and again over real HTTP through the Go, Python and TypeScript client SDKs.
 - Every example rule in the hook pages is run and checked against what its page says.
-- Four independent reviews attacked the engine after the last redesign. They made 48 findings between them. Each is fixed, with a test that failed first, or is one of the limits and decisions on this page. The first three reports are in the repository's history at commit `f5b0034`, under `docs/rules/`. The fourth found three ways past a template deny; its cases are the template tests in `pkg/hooks/uris_test.go`.
+- Five independent reviews attacked the engine after the last redesign. Each finding is fixed, with a test that failed first, or is one of the limits and decisions on this page. The first three reports are in the repository's history at commit `f5b0034`, under `docs/rules/`. The fourth reviewed the handover polish; its fixes are commit `5332f3c`. The fifth found three ways past a template deny; its cases are the template tests in `pkg/hooks/uris_test.go`.
 
 Run everything:
 
