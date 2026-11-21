@@ -93,8 +93,9 @@ func (a *API) Router() http.Handler {
 		r.Get("/config", a.config)
 		r.With(a.authn.RequireAPI("")).Get("/me", a.me)
 
-		// Every member: their own keys, their own audit, and the slugs they
-		// hold. The servers, their rules and their grants are the admin's.
+		// Everyone who signs in runs the gateway: servers, their rules and
+		// grants, every key and the whole audit trail. What a person reaches
+		// through the MCP routes is decided by the grants alone.
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead))
 			r.Get("/api-keys", a.listKeys)
@@ -102,39 +103,15 @@ func (a *API) Router() http.Handler {
 			r.Get("/audit/{id}", a.getAudit)
 			r.Get("/audit/{id}/trace", a.getAuditTrace)
 			r.Get("/portal", a.listPortal)
-		})
-		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead), auth.RequireAdmin)
+			r.Get("/users", a.listUsers)
 			r.Get("/servers", a.listServers)
 			r.Get("/servers/{id}", a.getServer)
 			r.Get("/servers/{id}/capabilities", a.listCapabilities)
 			r.Post("/rules/validate", a.validateRules)
 			r.Get("/rules/hooks-schema", a.hooksSchema)
 		})
-		// Org membership. Reads for any member; changes for admins; join,
-		// switch and leave for the human themselves.
 		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead))
-			r.Get("/org", a.getOrg)
-			r.Get("/org/invites/{token}", a.previewInvite)
-		})
-		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeAPIEdit))
-			r.Post("/org/join", a.joinOrg)
-			r.Post("/org/leave", a.leaveOrg)
-			r.Post("/org/switch", a.switchOrg)
-		})
-		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeAPIEdit), auth.RequireAdmin)
-			r.Patch("/org", a.renameOrg)
-			r.Get("/org/invites", a.listInvites)
-			r.Post("/org/invites", a.createInvite)
-			r.Delete("/org/invites/{id}", a.deleteInvite)
-			r.Patch("/org/members/{userId}", a.setMemberRole)
-			r.Delete("/org/members/{userId}", a.removeMember)
-		})
-		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeMCPEdit), auth.RequireAdmin)
+			r.Use(a.authn.RequireAPI(auth.ScopeMCPEdit))
 			r.Post("/servers", a.createServer)
 			r.Patch("/servers/{id}", a.updateServer)
 			r.Delete("/servers/{id}", a.deleteServer)
@@ -143,7 +120,7 @@ func (a *API) Router() http.Handler {
 			r.Put("/servers/{id}/grants", a.putGrants)
 		})
 		r.Group(func(r chi.Router) {
-			r.Use(a.authn.RequireAPI(auth.ScopeMCPExecute), auth.RequireAdmin)
+			r.Use(a.authn.RequireAPI(auth.ScopeMCPExecute))
 			r.Post("/servers/{id}/ping", a.ping)
 			r.Post("/servers/{id}/discover", a.discover)
 		})

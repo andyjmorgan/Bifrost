@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
 	"github.com/andyjmorgan/Bifrost/internal/ruletext"
@@ -19,13 +17,12 @@ import (
 // need besides: checking rules, the hook reference, the catalog a server
 // has been seen to offer, and the servers a member holds.
 
-// GrantDTO gives a user or a role the server.
+// GrantDTO gives one user the server.
 type GrantDTO struct {
-	SubjectType string    `json:"subjectType"` // "user" | "role"
-	SubjectID   string    `json:"subjectId"`   // user id, or "admin" | "member"
-	Email       string    `json:"email,omitempty"`
-	Name        string    `json:"name,omitempty"`
-	GrantedAt   time.Time `json:"grantedAt"`
+	UserID    string    `json:"userId"`
+	Email     string    `json:"email,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	GrantedAt time.Time `json:"grantedAt"`
 }
 
 // RuleProblems is the 400 body when rules do not compile.
@@ -66,7 +63,6 @@ type PortalServerDTO struct {
 	URL          string          `json:"url"`
 	Enabled      bool            `json:"enabled"`
 	Selection    store.Selection `json:"selection"`
-	Via          []string        `json:"via"`          // "user" or "role:member"
 	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and in the allow lists (rules not applied here)
 	HasRules     bool            `json:"hasRules"`     // the server has rules on some hook
 }
@@ -84,29 +80,25 @@ func rulesOf(raw json.RawMessage) (ruletext.Hooks, string) {
 	return hs, ""
 }
 
-// grantDTOs names the users among a server's grants.
-func grantDTOs(grants []store.Grant, members map[string]*store.Member) []GrantDTO {
+// grantDTOs names the users of a server's grants.
+func grantDTOs(grants []store.Grant, users map[string]*store.User) []GrantDTO {
 	out := make([]GrantDTO, 0, len(grants))
 	for _, g := range grants {
-		gd := GrantDTO{SubjectType: g.SubjectType, SubjectID: g.SubjectID, GrantedAt: g.GrantedAt}
-		if m := members[g.SubjectID]; g.SubjectType == "user" && m != nil {
-			gd.Email, gd.Name = m.Email, m.Name
+		gd := GrantDTO{UserID: g.UserID, GrantedAt: g.GrantedAt}
+		if u := users[g.UserID]; u != nil {
+			gd.Email, gd.Name = u.Email, u.Name
 		}
 		out = append(out, gd)
 	}
 	return out
 }
 
-// members returns the org's members by user id, for naming grants.
-func (a *API) members(r *http.Request, org string) map[string]*store.Member {
-	out := map[string]*store.Member{}
-	id, err := uuid.Parse(org)
-	if err != nil {
-		return out
-	}
-	if ms, err := a.store.ListMembers(r.Context(), id); err == nil {
-		for _, m := range ms {
-			out[m.UserID] = m
+// users returns everyone who has signed in, by id, for naming grants.
+func (a *API) users(r *http.Request) map[string]*store.User {
+	out := map[string]*store.User{}
+	if us, err := a.store.ListUsers(r.Context()); err == nil {
+		for _, u := range us {
+			out[u.ID] = u
 		}
 	}
 	return out
@@ -164,18 +156,16 @@ func (a *API) putGrants(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	users := a.users(r)
 	grants := make([]store.Grant, 0, len(in.Grants))
 	for _, g := range in.Grants {
-		switch {
-		case g.SubjectType == "role" && (g.SubjectID == "admin" || g.SubjectID == "member"):
-		case g.SubjectType == "user" && g.SubjectID != "":
-		default:
-			writeErr(w, http.StatusBadRequest, "grant must be role admin|member or a user id")
+		if users[g.UserID] == nil {
+			writeErr(w, http.StatusBadRequest, "no user "+g.UserID+": a grant names someone who has signed in")
 			return
 		}
-		grants = append(grants, store.Grant{SubjectType: g.SubjectType, SubjectID: g.SubjectID})
+		grants = append(grants, store.Grant{UserID: g.UserID})
 	}
-	if err := a.store.SetGrants(r.Context(), c.OrgID, s.ID, grants, c.UserID); err != nil {
+	if err := a.store.SetGrants(r.Context(), s.ID, grants, c.UserID); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -190,7 +180,7 @@ func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	caps, err := a.store.ListCapabilities(r.Context(), s.OrgID, s.ID)
+	caps, err := a.store.ListCapabilities(r.Context(), s.ID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -207,36 +197,19 @@ func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 // listPortal returns the servers the caller holds, with what each exposes.
 func (a *API) listPortal(w http.ResponseWriter, r *http.Request) {
 	c := auth.CallerFrom(r.Context())
-	held, _, err := a.store.ListGrantedWithCache(r.Context(), c.OrgID, c.UserID, string(c.Role))
+	held, _, err := a.store.ListGrantedWithCache(r.Context(), c.UserID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
-	}
-	all, err := a.store.ListServers(r.Context(), c.OrgID)
-	if err != nil {
-		writeStoreErr(w, err)
-		return
-	}
-	grants := map[uuid.UUID][]store.Grant{}
-	for _, s := range all {
-		grants[s.ID] = s.Grants
 	}
 	out := make([]PortalServerDTO, 0, len(held))
 	for _, s := range held {
 		d := PortalServerDTO{ID: s.ID.String(), Slug: s.Slug, Name: s.Name, Description: s.Description, MCPURL: a.publicBase + "/" + s.Slug + "/mcp", URL: s.URL,
-			Enabled: s.Enabled, Selection: s.Selection, Via: []string{}, Capabilities: []string{}}
+			Enabled: s.Enabled, Selection: s.Selection, Capabilities: []string{}}
 		if hs, err := ruletext.ParseStored(s.Hooks); err != nil || !hs.Empty() {
 			d.HasRules = true
 		}
-		for _, g := range grants[s.ID] {
-			if g.SubjectType == "user" && g.SubjectID == c.UserID {
-				d.Via = append(d.Via, "user")
-			}
-			if g.SubjectType == "role" && g.SubjectID == string(c.Role) {
-				d.Via = append(d.Via, "role:"+g.SubjectID)
-			}
-		}
-		if caps, err := a.store.ListCapabilities(r.Context(), c.OrgID, s.ID); err == nil {
+		if caps, err := a.store.ListCapabilities(r.Context(), s.ID); err == nil {
 			for _, cp := range caps {
 				if allowsKind(s, cp.Kind, cp.Name) {
 					d.Capabilities = append(d.Capabilities, cp.Kind+":"+cp.Name)

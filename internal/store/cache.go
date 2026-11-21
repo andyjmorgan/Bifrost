@@ -84,9 +84,9 @@ func (p *Postgres) CacheDelete(ctx context.Context, ns, key string) error {
 	return nil
 }
 
-// CacheInvalidateOwner drops every cached entry for all of an owner's servers.
-func (p *Postgres) CacheInvalidateOwner(ctx context.Context, owner string) error {
-	if _, err := p.pool.Exec(ctx, `delete from cache where server_id in (select id from servers where org_id=$1)`, owner); err != nil {
+// CacheInvalidateServers drops every cached entry of every server.
+func (p *Postgres) CacheInvalidateServers(ctx context.Context) error {
+	if _, err := p.pool.Exec(ctx, `delete from cache where server_id is not null`); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil

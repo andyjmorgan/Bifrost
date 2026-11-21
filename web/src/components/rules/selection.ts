@@ -88,14 +88,6 @@ export function capabilitySummary(caps: string[]): string {
   return countPhrase(KINDS.map((k) => g[k.kind].length))
 }
 
-/** "user" → "Direct grant", "role:member" → "Members role". */
-export function viaLabel(via: string): string {
-  if (via === 'user') return 'Direct'
-  if (via === 'role:admin') return 'Admins'
-  if (via === 'role:member') return 'Members'
-  return via
-}
-
 /** Whether any hook has rules: a property with text. */
 export function hasRules(hooks: HooksDTO | undefined): boolean {
   return Object.values(hooks ?? {}).some((t) => typeof t === 'string' && t.trim() !== '')

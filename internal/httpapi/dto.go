@@ -225,18 +225,22 @@ type E2EResult struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-// MeDTO describes the caller and their standing in the active org.
+// MeDTO describes the caller.
 type MeDTO struct {
-	UserID      string   `json:"userId"`
-	OrgID       string   `json:"orgId"`
-	OrgName     string   `json:"orgName"`
-	PersonalOrg bool     `json:"personalOrg"`
-	Role        string   `json:"role"`
-	Subject     string   `json:"subject"`
-	Type        string   `json:"type"`
-	Email       string   `json:"email,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Scopes      []string `json:"scopes"`
+	UserID  string   `json:"userId"`
+	Subject string   `json:"subject"`
+	Type    string   `json:"type"`
+	Email   string   `json:"email,omitempty"`
+	Name    string   `json:"name,omitempty"`
+	Scopes  []string `json:"scopes"`
+}
+
+// UserDTO is someone who has signed in.
+type UserDTO struct {
+	ID         string    `json:"id"`
+	Email      string    `json:"email"`
+	Name       string    `json:"name"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
 }
 
 // ConfigDTO is what the SPA needs before login.
@@ -250,11 +254,11 @@ type ConfigDTO struct {
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
-func serverDTO(base string, s *store.Server, c *store.Credential, members map[string]*store.Member, seen int) ServerDTO {
+func serverDTO(base string, s *store.Server, c *store.Credential, users map[string]*store.User, seen int) ServerDTO {
 	d := ServerDTO{
 		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description,
 		AuthKind: s.AuthKind, Enabled: s.Enabled, Seen: seen, MCPURL: base + "/" + s.Slug + "/mcp",
-		Selection: s.Selection, Generation: s.Generation, Grants: grantDTOs(s.Grants, members),
+		Selection: s.Selection, Generation: s.Generation, Grants: grantDTOs(s.Grants, users),
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
 	d.Hooks, d.RulesError = rulesOf(s.Hooks)

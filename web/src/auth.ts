@@ -79,7 +79,7 @@ export function isAuthed(): boolean {
 }
 
 /**
- * Remember where an unauthenticated visitor was headed (e.g. /join/<token>) so the sign-in
+ * Remember where an unauthenticated visitor was headed (e.g. /servers/<id>) so the sign-in
  * round-trip lands back there even if the router state is lost on a reload of "/".
  */
 export function rememberReturnTo(path: string): void {

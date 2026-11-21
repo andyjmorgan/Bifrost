@@ -219,7 +219,7 @@ func newRequest(route string, servers ...*Server) Request {
 
 // serverRequest is an engine and a direct request to a server that has an
 // id and one tool, one prompt and one resource. The caller
-// belongs to an organization, the clock is fixed, the server names no
+// has a user id, the clock is fixed, the server names no
 // protocol version, and the rules are compiled without a cost limit.
 func serverRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
 	t.Helper()
@@ -227,7 +227,7 @@ func serverRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
 		Tools: []*mcp.Tool{twoArgTool()}, Prompts: []*mcp.Prompt{{Name: "p"}}, Resources: []*mcp.Resource{{Name: "r", URI: "file:///r"}},
 	}}
 	e := &Engine{}
-	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u", "orgId": "org-a"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}, Now: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
+	r := Request{Route: "direct", Servers: []*Server{s}, Caller: map[string]any{"userId": "u"}, Client: map[string]any{"capabilities": map[string]any{"elicitation": map[string]any{}}}, Now: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
 	return e, r
 }
 

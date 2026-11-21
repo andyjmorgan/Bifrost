@@ -148,7 +148,7 @@ The gateway checks the paths in a rule against the hook's tree when the rule is 
 
 `request.params.arguments` is always a map. It is empty when the client sent no arguments. An argument the client did not send is absent.
 
-On Bifrost, `request.caller` has `userId`, `orgId`, `role` and `type`, and `email`, `name` and `keyName` when the caller has them. A caller with no email has no `email` field, so read it with `request.caller.?email.orValue('')`. `role` is `admin` or `member`. `type` is `oidc` for a signed-in user, `apikey` for an API key, `dev` or `system`. The engine treats the caller as opaque, so another gateway can supply other fields.
+On Bifrost, `request.caller` has `userId` and `type`, and `email`, `name` and `keyName` when the caller has them. A caller with no email has no `email` field, so read it with `request.caller.?email.orValue('')`. `type` is `oidc` for a signed-in user, `apikey` for an API key, `dev` or `system`. The engine treats the caller as opaque, so another gateway can supply other fields.
 
 `request.client.clientInfo` is self-reported, and absent when the client sent none. Do not use it for security decisions. `request.client.capabilities` is always a map, so `has(request.client.capabilities.elicitation)` never fails.
 
@@ -344,7 +344,7 @@ The first deny stops evaluation for that item, and no later rule can undo it. Be
 
 A deny rule for all `delete_` tools followed by a rule meant to re-allow some callers hides the tools from them too.
 
-To give a group of callers different rules, leave them out of the deny itself, for example with `&& request.caller.?role.orValue('') != 'admin'`. A later rule cannot undo a deny.
+To give a group of callers different rules, leave them out of the deny itself, for example with `&& !(request.caller.?email.orValue('') in ['sre-lead@example.com'])`. A later rule cannot undo a deny.
 
 ### Audit mode
 

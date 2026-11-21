@@ -83,9 +83,9 @@ export function HookRules({
   validating: boolean
   /** The quiet check, run when an editor loses focus. */
   onValidate: () => void
-  /** The check the admin asks for with the button. */
+  /** The check you ask for with the button. */
   onCheck: () => void
-  /** Whether the last check the admin asked for found any rules; undefined when none was asked for, or the text changed since. */
+  /** Whether the last check you asked for found any rules; undefined when none was asked for, or the text changed since. */
   checked?: boolean
   rulesError?: string
   slug: string
@@ -345,7 +345,7 @@ function HookHelp({ hook, title, open, onClose, onAdd }: { hook: HookInfo; title
               <>
                 <dt className="font-mono text-accent">deny</dt>
                 <dd className="text-muted-foreground">
-                  {hook.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Admins only."</span>
+                  {hook.deny}. A reason in quotes after it is what the client is told: <span className="font-mono">deny "Not allowed here."</span>
                 </dd>
               </>
             )}

@@ -73,8 +73,8 @@ export function ExplorerPage() {
   }, [])
 
   const { userId } = useMe()
-  // Your own keys first: an admin sees every key in the org, and the Explorer
-  // should act as you unless you pick someone else's on purpose.
+  // Your own keys first: everyone sees every key, and the Explorer should act as you unless you
+  // pick someone else's on purpose.
   const usableKeys = useMemo(
     () =>
       keys

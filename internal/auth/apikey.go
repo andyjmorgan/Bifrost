@@ -26,7 +26,7 @@ var ErrBadKey = errors.New("auth: invalid api key")
 type KeyStore interface {
 	CreateAPIKey(ctx context.Context, k *store.APIKey) error
 	GetAPIKeyByHash(ctx context.Context, hash []byte) (*store.APIKey, error)
-	GetAPIKey(ctx context.Context, owner string, id uuid.UUID) (*store.APIKey, error)
+	GetAPIKey(ctx context.Context, id uuid.UUID) (*store.APIKey, error)
 }
 
 // Keys issues and verifies API keys.
@@ -44,9 +44,12 @@ func Hash(secret string) []byte {
 	return sum[:]
 }
 
-// Create mints a key in org that acts as createdBy. The plaintext is
-// returned exactly once.
-func (k *Keys) Create(ctx context.Context, org, createdBy, name string, scopes []string) (*store.APIKey, string, error) {
+// Create mints a key that acts as createdBy. The plaintext is returned
+// exactly once.
+func (k *Keys) Create(ctx context.Context, createdBy, name string, scopes []string) (*store.APIKey, string, error) {
+	if createdBy == "" {
+		return nil, "", errors.New("auth: a key must act as a user")
+	}
 	for _, s := range scopes {
 		if !containsString(AllScopes, s) {
 			return nil, "", fmt.Errorf("auth: unknown scope %q", s)
@@ -66,7 +69,7 @@ func (k *Keys) Create(ctx context.Context, org, createdBy, name string, scopes [
 		return nil, "", err
 	}
 	rec := &store.APIKey{
-		ID: id, OrgID: org, CreatedBy: createdBy, Name: name, Prefix: secret[:len(KeyPrefix)+8],
+		ID: id, CreatedBy: createdBy, Name: name, Prefix: secret[:len(KeyPrefix)+8],
 		SecretHash: Hash(secret), SecretBlob: blob, Scopes: scopes, CreatedAt: time.Now(),
 	}
 	if err := k.store.CreateAPIKey(ctx, rec); err != nil {
@@ -89,15 +92,15 @@ func (k *Keys) Verify(ctx context.Context, secret string) (*Caller, error) {
 	}
 	id := rec.ID
 	return &Caller{
-		OrgID: rec.OrgID, UserID: rec.CreatedBy, Subject: rec.Name, Type: ActorAPIKey, Scopes: rec.Scopes,
+		UserID: rec.CreatedBy, Subject: rec.Name, Type: ActorAPIKey, Scopes: rec.Scopes,
 		APIKeyID: &id, APIKeyPrefix: rec.Prefix,
 	}, nil
 }
 
-// Reveal decrypts an owner's key so the UI can drive end-to-end tests
-// through the front door as that key.
-func (k *Keys) Reveal(ctx context.Context, owner string, id uuid.UUID) (string, error) {
-	rec, err := k.store.GetAPIKey(ctx, owner, id)
+// Reveal decrypts a key so the UI can drive end-to-end tests through the
+// front door as that key.
+func (k *Keys) Reveal(ctx context.Context, id uuid.UUID) (string, error) {
+	rec, err := k.store.GetAPIKey(ctx, id)
 	if err != nil {
 		return "", err
 	}

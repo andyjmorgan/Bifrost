@@ -49,13 +49,7 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "apiKeyId must be a uuid")
 			return
 		}
-		if !c.IsAdmin() {
-			if k, err := a.store.GetAPIKey(r.Context(), c.OrgID, keyID); err != nil || k.CreatedBy != c.UserID {
-				writeErr(w, http.StatusNotFound, "api key not found")
-				return
-			}
-		}
-		secret, err := a.keys.Reveal(r.Context(), c.OrgID, keyID)
+		secret, err := a.keys.Reveal(r.Context(), keyID)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, "api key not usable: "+err.Error())
 			return
@@ -71,10 +65,10 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	// call below misses and refills it) instead of serving the cached list.
 	if action == "list" {
 		if route == "mux" {
-			if err := a.store.CacheInvalidateOwner(r.Context(), c.OrgID); err != nil {
+			if err := a.store.CacheInvalidateServers(r.Context()); err != nil {
 				a.log.Warn("e2e: cache invalidate", "err", err)
 			}
-		} else if s, err := a.store.GetGrantedBySlug(r.Context(), c.OrgID, c.UserID, string(c.Role), route); err == nil {
+		} else if s, err := a.store.GetGrantedBySlug(r.Context(), c.UserID, route); err == nil {
 			if err := a.store.CacheInvalidateServer(r.Context(), s.ID); err != nil {
 				a.log.Warn("e2e: cache invalidate", "slug", route, "err", err)
 			}

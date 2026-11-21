@@ -48,12 +48,11 @@ func SelectionKey(kind string) string {
 	return ""
 }
 
-// Grant gives a user or a role the right to use a server.
+// Grant gives one user the right to use a server.
 type Grant struct {
-	SubjectType string // "user" | "role"
-	SubjectID   string // user id, or "admin" | "member"
-	GrantedBy   string
-	GrantedAt   time.Time
+	UserID    string
+	GrantedBy string
+	GrantedAt time.Time
 }
 
 // Capability is one thing a server has been seen to offer: governance data
@@ -76,7 +75,7 @@ type Seen struct {
 
 // listGrants returns the grants of the given servers, by server.
 func (p *Postgres) listGrants(ctx context.Context, ids ...uuid.UUID) (map[uuid.UUID][]Grant, error) {
-	rows, err := p.pool.Query(ctx, `select server_id, subject_type, subject_id, granted_by, granted_at from server_grants where server_id = any($1) order by server_id, subject_type, subject_id`, ids)
+	rows, err := p.pool.Query(ctx, `select server_id, user_id, granted_by, granted_at from server_grants where server_id = any($1) order by server_id, user_id`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -85,7 +84,7 @@ func (p *Postgres) listGrants(ctx context.Context, ids ...uuid.UUID) (map[uuid.U
 	for rows.Next() {
 		var id uuid.UUID
 		var g Grant
-		if err := rows.Scan(&id, &g.SubjectType, &g.SubjectID, &g.GrantedBy, &g.GrantedAt); err != nil {
+		if err := rows.Scan(&id, &g.UserID, &g.GrantedBy, &g.GrantedAt); err != nil {
 			return nil, fmt.Errorf("store: %w", err)
 		}
 		out[id] = append(out[id], g)
@@ -114,7 +113,7 @@ func (p *Postgres) withGrants(ctx context.Context, servers ...*Server) error {
 
 func insertGrants(ctx context.Context, tx pgx.Tx, id uuid.UUID, grants []Grant, by string) error {
 	for _, g := range grants {
-		if _, err := tx.Exec(ctx, `insert into server_grants (server_id, subject_type, subject_id, granted_by) values ($1,$2,$3,$4) on conflict do nothing`, id, g.SubjectType, g.SubjectID, by); err != nil {
+		if _, err := tx.Exec(ctx, `insert into server_grants (server_id, user_id, granted_by) values ($1,$2,$3) on conflict do nothing`, id, g.UserID, by); err != nil {
 			return fmt.Errorf("store: %w", err)
 		}
 	}
@@ -122,13 +121,13 @@ func insertGrants(ctx context.Context, tx pgx.Tx, id uuid.UUID, grants []Grant, 
 }
 
 // SetGrants replaces a server's grants and bumps its generation.
-func (p *Postgres) SetGrants(ctx context.Context, org string, id uuid.UUID, grants []Grant, by string) error {
+func (p *Postgres) SetGrants(ctx context.Context, id uuid.UUID, grants []Grant, by string) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	tag, err := tx.Exec(ctx, `update servers set generation=generation+1 where org_id=$1 and id=$2`, org, id)
+	tag, err := tx.Exec(ctx, `update servers set generation=generation+1 where id=$1`, id)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -158,8 +157,8 @@ func (p *Postgres) UpdateRules(ctx context.Context, s *Server) error {
 	if len(s.Hooks) == 0 {
 		s.Hooks = json.RawMessage("{}")
 	}
-	err := p.pool.QueryRow(ctx, `update servers set selection=$3, hooks=$4, generation=generation+1 where org_id=$1 and id=$2 returning generation`,
-		s.OrgID, s.ID, sel, s.Hooks).Scan(&s.Generation)
+	err := p.pool.QueryRow(ctx, `update servers set selection=$2, hooks=$3, generation=generation+1 where id=$1 returning generation`,
+		s.ID, sel, s.Hooks).Scan(&s.Generation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -171,16 +170,15 @@ func (p *Postgres) UpdateRules(ctx context.Context, s *Server) error {
 
 // ---- granted servers ------------------------------------------------------------
 
-// The servers a caller holds, each with its live cache. The gateway only
-// ever reaches a server the caller holds. A system caller (no user) holds
+// The servers a user holds, each with its live cache. The gateway only
+// ever reaches a server the caller holds. A caller with no user holds
 // nothing.
 const grantedSQL = `select ` + serverColsS + `,
 coalesce(jsonb_object_agg(c.ns, c.value) filter (where c.ns is not null), '{}'::jsonb)
 from servers s
+join server_grants g on g.server_id = s.id and g.user_id = $1
 left join cache c on c.server_id = s.id and c.ns = any($2) and c.expires_at > now()
-where s.org_id = $1
-and exists (select 1 from server_grants g where g.server_id = s.id
-  and ((g.subject_type = 'user' and g.subject_id = $3) or (g.subject_type = 'role' and g.subject_id = $4)))
+where true
 `
 
 func scanGranted(row pgx.Row) (*Server, CacheBundle, error) {
@@ -196,8 +194,8 @@ func scanGranted(row pgx.Row) (*Server, CacheBundle, error) {
 
 // ListGrantedWithCache returns every server the caller holds, by slug,
 // with the live cache entries of the given namespaces.
-func (p *Postgres) ListGrantedWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*Server, map[uuid.UUID]CacheBundle, error) {
-	rows, err := p.pool.Query(ctx, grantedSQL+`group by s.id order by s.slug`, org, ns, userID, role)
+func (p *Postgres) ListGrantedWithCache(ctx context.Context, userID string, ns ...string) ([]*Server, map[uuid.UUID]CacheBundle, error) {
+	rows, err := p.pool.Query(ctx, grantedSQL+`group by s.id order by s.slug`, userID, ns)
 	if err != nil {
 		return nil, nil, fmt.Errorf("store: %w", err)
 	}
@@ -216,13 +214,13 @@ func (p *Postgres) ListGrantedWithCache(ctx context.Context, org, userID, role s
 }
 
 // GetGrantedBySlugWithCache resolves a slug the caller holds.
-func (p *Postgres) GetGrantedBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*Server, CacheBundle, error) {
-	return scanGranted(p.pool.QueryRow(ctx, grantedSQL+`and s.slug = $5 group by s.id`, org, ns, userID, role, slug))
+func (p *Postgres) GetGrantedBySlugWithCache(ctx context.Context, userID, slug string, ns ...string) (*Server, CacheBundle, error) {
+	return scanGranted(p.pool.QueryRow(ctx, grantedSQL+`and s.slug = $3 group by s.id`, userID, ns, slug))
 }
 
 // GetGrantedBySlug resolves a slug the caller holds, without cache.
-func (p *Postgres) GetGrantedBySlug(ctx context.Context, org, userID, role, slug string) (*Server, error) {
-	s, _, err := p.GetGrantedBySlugWithCache(ctx, org, userID, role, slug)
+func (p *Postgres) GetGrantedBySlug(ctx context.Context, userID, slug string) (*Server, error) {
+	s, _, err := p.GetGrantedBySlugWithCache(ctx, userID, slug)
 	return s, err
 }
 
@@ -249,10 +247,10 @@ func (p *Postgres) ObserveCapabilities(ctx context.Context, serverID uuid.UUID, 
 }
 
 // ListCapabilities returns what a server has been seen to offer, by kind and name.
-func (p *Postgres) ListCapabilities(ctx context.Context, org string, serverID uuid.UUID) ([]*Capability, error) {
+func (p *Postgres) ListCapabilities(ctx context.Context, serverID uuid.UUID) ([]*Capability, error) {
 	rows, err := p.pool.Query(ctx, `select sc.server_id, sc.kind, sc.name, sc.fingerprint, sc.definition, sc.first_seen_at, sc.last_seen_at
-		from server_capabilities sc join servers s on s.id = sc.server_id where s.org_id=$1 and sc.server_id=$2
-		order by sc.kind, sc.name`, org, serverID)
+		from server_capabilities sc where sc.server_id=$1
+		order by sc.kind, sc.name`, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}

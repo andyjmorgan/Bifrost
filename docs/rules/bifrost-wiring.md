@@ -34,7 +34,7 @@ The rules engine (`pkg/hooks`) sits behind Bifrost's front door. Every listing, 
 - Every result names the gateway in `_meta`, under `io.modelcontextprotocol/serverInfo`, as the protocol asks of a server. The SDK server stamps it; the first wiring's result type dropped it. Discovery keeps the identity the rules chose.
 - The state of a request that waits on an answer, to the gateway's question or to a server's, lives in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
 - Stored hooks that cannot be read, or whose rules do not compile, leave the server exposing nothing. The API reports why in `rulesError`.
-- A server owns its slug, its selection, its rules and its grants. There is no separate grantable view of a server: one server is one slug. A group of callers that needs different rules gets them from a rule that reads `request.caller`, not from a second view. Grants are to a user or to the `admin` or `member` role (`server_grants`). Changing the selection, the rules or the grants bumps the server's `generation`, which ends any request waiting for an answer.
+- A server owns its slug, its selection, its rules and its grants. There is no separate grantable view of a server: one server is one slug. A group of callers that needs different rules gets them from a rule that reads `request.caller`, not from a second view. A grant is one user on one server (`server_grants`); there are no roles or organisations, and everyone who signs in can run the gateway. Changing the selection, the rules or the grants bumps the server's `generation`, which ends any request waiting for an answer.
 
 ## How rules are stored
 

@@ -30,11 +30,11 @@ import {
   type DiscoverResult,
   type GrantInput,
   type HooksSchema,
-  type MemberDTO,
   type PingResult,
   type RuleProblem,
   type Selection,
   type ServerDTO,
+  type UserDTO,
 } from '../api'
 import { JsonTree, type Json } from '../components/PayloadViewer'
 import { absoluteTime, relativeTime } from '../lib'
@@ -60,7 +60,7 @@ function toDraft(s: ServerDTO): Draft {
   return {
     sel: { tools: sel.tools ?? null, prompts: sel.prompts ?? null, resources: sel.resources ?? null, templates: sel.templates ?? null },
     text: cleanText((s.hooks ?? {}) as Record<string, string | null>),
-    grants: (s.grants ?? []).map((g) => ({ subjectType: g.subjectType, subjectId: g.subjectId })),
+    grants: (s.grants ?? []).map((g) => ({ userId: g.userId })),
   }
 }
 
@@ -86,7 +86,6 @@ function toSelection(d: Draft): Selection {
   return out
 }
 
-const grantKey = (g: GrantInput) => `${g.subjectType}:${g.subjectId}`
 const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n')
 
 function sameList(a: string[] | null, b: string[] | null, trim = false): boolean {
@@ -103,7 +102,10 @@ function configDirty(a: Draft, b: Draft): boolean {
 }
 
 /** The grants differ: a PUT is due. */
-const grantsDirty = (a: Draft, b: Draft) => !sameSet(a.grants.map(grantKey), b.grants.map(grantKey))
+const grantsDirty = (a: Draft, b: Draft) => !sameSet(
+    a.grants.map((g) => g.userId),
+    b.grants.map((g) => g.userId),
+  )
 
 function Time({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>
@@ -134,12 +136,12 @@ export function ServerDetailPage() {
   const [reauthBusy, setReauthBusy] = useState(false)
   const [caps, setCaps] = useState<CapabilityDTO[]>([])
   const [capsLoaded, setCapsLoaded] = useState(false)
-  const [members, setMembers] = useState<MemberDTO[]>([])
+  const [users, setUsers] = useState<UserDTO[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string>()
   const [problems, setProblems] = useState<RuleProblem[]>([])
   const [warnings, setWarnings] = useState<RuleProblem[]>([])
-  // Whether the last check the admin asked for found any rules; undefined once the text changes.
+  // Whether the last check you asked for found any rules; undefined once the text changes.
   const [checked, setChecked] = useState<boolean>()
   const [validating, setValidating] = useState(false)
   // Only the latest validation may land; an older one racing it would show stale problems.
@@ -185,7 +187,7 @@ export function ServerDetailPage() {
 
   /**
    * POST /rules/validate: the engine's compiler, then the sanity checks. Returns true when the text
-   * compiles; warnings do not count against it. `asked` marks a check the admin asked for.
+   * compiles; warnings do not count against it. `asked` marks a check you asked for.
    */
   const validate = useCallback(async (text: RuleText, asked = false): Promise<boolean> => {
     const seq = ++validateSeq.current
@@ -259,10 +261,10 @@ export function ServerDetailPage() {
       }
     })()
     void loadSchema()
-    api.org
-      .get()
-      .then((o) => setMembers(o.members))
-      .catch((e) => toast.error('Could not load members', { description: errorMessage(e) }))
+    api.users
+      .list()
+      .then(setUsers)
+      .catch((e) => toast.error('Could not load users', { description: errorMessage(e) }))
     // Only on arriving at a server: every dependency changes with the id alone.
   }, [load, loadCaps, loadSchema, validate])
 
@@ -605,7 +607,7 @@ export function ServerDetailPage() {
 
       {tab === 'access' && (
         <TabPanel tabKey="access">
-          <GrantsEditor grants={draft.grants} onChange={(grants) => set({ grants })} members={members} />
+          <GrantsEditor grants={draft.grants} onChange={(grants) => set({ grants })} users={users} />
         </TabPanel>
       )}
 

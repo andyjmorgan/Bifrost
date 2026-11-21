@@ -9,19 +9,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
-// UserStore resolves sign-ins to an org and role.
+// UserStore records sign-ins and resolves the users keys act as.
 type UserStore interface {
-	EnsureUser(ctx context.Context, id, email, name, claimLegacy string) (*store.Standing, error)
-	MemberRole(ctx context.Context, orgID uuid.UUID, userID string) (store.Role, error)
-	GetOrg(ctx context.Context, orgID uuid.UUID) (*store.Org, error)
+	EnsureUser(ctx context.Context, id, email, name string) (*store.User, error)
+	GetUser(ctx context.Context, id string) (*store.User, error)
 }
 
 // Authenticator turns bearer credentials into a Caller on the context.
+// Everyone the identity provider lets in may run the gateway; what a person
+// reaches through it is decided by the grants on each server.
 type Authenticator struct {
 	OIDC       *OIDC // nil in dev mode
 	Keys       *Keys
@@ -30,68 +29,42 @@ type Authenticator struct {
 	PublicBase string
 	MCPScope   string // advertised in MCP challenges
 	Issuer     string
-	// LegacyOwner is the pre-org owner id whose records were migrated into
-	// the first org; AdminEmail names the human who claims that org at their
-	// first sign-in. In dev mode the dev owner claims its own legacy org.
-	LegacyOwner string
-	AdminEmail  string
 
-	standings sync.Map // user id -> cachedStanding
+	seen sync.Map // user id -> time the store last confirmed them
 }
 
-type cachedStanding struct {
-	st  *store.Standing
-	exp time.Time
-}
+// seenTTL bounds how often a user's sign-in is written to the store, or a
+// key's creator looked up, while requests keep coming.
+const seenTTL = 15 * time.Second
 
-// standingTTL bounds how long a sign-in's org and role are reused before
-// the store is asked again. Join, leave and role changes call Forget.
-const standingTTL = 15 * time.Second
-
-// Forget drops a user's cached standing so the next request re-resolves it.
-func (a *Authenticator) Forget(userID string) { a.standings.Delete(userID) }
-
-// standing resolves (and briefly caches) a human's active org and role.
-func (a *Authenticator) standing(ctx context.Context, id, email, name, claim string) (*store.Standing, error) {
-	if v, ok := a.standings.Load(id); ok {
-		if c := v.(cachedStanding); time.Now().Before(c.exp) {
-			return c.st, nil
-		}
+func (a *Authenticator) fresh(id string) bool {
+	if v, ok := a.seen.Load(id); ok && time.Since(v.(time.Time)) < seenTTL {
+		return true
 	}
-	st, err := a.Users.EnsureUser(ctx, id, email, name, claim)
-	if err != nil {
-		return nil, err
-	}
-	a.standings.Store(id, cachedStanding{st: st, exp: time.Now().Add(standingTTL)})
-	return st, nil
+	return false
 }
 
-// place fills a human caller's org fields from their standing.
-func (a *Authenticator) place(ctx context.Context, c *Caller, claim string) (*Caller, error) {
-	st, err := a.standing(ctx, c.UserID, c.Email, c.Name, claim)
-	if err != nil {
+// record notes a human's sign-in.
+func (a *Authenticator) record(ctx context.Context, c *Caller) (*Caller, error) {
+	if a.fresh(c.UserID) {
+		return c, nil
+	}
+	if _, err := a.Users.EnsureUser(ctx, c.UserID, c.Email, c.Name); err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
-	c.OrgID = st.Org.ID.String()
-	c.OrgName = st.Org.Name
-	c.PersonalOrg = st.Org.PersonalFor == c.UserID
-	c.Role = Role(st.Role)
+	a.seen.Store(c.UserID, time.Now())
 	return c, nil
 }
 
-// dev is the dev-mode caller: the dev owner, admin of its migrated org. An
-// X-Dev-User header names another local user, so the org flows can be
-// exercised with two people without an identity provider.
+// dev is the dev-mode caller: the dev owner, or the local user an
+// X-Dev-User header names, so two people can be tried without an identity
+// provider.
 func (a *Authenticator) dev(ctx context.Context, r *http.Request) (*Caller, error) {
 	id := a.DevOwner
 	if u := strings.TrimSpace(r.Header.Get("X-Dev-User")); u != "" {
 		id = u
 	}
-	claim := ""
-	if id == a.DevOwner {
-		claim = a.DevOwner
-	}
-	return a.place(ctx, &Caller{UserID: id, Subject: id, Type: ActorDev, Email: id + "@localhost", Name: strings.ToUpper(id[:1]) + id[1:]}, claim)
+	return a.record(ctx, &Caller{UserID: id, Subject: id, Type: ActorDev, Email: id + "@localhost", Name: strings.ToUpper(id[:1]) + id[1:]})
 }
 
 // bearerToken returns the token from an Authorization header value. The scheme
@@ -126,7 +99,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 		if err != nil {
 			return nil, err
 		}
-		return a.placeKey(ctx, c)
+		return a.keyCaller(ctx, c)
 	}
 	if a.OIDC == nil {
 		return a.dev(ctx, r)
@@ -135,50 +108,27 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 	if err != nil {
 		return nil, err
 	}
-	claim := ""
-	if a.AdminEmail != "" && strings.EqualFold(c.Email, a.AdminEmail) {
-		claim = a.LegacyOwner
-	}
-	return a.place(ctx, c, claim)
+	return a.record(ctx, c)
 }
 
-// placeKey gives a key caller the role of the user it acts as. A key whose
-// creator has left the org is dead. A legacy key with no creator (the org
-// not yet claimed) acts as an admin.
-func (a *Authenticator) placeKey(ctx context.Context, c *Caller) (*Caller, error) {
-	orgID, err := uuid.Parse(c.OrgID)
-	if err != nil {
+// keyCaller checks that the user a key acts as still exists. A key acts as
+// its creator and holds what they hold.
+func (a *Authenticator) keyCaller(ctx context.Context, c *Caller) (*Caller, error) {
+	if c.UserID == "" {
 		return nil, ErrBadKey
 	}
-	if o, err := a.Users.GetOrg(ctx, orgID); err == nil {
-		c.OrgName = o.Name
-		c.PersonalOrg = c.UserID != "" && o.PersonalFor == c.UserID
-	}
-	if c.UserID == "" {
-		c.Role = RoleAdmin
+	if a.fresh(c.UserID) {
 		return c, nil
 	}
-	role, err := a.Users.MemberRole(ctx, orgID, c.UserID)
-	if errors.Is(err, store.ErrNotMember) {
+	_, err := a.Users.GetUser(ctx, c.UserID)
+	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrBadKey
 	}
 	if err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
-	c.Role = Role(role)
+	a.seen.Store(c.UserID, time.Now())
 	return c, nil
-}
-
-// RequireAdmin guards routes that change the org: only admins pass. It runs
-// after RequireAPI.
-func RequireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !CallerFrom(r.Context()).IsAdmin() {
-			http.Error(w, `{"error":"admin role required"}`, http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // RequireAPI guards REST routes: a valid caller holding scope (OIDC holds all).

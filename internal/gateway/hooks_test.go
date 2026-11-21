@@ -60,10 +60,6 @@ func newMemStore() *memStore {
 	return &memStore{creds: map[uuid.UUID]*store.Credential{}, cache: map[string]memEntry{}}
 }
 
-func (m *memStore) ListServers(context.Context, string) ([]*store.Server, error) {
-	return m.servers, nil
-}
-
 func (m *memStore) bundle(id uuid.UUID, ns []string) store.CacheBundle {
 	b := store.CacheBundle{}
 	for _, n := range ns {
@@ -74,7 +70,7 @@ func (m *memStore) bundle(id uuid.UUID, ns []string) store.CacheBundle {
 	return b
 }
 
-func (m *memStore) GetGrantedBySlug(_ context.Context, _, _, _, slug string) (*store.Server, error) {
+func (m *memStore) GetGrantedBySlug(_ context.Context, _, slug string) (*store.Server, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.servers {
@@ -86,7 +82,7 @@ func (m *memStore) GetGrantedBySlug(_ context.Context, _, _, _, slug string) (*s
 	return nil, store.ErrNotFound
 }
 
-func (m *memStore) ListGrantedWithCache(_ context.Context, _, _, _ string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
+func (m *memStore) ListGrantedWithCache(_ context.Context, _ string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []*store.Server
@@ -99,8 +95,8 @@ func (m *memStore) ListGrantedWithCache(_ context.Context, _, _, _ string, ns ..
 	return out, bundles, nil
 }
 
-func (m *memStore) GetGrantedBySlugWithCache(ctx context.Context, org, user, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
-	s, err := m.GetGrantedBySlug(ctx, org, user, role, slug)
+func (m *memStore) GetGrantedBySlugWithCache(ctx context.Context, user, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
+	s, err := m.GetGrantedBySlug(ctx, user, slug)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -210,7 +206,7 @@ type rig struct {
 func (r *rig) serve(slug string, u *harness.Upstream, rules ...hooks.Rule) *store.Server {
 	r.t.Helper()
 	pol := stored(r.t, rules...)
-	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Server " + slug, Description: "the " + slug + " server", URL: u.URL(), Enabled: true,
+	s := &store.Server{ID: uuid.New(), Name: "Server " + slug, Description: "the " + slug + " server", URL: u.URL(), Enabled: true,
 		Slug: slug, Hooks: pol, Generation: 1, UpdatedAt: time.Now()}
 	r.store.mu.Lock()
 	r.store.servers = append(r.store.servers, s)
@@ -276,7 +272,7 @@ func newRig(t *testing.T) *rig {
 		_ = ms.CacheSet(ctx, cache.NSInit, srv.ID.String(), nil, time.Time{}, b, time.Minute)
 	}
 	gw := gateway.New(ms, conn, rec, nil, time.Minute, log, "test")
-	caller := &auth.Caller{OrgID: "org", UserID: "u1", Role: auth.RoleMember, Subject: "u1@example.com", Email: "u1@example.com", Name: "User One", Type: auth.ActorOIDC}
+	caller := &auth.Caller{UserID: "u1", Subject: "u1@example.com", Email: "u1@example.com", Name: "User One", Type: auth.ActorOIDC}
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -505,7 +501,7 @@ func TestMuxReportsAServerItCannotReach(t *testing.T) {
 	r.serve("a", a)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusBadGateway) }))
 	t.Cleanup(dead.Close)
-	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", Hooks: []byte("{}"), Generation: 1}
+	s := &store.Server{ID: uuid.New(), Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", Hooks: []byte("{}"), Generation: 1}
 	r.store.servers = append(r.store.servers, s)
 
 	rep := harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"})

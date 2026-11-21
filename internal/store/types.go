@@ -42,7 +42,6 @@ const (
 // Server is a registered downstream MCP server.
 type Server struct {
 	ID          uuid.UUID
-	OrgID       string
 	Name        string
 	URL         string
 	Description string
@@ -51,7 +50,7 @@ type Server struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 
-	// Slug is the server's immutable per-org identifier: its route and the
+	// Slug is the server's immutable identifier: its route and the
 	// prefix of its names on the mux.
 	Slug      string
 	Selection Selection
@@ -102,7 +101,6 @@ type Secret struct {
 // OAuthState is a pending authorization-code round trip.
 type OAuthState struct {
 	State        string
-	OrgID        string
 	ServerID     uuid.UUID
 	CodeVerifier string
 	ReturnTo     string
@@ -113,7 +111,6 @@ type OAuthState struct {
 // sealed so the owner can drive end-to-end tests through the front door.
 type APIKey struct {
 	ID         uuid.UUID
-	OrgID      string
 	Name       string
 	Prefix     string
 	SecretHash []byte
@@ -122,7 +119,7 @@ type APIKey struct {
 	CreatedAt  time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
-	CreatedBy  string // user id the key acts as; "" on legacy keys until the org is claimed
+	CreatedBy  string // the user the key acts as
 }
 
 // Hop says which side of the gateway an audit event describes.
@@ -149,7 +146,6 @@ const (
 // AuditEvent is one HTTP exchange, inbound or upstream.
 type AuditEvent struct {
 	ID              uuid.UUID
-	OrgID           string
 	CreatedAt       time.Time
 	Hop             Hop
 	ParentID        *uuid.UUID
@@ -211,17 +207,15 @@ type AuditPayload struct {
 
 // AuditQuery filters a listing.
 type AuditQuery struct {
-	OrgID       string
-	Offset      int
-	Limit       int
-	ServerID    *uuid.UUID
-	Slug        string
-	Hop         Hop
-	McpMethod   string
-	ToolName    string
-	Outcome     Outcome
-	RequestID   string
-	ActorUserID string // members see only their own events
+	Offset    int
+	Limit     int
+	ServerID  *uuid.UUID
+	Slug      string
+	Hop       Hop
+	McpMethod string
+	ToolName  string
+	Outcome   Outcome
+	RequestID string
 }
 
 // Page is a bounded listing.

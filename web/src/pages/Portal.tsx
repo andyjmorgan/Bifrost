@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, LayoutGrid, Server } from 'lucide-react'
-import { Badge } from '../ui/components/badge'
 import { PageHeader } from '../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
-import { KINDS, capabilitySummary, groupCapabilities, rulesPhrase, viaLabel } from '../components/rules/selection'
+import { KINDS, capabilitySummary, groupCapabilities, rulesPhrase } from '../components/rules/selection'
 import { api, errorMessage, type PortalServerDTO } from '../api'
 import { cn } from '../lib'
 
-const COLS = 'minmax(0,1.4fr) minmax(0,1.8fr) minmax(0,1.1fr) 140px'
+const COLS = 'minmax(0,1.4fr) minmax(0,1.8fr) minmax(0,1.1fr)'
 
-// The member portal: every slug the caller holds, with the URL to point an agent at and what it
-// exposes. Admins see their own holdings here too.
+// The caller's own servers: every slug they have been granted, with the URL to point an agent at
+// and what it exposes.
 export function PortalPage() {
   const [items, setItems] = useState<PortalServerDTO[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -60,7 +59,7 @@ export function PortalPage() {
           <ListEmpty
             icon={LayoutGrid}
             title={loaded ? 'Nothing granted yet' : 'Loading…'}
-            hint={loaded ? 'You have not been granted any servers yet. Ask an admin to grant you one.' : undefined}
+            hint={loaded ? 'You have not been granted any servers yet. Grant yourself one from Servers, on its Access tab.' : undefined}
           />
         ) : (
           <>
@@ -68,7 +67,6 @@ export function PortalPage() {
               <span>Server</span>
               <span>MCP URL</span>
               <span>Exposes</span>
-              <span>Via</span>
             </ListHead>
             <ListRows>
               {items.map((x) => {
@@ -107,15 +105,6 @@ export function PortalPage() {
                             {capabilitySummary(x.capabilities)}
                             {rulesPhrase(x.hasRules) && <span className="ml-1.5 text-muted-foreground">{rulesPhrase(x.hasRules)}</span>}
                           </span>
-                        </Cell>
-                        <Cell label="Via">
-                          <div className="flex flex-wrap gap-1">
-                            {x.via.map((v) => (
-                              <Badge key={v} variant={v === 'user' ? 'info' : 'muted'}>
-                                {viaLabel(v)}
-                              </Badge>
-                            ))}
-                          </div>
                         </Cell>
                       </ListRow>
                       {expanded && (

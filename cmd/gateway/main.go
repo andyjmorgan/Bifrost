@@ -60,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 	keys := auth.NewKeys(st, sealer)
-	authn := &auth.Authenticator{Keys: keys, Users: st, DevOwner: cfg.DevOwner, PublicBase: cfg.PublicBaseURL, MCPScope: cfg.OIDCScope, Issuer: cfg.OIDCIssuer, LegacyOwner: cfg.LegacyOwner, AdminEmail: cfg.AdminEmail}
+	authn := &auth.Authenticator{Keys: keys, Users: st, DevOwner: cfg.DevOwner, PublicBase: cfg.PublicBaseURL, MCPScope: cfg.OIDCScope, Issuer: cfg.OIDCIssuer}
 	if cfg.DevMode() {
 		log.Warn("DEV MODE: front-door auth disabled; every request runs as owner " + cfg.DevOwner)
 	} else {
@@ -111,17 +111,17 @@ func main() {
 	}
 }
 
-// createKey is the bootstrap path: `gateway create-key -name <n> [-scopes a,b] [-owner id]`
+// createKey is the bootstrap path: `gateway create-key -name <n> -user <subject> [-scopes a,b]`
 // mints an API key straight into the database and prints the secret once.
-// It exists so the first key can be made from inside the pod before any
-// human has signed in.
+// The key acts as the user, who is recorded if they have not signed in yet,
+// so the first key can be made from inside the pod before anyone has.
 func createKey(ctx context.Context, cfg config.Config, log *slog.Logger, args []string) {
 	fs := flag.NewFlagSet("create-key", flag.ExitOnError)
 	name := fs.String("name", "", "key name")
 	scopes := fs.String("scopes", strings.Join(auth.AllScopes, ","), "comma-separated scopes")
-	owner := fs.String("org", "", "org id the key belongs to (uuid)")
+	user := fs.String("user", "", "the identity provider subject the key acts as")
 	_ = fs.Parse(args)
-	if *name == "" {
+	if *name == "" || *user == "" {
 		fs.Usage()
 		os.Exit(2)
 	}
@@ -136,11 +136,18 @@ func createKey(ctx context.Context, cfg config.Config, log *slog.Logger, args []
 		log.Error("crypto", "err", err)
 		os.Exit(1)
 	}
-	rec, secret, err := auth.NewKeys(store.NewPostgres(pool), sealer).Create(ctx, *owner, "", *name, strings.Split(*scopes, ","))
+	st := store.NewPostgres(pool)
+	if _, err := st.GetUser(ctx, *user); errors.Is(err, store.ErrNotFound) {
+		if _, err := st.EnsureUser(ctx, *user, "", ""); err != nil {
+			log.Error("record user", "err", err)
+			os.Exit(1)
+		}
+	}
+	rec, secret, err := auth.NewKeys(st, sealer).Create(ctx, *user, *name, strings.Split(*scopes, ","))
 	if err != nil {
 		log.Error("create key", "err", err)
 		os.Exit(1)
 	}
-	log.Info("api key created", "id", rec.ID, "prefix", rec.Prefix, "owner", rec.OrgID, "scopes", rec.Scopes)
+	log.Info("api key created", "id", rec.ID, "prefix", rec.Prefix, "user", rec.CreatedBy, "scopes", rec.Scopes)
 	fmt.Println(secret)
 }

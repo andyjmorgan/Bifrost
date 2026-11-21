@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { KeyRound, KeySquare, Plus, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
@@ -15,7 +15,7 @@ import { FormField } from '../components/FormField'
 import { CopyButton } from '../components/CopyButton'
 import { ScopeBadges } from '../components/ScopeBadges'
 import { getConfig } from '../auth'
-import { api, errorMessage, type APIKeyDTO, type CreateAPIKeyResult } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CreateAPIKeyResult, type UserDTO } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
 const SCOPE_HINTS: Record<string, string> = {
@@ -26,7 +26,7 @@ const SCOPE_HINTS: Record<string, string> = {
 }
 const DEFAULT_SCOPES = ['api:read', 'api:edit', 'mcp:execute', 'mcp:edit']
 
-const COLS = 'minmax(0,1.5fr) minmax(0,1.4fr) 130px 130px 110px 56px'
+const COLS = 'minmax(0,1.4fr) minmax(0,1.3fr) minmax(0,1fr) 130px 130px 110px 56px'
 
 export function ApiKeysPage() {
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
@@ -37,6 +37,19 @@ export function ApiKeysPage() {
   const [revoking, setRevoking] = useState<APIKeyDTO>()
   const [revokeBusy, setRevokeBusy] = useState(false)
   const [revokeErr, setRevokeErr] = useState<string>()
+  const [users, setUsers] = useState<UserDTO[]>([])
+
+  useEffect(() => {
+    // Only names the creator column; without it the column shows the user id.
+    api.users
+      .list()
+      .then(setUsers)
+      .catch(() => setUsers([]))
+  }, [])
+  const nameOf = useMemo(() => {
+    const byId = new Map(users.map((u) => [u.id, u.name || u.email || u.id]))
+    return (id?: string) => (id ? (byId.get(id) ?? id) : '—')
+  }, [users])
 
   const load = useCallback(
     () =>
@@ -77,7 +90,7 @@ export function ApiKeysPage() {
       <PageHeader
         eyebrow="Access"
         title="API keys"
-        description="Keys agents present to the gateway's MCP endpoints and REST API. Each acts as you, limited to the scopes you grant it."
+        description="Keys agents present to the gateway's MCP endpoints and REST API. Each acts as the person who created it, limited to the scopes it was given. Everyone signed in sees and can revoke every key."
         actions={
           <Button variant="primary" onClick={() => setOpen(true)}>
             <Plus /> New API key
@@ -98,6 +111,7 @@ export function ApiKeysPage() {
           <ListHead cols={COLS}>
             <span>Key</span>
             <span>Scopes</span>
+            <span>Created by</span>
             <span>Created</span>
             <span>Last used</span>
             <span>Status</span>
@@ -129,6 +143,11 @@ export function ApiKeysPage() {
                   </div>
                   <Cell label="Scopes">
                     <ScopeBadges scopes={k.scopes} />
+                  </Cell>
+                  <Cell label="Created by">
+                    <span className="block truncate text-xs text-muted-foreground" title={k.createdBy}>
+                      {nameOf(k.createdBy)}
+                    </span>
                   </Cell>
                   <Cell label="Created">
                     <span className="block truncate font-mono text-xs text-muted-foreground" title={absoluteTime(k.createdAt)}>

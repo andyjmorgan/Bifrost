@@ -172,8 +172,8 @@ func TestAStateKeyIsOpaqueAndRedeemedOnce(t *testing.T) {
 }
 
 // Confirmation state is bound to the server it was issued under. The same
-// user on a server of the same slug, target and generation in another
-// organization cannot answer it.
+// user on another server with the same slug, target and generation cannot
+// answer it.
 func TestStateIsBoundToTheServer(t *testing.T) {
 	e, r := serverRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
 	first := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t"})
@@ -181,12 +181,11 @@ func TestStateIsBoundToTheServer(t *testing.T) {
 	if !ok {
 		t.Fatalf("initial confirmation: %+v", first)
 	}
-	// The same user holds a same-slug server in another organization.
-	// Server IDs differ; target and generation deliberately do not.
+	// The same user on another server with the same slug. Server IDs
+	// differ; target and generation deliberately do not.
 	s2 := *r.Servers[0]
 	s2.ID = "server-b"
 	r.Servers = []*Server{&s2}
-	r.Caller = map[string]any{"userId": "u", "orgId": "org-b"}
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t", RequestState: ir.RequestState, InputResponses: yesTo("ok")})
 	if out.Forward != nil || out.Error == nil {
 		t.Fatalf("state crossed server identities: %+v", out)

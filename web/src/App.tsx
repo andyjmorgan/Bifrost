@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AppLayout } from './components/AppLayout'
 import { DEFAULT_ROUTE, isAuthed, rememberReturnTo, subscribeAuth } from './auth'
 import { useTheme } from './theme'
 import { api, type MeDTO } from './api'
-import { MeContext, meValue, useMe } from './me'
+import { MeContext, meValue } from './me'
 import { LoginPage } from './pages/Login'
 import { AuthCallbackPage } from './pages/AuthCallback'
 import { ServersPage } from './pages/Servers'
@@ -15,15 +15,13 @@ import { ApiKeysPage } from './pages/ApiKeys'
 import { PortalPage } from './pages/Portal'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
-import { MembersPage } from './pages/Members'
-import { JoinPage } from './pages/Join'
 
 function useAuthed(): boolean {
   return useSyncExternalStore(subscribeAuth, isAuthed, () => false)
 }
 
 // Gate: an unauthenticated visit bounces to the sign-in screen remembering where it was headed,
-// both in router state and in sessionStorage (so /join/<token> survives the IdP round-trip).
+// both in router state and in sessionStorage (so a deep link survives the IdP round-trip).
 function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
   const authed = useAuthed()
@@ -39,21 +37,14 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function AppShell() {
   const [me, setMe] = useState<MeDTO | null>(null)
   const authed = useAuthed()
-  const refreshMe = useCallback(
-    () =>
-      api
-        .me()
-        .then((m) => {
-          setMe(m)
-          return m
-        })
-        .catch(() => null),
-    [],
-  )
   useEffect(() => {
-    if (authed) void refreshMe()
-  }, [authed, refreshMe])
-  const value = useMemo(() => meValue(me, refreshMe), [me, refreshMe])
+    if (!authed) return
+    api
+      .me()
+      .then(setMe)
+      .catch(() => setMe(null))
+  }, [authed])
+  const value = useMemo(() => meValue(me), [me])
   return (
     <RequireAuth>
       <MeContext.Provider value={value}>
@@ -63,14 +54,6 @@ function AppShell() {
       </MeContext.Provider>
     </RequireAuth>
   )
-}
-
-// Admin-only routes: wait for /me, then send members to their portal.
-function AdminOnly({ children }: { children: ReactNode }) {
-  const { me, isAdmin } = useMe()
-  if (!me) return null
-  if (!isAdmin) return <Navigate to="/portal" replace />
-  return <>{children}</>
 }
 
 // "/" is the sign-in screen until there's a session, then the app.
@@ -86,22 +69,13 @@ export function App() {
       <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route
-          path="/join/:token"
-          element={
-            <RequireAuth>
-              <JoinPage />
-            </RequireAuth>
-          }
-        />
         <Route element={<AppShell />}>
           <Route path="/portal" element={<PortalPage />} />
-          <Route path="/servers" element={<AdminOnly><ServersPage /></AdminOnly>} />
-          <Route path="/servers/:id" element={<AdminOnly><ServerDetailPage /></AdminOnly>} />
+          <Route path="/servers" element={<ServersPage />} />
+          <Route path="/servers/:id" element={<ServerDetailPage />} />
           <Route path="/explorer" element={<ExplorerPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />
-          <Route path="/members" element={<AdminOnly><MembersPage /></AdminOnly>} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

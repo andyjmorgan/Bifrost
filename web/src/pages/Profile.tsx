@@ -20,17 +20,6 @@ export function ProfilePage() {
         <Definition label="User ID" mono>
           {me?.userId || '—'}
         </Definition>
-        <Definition label="Organisation">
-          {me ? (
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <span>{me.orgName}</span>
-              <Badge variant={me.personalOrg ? 'muted' : 'info'}>{me.personalOrg ? 'personal' : 'shared'}</Badge>
-            </span>
-          ) : (
-            '—'
-          )}
-        </Definition>
-        <Definition label="Role">{me?.role ? <Badge variant={me.role === 'admin' ? 'accent' : 'muted'}>{me.role}</Badge> : '—'}</Definition>
         <Definition label="Session type">{me?.type || '—'}</Definition>
         <Definition label="Scopes">
           <div className="flex flex-wrap gap-1">

@@ -323,7 +323,7 @@ func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug str
 		Route:     route,
 		Flags:     map[string]bool{hooks.FlagSearch: searchMode(ctx)},
 		Caller:    callerMap(caller),
-		Principal: caller.OrgID + "/" + caller.UserID,
+		Principal: caller.UserID,
 		Client:    clientOf(meta),
 		Headers:   ruleHeaders(ctx),
 		Now:       time.Now(),

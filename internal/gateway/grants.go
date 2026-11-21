@@ -46,7 +46,7 @@ func withSlugs(ctx context.Context, raw string) context.Context {
 // slug named there that the caller does not hold is an error rather than a
 // silent gap, so a configuration mistake shows.
 func (g *Gateway) granted(ctx context.Context, caller *auth.Caller, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
-	servers, cached, err := g.store.ListGrantedWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), ns...)
+	servers, cached, err := g.store.ListGrantedWithCache(ctx, caller.UserID, ns...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -78,7 +78,7 @@ func rpcErr(err error) error {
 
 // grantedServer resolves one slug the caller holds.
 func (g *Gateway) grantedServer(ctx context.Context, caller *auth.Caller, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
-	return g.store.GetGrantedBySlugWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(slug), ns...)
+	return g.store.GetGrantedBySlugWithCache(ctx, caller.UserID, strings.ToLower(slug), ns...)
 }
 
 // ---- catalog --------------------------------------------------------------------
@@ -169,10 +169,8 @@ func itemsOf(ns string, raw json.RawMessage) map[string]json.RawMessage {
 // Editors use it to complete request.caller.<key>.
 var CallerKeys = map[string]string{
 	"userId":  "The caller's user id.",
-	"orgId":   "The caller's organisation id.",
 	"email":   "The caller's email address. Absent when the caller has none, such as an API key.",
 	"name":    "The caller's display name. Absent when the caller has none.",
-	"role":    "The caller's role in the organisation: 'admin' or 'member'.",
 	"type":    "How the caller signed in: 'oidc', 'apikey', 'dev' or 'system'.",
 	"keyName": "The API key's name. Absent unless the caller is a key.",
 }
@@ -183,7 +181,7 @@ func callerMap(c *auth.Caller) map[string]any {
 	}
 	// Nothing is filled in: a field this caller does not have is left out,
 	// so a rule that reads it plainly fails and does not match on "".
-	m := map[string]any{"userId": c.UserID, "orgId": c.OrgID, "role": string(c.Role), "type": string(c.Type)}
+	m := map[string]any{"userId": c.UserID, "type": string(c.Type)}
 	if c.Email != "" {
 		m["email"] = c.Email
 	}

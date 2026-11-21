@@ -22,35 +22,34 @@ import (
 )
 
 func (a *API) withCredential(r *http.Request, s *store.Server) ServerDTO {
-	return a.serverView(r, s, a.members(r, s.OrgID))
+	return a.serverView(r, s, a.users(r))
 }
 
 // serverView is a server as the API returns it, with its grants' users
-// named from members.
-func (a *API) serverView(r *http.Request, s *store.Server, members map[string]*store.Member) ServerDTO {
+// named from users.
+func (a *API) serverView(r *http.Request, s *store.Server, users map[string]*store.User) ServerDTO {
 	ctx := r.Context()
 	c, err := a.store.GetCredential(ctx, s.ID)
 	if err != nil {
 		c = nil
 	}
 	seen := 0
-	if caps, err := a.store.ListCapabilities(ctx, s.OrgID, s.ID); err == nil {
+	if caps, err := a.store.ListCapabilities(ctx, s.ID); err == nil {
 		seen = len(caps)
 	}
-	return serverDTO(a.publicBase, s, c, members, seen)
+	return serverDTO(a.publicBase, s, c, users, seen)
 }
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
-	caller := auth.CallerFrom(r.Context())
-	servers, err := a.store.ListServers(r.Context(), caller.OrgID)
+	servers, err := a.store.ListServers(r.Context())
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	members := a.members(r, caller.OrgID)
+	users := a.users(r)
 	out := make([]ServerDTO, 0, len(servers))
 	for _, s := range servers {
-		out = append(out, a.serverView(r, s, members))
+		out = append(out, a.serverView(r, s, users))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -64,13 +63,12 @@ func (a *API) getServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) loadServer(w http.ResponseWriter, r *http.Request) (*store.Server, bool) {
-	caller := auth.CallerFrom(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad id")
 		return nil, false
 	}
-	s, err := a.store.GetServer(r.Context(), caller.OrgID, id)
+	s, err := a.store.GetServer(r.Context(), id)
 	if err != nil {
 		writeStoreErr(w, err)
 		return nil, false
@@ -116,9 +114,10 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	// A new server offers everything it has and is held by the org's admins.
-	s := &store.Server{ID: uuid.New(), OrgID: caller.OrgID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true,
-		Selection: store.Selection{}, Grants: []store.Grant{{SubjectType: "role", SubjectID: "admin"}}, CreatedAt: now, UpdatedAt: now}
+	// A new server offers everything it has and is held by the person who
+	// added it.
+	s := &store.Server{ID: uuid.New(), Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true,
+		Selection: store.Selection{}, Grants: []store.Grant{{UserID: caller.UserID}}, CreatedAt: now, UpdatedAt: now}
 	if in.Slug != "" {
 		s.Slug = in.Slug
 		if err := a.store.CreateServer(r.Context(), s, caller.UserID); err != nil {
@@ -196,7 +195,7 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (str
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
-	a.warmTools(ctx, s.OrgID, s.ID)
+	a.warmTools(ctx, s.ID)
 	return "", nil
 }
 
@@ -205,10 +204,10 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (str
 // is reached; a failure is logged and leaves the previous row (if any) in
 // place, so an edit never empties the catalogue on its own. The server is
 // re-read first so the write carries the new updated_at.
-func (a *API) warmTools(ctx context.Context, owner string, id uuid.UUID) {
+func (a *API) warmTools(ctx context.Context, id uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
-	s, err := a.store.GetServer(ctx, owner, id)
+	s, err := a.store.GetServer(ctx, id)
 	if err != nil || !s.Enabled {
 		return
 	}
@@ -259,7 +258,7 @@ func (a *API) startOAuth(ctx context.Context, s *store.Server, scopeOverride []s
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
-	if err := a.store.PutOAuthState(ctx, &store.OAuthState{State: state, OrgID: s.OrgID, ServerID: s.ID, CodeVerifier: pkce.Verifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(15 * time.Minute)}); err != nil {
+	if err := a.store.PutOAuthState(ctx, &store.OAuthState{State: state, ServerID: s.ID, CodeVerifier: pkce.Verifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(15 * time.Minute)}); err != nil {
 		return "", err
 	}
 	return a.oauth.AuthorizeURL(d, reg, scopes, state, pkce), nil
@@ -315,7 +314,7 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 		// Refetch with the new configuration rather than dropping the row: a
 		// delete would send every concurrent caller upstream at once, and a
 		// failed refetch should not take a working catalogue down with it.
-		a.warmTools(r.Context(), s.OrgID, s.ID)
+		a.warmTools(r.Context(), s.ID)
 	}
 	writeJSON(w, http.StatusOK, a.withCredential(r, s))
 }
@@ -325,7 +324,7 @@ func (a *API) deleteServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.store.DeleteServer(r.Context(), s.OrgID, s.ID); err != nil {
+	if err := a.store.DeleteServer(r.Context(), s.ID); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -452,7 +451,7 @@ func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		redirect("error", err.Error())
 		return
 	}
-	a.warmTools(r.Context(), st.OrgID, st.ServerID)
+	a.warmTools(r.Context(), st.ServerID)
 	redirect("ok", "")
 }
 

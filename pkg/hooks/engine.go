@@ -165,7 +165,7 @@ type Request struct {
 	// ?search=true, by name. They are not routes: any of them can be on for
 	// either route. Rules read them as flags.<name>; see Flags for the list.
 	Flags  map[string]bool
-	Caller map[string]any // userId, email, role, type, keyName, orgId, clientId
+	Caller map[string]any // what the gateway knows of the caller, such as userId, email and type; the gateway defines it
 	// Principal identifies whoever is making the request, as one opaque
 	// string the gateway chooses: the user under a per-user credential, the
 	// key under a shared one. Confirmation state is bound to it, so a

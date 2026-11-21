@@ -18,15 +18,8 @@ export interface ConfigDTO {
   apiKeyScopes: string[]
 }
 
-export type OrgRole = 'admin' | 'member'
-
 export interface MeDTO {
   userId: string
-  orgId: string
-  orgName: string
-  /** The active org is the caller's own personal org. */
-  personalOrg: boolean
-  role: OrgRole
   subject: string
   /** 'oidc' | 'apikey' | 'dev' */
   type: string
@@ -35,53 +28,12 @@ export interface MeDTO {
   scopes: string[]
 }
 
-export interface OrgRefDTO {
+/** GET /users: everyone who has signed in. */
+export interface UserDTO {
   id: string
-  name: string
-  role: OrgRole
-  personal: boolean
-  active: boolean
-}
-
-export interface MemberDTO {
-  userId: string
   email: string
   name: string
-  role: OrgRole
-  joinedAt: string
-  self: boolean
-}
-
-export interface OrgDTO {
-  id: string
-  name: string
-  personal: boolean
-  role: OrgRole
-  members: MemberDTO[]
-  /** Every org the caller belongs to, personal first. */
-  orgs: OrgRefDTO[]
-  /** e.g. "https://bifrost.donkeywork.dev/join/" */
-  inviteBase: string
-}
-
-export interface InviteDTO {
-  id: string
-  role: OrgRole
-  /** user id */
-  createdBy: string
-  createdAt: string
-  expiresAt: string
-  usedAt?: string
-  usedBy?: string
-  /** Only on the create response; shown once, then gone. */
-  url?: string
-}
-
-export interface InvitePreviewDTO {
-  orgName: string
-  role: OrgRole
-  expiresAt: string
-  member: boolean
+  lastSeenAt: string
 }
 
 export interface CredentialDTO {
@@ -481,19 +433,16 @@ export type Selection = {
   templates?: string[]
 }
 
-export type SubjectType = 'user' | 'role'
-
+/** One user's grant on a server: that user can reach it through the gateway. */
 export interface GrantDTO {
-  subjectType: SubjectType
-  subjectId: string
+  userId: string
   email?: string
   name?: string
   grantedAt: string
 }
 
 export interface GrantInput {
-  subjectType: SubjectType
-  subjectId: string
+  userId: string
 }
 
 /**
@@ -642,8 +591,6 @@ export interface PortalServerDTO {
   url: string
   enabled: boolean
   selection: Selection
-  /** "user" and/or "role:member" / "role:admin". */
-  via: string[]
   /** "kind:name" the server exposes (seen on it and inside its selection). */
   capabilities: string[]
   /** Whether the server has rules on some hook. */

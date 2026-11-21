@@ -41,10 +41,9 @@ const Separator = "__"
 
 // Store is the slice of persistence the gateway reads.
 type Store interface {
-	ListServers(ctx context.Context, owner string) ([]*store.Server, error)
-	GetGrantedBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
-	ListGrantedWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
-	GetGrantedBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
+	GetGrantedBySlug(ctx context.Context, userID, slug string) (*store.Server, error)
+	ListGrantedWithCache(ctx context.Context, userID string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
+	GetGrantedBySlugWithCache(ctx context.Context, userID, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
 	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, items map[string]store.Seen) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
@@ -162,7 +161,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			// Resolve early so the inbound audit event carries the server even
 			// when the request fails before reaching a method handler.
 			caller := auth.CallerFrom(r.Context())
-			srv, err := g.store.GetGrantedBySlug(r.Context(), caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(chi.URLParam(r, "slug")))
+			srv, err := g.store.GetGrantedBySlug(r.Context(), caller.UserID, strings.ToLower(chi.URLParam(r, "slug")))
 			if err != nil {
 				http.NotFound(w, r)
 				return

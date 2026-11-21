@@ -29,10 +29,10 @@ func isUnique(err error) bool {
 
 // ---- servers -----------------------------------------------------------
 
-const serverCols = `id, org_id, slug, name, url, description, auth_kind, enabled, selection, hooks, generation, created_at, updated_at`
+const serverCols = `id, slug, name, url, description, auth_kind, enabled, selection, hooks, generation, created_at, updated_at`
 
 // serverColsS is serverCols qualified for a query that aliases servers as s.
-const serverColsS = `s.id, s.org_id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.selection, s.hooks, s.generation, s.created_at, s.updated_at`
+const serverColsS = `s.id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.selection, s.hooks, s.generation, s.created_at, s.updated_at`
 
 func scanServer(row pgx.Row) (*Server, error) { return scanServerInto(row) }
 
@@ -40,7 +40,7 @@ func scanServer(row pgx.Row) (*Server, error) { return scanServerInto(row) }
 func scanServerInto(row pgx.Row, extra ...any) (*Server, error) {
 	var s Server
 	var sel []byte
-	err := row.Scan(append([]any{&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &sel, &s.Hooks, &s.Generation, &s.CreatedAt, &s.UpdatedAt}, extra...)...)
+	err := row.Scan(append([]any{&s.ID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &sel, &s.Hooks, &s.Generation, &s.CreatedAt, &s.UpdatedAt}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -58,7 +58,7 @@ func scanServerInto(row pgx.Row, extra ...any) (*Server, error) {
 }
 
 // CreateServer inserts a server with its grants. ErrConflict when the slug
-// is taken in the org.
+// is taken.
 func (p *Postgres) CreateServer(ctx context.Context, s *Server, by string) error {
 	if s.Selection == nil {
 		s.Selection = Selection{}
@@ -72,9 +72,9 @@ func (p *Postgres) CreateServer(ctx context.Context, s *Server, by string) error
 		return fmt.Errorf("store: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	err = tx.QueryRow(ctx, `insert into servers (id, org_id, slug, name, url, description, auth_kind, enabled, selection, hooks, created_at, updated_at)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning generation`,
-		s.ID, s.OrgID, s.Slug, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, sel, s.Hooks, s.CreatedAt, s.UpdatedAt).Scan(&s.Generation)
+	err = tx.QueryRow(ctx, `insert into servers (id, slug, name, url, description, auth_kind, enabled, selection, hooks, created_at, updated_at)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning generation`,
+		s.ID, s.Slug, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, sel, s.Hooks, s.CreatedAt, s.UpdatedAt).Scan(&s.Generation)
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -90,9 +90,9 @@ func (p *Postgres) CreateServer(ctx context.Context, s *Server, by string) error
 	return nil
 }
 
-// GetServer fetches by id within an owner, with its grants.
-func (p *Postgres) GetServer(ctx context.Context, owner string, id uuid.UUID) (*Server, error) {
-	s, err := scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where org_id=$1 and id=$2`, owner, id))
+// GetServer fetches one server with its grants.
+func (p *Postgres) GetServer(ctx context.Context, id uuid.UUID) (*Server, error) {
+	s, err := scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where id=$1`, id))
 	if err != nil {
 		return nil, err
 	}
@@ -102,9 +102,9 @@ func (p *Postgres) GetServer(ctx context.Context, owner string, id uuid.UUID) (*
 	return s, nil
 }
 
-// ListServers returns an owner's servers with their grants, oldest first.
-func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, error) {
-	rows, err := p.pool.Query(ctx, `select `+serverCols+` from servers where org_id=$1 order by created_at`, owner)
+// ListServers returns every server with its grants, oldest first.
+func (p *Postgres) ListServers(ctx context.Context) ([]*Server, error) {
+	rows, err := p.pool.Query(ctx, `select `+serverCols+` from servers order by created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -126,13 +126,13 @@ func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, er
 	return out, nil
 }
 
-// UpdateServer writes the connection fields (not slug, owner, rules or
+// UpdateServer writes the connection fields (not slug, rules or
 // grants) and
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
-		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$6, updated_at=now() where id=$1 returning updated_at`,
+		s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -148,8 +148,8 @@ func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
 }
 
 // DeleteServer removes a server and, by cascade, its credential.
-func (p *Postgres) DeleteServer(ctx context.Context, owner string, id uuid.UUID) error {
-	tag, err := p.pool.Exec(ctx, `delete from servers where org_id=$1 and id=$2`, owner, id)
+func (p *Postgres) DeleteServer(ctx context.Context, id uuid.UUID) error {
+	tag, err := p.pool.Exec(ctx, `delete from servers where id=$1`, id)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -268,17 +268,12 @@ func (p *Postgres) ExpiringOAuthCredentials(ctx context.Context, before time.Tim
 	return out, rows.Err()
 }
 
-// ServerOrg returns the owner of a server id (for worker paths without a caller).
-func (p *Postgres) ServerOrg(ctx context.Context, id uuid.UUID) (*Server, error) {
-	return scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where id=$1`, id))
-}
-
 // ---- oauth states ------------------------------------------------------
 
 // PutOAuthState stores a pending authorization round trip.
 func (p *Postgres) PutOAuthState(ctx context.Context, s *OAuthState) error {
-	_, err := p.pool.Exec(ctx, `insert into oauth_states (state, org_id, server_id, code_verifier, return_to, expires_at) values ($1,$2,$3,$4,$5,$6)`,
-		s.State, s.OrgID, s.ServerID, s.CodeVerifier, s.ReturnTo, s.ExpiresAt)
+	_, err := p.pool.Exec(ctx, `insert into oauth_states (state, server_id, code_verifier, return_to, expires_at) values ($1,$2,$3,$4,$5)`,
+		s.State, s.ServerID, s.CodeVerifier, s.ReturnTo, s.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -288,8 +283,8 @@ func (p *Postgres) PutOAuthState(ctx context.Context, s *OAuthState) error {
 // TakeOAuthState consumes a state, returning ErrNotFound if unknown or expired.
 func (p *Postgres) TakeOAuthState(ctx context.Context, state string) (*OAuthState, error) {
 	var s OAuthState
-	err := p.pool.QueryRow(ctx, `delete from oauth_states where state=$1 returning state, org_id, server_id, code_verifier, return_to, expires_at`, state).
-		Scan(&s.State, &s.OrgID, &s.ServerID, &s.CodeVerifier, &s.ReturnTo, &s.ExpiresAt)
+	err := p.pool.QueryRow(ctx, `delete from oauth_states where state=$1 returning state, server_id, code_verifier, return_to, expires_at`, state).
+		Scan(&s.State, &s.ServerID, &s.CodeVerifier, &s.ReturnTo, &s.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -304,11 +299,11 @@ func (p *Postgres) TakeOAuthState(ctx context.Context, state string) (*OAuthStat
 
 // ---- api keys ----------------------------------------------------------
 
-const keyCols = `id, org_id, name, prefix, secret_hash, secret_blob, scopes, created_at, last_used_at, revoked_at, coalesce(created_by,'')`
+const keyCols = `id, name, prefix, secret_hash, secret_blob, scopes, created_at, last_used_at, revoked_at, coalesce(created_by,'')`
 
 func scanKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
-	err := row.Scan(&k.ID, &k.OrgID, &k.Name, &k.Prefix, &k.SecretHash, &k.SecretBlob, &k.Scopes, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.CreatedBy)
+	err := row.Scan(&k.ID, &k.Name, &k.Prefix, &k.SecretHash, &k.SecretBlob, &k.Scopes, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -320,8 +315,8 @@ func scanKey(row pgx.Row) (*APIKey, error) {
 
 // CreateAPIKey inserts a key.
 func (p *Postgres) CreateAPIKey(ctx context.Context, k *APIKey) error {
-	_, err := p.pool.Exec(ctx, `insert into api_keys (id, org_id, name, prefix, secret_hash, secret_blob, scopes, created_at, last_used_at, revoked_at, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,nullif($11,''))`,
-		k.ID, k.OrgID, k.Name, k.Prefix, k.SecretHash, k.SecretBlob, k.Scopes, k.CreatedAt, k.LastUsedAt, k.RevokedAt, k.CreatedBy)
+	_, err := p.pool.Exec(ctx, `insert into api_keys (id, name, prefix, secret_hash, secret_blob, scopes, created_at, last_used_at, revoked_at, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,nullif($10,''))`,
+		k.ID, k.Name, k.Prefix, k.SecretHash, k.SecretBlob, k.Scopes, k.CreatedAt, k.LastUsedAt, k.RevokedAt, k.CreatedBy)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -337,14 +332,14 @@ func (p *Postgres) GetAPIKeyByHash(ctx context.Context, hash []byte) (*APIKey, e
 	return k, nil
 }
 
-// GetAPIKey fetches one of an owner's keys.
-func (p *Postgres) GetAPIKey(ctx context.Context, owner string, id uuid.UUID) (*APIKey, error) {
-	return scanKey(p.pool.QueryRow(ctx, `select `+keyCols+` from api_keys where org_id=$1 and id=$2`, owner, id))
+// GetAPIKey fetches one key.
+func (p *Postgres) GetAPIKey(ctx context.Context, id uuid.UUID) (*APIKey, error) {
+	return scanKey(p.pool.QueryRow(ctx, `select `+keyCols+` from api_keys where id=$1`, id))
 }
 
-// ListAPIKeys returns an owner's keys, newest first.
-func (p *Postgres) ListAPIKeys(ctx context.Context, owner string) ([]*APIKey, error) {
-	rows, err := p.pool.Query(ctx, `select `+keyCols+` from api_keys where org_id=$1 order by created_at desc`, owner)
+// ListAPIKeys returns every key, newest first.
+func (p *Postgres) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
+	rows, err := p.pool.Query(ctx, `select `+keyCols+` from api_keys order by created_at desc`)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -361,8 +356,8 @@ func (p *Postgres) ListAPIKeys(ctx context.Context, owner string) ([]*APIKey, er
 }
 
 // RevokeAPIKey soft-deletes a key.
-func (p *Postgres) RevokeAPIKey(ctx context.Context, owner string, id uuid.UUID) error {
-	tag, err := p.pool.Exec(ctx, `update api_keys set revoked_at=now() where org_id=$1 and id=$2 and revoked_at is null`, owner, id)
+func (p *Postgres) RevokeAPIKey(ctx context.Context, id uuid.UUID) error {
+	tag, err := p.pool.Exec(ctx, `update api_keys set revoked_at=now() where id=$1 and revoked_at is null`, id)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -374,14 +369,14 @@ func (p *Postgres) RevokeAPIKey(ctx context.Context, owner string, id uuid.UUID)
 
 // ---- audit -------------------------------------------------------------
 
-const auditCols = `id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, coalesce(api_key_prefix,''), server_id, coalesce(slug,''), route,
+const auditCols = `id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, coalesce(api_key_prefix,''), server_id, coalesce(slug,''), route,
 http_method, path, coalesce(mcp_method,''), coalesce(tool_name,''), coalesce(jsonrpc_id,''), coalesce(protocol_version,''), status_code, outcome,
 request_bytes, response_bytes, duration_ms, request_id, coalesce(error_type,''), has_payload, coalesce(actor_user_id,''), rule_hits`
 
 func scanAudit(row pgx.Row) (*AuditEvent, error) {
 	var e AuditEvent
 	var rules []byte
-	err := row.Scan(&e.ID, &e.OrgID, &e.CreatedAt, &e.Hop, &e.ParentID, &e.ActorType, &e.ActorSubject, &e.APIKeyID, &e.APIKeyPrefix, &e.ServerID, &e.Slug, &e.Route,
+	err := row.Scan(&e.ID, &e.CreatedAt, &e.Hop, &e.ParentID, &e.ActorType, &e.ActorSubject, &e.APIKeyID, &e.APIKeyPrefix, &e.ServerID, &e.Slug, &e.Route,
 		&e.HTTPMethod, &e.Path, &e.McpMethod, &e.ToolName, &e.JSONRPCID, &e.ProtocolVersion, &e.StatusCode, &e.Outcome,
 		&e.RequestBytes, &e.ResponseBytes, &e.DurationMS, &e.RequestID, &e.ErrorType, &e.HasPayload, &e.ActorUserID, &rules)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -410,10 +405,10 @@ func (p *Postgres) InsertAuditEvent(ctx context.Context, e *AuditEvent, payload 
 	if e.Rules != nil && len(e.Rules.Hits) > 0 {
 		rules, _ = json.Marshal(e.Rules)
 	}
-	_, err = tx.Exec(ctx, `insert into audit_events (id, org_id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, api_key_prefix, server_id, slug, route,
+	_, err = tx.Exec(ctx, `insert into audit_events (id, created_at, hop, parent_id, actor_type, actor_subject, api_key_id, api_key_prefix, server_id, slug, route,
 http_method, path, mcp_method, tool_name, jsonrpc_id, protocol_version, status_code, outcome, request_bytes, response_bytes, duration_ms, request_id, error_type, has_payload, actor_user_id, rule_hits)
-values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,''),$19,$20,$21,$22,$23,$24,nullif($25,''),$26,$27,$28)`,
-		e.ID, e.OrgID, e.CreatedAt, e.Hop, e.ParentID, e.ActorType, e.ActorSubject, e.APIKeyID, e.APIKeyPrefix, e.ServerID, e.Slug, e.Route,
+values ($1,$2,$3,$4,$5,$6,$7,nullif($8,''),$9,nullif($10,''),$11,$12,$13,nullif($14,''),nullif($15,''),nullif($16,''),nullif($17,''),$18,$19,$20,$21,$22,$23,nullif($24,''),$25,$26,$27)`,
+		e.ID, e.CreatedAt, e.Hop, e.ParentID, e.ActorType, e.ActorSubject, e.APIKeyID, e.APIKeyPrefix, e.ServerID, e.Slug, e.Route,
 		e.HTTPMethod, e.Path, e.McpMethod, e.ToolName, e.JSONRPCID, e.ProtocolVersion, e.StatusCode, e.Outcome, e.RequestBytes, e.ResponseBytes, e.DurationMS, e.RequestID, e.ErrorType, payload != nil, e.ActorUserID, rules)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
@@ -432,10 +427,10 @@ values ($1,$2,$3,$4,$5,$6,$7,$8,nullif($9,''),$10,nullif($11,''),$12,$13,$14,nul
 	return nil
 }
 
-// ListAuditEvents pages through an owner's events, newest first.
+// ListAuditEvents pages through events, newest first.
 func (p *Postgres) ListAuditEvents(ctx context.Context, q AuditQuery) (*Page[*AuditEvent], error) {
-	where := []string{"org_id=$1"}
-	args := []any{q.OrgID}
+	where := []string{"true"}
+	var args []any
 	add := func(cond string, v any) {
 		args = append(args, v)
 		where = append(where, fmt.Sprintf(cond, len(args)))
@@ -460,9 +455,6 @@ func (p *Postgres) ListAuditEvents(ctx context.Context, q AuditQuery) (*Page[*Au
 	}
 	if q.RequestID != "" {
 		add("request_id=$%d", q.RequestID)
-	}
-	if q.ActorUserID != "" {
-		add("actor_user_id=$%d", q.ActorUserID)
 	}
 	w := strings.Join(where, " and ")
 	var total int
@@ -491,8 +483,8 @@ func (p *Postgres) ListAuditEvents(ctx context.Context, q AuditQuery) (*Page[*Au
 }
 
 // GetAuditEvent fetches an event and its payload, if stored.
-func (p *Postgres) GetAuditEvent(ctx context.Context, owner string, id uuid.UUID) (*AuditEvent, *AuditPayload, error) {
-	e, err := scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where org_id=$1 and id=$2`, owner, id))
+func (p *Postgres) GetAuditEvent(ctx context.Context, id uuid.UUID) (*AuditEvent, *AuditPayload, error) {
+	e, err := scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where id=$1`, id))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -518,8 +510,8 @@ func (p *Postgres) GetAuditEvent(ctx context.Context, owner string, id uuid.UUID
 // (nil when the event has no inbound parent, as for API-initiated pings) and
 // every hop under it in start order. Without a parent, hops sharing the
 // request id form the trace.
-func (p *Postgres) GetAuditTrace(ctx context.Context, owner string, id uuid.UUID) (*AuditEvent, []*AuditEvent, error) {
-	e, err := scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where org_id=$1 and id=$2`, owner, id))
+func (p *Postgres) GetAuditTrace(ctx context.Context, id uuid.UUID) (*AuditEvent, []*AuditEvent, error) {
+	e, err := scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where id=$1`, id))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -528,16 +520,16 @@ func (p *Postgres) GetAuditTrace(ctx context.Context, owner string, id uuid.UUID
 	case e.Hop == HopInbound:
 		root = e
 	case e.ParentID != nil:
-		root, err = scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where org_id=$1 and id=$2`, owner, *e.ParentID))
+		root, err = scanAudit(p.pool.QueryRow(ctx, `select `+auditCols+` from audit_events where id=$1`, *e.ParentID))
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return nil, nil, err
 		}
 	}
 	var rows pgx.Rows
 	if root != nil {
-		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where org_id=$1 and parent_id=$2 order by created_at`, owner, root.ID)
+		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where parent_id=$1 order by created_at`, root.ID)
 	} else if e.RequestID != "" {
-		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where org_id=$1 and request_id=$2 and hop='upstream' order by created_at`, owner, e.RequestID)
+		rows, err = p.pool.Query(ctx, `select `+auditCols+` from audit_events where request_id=$1 and hop='upstream' order by created_at`, e.RequestID)
 	} else {
 		return nil, []*AuditEvent{e}, nil
 	}
