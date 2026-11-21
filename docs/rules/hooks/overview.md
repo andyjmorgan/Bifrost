@@ -6,8 +6,8 @@ This page explains the tree, how to read values that may be absent, the rule sha
 
 ## Concepts
 
-- Route: how a client reaches the gateway. `/<slug>/mcp` is the direct route and exposes one entitlement. `/mcp` is the mux route and exposes every entitlement the caller holds. `?search=true` on either route is search mode, which replaces the tool list with search tools.
-- Entitlement: a named, grantable view of one server, with its own slug.
+- Route: how a client reaches the gateway. `/<slug>/mcp` is the direct route and exposes one server. `/mcp` is the mux route and exposes every server the caller holds. `?search=true` on either route is search mode, which replaces the tool list with search tools.
+- Server: one MCP server behind the gateway, with its own slug, its rules and the users and roles it is granted to.
 - Catalog: what the server offers. The gateway fetches and caches it per server. Rules never change the catalog. They shape a view of it for each request.
 - Hook: a point in request handling where rules run. Each hook has its own tree.
 - Rule: one CEL condition and the paths it sets when the condition is true.
@@ -53,13 +53,12 @@ What a rule can see on a hook is one tree. Hooks differ only in which branches e
 
 | Branch | What it holds | Hooks that have it |
 | --- | --- | --- |
-| `tool`, `prompt`, `resource`, `template`, `skill` | The item the hook is about, as this entitlement presents it. Its fields are MCP's fields | The hooks of that item |
+| `tool`, `prompt`, `resource`, `template`, `skill` | The item the hook is about, as the gateway presents it. Its fields are MCP's fields | The hooks of that item |
 | `request` | The request: MCP's `method` and `params`, plus what the gateway knows about who sent it and how | Every hook |
 | `response` | The response the client will get: `response.result` | The two `post.result` hooks |
 | `progress` | One progress notification: `progress.params` | The three `post.progress` hooks |
 | `elicitation` | One question the server asks the user: `elicitation.key`, `elicitation.method`, `elicitation.params` | The three `post.elicit` hooks |
-| `server` | The server as this entitlement presents it | Every hook |
-| `entitlement` | The entitlement serving the request: `id`, `slug`, `name` | Every hook |
+| `server` | The server as the gateway presents it, with its `id` and `slug` | Every hook |
 | `settings` | The switches a rule sets. Rules cannot read it | `server.settings` |
 | `session` | What the server is told about the client. Rules cannot read it | `server.session` |
 
@@ -69,7 +68,7 @@ The gateway's own additions sit beside MCP's part, never inside it: `request.cal
 
 ### What upstream means
 
-`X` is this entitlement's form of a thing. `X.upstream` is the same thing in the server's own terms:
+`X` is the gateway's form of a thing, after earlier rules changed it. `X.upstream` is the same thing in the server's own terms:
 
 - `tool.upstream` is the tool as the server declares it
 - `request.upstream` is the request as the server receives it
@@ -155,13 +154,13 @@ On Bifrost, `request.caller` has `userId`, `orgId`, `role` and `type`, and `emai
 
 `request.headers` holds only the headers the operator names in `MCPGW_RULE_HEADERS`. Headers that carry credentials never reach a rule, even when the operator names them: any header whose name contains `auth`, `cookie`, `token`, `secret`, `password`, `credential`, `signature`, `session`, `api-key` or `apikey`. Read a header with `request.headers[?'x-team'].orValue('')`, because a header the client did not send is absent.
 
-### The server and entitlement branches
+### The server branch
 
 | Path | Type | What it holds |
 | --- | --- | --- |
-| `server.slug` | string | The entitlement's slug for this server |
+| `server.id` | string | The server's identity, which never changes. The slug when the gateway has no id |
+| `server.slug` | string | The server's slug |
 | `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` | string | What the gateway knows about the server. Each is absent when the server did not say |
-| `entitlement.id`, `entitlement.slug`, `entitlement.name` | string | The entitlement serving the request |
 
 ## Optional values
 
@@ -272,9 +271,9 @@ A rule does not compile when:
 - a list rule sets `reason` without `decision`. A reason only has an effect beside a deny
 - a pin or default in `tools/list.post` reads the request, such as `request.caller`
 
-An enabled rule that does not compile fails the whole entitlement closed. The entitlement exposes nothing, and listings report the problem to administrators.
+An enabled rule that does not compile fails the whole server closed. The server exposes nothing, and listings report the problem to administrators.
 
-A disabled rule that does not compile is ignored. The gateway reports it as a warning, so nobody enables the rule without seeing the error. The entitlement keeps working.
+A disabled rule that does not compile is ignored. The gateway reports it as a warning, so nobody enables the rule without seeing the error. The server keeps working.
 
 `when` has no `else`. A rule either matches or does not. For two outcomes, write two rules, or use a ternary (`cond ? a : b`) inside a `then` value.
 
@@ -345,7 +344,7 @@ The first deny stops evaluation for that item, and no later rule can undo it. Be
 
 A deny rule for all `delete_` tools followed by a rule meant to re-allow some callers hides the tools from them too.
 
-To give a group of callers different rules, grant them a different entitlement. Rules belong to the entitlement, so this is usually simpler than listing exceptions.
+To give a group of callers different rules, leave them out of the deny itself, for example with `&& request.caller.?role.orValue('') != 'admin'`. A later rule cannot undo a deny.
 
 ### Audit mode
 

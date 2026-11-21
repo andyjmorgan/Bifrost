@@ -269,7 +269,7 @@ func TestHooksAreStoredAsTextByProperty(t *testing.T) {
 // Rule text is stored, so text that was saved must keep compiling. The
 // corpus is text as it was saved: it is added to, never edited. A change to
 // the compiler or the tree that breaks an entry here would leave real
-// entitlements exposing nothing.
+// servers exposing nothing.
 func TestSavedTextKeepsCompiling(t *testing.T) {
 	raw, err := os.ReadFile("testdata/saved.json")
 	if err != nil {

@@ -18,8 +18,7 @@
 | `skill` | `skill.uri`, the skill's URI, such as `skill://notebooks/SKILL.md`, without the mux prefix. `skill.frontmatter`, the parsed `SKILL.md` frontmatter. `skill.name` and `skill.description`, from the frontmatter. `skill.resources`, the manifest: a list of `{uri, digest, size}`, or `"dynamic"` |
 | `skill.upstream` | The entry as the server sent it |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 Only `skill.uri` is always present. Read the other fields with the [optional forms](overview.md#optional-values):
 

@@ -7,16 +7,18 @@ import { FormField, FormSection } from '../FormField'
 import { Callout } from '../Callout'
 import { api, errorMessage, type CreateServerResult, type ServerDTO, type UpdateServerInput } from '../../api'
 import { AuthFields, emptyAuthDraft, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
-import { slugBase } from '../entitlements/selection'
+import { SLUG_MAX, slugBase, slugProblem } from '../rules/selection'
 
 interface Draft {
   name: string
+  /** Create only; empty = derived from the name. */
+  slug: string
   url: string
   description: string
   auth: AuthDraft
 }
 
-const emptyDraft = (): Draft => ({ name: '', url: '', description: '', auth: emptyAuthDraft('none') })
+const emptyDraft = (): Draft => ({ name: '', slug: '', url: '', description: '', auth: emptyAuthDraft('none') })
 
 function isHttpUrl(s: string): boolean {
   try {
@@ -28,9 +30,9 @@ function isHttpUrl(s: string): boolean {
 }
 
 /**
- * Create or edit a server. In create mode the auth section is part of the form; the result may
- * carry an authorizeUrl, which the caller follows for OAuth consent. In edit mode only name,
- * URL and description change (credentials have their own dialog).
+ * Create or edit a server. In create mode the slug and auth section are part of the form; the
+ * result may carry an authorizeUrl, which the caller follows for OAuth consent. In edit mode only
+ * name, URL and description change (the slug is fixed; credentials have their own dialog).
  */
 export function ServerDialog({
   open,
@@ -53,7 +55,7 @@ export function ServerDialog({
   useEffect(() => {
     if (!open) return
     setError(undefined)
-    setDraft(server ? { name: server.name, url: server.url, description: server.description, auth: emptyAuthDraft(server.authKind) } : emptyDraft())
+    setDraft(server ? { name: server.name, slug: server.slug, url: server.url, description: server.description, auth: emptyAuthDraft(server.authKind) } : emptyDraft())
   }, [open, server])
 
   const submit = async (e: FormEvent) => {
@@ -62,7 +64,10 @@ export function ServerDialog({
     const url = draft.url.trim()
     if (!name) return setError('Name is required.')
     if (!isHttpUrl(url)) return setError('URL must be an absolute http(s) URL.')
+    const slug = draft.slug.trim()
     if (!editing) {
+      const slugErr = slug ? slugProblem(slug) : undefined
+      if (slugErr) return setError(slugErr)
       const authErr = validateAuth(draft.auth)
       if (authErr) return setError(authErr)
     }
@@ -77,7 +82,7 @@ export function ServerDialog({
         const updated = Object.keys(patch).length ? await api.servers.update(server.id, patch) : server
         onUpdated?.(updated)
       } else {
-        const result = await api.servers.create({ name, url, description: draft.description, auth: toAuthInput(draft.auth) })
+        const result = await api.servers.create({ name, url, description: draft.description, slug: slug || undefined, auth: toAuthInput(draft.auth) })
         onCreated?.(result)
       }
     } catch (err) {
@@ -95,28 +100,35 @@ export function ServerDialog({
             <DialogTitle>{editing ? 'Edit server' : 'New server'}</DialogTitle>
             <DialogDescription>
               {editing
-                ? 'Rename or re-point the server. Its entitlement slugs and gateway URLs never change.'
+                ? 'Rename or re-point the server. Its slug and gateway URL never change.'
                 : 'Register an upstream MCP server. Agents reach it through the gateway with one of your API keys.'}
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
             <FormSection title="Server">
-              <FormField
-                label="Name"
-                required
-                hint={
-                  editing ? (
-                    'Renaming the server does not rename its entitlements.'
-                  ) : (
-                    <>
-                      A default entitlement offering everything, granted to admins, is created under the slug{' '}
-                      <span className="font-mono text-foreground">{slugBase(draft.name)}</span> (a number is added if it is taken).
-                    </>
-                  )
-                }
-              >
+              <FormField label="Name" required>
                 <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Atlassian" autoFocus required />
               </FormField>
+              {!editing && (
+                <FormField
+                  label="Slug"
+                  hint={
+                    <>
+                      Clients reach it at <span className="font-mono text-foreground">/{draft.slug.trim() || slugBase(draft.name)}/mcp</span> and see its tools as{' '}
+                      <span className="font-mono text-foreground">{draft.slug.trim() || slugBase(draft.name)}__tool</span>. Leave empty to derive it from the name. It cannot be
+                      changed later.
+                    </>
+                  }
+                >
+                  <Input
+                    value={draft.slug}
+                    maxLength={SLUG_MAX}
+                    onChange={(e) => setDraft({ ...draft, slug: e.target.value.toLowerCase() })}
+                    placeholder={slugBase(draft.name)}
+                    className="font-mono"
+                  />
+                </FormField>
+              )}
               <FormField label="URL" required hint="The upstream Streamable HTTP endpoint.">
                 <Input
                   type="url"

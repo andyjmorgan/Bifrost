@@ -171,32 +171,32 @@ func TestAStateKeyIsOpaqueAndRedeemedOnce(t *testing.T) {
 	}
 }
 
-// Confirmation state is bound to the entitlement it was issued under. The
-// same user with an entitlement of the same slug, target and generation in
-// another organization cannot answer it.
-func TestStateIsBoundToTheEntitlement(t *testing.T) {
-	e, r := entitledRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
+// Confirmation state is bound to the server it was issued under. The same
+// user on a server of the same slug, target and generation in another
+// organization cannot answer it.
+func TestStateIsBoundToTheServer(t *testing.T) {
+	e, r := serverRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
 	first := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t"})
 	ir, ok := first.Result.(InputRequired)
 	if !ok {
 		t.Fatalf("initial confirmation: %+v", first)
 	}
-	// The same user holds a same-slug entitlement in another organization.
-	// Entitlement IDs differ; target and generation deliberately do not.
+	// The same user holds a same-slug server in another organization.
+	// Server IDs differ; target and generation deliberately do not.
 	s2 := *r.Servers[0]
-	s2.Entitlement = map[string]any{"id": "entitlement-b"}
+	s2.ID = "server-b"
 	r.Servers = []*Server{&s2}
 	r.Caller = map[string]any{"userId": "u", "orgId": "org-b"}
 	out := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t", RequestState: ir.RequestState, InputResponses: yesTo("ok")})
 	if out.Forward != nil || out.Error == nil {
-		t.Fatalf("state crossed entitlement identities: %+v", out)
+		t.Fatalf("state crossed server identities: %+v", out)
 	}
 }
 
 // State issued under one generation of a server's rules is refused under the
 // next, with a message that says the policy is older.
 func TestStateFromAnOlderGenerationIsRefused(t *testing.T) {
-	e, r := entitledRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
+	e, r := serverRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
 	first := e.CallTool(context.Background(), r, &mcp.CallToolParamsRaw{Name: "t"})
 	ir, ok := first.Result.(InputRequired)
 	if !ok {

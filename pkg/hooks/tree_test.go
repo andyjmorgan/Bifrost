@@ -269,7 +269,7 @@ func TestAnUnguardedOptionalReadIsNoted(t *testing.T) {
 }
 
 // X.upstream has the same form as X: every key the canonical side has is a
-// key of the entitlement's side, and nothing under it can be set.
+// key of the gateway's side, and nothing under it can be set.
 func TestUpstreamMirrorsItsParent(t *testing.T) {
 	for name, h := range Hooks {
 		for branch, n := range h.Tree().Keys {

@@ -34,8 +34,7 @@ A rule that fails also hides the prompt. The prompt cannot be fetched, and the l
 | `prompt.params` | The gateway's view of the same arguments, by name |
 | `prompt.upstream` | The prompt as the server declares it. It never changes |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 Only `prompt.name` is always present. Read the other fields with the [optional forms](overview.md#optional-values):
 

@@ -206,7 +206,7 @@ func TestAnEscapedDotInAnArgumentKeyNamesOneArgument(t *testing.T) {
 // argument that a list rule hid. The call is not forwarded without the
 // argument.
 func TestAnAuditRuleCannotSupplyAHiddenRequiredArgument(t *testing.T) {
-	e, r := entitledRequest(t,
+	e, r := serverRequest(t,
 		Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.params.tenant.hide": "true"}},
 		Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"request.params.arguments.tenant": "'A'"}},
 	)

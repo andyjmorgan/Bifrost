@@ -74,7 +74,7 @@ func (m *memStore) bundle(id uuid.UUID, ns []string) store.CacheBundle {
 	return b
 }
 
-func (m *memStore) GetExposureBySlug(_ context.Context, _, _, _, slug string) (*store.Server, error) {
+func (m *memStore) GetGrantedBySlug(_ context.Context, _, _, _, slug string) (*store.Server, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.servers {
@@ -86,7 +86,7 @@ func (m *memStore) GetExposureBySlug(_ context.Context, _, _, _, slug string) (*
 	return nil, store.ErrNotFound
 }
 
-func (m *memStore) ListExposuresWithCache(_ context.Context, _, _, _ string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
+func (m *memStore) ListGrantedWithCache(_ context.Context, _, _, _ string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []*store.Server
@@ -99,8 +99,8 @@ func (m *memStore) ListExposuresWithCache(_ context.Context, _, _, _ string, ns 
 	return out, bundles, nil
 }
 
-func (m *memStore) GetExposureBySlugWithCache(ctx context.Context, org, user, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
-	s, err := m.GetExposureBySlug(ctx, org, user, role, slug)
+func (m *memStore) GetGrantedBySlugWithCache(ctx context.Context, org, user, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
+	s, err := m.GetGrantedBySlug(ctx, org, user, role, slug)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,19 +206,19 @@ type rig struct {
 	gw    *gateway.Gateway
 }
 
-// entitle registers an entitlement on an upstream, with its rules.
-func (r *rig) entitle(slug string, u *harness.Upstream, rules ...hooks.Rule) *store.Server {
+// serve registers a server on an upstream, with its rules.
+func (r *rig) serve(slug string, u *harness.Upstream, rules ...hooks.Rule) *store.Server {
 	r.t.Helper()
 	pol := stored(r.t, rules...)
 	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Server " + slug, Description: "the " + slug + " server", URL: u.URL(), Enabled: true,
-		Slug: slug, EntitlementID: uuid.New(), EntitlementName: "Readers of " + slug, Hooks: pol, Generation: 1, UpdatedAt: time.Now()}
+		Slug: slug, Hooks: pol, Generation: 1, UpdatedAt: time.Now()}
 	r.store.mu.Lock()
 	r.store.servers = append(r.store.servers, s)
 	r.store.mu.Unlock()
 	return s
 }
 
-// stored is rules as an entitlement keeps them: the text of each hook's
+// stored is rules as a server keeps them: the text of each hook's
 // rules, by hook property. A rule's own name does not survive being written
 // as text; it becomes its hook and line.
 func stored(t testing.TB, rules ...hooks.Rule) []byte {
@@ -377,7 +377,7 @@ func TestDirectListAndCallGoThroughTheRules(t *testing.T) {
 	})
 	u.Tool(toolKeep, harness.Static(harness.Reply{Result: harness.Text("kept")}))
 	u.Tool(`{"name":"secret","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
-	r.entitle("a", u,
+	r.serve("a", u,
 		deny("tools/list.post", "tool.name == 'secret'"),
 		hooks.Rule{Hook: "tools/list.post", When: "tool.upstream.name == 't'", Then: map[string]string{"tool.name": "'renamed'", "tool.description": "'changed'"}})
 
@@ -409,7 +409,7 @@ func TestRuleHitsAreKeptOnTheAuditEvent(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("served")}))
 	u.Tool(`{"name":"secret","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
-	r.entitle("a", u,
+	r.serve("a", u,
 		hooks.Rule{Hook: "tools/list.post", When: "tool.name == 'secret'", Then: map[string]string{"decision": "'deny'", "reason": "'Hidden.'"}},
 		hooks.Rule{Mode: "audit", Hook: "tools/call.pre", When: "true", Then: map[string]string{"decision": "'deny'", "reason": "'Would block.'"}},
 		hooks.Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'reworded'}]"}})
@@ -448,8 +448,8 @@ func TestSelectionCutsBeforeTheRules(t *testing.T) {
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ok")}))
 	u.Tool(toolKeep, harness.Static(harness.Reply{Result: harness.Text("kept")}))
 	// A rule that would rename everything: it must never see a tool the
-	// entitlement's allow list left out.
-	s := r.entitle("a", u, hooks.Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "'seen by rules'"}})
+	// server's allow list left out.
+	s := r.serve("a", u, hooks.Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "'seen by rules'"}})
 	r.store.mu.Lock()
 	s.Selection = store.Selection{store.SelTools: {"keep"}}
 	r.store.mu.Unlock()
@@ -468,8 +468,8 @@ func TestMuxPrefixesRoutesAndKeepsTheGatewayTools(t *testing.T) {
 	a, b := harness.NewUpstream(t, harness.V2026), harness.NewUpstream(t, harness.V2026)
 	a.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("from a")}))
 	b.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("from b")}))
-	r.entitle("a", a, deny("tools/call.pre", "has(request.params.arguments.q) && request.params.arguments.q == 'no'"))
-	r.entitle("b", b)
+	r.serve("a", a, deny("tools/call.pre", "has(request.params.arguments.q) && request.params.arguments.q == 'no'"))
+	r.serve("b", b)
 
 	got := names(t, harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"}), "tools", "name")
 	if !same(got, "a__t", "b__t", hooks.InstructionsTool, gateway.RefreshTool) {
@@ -502,10 +502,10 @@ func TestMuxReportsAServerItCannotReach(t *testing.T) {
 	r := newRig(t)
 	a := harness.NewUpstream(t, harness.V2026)
 	a.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("from a")}))
-	r.entitle("a", a)
+	r.serve("a", a)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusBadGateway) }))
 	t.Cleanup(dead.Close)
-	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", EntitlementID: uuid.New(), Hooks: []byte("{}"), Generation: 1}
+	s := &store.Server{ID: uuid.New(), OrgID: "org", Name: "Dead", URL: dead.URL, Enabled: true, Slug: "dead", Hooks: []byte("{}"), Generation: 1}
 	r.store.servers = append(r.store.servers, s)
 
 	rep := harness.Raw(t, r.mux(), harness.RawRequest{Method: "tools/list"})
@@ -525,7 +525,7 @@ func TestResultRulesShapeTheReply(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{RawResult: `{"content":[{"type":"text","text":"hi"}],"structuredContent":{"keep":1,"internal":2}}`}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "has(response.result.structuredContent)", Then: map[string]string{"response.result.structuredContent": "drop(response.result.structuredContent, ['internal'])"}})
+	r.serve("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "has(response.result.structuredContent)", Then: map[string]string{"response.result.structuredContent": "drop(response.result.structuredContent, ['internal'])"}})
 	res := harness.Raw(t, r.direct("a"), call("t", nil)).Result()
 	if got := dump(res["structuredContent"]); got != `{"keep":1}` {
 		t.Fatalf("structuredContent = %s", got)
@@ -544,7 +544,7 @@ func TestAReplyTheClientLibraryCannotReadEndsTheCallWithAnError(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{RawResult: `{"content":[{"type":"text","text":"hi"},{"type":"hologram","depth":3}]}`}))
 	u.Tool(toolKeep, harness.Static(harness.Reply{Result: harness.Text("kept")}))
-	r.entitle("a", u)
+	r.serve("a", u)
 	rep := harness.Raw(t, r.direct("a"), call("t", nil))
 	if code(rep) != float64(hooks.CodeUpstreamLost) {
 		t.Fatalf("want a JSON-RPC error that ends the call, got %v", rep.Final())
@@ -563,7 +563,7 @@ func TestProgressIsRelayedUnderTheClientsTokenAndShapedByRules(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"),
 		Progress: []harness.Progress{{Progress: 1, Total: 3, Message: "step 1"}, {Progress: 2, Total: 3, Message: "reading /srv/secret"}, {Progress: 3, Total: 3, Message: "step 3"}}}))
-	r.entitle("a", u,
+	r.serve("a", u,
 		deny("tools/call.post.progress", "progress.params.message.contains('/srv')"),
 		hooks.Rule{Hook: "tools/call.post.progress", When: "progress.params.message.startsWith('step')", Then: map[string]string{"progress.params.message": "'working: ' + progress.params.message"}})
 
@@ -606,7 +606,7 @@ func TestALostReplyTellsTheClientNothingAboutTheServer(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Status: 502, Body: "bad gateway body"}))
 	u.Tool(toolKeep, harness.Static(harness.Reply{Stream: true, NoFinal: true}))
-	r.entitle("a", u)
+	r.serve("a", u)
 	for _, name := range []string{"t", "keep"} {
 		rep := harness.Raw(t, r.direct("a"), call(name, nil))
 		if code(rep) != float64(hooks.CodeUpstreamLost) {
@@ -628,7 +628,7 @@ func TestConfirmationRoundTripUsesTheSharedStoreOnce(t *testing.T) {
 	u.Tool(`{"name":"delete","inputSchema":{"type":"object","properties":{"id":{"type":"string"}}}}`, func(rec harness.Recorded) harness.Reply {
 		return harness.Reply{Result: harness.Text("deleted " + rec.Args()["id"].(string))}
 	})
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Delete {id}?', {'id': request.params.arguments.id})"}})
+	r.serve("a", u, hooks.Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Delete {id}?', {'id': request.params.arguments.id})"}})
 
 	ask := call("delete", map[string]any{"id": "42"})
 	ask.Capabilities = elicits
@@ -676,7 +676,7 @@ func TestAClientThatCannotBeAskedIsRefusedNotAsked(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ran")}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Sure?')"}})
+	r.serve("a", u, hooks.Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"confirm": "elicit('ok', 'Sure?')"}})
 	rep := harness.Raw(t, r.direct("a"), call("t", nil)) // declares no elicitation
 	if res := rep.Result(); res != nil && res["resultType"] == "input_required" {
 		t.Fatalf("a client with no elicitation was asked: %v", res)
@@ -695,7 +695,7 @@ func TestTheServerSeesTheIdentityAndMetaTheRulesDecide(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ok")}))
-	s := r.entitle("a", u)
+	s := r.serve("a", u)
 	req := call("t", nil)
 	req.ExactMeta = true
 	req.Meta = map[string]any{"trace": "abc",
@@ -739,7 +739,7 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2025)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("old ok"), ForceProgress: true, Progress: []harness.Progress{{Progress: 1, Message: "unasked"}}}))
-	r.entitle("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'shaped ' + response.result.content[0].text}]"}})
+	r.serve("a", u, hooks.Rule{Hook: "tools/call.post.result", When: "true", Then: map[string]string{"response.result.content": "[{'type': 'text', 'text': 'shaped ' + response.result.content[0].text}]"}})
 	req := call("t", nil)
 	req.ProgressToken = "client-token"
 	rep := harness.Raw(t, r.direct("a"), req)
@@ -758,7 +758,7 @@ func TestAnOlderServerIsCalledThroughItsHandshakeWithNoProgress(t *testing.T) {
 
 // ---- rules that cannot be used ------------------------------------------------------------
 
-func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
+func TestRulesThatDoNotLoadFailTheServerClosed(t *testing.T) {
 	for name, stored := range map[string]string{
 		"a list of JSON rules": `[{"hook":"tools/list.post","when":"true","then":{"decision":"'deny'"}}]`,
 		"the form before this": `{"text":{"tools/list.post":"when true deny"},"rules":[]}`,
@@ -771,13 +771,13 @@ func TestRulesThatDoNotLoadFailTheEntitlementClosed(t *testing.T) {
 			r := newRig(t)
 			u := harness.NewUpstream(t, harness.V2026)
 			u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ran")}))
-			s := r.entitle("a", u)
+			s := r.serve("a", u)
 			s.Hooks = []byte(stored)
 			if got := names(t, harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}), "tools", "name"); len(got) != 0 {
-				t.Fatalf("an entitlement with unusable rules listed %v", got)
+				t.Fatalf("a server with unusable rules listed %v", got)
 			}
 			if rep := harness.Raw(t, r.direct("a"), call("t", nil)); rep.Error() == nil {
-				t.Fatalf("an entitlement with unusable rules ran a call: %v", rep.Final())
+				t.Fatalf("a server with unusable rules ran a call: %v", rep.Final())
 			}
 			if len(u.Requests("tools/call")) != 0 {
 				t.Fatalf("the call reached the server")
@@ -796,7 +796,7 @@ func TestPromptsAndResourcesGoThroughTheRules(t *testing.T) {
 	u.Resource("docs://a", harness.Static(harness.Reply{Result: harness.Contents("docs://a", "body with token=abc")}))
 	u.Resource("docs://hidden", harness.Static(harness.Reply{Result: harness.Contents("docs://hidden", "x")}))
 	u.Resource("other://b", harness.Static(harness.Reply{Result: harness.Contents("other://b", "x")}))
-	s := r.entitle("a", u,
+	s := r.serve("a", u,
 		deny("prompts/list.post", "prompt.name == 'secret'"),
 		deny("resources/list.post", "resource.uri == 'docs://hidden'"),
 		hooks.Rule{Hook: "resources/read.post.result", When: "response.result.contents.exists(c, has(c.text) && c.text.contains('token='))", Then: map[string]string{"response.result.contents": "response.result.contents.map(c, has(c.text) ? {'uri': c.uri, ?'mimeType': c.?mimeType, 'text': c.text.replace('token=abc', 'token=***')} : c)"}})
@@ -825,7 +825,7 @@ func TestPromptsAndResourcesGoThroughTheRules(t *testing.T) {
 		t.Fatalf("a resource a rule denies was read: %v", rep.Final())
 	}
 	if rep := read("other://b"); rep.Error() == nil {
-		t.Fatalf("a resource outside the entitlement's selection was read: %v", rep.Final())
+		t.Fatalf("a resource outside the server's selection was read: %v", rep.Final())
 	}
 	if n := len(u.Requests("resources/read")); n != 1 {
 		t.Fatalf("the server saw %d reads, want 1", n)
@@ -838,7 +838,7 @@ func TestDiscoveryIsShapedByTheRules(t *testing.T) {
 	u.Instructions = "upstream instructions"
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ok")}))
 	u.Prompt(`{"name":"greet"}`, harness.Static(harness.Reply{RawResult: `{"messages":[]}`}))
-	r.entitle("a", u,
+	r.serve("a", u,
 		hooks.Rule{Hook: "server.settings", When: "true", Then: map[string]string{"settings.prompts": "false"}},
 		hooks.Rule{Hook: "server/discover.post", When: "true", Then: map[string]string{"server.instructions": "'gateway instructions'"}})
 	res := harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "server/discover"}).Result()
@@ -864,7 +864,7 @@ func TestSearchModeSearchesAndExecutesWhatTheRulesExpose(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(`{"name":"zebra_read","description":"zebra quartz reader","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("read ok")}))
 	u.Tool(`{"name":"zebra_admin","description":"zebra quartz admin","inputSchema":{"type":"object"}}`, harness.Static(harness.Reply{Result: harness.Text("admin ran")}))
-	r.entitle("a", u, deny("tools/list.post", "request.flags.search && tool.name == 'zebra_admin'"))
+	r.serve("a", u, deny("tools/list.post", "request.flags.search && tool.name == 'zebra_admin'"))
 	search := r.mux() + "?search=true"
 
 	list := harness.Raw(t, search, harness.RawRequest{Method: "tools/list"})
@@ -896,7 +896,7 @@ func TestACredentialTheOperatorMustFixIsSaidPlainly(t *testing.T) {
 	r := newRig(t)
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Result: harness.Text("ok")}))
-	s := r.entitle("a", u)
+	s := r.serve("a", u)
 	harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}) // warm the catalog
 	r.store.mu.Lock()
 	r.store.creds[s.ID] = &store.Credential{ServerID: s.ID, Kind: store.AuthOAuth, State: store.StateBroken, StateReason: "invalid_grant"}
@@ -914,7 +914,7 @@ func TestGoSDKClientThroughTheGateway(t *testing.T) {
 	u := harness.NewUpstream(t, harness.V2026)
 	u.Tool(toolT, harness.Static(harness.Reply{Stream: true, Result: harness.Text("done"), Progress: []harness.Progress{{Progress: 1, Total: 1, Message: "step 1"}}}))
 	u.Tool(`{"name":"delete","inputSchema":{"type":"object","properties":{"id":{"type":"string"}}}}`, harness.Static(harness.Reply{Result: harness.Text("deleted")}))
-	r.entitle("a", u,
+	r.serve("a", u,
 		hooks.Rule{Hook: "tools/list.post", When: "tool.upstream.name == 't'", Then: map[string]string{"tool.name": "'work'"}},
 		hooks.Rule{Hook: "tools/call.pre", When: "tool.name == 'delete'", Then: map[string]string{"confirm": "elicit('ok', 'Delete?')"}})
 
@@ -1024,7 +1024,7 @@ func TestOfficialSDKClientsThroughTheGateway(t *testing.T) {
 			u.Tool(`{"name":"secret","inputSchema":{"type":"object","properties":{}}}`, harness.Static(harness.Reply{Result: harness.Text("leak")}))
 			u.Prompt(`{"name":"greet"}`, harness.Static(harness.Reply{RawResult: `{"messages":[{"role":"user","content":{"type":"text","text":"hello"}}]}`}))
 			u.Resource("docs://a", harness.Static(harness.Reply{Result: harness.Contents("docs://a", "body token=abc")}))
-			r.entitle("a", u,
+			r.serve("a", u,
 				deny("tools/list.post", "tool.name == 'secret'"),
 				hooks.Rule{Hook: "tools/list.post", When: "tool.upstream.name == 't'", Then: map[string]string{"tool.name": "'work'"}},
 				hooks.Rule{Hook: "tools/call.post.progress", When: "true", Then: map[string]string{"progress.params.message": "'working: ' + progress.params.message"}},
@@ -1109,7 +1109,7 @@ func TestAServersOwnQuestionMakesTheRoundTrip(t *testing.T) {
 		}
 		return harness.Reply{RawResult: `{"resultType":"input_required","requestState":"S1","inputRequests":{"p":{"method":"elicitation/create","params":{"mode":"form","message":"Which project?","requestedSchema":{"type":"object","properties":{"project":{"type":"string"}}}}}}}`}
 	})
-	r.entitle("a", u,
+	r.serve("a", u,
 		hooks.Rule{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
 		hooks.Rule{Hook: "tools/call.post.elicit", When: "true", Then: map[string]string{"elicitation.params.message": "'Gateway asks: ' + elicitation.params.message"}})
 	ask := call("t", nil)
@@ -1153,7 +1153,7 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 		r.gw.SetMetaAllow(nil, allow)
 		u := harness.NewUpstream(t, harness.V2026)
 		u.Tool(tool, harness.Static(harness.Reply{RawResult: result}))
-		r.entitle("a", u)
+		r.serve("a", u)
 		list := harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}).Result()
 		item := list["tools"].([]any)[0].(map[string]any)
 		if got := dump(item["_meta"]); got != wantTool {
@@ -1179,7 +1179,7 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 }
 
 // Stored rules are text by hook property, and the engine's rules are
-// compiled from it when the entitlement loads. A rule's name is its hook
+// compiled from it when the server loads. A rule's name is its hook
 // and the line it starts on.
 func TestStoredTextCompilesToTheEnginesRules(t *testing.T) {
 	rs, err := gateway.ParseRules([]byte(`{"toolsListPost":"# hidden for now\nwhen tool.name == 'x'  deny\n","toolsCallPre":"audit when true  deny \"Would block.\""}`))

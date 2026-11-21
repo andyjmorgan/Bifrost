@@ -2497,7 +2497,7 @@
     "exclude": [
      {
       "harness": "typescript-sdk",
-      "reason": "The rule in this case does not compile, so the entitlement is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
+      "reason": "The rule in this case does not compile, so the server is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
      }
     ]
    }
@@ -2549,7 +2549,7 @@
     "exclude": [
      {
       "harness": "typescript-sdk",
-      "reason": "The rule in this case does not compile, so the entitlement is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
+      "reason": "The rule in this case does not compile, so the server is broken and discovery advertises no tools capability. The TypeScript SDK does not send tools/list when discovery did not advertise tools, so the listing this step asserts on is never requested."
      }
     ]
    }

@@ -477,9 +477,7 @@ func (p *goldenRun) setupReference(refs map[string]*servers.Server) {
 		}
 		g.MetaAllow = ss.MetaAllow
 		s := g.AddRemote(t, ss.Slug, refs[kinds[i]].URL, V2026, rules...)
-		if ss.Entitlement != nil {
-			s.Entitlement = ss.Entitlement
-		}
+		s.ID = ss.ID
 		if ss.Generation != "" {
 			s.Generation = ss.Generation
 		}

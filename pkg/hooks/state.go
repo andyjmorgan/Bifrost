@@ -25,7 +25,7 @@ type State struct {
 	Challenge     string            `json:"c"`             // id of this challenge
 	Method        string            `json:"m"`             // tools/call, prompts/get or resources/read
 	Caller        string            `json:"u"`             // caller user id
-	Entitlement   string            `json:"e"`             // entitlement slug
+	Server        string            `json:"s"`             // server id
 	Target        string            `json:"t"`             // upstream tool or prompt name, or resource URI
 	ArgsHash      string            `json:"h"`             // hash of the effective arguments before call rules
 	Generation    string            `json:"g"`             // policy generation

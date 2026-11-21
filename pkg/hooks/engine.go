@@ -17,21 +17,22 @@ const MaxArgDepth = 64
 // Separator joins slug and name on the mux route.
 const Separator = "__"
 
-// Server is one entitlement as the engine sees it: a slug on one upstream
-// server, that server's metadata and cached catalog, and the entitlement's
-// compiled rules.
+// Server is one server as the engine sees it: its slug, its metadata and
+// cached catalog, and its compiled rules.
 type Server struct {
-	Slug        string
-	Entitlement map[string]any
-	Info        ServerInfo
-	Rules       *Set
-	Generation  string
-	Catalog     Catalog
+	// ID is the server's immutable identity, which confirmation state is
+	// bound to. When it is empty the slug is used.
+	ID         string
+	Slug       string
+	Info       ServerInfo
+	Rules      *Set
+	Generation string
+	Catalog    Catalog
 	// Unavailable marks a server whose catalog could not be fetched; fallback
 	// resolution refuses to pick a match while one is unknown.
 	Unavailable bool
-	// Broken holds the reason the entitlement's rules do not compile. A
-	// broken entitlement fails closed: it exposes nothing.
+	// Broken holds the reason the server's rules do not compile. A broken
+	// server fails closed: it exposes nothing.
 	Broken error
 }
 
@@ -154,7 +155,7 @@ func (e *Engine) version() string {
 }
 
 // Request is the per-request context: who is calling, from what, on which
-// route, and which entitlements the route exposes.
+// route, and which servers the route exposes.
 type Request struct {
 	// Route is how the client reached the gateway: "direct" for one server,
 	// or "mux" for every server the caller holds. The two are exclusive.
@@ -180,12 +181,12 @@ type Request struct {
 	// empty: a header that carries a credential must never be on it.
 	Headers map[string]string
 	Now     time.Time
-	Servers []*Server // direct: exactly one; mux/search: every entitlement on the route (already narrowed by ?slugs=)
+	Servers []*Server // direct: exactly one; mux/search: every server on the route (already narrowed by ?slugs=)
 }
 
 func (r Request) context(s *Server) Context {
 	srv := map[string]any{
-		"slug": s.Slug, "name": s.Info.Name, "title": s.Info.Title, "description": s.Info.Description,
+		"id": serverID(s), "slug": s.Slug, "name": s.Info.Name, "title": s.Info.Title, "description": s.Info.Description,
 		"instructions": s.Info.Instructions, "protocolVersion": s.Info.ProtocolVersion, "url": s.Info.URL,
 	}
 	for k, v := range srv {
@@ -193,7 +194,7 @@ func (r Request) context(s *Server) Context {
 			delete(srv, k) // nothing is filled in for what the gateway does not know
 		}
 	}
-	return Context{Server: srv, Entitlement: s.Entitlement, Caller: r.Caller, Client: r.Client, Headers: r.Headers, Route: r.route(), Flags: r.Flags, Now: r.Now}
+	return Context{Server: srv, Caller: r.Caller, Client: r.Client, Headers: r.Headers, Route: r.route(), Flags: r.Flags, Now: r.Now}
 }
 
 // route is the route rules see: "direct" or "mux".
@@ -455,11 +456,11 @@ func (c Catalog) StripMeta(allow []string) Catalog {
 	return out
 }
 
-// entitlementID is the immutable identity state binds to: the entitlement
-// id when the gateway supplies one, the slug otherwise.
-func entitlementID(s *Server) string {
-	if id, ok := s.Entitlement["id"]; ok && id != nil && fmt.Sprint(id) != "" {
-		return fmt.Sprint(id)
+// serverID is the immutable identity state binds to: the server's id when
+// the gateway supplies one, the slug otherwise.
+func serverID(s *Server) string {
+	if s.ID != "" {
+		return s.ID
 	}
 	return s.Slug
 }

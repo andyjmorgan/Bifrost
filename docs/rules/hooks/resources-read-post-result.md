@@ -22,8 +22,7 @@ It does not run on directory reads, or when the server replies with `input_requi
 | `request.params` | `request.params.uri`, the URI the read named |
 | `request.upstream` | The read as the server received it: `request.upstream.params.uri` |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 A read can return several entries. An entry is text when it has `text` and binary when it has `blob`. There is no joined text of the response. Work on the list with CEL's list macros, and read the optional fields of an entry with the [optional forms](overview.md#optional-values):
 

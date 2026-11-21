@@ -24,7 +24,7 @@
   }
  },
  {
-  "name": "the Coin Server entitlement's rules, as saved on November 17, 2026",
+  "name": "the Coin Server's rules, as saved on November 17, 2026",
   "hooks": {
    "toolsListPost": "# Rename and reword. The tool is then called by its new name.\nwhen tool.upstream.name == 'flip'\n  set tool.name = 'toss'\n  set tool.title = 'Toss coins'\n  set tool.description = 'Toss up to 10 coins and count the heads and tails.'\n\n# Shape the parameters: a default and a lower ceiling.\nwhen tool.upstream.name == 'flip'\n  set tool.params.count.default = 1\n  set tool.params.count.maximum = 10\n\n# The result rule below drops the per-coin list, so drop it from the schema too.\nwhen tool.upstream.name == 'flip' && has(tool.outputSchema)\n  set tool.outputSchema = dropSchema(tool.outputSchema, ['flips'])\n\n# Reword only.\nwhen tool.name == 'random_int'\n  set tool.description = 'A whole number between min and max. Without them, 0 to 100.'\n",
    "toolsCallPre": "# Ask the user first. The call goes ahead once they confirm.\nwhen tool.name == 'pick'\n  confirm \"Pick one of these at random? {request.params.arguments.?options.orValue([]).join(', ')}\"\n",

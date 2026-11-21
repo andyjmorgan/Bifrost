@@ -11,11 +11,11 @@ import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { CopyButton } from '../components/CopyButton'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { authKindBadge, credentialStatus } from '../components/servers/credential'
 import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../api'
 import { cn } from '../lib'
-import { SlugChips } from '../components/entitlements/SlugChips'
 
 const COLS = 'minmax(0,1.5fr) minmax(0,1.5fr) 96px 150px 80px 120px'
 
@@ -123,7 +123,7 @@ export function ServersPage() {
       <PageHeader
         eyebrow="Gateway"
         title="Servers"
-        description="Upstream MCP servers behind the gateway, each with a stored credential. Agents reach a server through its entitlements: named, grantable views under their own slug."
+        description="Upstream MCP servers behind the gateway, each with a stored credential. Agents reach a server at its own MCP URL, or through /mcp with the others they hold."
         actions={
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus /> New server
@@ -143,7 +143,7 @@ export function ServersPage() {
         {servers.length > 0 && (
           <ListHead cols={COLS}>
             <span>Server</span>
-            <span>Entitlements</span>
+            <span>MCP URL</span>
             <span>Auth</span>
             <span>Credential</span>
             <span>Enabled</span>
@@ -186,8 +186,16 @@ export function ServersPage() {
                       mono
                     />
                   </div>
-                  <Cell label="Entitlements">
-                    <SlugChips entitlements={s.entitlements ?? []} />
+                  <Cell label="MCP URL">
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-xs">{s.slug}</span>
+                        <span className="block truncate font-mono text-[11px] text-muted-foreground" title={s.mcpUrl}>
+                          {s.mcpUrl}
+                        </span>
+                      </span>
+                      <CopyButton value={s.mcpUrl} label="Copy MCP URL" />
+                    </span>
                   </Cell>
                   <Cell label="Auth">
                     <Badge mono variant={authKindBadge[s.authKind]}>
@@ -234,7 +242,7 @@ export function ServersPage() {
       <ConfirmDialog
         open={!!deleting}
         title={`Delete ${deleting?.name ?? 'server'}?`}
-        description="The server, its credential and its entitlements are removed. Agents using those slugs will start failing."
+        description="The server, its credential, rules and grants are removed. Agents using its slug or MCP URL will start failing."
         busy={deleteBusy}
         error={deleteErr}
         onCancel={() => {

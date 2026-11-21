@@ -1624,27 +1624,23 @@
   "exclude": [
    {
     "harness": "typescript-sdk",
-    "reason": "With the entitlement broken, discovery advertises no tools capability and the TypeScript SDK then never sends tools/list."
+    "reason": "With the server broken, discovery advertises no tools capability and the TypeScript SDK then never sends tools/list."
    }
   ]
  },
  {
-  "name": "GA-24 entitlement is readable: a filter on the entitlement slug hides a tool",
+  "name": "GA-24 the server id is readable: a filter on the server id hides a tool",
   "ids": [
    "GA-24"
   ],
   "servers": [
    {
+    "id": "e1",
     "slug": "a",
-    "entitlement": {
-     "id": "e1",
-     "slug": "a",
-     "name": "Readers"
-    },
     "rules": [
      {
       "hook": "tools/list.post",
-      "when": "entitlement.name == 'Readers' && tool.name == 'write'",
+      "when": "server.id == 'e1' && tool.name == 'write'",
       "then": {
        "decision": "'deny'"
       }

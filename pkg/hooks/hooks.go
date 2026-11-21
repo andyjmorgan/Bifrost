@@ -1,5 +1,5 @@
-// Package hooks is a rules engine for an MCP gateway. An entitlement's rules
-// are CEL expressions that run at fixed points in a request, called hooks:
+// Package hooks is a rules engine for an MCP gateway. A server's rules are
+// CEL expressions that run at fixed points in a request, called hooks:
 // when tools are listed, before a call is forwarded, when a result comes
 // back, and so on. A rule can hide an item, refuse a request, ask the user to
 // confirm, or change what its hook lets it change.
@@ -12,8 +12,8 @@
 // or …ReplyStream method.
 //
 // A gateway must supply a StateStore shared by all its instances, a
-// generation for each server that changes when its entitlement or catalog
-// does, and a principal for each request. docs/rules/handover.md says what
+// generation for each server that changes when its rules, selection or
+// catalog do, and a principal for each request. docs/rules/handover.md says what
 // else, and docs/rules/hooks describes the rule language.
 package hooks
 

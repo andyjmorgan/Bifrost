@@ -1,4 +1,4 @@
-// Package slug derives the immutable per-org identifier of an entitlement,
+// Package slug derives the immutable per-org identifier of a server,
 // the prefix clients see on its tool names.
 //
 // The slug is the name lowercased and reduced to [a-z0-9-] (runs of other

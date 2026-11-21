@@ -48,19 +48,17 @@ type Server struct {
 	Description string
 	AuthKind    AuthKind
 	Enabled     bool
-	Exclusive   bool // at most one entitlement per user on this server
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 
-	// Exposure fields: set only when the server was reached through an
-	// entitlement (the gateway's view). A server is never addressed by a
-	// slug of its own; the slug belongs to the entitlement.
-	Slug            string
-	EntitlementID   uuid.UUID
-	EntitlementName string
-	Selection       Selection
-	Hooks           json.RawMessage // the entitlement's hooks: the text of each hook's rules, by hook property
-	Generation      int
+	// Slug is the server's immutable per-org identifier: its route and the
+	// prefix of its names on the mux.
+	Slug      string
+	Selection Selection
+	Hooks     json.RawMessage // the text of each hook's rules, by hook property (ruletext.Hooks); opaque to the store
+	// Generation changes whenever the selection, rules or grants do.
+	Generation int
+	Grants     []Grant // filled by GetServer and ListServers only
 }
 
 // Credential is the non-secret view of a server's credential plus the
@@ -177,7 +175,7 @@ type AuditEvent struct {
 	RequestID       string
 	ErrorType       string
 	HasPayload      bool
-	// Rules is what the entitlement's rules did on this request. Nil when
+	// Rules is what the server's rules did on this request. Nil when
 	// no rule applied. Inbound events only.
 	Rules *RuleHits
 }

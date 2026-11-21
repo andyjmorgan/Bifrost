@@ -72,14 +72,13 @@ type catalogEntry struct {
 // cache where live, fetching (and caching) the misses concurrently. With
 // force, every server is asked afresh. Unavailable servers are recorded in
 // the audit (issue + skip event) and returned with err set.
-// catalog lists every exposure the caller holds (one on direct) with its
-// tools cut to the ceiling and the selection.
+// catalog lists every server the caller holds (one on direct) with its
+// tools cut to its selection.
 func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug string, force bool) ([]catalogEntry, error) {
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
-	var conflicts map[uuid.UUID]error
 	if route == "direct" {
-		srv, bundle, err := g.exposure(ctx, caller, slug, cache.NSTools, cache.NSInit)
+		srv, bundle, err := g.grantedServer(ctx, caller, slug, cache.NSTools, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -87,7 +86,7 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 		cached = map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		servers, cached, conflicts, err = g.exposures(ctx, caller, cache.NSTools, cache.NSInit)
+		servers, cached, err = g.granted(ctx, caller, cache.NSTools, cache.NSInit)
 		if err != nil {
 			return nil, rpcErr(err)
 		}
@@ -127,13 +126,6 @@ func (g *Gateway) catalog(ctx context.Context, caller *auth.Caller, route, slug 
 	}
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
-			continue
-		}
-		if c, ok := conflicts[srv.ID]; ok {
-			audit.AddIssue(ctx, srv.Slug+": "+c.Error())
-			mu.Lock()
-			entries = append(entries, catalogEntry{srv: srv, err: c})
-			mu.Unlock()
 			continue
 		}
 		wg.Add(1)

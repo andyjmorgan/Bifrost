@@ -31,8 +31,7 @@ A rule that fails to evaluate also hides the template, and the listing reports t
 | `template` | The template as earlier rules left it: `template.uriTemplate`, `template.name`, `template.title`, `template.description`, `template.mimeType`, `template.annotations`, `template.icons`, `template._meta` |
 | `template.upstream` | The template as the server declares it. It never changes |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `template.uriTemplate` is the template as the server knows it. On the mux route, it has no slug prefix. It never changes.
 

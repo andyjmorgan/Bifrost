@@ -127,7 +127,7 @@ func TestAPromptIsNotForwardedOnceItsSessionRuleSpendsTheBudget(t *testing.T) {
 // A request whose deadline has passed is refused on prompts/get,
 // resources/read, prompts/list and resources/list, as it is on tools.
 func TestAnExpiredRequestIsRefusedOnPromptsAndResources(t *testing.T) {
-	e, r := entitledRequest(t,
+	e, r := serverRequest(t,
 		Rule{Hook: "prompts/get.pre", When: "true", Then: map[string]string{"request.params.arguments.q": "'x'"}},
 		Rule{Hook: "resources/read.pre", When: "false", Then: map[string]string{"decision": "'deny'"}},
 		Rule{Hook: "prompts/list.post", When: "true", Then: map[string]string{"prompt.description": "'x'"}},
@@ -169,7 +169,7 @@ func TestACancelledOrSpentRequestListsNoTools(t *testing.T) {
 // An audit rule changes nothing, and that includes time: however long it
 // runs, a call that is forwarded without it is forwarded with it.
 func TestASlowAuditRuleNeverChangesACallsOutcome(t *testing.T) {
-	e, r := entitledRequest(t)
+	e, r := serverRequest(t)
 	e.Limits.Budget = 5 * time.Millisecond
 	p := &mcp.CallToolParamsRaw{Name: "t"}
 	baseline := e.CallTool(context.Background(), r, p)

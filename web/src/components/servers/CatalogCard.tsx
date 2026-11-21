@@ -3,7 +3,7 @@ import { Telescope } from 'lucide-react'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows } from '../ListCard'
 import type { CapabilityDTO } from '../../api'
 import { absoluteTime, relativeTime } from '../../lib'
-import { KINDS } from './selection'
+import { KINDS } from '../rules/selection'
 import { CapabilitySheet } from './CapabilitySheet'
 
 const COLS = 'minmax(0,1.6fr) 150px 150px'
@@ -18,7 +18,7 @@ function Time({ value }: { value: string }) {
 
 /**
  * The server's catalog: every capability the gateway has seen on it, grouped by kind. Read-only;
- * entitlements choose from it. A row opens its definition in a sheet.
+ * the server's selection chooses from it. A row opens its definition in a sheet.
  */
 export function CatalogCard({
   caps,

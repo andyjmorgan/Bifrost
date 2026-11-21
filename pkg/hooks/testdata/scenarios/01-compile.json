@@ -20,7 +20,7 @@
 {"name":"RH-HOOK-06 completion/filter is not a hook","ids":["RH-HOOK-06"],
  "servers":[{"slug":"a","rules":[{"hook":"completion/filter","when":"true","then":{"decision":"'deny'"}}]}],
  "steps":[{"exclude": [{"harness": "typescript-sdk", "reason": "The TypeScript SDK does not send tools/list when the discover result did not advertise the tools capability. In this case discovery advertises none, so the request this step asserts on is never made."}], "op":"tools/list","expect":[{"path":"problems.a[0].message","contains":"unknown hook"}]}]},
-{"name":"RH-HOOK-07 a rule list that does not compile fails the entitlement closed","ids":["RH-HOOK-07"],"route":"mux",
+{"name":"RH-HOOK-07 a rule list that does not compile fails the server closed","ids":["RH-HOOK-07"],"route":"mux",
  "servers":[
    {"slug":"bad","rules":[{"hook":"tools/list.post","when":"1 +","then":{"decision":"'deny'"}}],"catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}],"prompts":[{"name":"p"}],"resources":[{"uri":"file:///a","name":"a"}]}},
    {"slug":"good","catalog":{"tools":[{"name":"t","inputSchema":{"type":"object"}}]}}],

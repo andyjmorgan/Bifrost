@@ -27,7 +27,7 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 		for k := range switchDefaults {
 			out[k] = false
 		}
-		return out, []Hit{{Hook: "server.settings", Rule: "(entitlement)", Item: s.Slug, Mode: ModeEnforce, Effect: "deny", Error: "rules do not compile: " + s.Broken.Error()}}
+		return out, []Hit{{Hook: "server.settings", Rule: "(server)", Item: s.Slug, Mode: ModeEnforce, Effect: "deny", Error: "rules do not compile: " + s.Broken.Error()}}
 	}
 	for k, v := range switchDefaults {
 		out[k] = v

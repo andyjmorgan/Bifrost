@@ -8,7 +8,7 @@ import (
 // What a rule can see on a hook is one tree. Its branches are the item the
 // hook is about (tool, prompt, resource, template, skill), the request, what
 // came back (response, progress, elicitation), and where it happened
-// (server, entitlement). Hooks differ only in which branches exist and which
+// (server). Hooks differ only in which branches exist and which
 // one branch a rule may change.
 //
 // The names in the tree are MCP's wherever MCP has one, spelled as MCP spells
@@ -166,7 +166,7 @@ func definition(kind ItemKind) *Node {
 // set are writable.
 func itemNode(kind ItemKind, list bool) *Node {
 	n := definition(kind)
-	n.Doc = "The " + string(kind) + " as this entitlement presents it."
+	n.Doc = "The " + string(kind) + " as the gateway presents it."
 	up := definition(kind)
 	up.Doc = "The " + string(kind) + "'s canonical definition, as the server declares it. Nothing can set it."
 	n.Keys["upstream"] = up
@@ -296,10 +296,10 @@ func flagsNode() *Node {
 
 func serverNode(discover bool) *Node {
 	n := object(map[string]*Node{
-		"slug": nStr, "url": opt(nStr), "name": opt(nStr), "title": opt(nStr), "description": opt(nStr),
+		"id": nStr, "slug": nStr, "url": opt(nStr), "name": opt(nStr), "title": opt(nStr), "description": opt(nStr),
 		"instructions": opt(nStr), "protocolVersion": opt(nStr),
 	})
-	n.Doc = "The server as this entitlement presents it."
+	n.Doc = "The server as the gateway presents it."
 	if discover {
 		for _, k := range []string{"title", "description", "instructions"} {
 			n.Keys[k] = writable(n.Keys[k])
@@ -375,7 +375,6 @@ func buildTree(h *HookSpec) *Node {
 	}
 	root.Keys["request"] = requestNode(method, h.Item, pre, post)
 	root.Keys["server"] = serverNode(h.Name == "server/discover.post")
-	root.Keys["entitlement"] = doc(object(map[string]*Node{"id": opt(nStr), "slug": opt(nStr), "name": opt(nStr)}), "The entitlement serving the request.")
 	if h.Item != KindNone && h.Item != KindServer {
 		root.Keys[string(h.Item)] = itemNode(h.Item, h.Phase == PhaseList)
 	}

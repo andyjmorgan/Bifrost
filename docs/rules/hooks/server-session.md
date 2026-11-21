@@ -13,8 +13,7 @@ By default, the gateway is anonymous to the server. It names itself `bifrost`, a
 | Branch | Notable fields |
 | --- | --- |
 | `request` | `request.client`, with `clientInfo` and `capabilities` as the client declared them. Also `request.caller`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.method` is `server/discover`, and `request.params` holds only `_meta` |
-| `server` | `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` where the gateway knows them |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` where the gateway knows them |
 
 This hook has no item, so there is no `upstream`. A rule cannot read `session`: it is write-only.
 

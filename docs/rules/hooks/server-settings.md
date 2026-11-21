@@ -13,8 +13,7 @@ A switch that is off removes the whole kind. Its list and call hooks do not run.
 | Branch | Notable fields |
 | --- | --- |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.method` is `server/discover`, and `request.params` holds only `_meta` |
-| `server` | `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` where the gateway knows them |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions`, `server.protocolVersion`, `server.url` where the gateway knows them |
 
 This hook has no item, so there is no `upstream`. A rule cannot read `settings`: the switches are write-only.
 
@@ -101,7 +100,7 @@ On the direct route, discover returns the server's name and version in `_meta["i
 ## Nuances and limits
 
 - If an enforce rule fails to evaluate, all eight switches are off for that request.
-- If the entitlement's enabled rules do not compile, every switch is off.
+- If the server's enabled rules do not compile, every switch is off.
 - Switches are per server. On the mux route, each server's switches apply only to that server's items.
 - When a rule asks for `settings.tasks`, or for `settings.progress` on a server that cannot have it, the gateway turns the switch off. It records why in the hits, under the rule label `(gateway)`.
 - Progress notifications pass through the progress hooks: [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) and [resources/read.post.progress](resources-read-post-progress.md). No rule runs on any other notification.

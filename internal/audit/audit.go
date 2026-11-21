@@ -125,7 +125,7 @@ func Issues(ctx context.Context) []string {
 // route can produce one per item per rule.
 const MaxRuleHits = 100
 
-// rules collects what the entitlement's rules did on a request. Shared by
+// rules collects what the server's rules did on a request. Shared by
 // pointer across goroutines.
 type rules struct {
 	mu   sync.Mutex

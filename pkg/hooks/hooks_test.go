@@ -272,7 +272,7 @@ func TestCorpusRealisticPolicyParallelAndFast(t *testing.T) { // RH-PRF-02, ADV-
 		t.Fatal(probs)
 	}
 	ctx := Context{Caller: map[string]any{"role": "member"}, Server: map[string]any{"slug": "dd"}}
-	// Several entitlements listing the same shared catalog concurrently:
+	// Several requests listing the same shared catalog concurrently:
 	// overlays must not leak between them (ADV-28).
 	type res struct {
 		tl ToolList

@@ -22,8 +22,7 @@ This is the server's own question. A `confirm` rule in [tools/call.pre](tools-ca
 | `request.upstream` | The call as the server received it: `request.upstream.params.name` and `request.upstream.params.arguments`, under the server's names, after rule changes, pins and removal of added parameters |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
 | `tool` | The tool as the client sees it, and `tool.upstream` as the server declares it |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 Every field of `elicitation.params` is optional. Read them with the [optional forms](overview.md#optional-values), for example `elicitation.params.?mode.orValue('form')`.
 

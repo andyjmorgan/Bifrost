@@ -63,7 +63,7 @@ func TestAConfirmationNeedsItsOwnState(t *testing.T) {
 }
 
 // An answer counts only for the question it was given to: not for another
-// tool, another entitlement, another set of rules, an expired state, a key
+// tool, another server, another set of rules, an expired state, a key
 // that was not asked, a second rule that uses the same key for other words,
 // another method, or arguments with any other value. The same arguments with
 // their keys in another order, with other white space, or with a number
@@ -101,7 +101,7 @@ func TestAnAnswerIsForItsOwnQuestion(t *testing.T) {
 	mux := newRequest("direct", s)
 	mux.Route, mux.Servers = "mux", []*Server{s, s2}
 	km := requestState(e.CallTool(ctx, mux, &mcp.CallToolParamsRaw{Name: "a__t", Arguments: args}))
-	refused("another entitlement", e.CallTool(ctx, mux, &mcp.CallToolParamsRaw{Name: "b__t", Arguments: args, RequestState: km, InputResponses: yesTo("sure")}))
+	refused("another server", e.CallTool(ctx, mux, &mcp.CallToolParamsRaw{Name: "b__t", Arguments: args, RequestState: km, InputResponses: yesTo("sure")}))
 	changed := newServer(t, cat, rule, Rule{Hook: "tools/call.pre", When: "false", Then: map[string]string{KeyDecision: "'deny'"}})
 	refused("other rules", e.CallTool(ctx, newRequest("direct", changed), &mcp.CallToolParamsRaw{Name: "t", Arguments: args, RequestState: ask(), InputResponses: yesTo("sure")}))
 	late := newRequest("direct", s)

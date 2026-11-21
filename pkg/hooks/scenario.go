@@ -169,10 +169,11 @@ func (m *MockReply) events() bool {
 	return m != nil && (len(m.Progress) > 0 || len(m.Notifications) > 0 || m.NoResponse || m.Error != nil)
 }
 
-// ScenarioServer is one entitlement in a scenario.
+// ScenarioServer is one server in a scenario.
 type ScenarioServer struct {
+	// ID is the server's identity; the slug stands in when it is empty.
+	ID          string          `json:"id,omitempty"`
 	Slug        string          `json:"slug"`
-	Entitlement map[string]any  `json:"entitlement,omitempty"`
 	Info        ServerInfo      `json:"info,omitempty"`
 	Generation  string          `json:"generation,omitempty"`
 	Unavailable bool            `json:"unavailable,omitempty"`
@@ -516,10 +517,7 @@ func (sc *Scenario) build(problems map[string]any) ([]*Server, error) {
 			continue
 		}
 		set, probs := Compile(rs, Options{CostLimit: sc.Limits.CostLimit})
-		s := &Server{Slug: ss.Slug, Entitlement: ss.Entitlement, Info: ss.Info, Rules: set, Generation: ss.Generation, Catalog: ss.Catalog, Unavailable: ss.Unavailable}
-		if s.Entitlement == nil {
-			s.Entitlement = map[string]any{"slug": ss.Slug}
-		}
+		s := &Server{ID: ss.ID, Slug: ss.Slug, Info: ss.Info, Rules: set, Generation: ss.Generation, Catalog: ss.Catalog, Unavailable: ss.Unavailable}
 		if probs != nil {
 			problems[ss.Slug] = probs
 			s.Broken = probs

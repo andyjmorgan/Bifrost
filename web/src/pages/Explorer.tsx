@@ -16,7 +16,7 @@ import { FormField } from '../components/FormField'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
-import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type ExposureDTO } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type PortalServerDTO } from '../api'
 import { cn } from '../lib'
 import { useMe } from '../me'
 import { Definition, JsonView, ListOutcome, MUX, RequestLink, StreamPanel, TargetFields, TextOrJson, UnavailableCallout, collect, type StreamEvent } from './explorer/shared'
@@ -41,7 +41,7 @@ export interface TabProps {
 }
 
 // The explorer drives the gateway through its own front door, exactly as an agent would: your own
-// session (or an API key you pick) authenticates, the route picks the mux or one entitlement slug, and every exchange lands
+// session (or an API key you pick) authenticates, the route picks the mux or one server's slug, and every exchange lands
 // in the audit trail with a request id we can link to. Route and key are shared across the
 // Tools, Prompts and Resources tabs; each tab keeps its own results while you switch.
 export function ExplorerPage() {
@@ -49,7 +49,7 @@ export function ExplorerPage() {
   const route = params.get('route') || MUX
   const tabParam = params.get('tab')
   const tab: TabKey = tabParam === 'prompts' || tabParam === 'resources' ? tabParam : 'tools'
-  const [exposures, setExposures] = useState<ExposureDTO[]>([])
+  const [held, setHeld] = useState<PortalServerDTO[]>([])
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
   const [keyId, setKeyId] = useState<string>(() => {
     try {
@@ -62,9 +62,9 @@ export function ExplorerPage() {
   const [loadError, setLoadError] = useState<string>()
 
   useEffect(() => {
-    Promise.all([api.exposures(), api.apiKeys.list()])
+    Promise.all([api.portal(), api.apiKeys.list()])
       .then(([x, k]) => {
-        setExposures(x)
+        setHeld(x)
         setKeys(k)
         setLoadError(undefined)
       })
@@ -104,10 +104,10 @@ export function ExplorerPage() {
   const setRoute = (r: string) => setParam('route', r === MUX ? undefined : r)
   const setTab = (t: TabKey) => setParam('tab', t === 'tools' ? undefined : t)
 
-  // Only slugs the caller can actually reach: enabled servers, no exclusivity conflict.
-  const routes = exposures.filter((x) => x.enabled && !x.conflict)
+  // Only slugs the caller can actually reach: enabled servers.
+  const routes = held.filter((x) => x.enabled)
   const fields = (routeHint: string) => (
-    <TargetFields route={route} onRouteChange={setRoute} routeHint={routeHint} keyId={keyId} onKeyChange={setKeyId} exposures={routes} keys={usableKeys} />
+    <TargetFields route={route} onRouteChange={setRoute} routeHint={routeHint} keyId={keyId} onKeyChange={setKeyId} servers={routes} keys={usableKeys} />
   )
   // Keying each tab by route resets its listing and selection when the route changes.
   const props: TabProps = { route, keyId, fields }

@@ -33,7 +33,7 @@ func TestAToolWhoseListRuleFailedIsNotReachableThroughSearch(t *testing.T) {
 // through: the request state and the answer passed on the second call forward
 // the call.
 func TestExecuteToolCarriesAConfirmationToItsAnswer(t *testing.T) {
-	e, r := entitledRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
+	e, r := serverRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: confirmThen("ok", "Continue?")})
 	r.Route, r.Flags = "mux", map[string]bool{FlagSearch: true}
 	first := e.ExecuteTool(context.Background(), r, "a__t", nil, nil)
 	ir, ok := first.Result.(InputRequired)

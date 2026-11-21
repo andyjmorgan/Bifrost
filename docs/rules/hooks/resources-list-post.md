@@ -41,8 +41,7 @@ A rule that fails to evaluate also hides the resource, and the listing reports t
 | `resource` | The resource as earlier rules left it: `resource.uri`, in [canonical spelling](overview.md#uri-form), `resource.name`, `resource.title`, `resource.description`, `resource.mimeType`, `resource.size`, `resource.annotations`, `resource.icons`, `resource._meta` |
 | `resource.upstream` | The resource as the server declares it. It never changes |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `resource.uri` is the URI as the server knows it. On the mux route, it has no slug prefix. It never changes.
 

@@ -23,8 +23,7 @@ An error the server returns as a JSON-RPC error passes through untouched. No rul
 | `request.upstream` | The request as the server received it: `request.upstream.params.name` and `request.upstream.params.arguments`, under the server's names, after defaults and pins |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
 | `tool` | The tool as the client sees it, and `tool.upstream` as the server declares it |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 MCP requires `content`, so the tree marks it as always there. If a server leaves it out, a rule that reads `response.result.content` fails and the result is refused. `response.result.resultType` is there when the server sent it. A rule that sets `content` must give a list of blocks, each a map with a `type`, and `structuredContent` must be an object.
 

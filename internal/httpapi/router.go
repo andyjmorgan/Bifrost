@@ -94,25 +94,22 @@ func (a *API) Router() http.Handler {
 		r.With(a.authn.RequireAPI("")).Get("/me", a.me)
 
 		// Every member: their own keys, their own audit, and the slugs they
-		// hold. The server registry and entitlements are the admin's.
+		// hold. The servers, their rules and their grants are the admin's.
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead))
 			r.Get("/api-keys", a.listKeys)
 			r.Get("/audit", a.listAudit)
 			r.Get("/audit/{id}", a.getAudit)
 			r.Get("/audit/{id}/trace", a.getAuditTrace)
-			r.Get("/exposures", a.listExposures)
+			r.Get("/portal", a.listPortal)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeAPIRead), auth.RequireAdmin)
 			r.Get("/servers", a.listServers)
 			r.Get("/servers/{id}", a.getServer)
-			r.Get("/servers/{id}/entitlements", a.listServerEntitlements)
 			r.Get("/servers/{id}/capabilities", a.listCapabilities)
-			r.Get("/entitlements", a.listEntitlements)
-			r.Get("/entitlements/{id}", a.getEntitlement)
-			r.Post("/entitlements/validate", a.validateRules)
-			r.Get("/entitlements/hooks-schema", a.hooksSchema)
+			r.Post("/rules/validate", a.validateRules)
+			r.Get("/rules/hooks-schema", a.hooksSchema)
 		})
 		// Org membership. Reads for any member; changes for admins; join,
 		// switch and leave for the human themselves.
@@ -143,10 +140,7 @@ func (a *API) Router() http.Handler {
 			r.Delete("/servers/{id}", a.deleteServer)
 			r.Put("/servers/{id}/credential", a.putCredential)
 			r.Post("/servers/{id}/oauth/start", a.oauthStart)
-			r.Post("/servers/{id}/entitlements", a.createEntitlement)
-			r.Patch("/entitlements/{id}", a.updateEntitlement)
-			r.Delete("/entitlements/{id}", a.deleteEntitlement)
-			r.Put("/entitlements/{id}/grants", a.putGrants)
+			r.Put("/servers/{id}/grants", a.putGrants)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeMCPExecute), auth.RequireAdmin)

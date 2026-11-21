@@ -21,8 +21,7 @@
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
 | `prompt` | The prompt after `prompts/list.post`: `prompt.name`, `prompt.title`, `prompt.description`, `prompt.arguments`, `prompt.icons`, `prompt._meta` |
 | `prompt.upstream` | The prompt as the server declares it |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `request.upstream` does not exist here, because nothing has been sent to the server yet.
 

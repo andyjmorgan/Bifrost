@@ -49,8 +49,7 @@ The gateway applies `additionalProperties: false` at the level where the schema 
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
 | `tool` | The tool after `tools/list.post`: `tool.name`, `tool.title`, `tool.description`, `tool.annotations`, `tool.inputSchema`, `tool.outputSchema`, `tool.params`, `tool.icons`, `tool._meta` |
 | `tool.upstream` | The tool as the server declares it |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `request.upstream` does not exist here, because nothing has been sent to the server yet. A rule that reads it is refused when saved.
 
@@ -158,7 +157,7 @@ A rule cannot both deny and confirm. It is refused when saved.
 The `requestState` is an opaque key. The gateway keeps the state itself, so the client cannot read or change it. This is the same for the gateway's own question and for a question the server asks. The state is bound to:
 
 - the caller
-- the entitlement id, or its slug when there is no id
+- the server id, or its slug when there is no id
 - the method. A directory read binds its own method, so a read confirmation cannot be used for a directory read
 - the server's name for the tool
 - a hash of the arguments the client sent
@@ -176,7 +175,7 @@ A challenge expires after five minutes and can be answered once. Any retry uses 
 | Unknown, already used or malformed state | `invalid request state` |
 | More than five minutes old | `request state expired` |
 | A different tool or method | `request state belongs to another request` |
-| A different caller or entitlement | `request state belongs to another caller` |
+| A different caller or server | `request state belongs to another caller` |
 | The rules or the generation changed | `request state is from an older policy` |
 | Different arguments | `arguments changed since the confirmation was requested` |
 | An answer to a key that was not asked | `no pending input request "<key>"` |

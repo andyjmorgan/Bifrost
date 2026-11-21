@@ -90,11 +90,11 @@ func TestAChangedToolSharesItsUntouchedSchemas(t *testing.T) {
 	}
 }
 
-// Two entitlements list and call the same shared catalog in parallel, each
-// with its own renames and pins. Each sees only its own names, each call is
-// turned back into the server's arguments, and the shared catalog is
-// unchanged afterwards.
-func TestEntitlementsSharingACatalogDoNotLeakIntoEachOther(t *testing.T) {
+// Two servers with one shared catalog, as a gateway's cache can hand out,
+// list and call in parallel, each with its own renames and pins. Each sees
+// only its own names, each call is turned back into the server's arguments,
+// and the shared catalog is unchanged afterwards.
+func TestServersSharingACatalogDoNotLeakIntoEachOther(t *testing.T) {
 	orig := twoArgTool()
 	before, err := json.Marshal(orig)
 	if err != nil {
@@ -197,7 +197,7 @@ func TestListingIsByteConsistent(t *testing.T) {
 // An integer too large for a float64 in a tool's schema comes out exact when
 // a rule changes something else on the tool.
 func TestALargeIntegerInASchemaSurvivesARuleEdit(t *testing.T) {
-	e, r := entitledRequest(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "'changed'"}})
+	e, r := serverRequest(t, Rule{Hook: "tools/list.post", When: "true", Then: map[string]string{"tool.description": "'changed'"}})
 	// Native JSON Number is supported by JSON serialization and preserves
 	// the original upstream schema integer exactly.
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["id"] = map[string]any{"const": json.Number("9007199254740993")}

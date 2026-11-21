@@ -4,32 +4,35 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
-// ServerDTO is a server with its credential summary (never the secret).
+// ServerDTO is a server with its rules, grants and credential summary
+// (never the secret).
 type ServerDTO struct {
-	ID           string              `json:"id"`
-	Name         string              `json:"name"`
-	URL          string              `json:"url"`
-	Description  string              `json:"description"`
-	AuthKind     store.AuthKind      `json:"authKind"`
-	Enabled      bool                `json:"enabled"`
-	Exclusive    bool                `json:"exclusive"`
-	Seen         int                 `json:"seen"` // capabilities the gateway has seen on it
-	CreatedAt    time.Time           `json:"createdAt"`
-	UpdatedAt    time.Time           `json:"updatedAt"`
-	Credential   *CredentialDTO      `json:"credential,omitempty"`
-	Entitlements []EntitlementRefDTO `json:"entitlements"`
-}
-
-// EntitlementRefDTO names one slug on a server.
-type EntitlementRefDTO struct {
-	ID     string `json:"id"`
-	Slug   string `json:"slug"`
-	Name   string `json:"name"`
-	MCPURL string `json:"mcpUrl"`
-	Grants int    `json:"grants"`
+	ID          string          `json:"id"`
+	Slug        string          `json:"slug"`
+	Name        string          `json:"name"`
+	URL         string          `json:"url"`
+	Description string          `json:"description"`
+	AuthKind    store.AuthKind  `json:"authKind"`
+	Enabled     bool            `json:"enabled"`
+	Seen        int             `json:"seen"` // capabilities the gateway has seen on it
+	MCPURL      string          `json:"mcpUrl"`
+	Selection   store.Selection `json:"selection"`
+	// Hooks is the rules as the admin writes them: the text of each hook's
+	// rules, under the hook's property (see ruletext.Hooks). Every property
+	// is present; null means the hook has no rules.
+	Hooks ruletext.Hooks `json:"hooks"`
+	// RulesError says why the stored rules cannot be used. While it is set
+	// the server exposes nothing.
+	RulesError string         `json:"rulesError,omitempty"`
+	Generation int            `json:"generation"`
+	Grants     []GrantDTO     `json:"grants"`
+	Credential *CredentialDTO `json:"credential,omitempty"`
+	CreatedAt  time.Time      `json:"createdAt"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
 }
 
 // CredentialDTO is the non-secret view of a credential.
@@ -61,9 +64,12 @@ type AuthInput struct {
 	Scopes      []string       `json:"scopes,omitempty"` // oauth: override discovered scopes
 }
 
-// CreateServerInput is the body of POST /servers.
+// CreateServerInput is the body of POST /servers. Slug is derived from the
+// name when empty, with its tail bumped until it is free; one that is given
+// must be free.
 type CreateServerInput struct {
 	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
 	URL         string    `json:"url"`
 	Description string    `json:"description"`
 	Auth        AuthInput `json:"auth"`
@@ -71,11 +77,15 @@ type CreateServerInput struct {
 
 // UpdateServerInput is the body of PATCH /servers/{id}.
 type UpdateServerInput struct {
-	Name        *string `json:"name,omitempty"`
-	URL         *string `json:"url,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
-	Exclusive   *bool   `json:"exclusive,omitempty"`
+	Name        *string          `json:"name,omitempty"`
+	URL         *string          `json:"url,omitempty"`
+	Description *string          `json:"description,omitempty"`
+	Enabled     *bool            `json:"enabled,omitempty"`
+	Selection   *store.Selection `json:"selection,omitempty"`
+	// Hooks sets the rules: the text of each hook's rules, by hook property.
+	// Nil leaves them as they are. What is sent replaces them all: a
+	// property that is null or absent clears that hook's rules.
+	Hooks *ruletext.Hooks `json:"hooks,omitempty"`
 }
 
 // CreateServerResult adds the consent URL when OAuth needs the browser.
@@ -240,17 +250,16 @@ type ConfigDTO struct {
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
-func serverDTO(base string, s *store.Server, c *store.Credential, ents []*store.Entitlement, seen int) ServerDTO {
+func serverDTO(base string, s *store.Server, c *store.Credential, members map[string]*store.Member, seen int) ServerDTO {
 	d := ServerDTO{
-		ID: s.ID.String(), Name: s.Name, URL: s.URL, Description: s.Description,
-		AuthKind: s.AuthKind, Enabled: s.Enabled, Exclusive: s.Exclusive, Seen: seen,
-		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Entitlements: []EntitlementRefDTO{},
+		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description,
+		AuthKind: s.AuthKind, Enabled: s.Enabled, Seen: seen, MCPURL: base + "/" + s.Slug + "/mcp",
+		Selection: s.Selection, Generation: s.Generation, Grants: grantDTOs(s.Grants, members),
+		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
+	d.Hooks, d.RulesError = rulesOf(s.Hooks)
 	if c != nil {
 		d.Credential = credentialDTO(c)
-	}
-	for _, e := range ents {
-		d.Entitlements = append(d.Entitlements, EntitlementRefDTO{ID: e.ID.String(), Slug: e.Slug, Name: e.Name, MCPURL: base + "/" + e.Slug + "/mcp", Grants: len(e.Grants)})
 	}
 	return d
 }

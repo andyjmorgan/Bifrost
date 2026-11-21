@@ -17,10 +17,9 @@ The gateway reads instructions from the server live, so a change at the server s
 
 | Branch | Notable fields |
 | --- | --- |
-| `server` | The server as earlier rules left it: `server.title`, `server.description` and `server.instructions`. Also `server.slug`, `server.name`, `server.protocolVersion` and `server.url` |
+| `server` | The server as earlier rules left it: `server.title`, `server.description` and `server.instructions`. Also `server.id`, `server.slug`, `server.name`, `server.protocolVersion` and `server.url` |
 | `server.upstream` | What the server says about itself: `server.upstream.title`, `server.upstream.description`, `server.upstream.instructions`. It never changes |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.method` is `server/discover`, and `request.params` holds only `_meta` |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
 
 Title, description and instructions are absent when the server did not give them. Read them with the [optional forms](overview.md#optional-values): `server.?instructions.orValue('')`, or guard with `has(server.instructions)`.
 

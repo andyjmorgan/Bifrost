@@ -10,7 +10,7 @@ import { CodeBlock } from '../../components/JsonBlock'
 import { JsonTree, SseList, parseSse, tryParseJson, unavailableFrom, type Json } from '../../components/PayloadViewer'
 import { CopyButton } from '../../components/CopyButton'
 import { FormField } from '../../components/FormField'
-import type { APIKeyDTO, E2EEventHandler, E2EResult, ExposureDTO } from '../../api'
+import type { APIKeyDTO, E2EEventHandler, E2EResult, PortalServerDTO } from '../../api'
 import { cn } from '../../lib'
 
 export const MUX = 'mux'
@@ -42,7 +42,7 @@ export function TargetFields({
   routeHint,
   keyId,
   onKeyChange,
-  exposures,
+  servers,
   keys,
 }: {
   route: string
@@ -50,7 +50,7 @@ export function TargetFields({
   routeHint: string
   keyId: string
   onKeyChange: (k: string) => void
-  exposures: ExposureDTO[]
+  servers: PortalServerDTO[]
   keys: APIKeyDTO[]
 }) {
   return (
@@ -65,7 +65,7 @@ export function TargetFields({
               <span className="font-mono text-xs">mux</span>
               <span className="ml-2 text-muted-foreground">Everything you hold (/mcp)</span>
             </SelectItem>
-            {exposures.map((x) => (
+            {servers.map((x) => (
               <SelectItem key={x.slug} value={x.slug}>
                 <span className="font-mono text-xs">{x.slug}</span>
                 <span className="ml-2 text-muted-foreground">{x.name}</span>

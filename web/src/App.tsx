@@ -13,8 +13,6 @@ import { ServerDetailPage } from './pages/ServerDetail'
 import { ExplorerPage } from './pages/Explorer'
 import { ApiKeysPage } from './pages/ApiKeys'
 import { PortalPage } from './pages/Portal'
-import { EntitlementEditorPage } from './pages/EntitlementEditor'
-import { EntitlementsPage } from './pages/Entitlements'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 import { MembersPage } from './pages/Members'
@@ -100,8 +98,6 @@ export function App() {
           <Route path="/portal" element={<PortalPage />} />
           <Route path="/servers" element={<AdminOnly><ServersPage /></AdminOnly>} />
           <Route path="/servers/:id" element={<AdminOnly><ServerDetailPage /></AdminOnly>} />
-          <Route path="/entitlements" element={<AdminOnly><EntitlementsPage /></AdminOnly>} />
-          <Route path="/entitlements/:id" element={<AdminOnly><EntitlementEditorPage /></AdminOnly>} />
           <Route path="/explorer" element={<ExplorerPage />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />

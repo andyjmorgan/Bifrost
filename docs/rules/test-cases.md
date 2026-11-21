@@ -48,7 +48,7 @@ Real tool catalogs (about 1,500 tools from Datadog, GitHub, public MCP servers a
 | RH-HOOK-04 | Can a hook that only changes things, such as `server/discover.post`, deny? | No. Saving fails with `a rule on server/discover.post cannot deny` | unit |
 | RH-HOOK-05 | Can any hook write `request.caller` or `request.client`? | No. Saving fails with `request.caller.role cannot be changed on tools/list.post` and what a rule there can set | unit |
 | RH-HOOK-06 | Is `completion/filter` a hook? | No. Completions are not supported | unit |
-| RH-HOOK-07 | Does a rule list that does not compile fail the entitlement closed? | Yes. Listings expose nothing for that slug and report the problem | e2e |
+| RH-HOOK-07 | Does a rule list that does not compile fail the server closed? | Yes. Listings expose nothing for that slug and report the problem | e2e |
 | RH-HOOK-08 | Is a disabled rule skipped? | Yes | unit |
 
 ## List hooks
@@ -86,7 +86,7 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | --- | --- | --- | --- |
 | RH-EVAL-01 | With no matching rule, is the item visible and callable? | Yes | unit |
 | RH-EVAL-02 | Is a deny final? Can a later rule re-allow? | A deny is final. There is no allow decision | unit |
-| RH-EVAL-03 | Org rule denies `delete_*`, entitlement rule tries to re-allow admins. What does an admin see? | The tool stays hidden | unit |
+| RH-EVAL-03 | A first rule denies `delete_*`, a later rule tries to re-allow admins. What does an admin see? | The tool stays hidden | unit |
 | RH-EVAL-04 | Does the first deny stop evaluation for that item? | Yes. Later enforce rules do not run | unit |
 | RH-EVAL-05 | Does an enforce rule that fails to evaluate deny? | Yes, and it stops | unit |
 | RH-EVAL-06 | Does an audit rule that matches change the outcome? | No. It is logged as "would deny" | unit |

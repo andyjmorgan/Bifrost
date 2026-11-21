@@ -21,17 +21,23 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
-func (a *API) withCredential(ctx context.Context, s *store.Server) ServerDTO {
+func (a *API) withCredential(r *http.Request, s *store.Server) ServerDTO {
+	return a.serverView(r, s, a.members(r, s.OrgID))
+}
+
+// serverView is a server as the API returns it, with its grants' users
+// named from members.
+func (a *API) serverView(r *http.Request, s *store.Server, members map[string]*store.Member) ServerDTO {
+	ctx := r.Context()
 	c, err := a.store.GetCredential(ctx, s.ID)
 	if err != nil {
 		c = nil
 	}
-	ents, _ := a.store.ListEntitlements(ctx, s.OrgID, &s.ID)
 	seen := 0
 	if caps, err := a.store.ListCapabilities(ctx, s.OrgID, s.ID); err == nil {
 		seen = len(caps)
 	}
-	return serverDTO(a.publicBase, s, c, ents, seen)
+	return serverDTO(a.publicBase, s, c, members, seen)
 }
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
@@ -41,9 +47,10 @@ func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	members := a.members(r, caller.OrgID)
 	out := make([]ServerDTO, 0, len(servers))
 	for _, s := range servers {
-		out = append(out, a.withCredential(r.Context(), s))
+		out = append(out, a.serverView(r, s, members))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -53,7 +60,7 @@ func (a *API) getServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, a.withCredential(r.Context(), s))
+	writeJSON(w, http.StatusOK, a.withCredential(r, s))
 }
 
 func (a *API) loadServer(w http.ResponseWriter, r *http.Request) (*store.Server, bool) {
@@ -103,41 +110,45 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	now := time.Now()
-	s := &store.Server{ID: uuid.New(), OrgID: caller.OrgID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true, CreatedAt: now, UpdatedAt: now}
-
-	if err := a.store.CreateServer(r.Context(), s); err != nil {
-		writeStoreErr(w, err)
+	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
+	if in.Slug != "" && (!slug.Valid(in.Slug) || in.Slug == "mcp") {
+		writeErr(w, http.StatusBadRequest, "slug must be 1-24 characters of a-z, 0-9 and -, and not mcp")
 		return
 	}
-	// A server is only reachable through an entitlement, so every new server
-	// gets a default one, everything it offers, held by the org's admins.
-	// The slug derives from the name; the tail is bumped until it is free.
-	ent := &store.Entitlement{ID: uuid.New(), OrgID: s.OrgID, ServerID: s.ID, Name: in.Name, Description: "Everything the server offers", Selection: store.Selection{}}
-	var created bool
-	slug.Candidates(slug.Base(in.Name), func(c string) bool {
-		ent.Slug = c
-		err := a.store.CreateEntitlement(r.Context(), ent)
-		if errors.Is(err, store.ErrConflict) {
-			return false
+	now := time.Now()
+	// A new server offers everything it has and is held by the org's admins.
+	s := &store.Server{ID: uuid.New(), OrgID: caller.OrgID, Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true,
+		Selection: store.Selection{}, Grants: []store.Grant{{SubjectType: "role", SubjectID: "admin"}}, CreatedAt: now, UpdatedAt: now}
+	if in.Slug != "" {
+		s.Slug = in.Slug
+		if err := a.store.CreateServer(r.Context(), s, caller.UserID); err != nil {
+			writeStoreErr(w, err)
+			return
 		}
-		created = err == nil
+	} else {
+		// The slug derives from the name; the tail is bumped until it is free.
+		var err error
+		slug.Candidates(slug.Base(in.Name), func(c string) bool {
+			if c == "mcp" {
+				return false
+			}
+			s.Slug = c
+			err = a.store.CreateServer(r.Context(), s, caller.UserID)
+			return !errors.Is(err, store.ErrConflict)
+		})
 		if err != nil {
-			a.log.Error("create default entitlement", "err", err)
+			writeStoreErr(w, err)
+			return
 		}
-		return true
-	})
-	if created {
-		_ = a.store.SetGrants(r.Context(), s.OrgID, ent.ID, []store.Grant{{SubjectType: "role", SubjectID: "admin"}}, caller.UserID)
 	}
 	authorizeURL, err := a.applyAuth(r.Context(), s, in.Auth)
 	if err != nil {
 		// Keep the server so the user can fix the credential, but report why.
 		_ = a.store.UpsertCredential(r.Context(), &store.Credential{ServerID: s.ID, Kind: in.Auth.Kind, State: store.StateBroken, StateReason: err.Error(), OAuthScopes: []string{}})
-		writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r.Context(), s)})
+		writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r, s)})
 		return
 	}
-	writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r.Context(), s), AuthorizeURL: authorizeURL})
+	writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r, s), AuthorizeURL: authorizeURL})
 }
 
 func validateAuth(in AuthInput) error {
@@ -277,21 +288,36 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 	if in.Description != nil {
 		s.Description = *in.Description
 	}
-	if in.Exclusive != nil {
-		s.Exclusive = *in.Exclusive
-	}
 	if in.Enabled != nil {
 		s.Enabled = *in.Enabled
 	}
-	if err := a.store.UpdateServer(r.Context(), s); err != nil {
-		writeStoreErr(w, err)
-		return
+	if in.Selection != nil || in.Hooks != nil {
+		if in.Selection != nil {
+			s.Selection = *in.Selection
+		}
+		if in.Hooks != nil {
+			stored, ok := storedHooks(w, in.Hooks)
+			if !ok {
+				return
+			}
+			s.Hooks = stored
+		}
+		if err := a.store.UpdateRules(r.Context(), s); err != nil {
+			writeStoreErr(w, err)
+			return
+		}
 	}
-	// Refetch with the new configuration rather than dropping the row: a
-	// delete would send every concurrent caller upstream at once, and a
-	// failed refetch should not take a working catalogue down with it.
-	a.warmTools(r.Context(), s.OrgID, s.ID)
-	writeJSON(w, http.StatusOK, a.withCredential(r.Context(), s))
+	if in.Name != nil || in.URL != nil || in.Description != nil || in.Enabled != nil {
+		if err := a.store.UpdateServer(r.Context(), s); err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+		// Refetch with the new configuration rather than dropping the row: a
+		// delete would send every concurrent caller upstream at once, and a
+		// failed refetch should not take a working catalogue down with it.
+		a.warmTools(r.Context(), s.OrgID, s.ID)
+	}
+	writeJSON(w, http.StatusOK, a.withCredential(r, s))
 }
 
 func (a *API) deleteServer(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +362,7 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, CreateServerResult{Server: a.withCredential(r.Context(), s), AuthorizeURL: authorizeURL})
+	writeJSON(w, http.StatusOK, CreateServerResult{Server: a.withCredential(r, s), AuthorizeURL: authorizeURL})
 }
 
 // oauthStart (re)starts consent for an existing OAuth server.

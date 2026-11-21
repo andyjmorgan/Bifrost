@@ -27,15 +27,15 @@ import (
 )
 
 // This file is where the gateway meets the rules engine (pkg/hooks). The
-// gateway does transport, credentials, caching and the entitlement's allow
+// gateway does transport, credentials, caching and each server's allow
 // lists. Everything that decides policy is the engine's: what is listed,
 // what a call may carry, what a reply may hold.
 //
 // One request goes like this:
 //
-//  1. load: the caller's entitlements on the route become engine servers,
-//     each with its compiled rules and the part of its catalog the request
-//     needs, cut to the entitlement's selection.
+//  1. load: the caller's servers on the route become engine servers, each
+//     with its compiled rules and the part of its catalog the request
+//     needs, cut to its selection.
 //  2. the engine answers the request, or says what to forward.
 //  3. relay: the forward is sent upstream and the reply, every event of it,
 //     goes back through the engine before the client sees it.
@@ -192,10 +192,10 @@ func (s *cacheStates) Take(key string) (hooks.State, bool) {
 
 // ---- rules ----------------------------------------------------------------------
 
-// ParseRules reads an entitlement's stored hooks and compiles their text to
+// ParseRules reads a server's stored hooks and compiles their text to
 // the engine's rules. The text is stored one property per hook (ruletext.Hooks);
 // an error names the hook and line of each problem. Rules that cannot be
-// read or do not compile leave the entitlement exposing nothing.
+// read or do not compile leave the server exposing nothing.
 func ParseRules(raw json.RawMessage) ([]hooks.Rule, error) {
 	r, err := ruletext.ParseStored(raw)
 	if err != nil {
@@ -216,10 +216,10 @@ type compiledHooks struct {
 
 var noRules, _ = hooks.Compile(nil)
 
-// hookRules compiles an exposure's rules once per generation.
+// hookRules compiles a server's rules once per generation.
 func (g *Gateway) hookRules(srv *store.Server) (*hooks.Set, error) {
-	key := srv.EntitlementID.String() + "@" + strconv.Itoa(srv.Generation)
-	if v, ok := g.rules.Load(srv.EntitlementID); ok {
+	key := srv.ID.String() + "@" + strconv.Itoa(srv.Generation)
+	if v, ok := g.rules.Load(srv.ID); ok {
 		if c := v.(compiledHooks); c.key == key {
 			return c.set, c.err
 		}
@@ -234,13 +234,13 @@ func (g *Gateway) hookRules(srv *store.Server) (*hooks.Set, error) {
 			set = c
 		}
 	}
-	g.rules.Store(srv.EntitlementID, compiledHooks{key: key, set: set, err: err})
+	g.rules.Store(srv.ID, compiledHooks{key: key, set: set, err: err})
 	return set, err
 }
 
 // ---- load -----------------------------------------------------------------------
 
-// exposed is one entitlement on the route, as the gateway stores it and as
+// exposed is one server on the route, as the gateway stores it and as
 // the engine sees it.
 type exposed struct {
 	srv  *store.Server
@@ -249,15 +249,15 @@ type exposed struct {
 	err  error // why its catalog could not be had, if it could not
 }
 
-// loaded is a request's view: the engine request and the entitlements
-// behind it, by slug.
+// loaded is a request's view: the engine request and the servers behind it,
+// by slug.
 type loaded struct {
 	req  hooks.Request
 	by   map[string]*exposed
-	down []map[string]string // entitlements that could not be listed
+	down []map[string]string // servers that could not be listed
 }
 
-// only is the one entitlement of a direct request.
+// only is the one server of a direct request.
 func (l *loaded) only() *exposed {
 	for _, x := range l.by {
 		return x
@@ -271,17 +271,16 @@ var listFetchers = map[string]func(*upstream.Session) (json.RawMessage, error){
 	cache.NSTemplates: fetchTemplates,
 }
 
-// load builds the engine's request: who is calling, how, and every
-// entitlement on the route with the catalog namespaces the request needs.
+// load builds the engine's request: who is calling, how, and every server
+// on the route with the catalog namespaces the request needs.
 func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug string, meta map[string]any, ns ...string) (*loaded, error) {
 	want := append([]string{cache.NSInit}, ns...)
 	var (
-		servers   []*store.Server
-		cached    map[uuid.UUID]store.CacheBundle
-		conflicts map[uuid.UUID]error
+		servers []*store.Server
+		cached  map[uuid.UUID]store.CacheBundle
 	)
 	if route == "direct" {
-		srv, bundle, err := g.exposure(ctx, caller, slug, want...)
+		srv, bundle, err := g.grantedServer(ctx, caller, slug, want...)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -292,7 +291,7 @@ func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug str
 		servers, cached = []*store.Server{srv}, map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		if servers, cached, conflicts, err = g.exposures(ctx, caller, want...); err != nil {
+		if servers, cached, err = g.granted(ctx, caller, want...); err != nil {
 			return nil, rpcErr(err)
 		}
 	}
@@ -308,7 +307,7 @@ func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug str
 		wg.Add(1)
 		go func(srv *store.Server) {
 			defer wg.Done()
-			x := g.expose(ctx, srv, cached[srv.ID], conflicts[srv.ID], ns)
+			x := g.expose(ctx, srv, cached[srv.ID], ns)
 			mu.Lock()
 			ld.by[srv.Slug] = x
 			mu.Unlock()
@@ -345,29 +344,24 @@ func (g *Gateway) load(ctx context.Context, caller *auth.Caller, route, slug str
 	return ld, nil
 }
 
-// expose turns one stored entitlement into an engine server: its rules, what
-// the upstream said about itself, and the requested parts of its catalog
-// after the entitlement's allow lists.
-func (g *Gateway) expose(ctx context.Context, srv *store.Server, bundle store.CacheBundle, conflict error, ns []string) *exposed {
+// expose turns one stored server into an engine server: its rules, what the
+// upstream said about itself, and the requested parts of its catalog after
+// its allow lists.
+func (g *Gateway) expose(ctx context.Context, srv *store.Server, bundle store.CacheBundle, ns []string) *exposed {
 	x := &exposed{srv: srv}
 	hs := &hooks.Server{
-		Slug:        srv.Slug,
-		Entitlement: map[string]any{"id": srv.EntitlementID.String(), "slug": srv.Slug, "name": srv.EntitlementName},
-		Generation:  strconv.Itoa(srv.Generation),
-		Info:        hooks.ServerInfo{Name: srv.Name, Description: srv.Description, URL: srv.URL},
+		ID:         srv.ID.String(),
+		Slug:       srv.Slug,
+		Generation: strconv.Itoa(srv.Generation),
+		Info:       hooks.ServerInfo{Name: srv.Name, Description: srv.Description, URL: srv.URL},
 	}
 	x.hs = hs
 	set, err := g.hookRules(srv)
 	hs.Rules = set
 	if err != nil {
-		// Rules that do not compile fail the entitlement closed.
+		// Rules that do not compile fail the server closed.
 		hs.Broken = err
 		audit.AddIssue(ctx, srv.Slug+": rules do not compile: "+err.Error())
-	}
-	if conflict != nil {
-		// More than one entitlement on an exclusive server: none of them.
-		hs.Broken, x.err = conflict, conflict
-		return x
 	}
 	in, err := g.initFor(ctx, srv, bundle)
 	if err != nil {
@@ -599,7 +593,7 @@ func (g *Gateway) hookList(ctx context.Context, caller *auth.Caller, route, slug
 	})
 }
 
-// withDown reports, on a listing, the entitlements that could not be listed.
+// withDown reports, on a listing, the servers that could not be listed.
 func withDown(m map[string]any, down []map[string]string) {
 	if len(down) == 0 {
 		return
@@ -676,8 +670,8 @@ func (g *Gateway) hookRead(ctx context.Context, caller *auth.Caller, route, slug
 	e, r := g.engine, ld.req
 	out := e.ReadResource(ctx, r, p)
 	if out.Forward != nil {
-		// The entitlement's allow lists bound reads as well as listings: a
-		// URI outside the selection does not exist on this entitlement,
+		// The server's allow lists bound reads as well as listings: a URI
+		// outside the selection does not exist on this server,
 		// whatever the rules would have said about it.
 		if x := ld.by[out.Forward.Slug]; x != nil {
 			uri := p.URI

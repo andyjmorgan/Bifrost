@@ -14,9 +14,8 @@ import (
 // Context is what every hook is told about the request and where it is
 // served. All of it is read-only to rules.
 type Context struct {
-	Server      map[string]any `json:"server,omitempty"`
-	Entitlement map[string]any `json:"entitlement,omitempty"`
-	Caller      map[string]any `json:"caller,omitempty"`
+	Server map[string]any `json:"server,omitempty"`
+	Caller map[string]any `json:"caller,omitempty"`
 	// Client is the client as it describes itself on this request:
 	// clientInfo and capabilities.
 	Client map[string]any `json:"client,omitempty"`
@@ -28,8 +27,7 @@ type Context struct {
 	Now     time.Time         `json:"now,omitempty"`
 }
 
-// roots builds the branches every hook has: server, entitlement and
-// request. method and params are MCP's part of the request; params may be
+// roots builds the branches every hook has: server and request. method and params are MCP's part of the request; params may be
 // nil. A caller adds what its hook has beyond these: the response, a
 // progress notification, an elicitation.
 func (c Context) roots(method string, params map[string]any) map[string]any {
@@ -53,7 +51,7 @@ func (c Context) roots(method string, params map[string]any) map[string]any {
 		headers[strings.ToLower(k)] = v
 	}
 	return map[string]any{
-		"server": orEmpty(c.Server), "entitlement": orEmpty(c.Entitlement),
+		"server": orEmpty(c.Server),
 		"request": map[string]any{
 			"method": method, "params": orEmpty(params),
 			"caller": orEmpty(c.Caller), "client": client, "headers": headers,

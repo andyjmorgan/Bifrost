@@ -18,8 +18,7 @@ A server asks for input only if the gateway advertised elicitation to it, which 
 | `request.upstream` | The request as the server received it: `request.upstream.params.name` and `request.upstream.params.arguments`, under the server's names |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
 | `prompt` | The prompt as the client sees it, and `prompt.upstream` as the server declares it |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 Every field of `elicitation.params` is optional. Read them with the [optional forms](overview.md#optional-values).
 

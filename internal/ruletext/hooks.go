@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Hooks is an entitlement's rules as they are stored and as the API sends
+// Hooks is a server's rules as they are stored and as the API sends
 // them: the text of each hook's rules, under a property that does not change.
 // A nil field means the hook has no rules. The engine's rules are compiled
 // from this text; nothing else is kept.

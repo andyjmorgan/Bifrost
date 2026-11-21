@@ -217,13 +217,13 @@ func newRequest(route string, servers ...*Server) Request {
 		Headers: map[string]string{"X-Team": "sre"}}
 }
 
-// entitledRequest is an engine and a direct request to a server that holds an
-// entitlement and has one tool, one prompt and one resource. The caller
+// serverRequest is an engine and a direct request to a server that has an
+// id and one tool, one prompt and one resource. The caller
 // belongs to an organization, the clock is fixed, the server names no
 // protocol version, and the rules are compiled without a cost limit.
-func entitledRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
+func serverRequest(t testing.TB, rules ...Rule) (*Engine, Request) {
 	t.Helper()
-	s := &Server{Slug: "a", Entitlement: map[string]any{"id": "entitlement-a"}, Generation: "1", Rules: mustCompileUncapped(t, rules...), Catalog: Catalog{
+	s := &Server{Slug: "a", ID: "server-a", Generation: "1", Rules: mustCompileUncapped(t, rules...), Catalog: Catalog{
 		Tools: []*mcp.Tool{twoArgTool()}, Prompts: []*mcp.Prompt{{Name: "p"}}, Resources: []*mcp.Resource{{Name: "r", URI: "file:///r"}},
 	}}
 	e := &Engine{}

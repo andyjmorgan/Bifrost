@@ -104,27 +104,26 @@ export interface CredentialDTO {
 
 export interface ServerDTO {
   id: string
+  /** The route (/{slug}/mcp) and the mux prefix (slug__tool). Fixed at creation. */
+  slug: string
   name: string
   url: string
   description: string
   authKind: AuthKind
   enabled: boolean
-  /** A caller holding more than one of this server's entitlements gets none of them. */
-  exclusive: boolean
   /** Capabilities the gateway has seen on this server. */
   seen: number
+  mcpUrl: string
+  selection: Selection
+  /** The text of each hook's rules, one property per hook. Every property is present; null means the hook has no rules. */
+  hooks: HooksDTO
+  /** Why the stored rules cannot be used. While set, the server exposes nothing. */
+  rulesError?: string
+  generation: number
+  grants: GrantDTO[]
+  credential?: CredentialDTO
   createdAt: string
   updatedAt: string
-  credential?: CredentialDTO
-  entitlements: EntitlementRefDTO[]
-}
-
-export interface EntitlementRefDTO {
-  id: string
-  slug: string
-  name: string
-  mcpUrl: string
-  grants: number
 }
 
 export interface AuthInput {
@@ -140,6 +139,8 @@ export interface CreateServerInput {
   name: string
   url: string
   description: string
+  /** Omitted or empty = derived from the name. */
+  slug?: string
   auth: AuthInput
 }
 
@@ -148,7 +149,9 @@ export interface UpdateServerInput {
   url?: string
   description?: string
   enabled?: boolean
-  exclusive?: boolean
+  selection?: Selection
+  /** Omit to leave unchanged. What is sent replaces all the rules: a property that is null or absent clears that hook. */
+  hooks?: HooksDTO
 }
 
 export interface CreateServerResult {
@@ -233,7 +236,7 @@ export interface AuditEventDTO {
   requestId: string
   errorType?: string
   hasPayload: boolean
-  /** How many of the entitlement's rules applied to the request. */
+  /** How many of the server's rules applied to the request. */
   ruleHitCount?: number
   /** The rules that applied; on a single event only, a listing carries the count alone. */
   rules?: RuleHitsDTO
@@ -465,9 +468,6 @@ export interface ReadResourceResult {
   _meta?: Record<string, unknown>
 }
 
-// Entitlements: a named, grantable view of one server. Its slug is the route (/{slug}/mcp) and the
-// mux prefix (slug__tool).
-
 /**
  * Allow lists keyed by kind. A key present means only what it names (an empty array is none of that
  * kind); a key absent means everything of that kind. `{}` is everything the server offers.
@@ -496,37 +496,8 @@ export interface GrantInput {
   subjectId: string
 }
 
-export interface EntitlementDTO {
-  id: string
-  serverId: string
-  serverName: string
-  slug: string
-  name: string
-  description: string
-  mcpUrl: string
-  selection: Selection
-  /** The text of each hook's rules, one property per hook. Every property is present; null means the hook has no rules. */
-  hooks: HooksDTO
-  /** Why the stored rules cannot be used. While set, the entitlement exposes nothing. */
-  rulesError?: string
-  generation: number
-  grants: GrantDTO[]
-  createdAt: string
-  updatedAt: string
-}
-
-/** slug only on create (omitted = derived from name); ignored on PATCH. */
-export interface EntitlementInput {
-  name: string
-  slug?: string
-  description: string
-  selection?: Selection
-  /** Omit to leave unchanged. What is sent replaces all the rules: a property that is null or absent clears that hook. */
-  hooks?: HooksDTO
-}
-
 /**
- * An entitlement's hooks: the text of each hook's rules, under the hook's property. The property is
+ * A server's hooks: the text of each hook's rules, under the hook's property. The property is
  * the hook's name with the separators dropped and the parts joined in camel case, so
  * tools/call.post.result is toolsCallPostResult. Null or absent means the hook has no rules.
  */
@@ -567,7 +538,7 @@ export interface CapabilityDTO {
   definition?: unknown
 }
 
-/** GET /entitlements/hooks-schema: every hook, described for someone writing rules on it. */
+/** GET /rules/hooks-schema: every hook, described for someone writing rules on it. */
 export interface HooksSchema {
   /** Flag name -> what it means; read in a rule as flags.<name>. */
   flags: Record<string, string>
@@ -617,7 +588,7 @@ export interface RuleProblem {
   level?: 'warning'
 }
 
-/** POST /entitlements/validate: what the engine's compiler and the sanity checks found. */
+/** POST /rules/validate: what the engine's compiler and the sanity checks found. */
 export interface RulesCheck {
   problems: RuleProblem[]
   warnings: RuleProblem[]
@@ -627,7 +598,7 @@ export interface RulesCheck {
 
 /**
  * One place in a hook's tree: what a rule can read there, to any depth. A hook's tree has the item
- * (tool, prompt, resource, ...), the request, what came back, the server and the entitlement.
+ * (tool, prompt, resource, ...), the request, what came back and the server.
  */
 export interface TreeNode {
   /** string, bool, number, timestamp, duration, list, map or any. */
@@ -661,23 +632,20 @@ export interface HookSet {
   type: string
 }
 
-/** One slug the caller holds (the member portal). */
-export interface ExposureDTO {
+/** GET /portal: one server the caller holds. */
+export interface PortalServerDTO {
+  id: string
   slug: string
   name: string
   description: string
   mcpUrl: string
-  serverId: string
-  serverName: string
-  serverUrl: string
+  url: string
   enabled: boolean
   selection: Selection
   /** "user" and/or "role:member" / "role:admin". */
   via: string[]
-  /** Set when an exclusive server is held twice. */
-  conflict?: string
-  /** "kind:name" this slug exposes (seen on the server and inside the selection). */
+  /** "kind:name" the server exposes (seen on it and inside its selection). */
   capabilities: string[]
-  /** Whether that entitlement has rules on some hook. */
+  /** Whether the server has rules on some hook. */
   hasRules: boolean
 }

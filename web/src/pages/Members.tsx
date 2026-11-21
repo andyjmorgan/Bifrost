@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FormField } from '../components/FormField'
 import { CopyButton } from '../components/CopyButton'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
-import { api, errorMessage, type EntitlementDTO, type InviteDTO, type MemberDTO, type OrgDTO, type OrgRole } from '../api'
+import { api, errorMessage, type InviteDTO, type MemberDTO, type OrgDTO, type OrgRole, type ServerDTO } from '../api'
 import { useMe } from '../me'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
@@ -38,17 +38,17 @@ function RolePill({ role }: { role: OrgRole }) {
   return <StatusPill tone={role === 'admin' ? 'accent' : 'muted'}>{role === 'admin' ? 'Admin' : 'Member'}</StatusPill>
 }
 
-/** The entitlements a member holds directly, by name, each linking to its editor. */
-function HeldLine({ entitlements }: { entitlements: EntitlementDTO[] }) {
-  if (!entitlements.length) return <p className="mt-1 truncate text-xs text-faint-foreground">No direct entitlements</p>
+/** The servers granted to a member directly, by name, each linking to the server. */
+function HeldLine({ servers }: { servers: ServerDTO[] }) {
+  if (!servers.length) return <p className="mt-1 truncate text-xs text-faint-foreground">No direct grants</p>
   return (
-    <p className="mt-1 truncate text-xs text-muted-foreground" title={entitlements.map((e) => `${e.name} (${e.slug})`).join(', ')}>
+    <p className="mt-1 truncate text-xs text-muted-foreground" title={servers.map((s) => `${s.name} (${s.slug})`).join(', ')}>
       Holds{' '}
-      {entitlements.map((e, i) => (
-        <span key={e.id}>
+      {servers.map((s, i) => (
+        <span key={s.id}>
           {i > 0 && ', '}
-          <Link to={`/entitlements/${e.id}`} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
-            {e.name}
+          <Link to={`/servers/${s.id}`} className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent">
+            {s.name}
           </Link>
         </span>
       ))}
@@ -82,9 +82,9 @@ export function MembersPage() {
   const [revokeBusy, setRevokeBusy] = useState(false)
   const [revokeErr, setRevokeErr] = useState<string>()
   const [roleBusy, setRoleBusy] = useState<string>()
-  // Entitlements granted to each user directly (subjectType user), indexed by user id. Role grants
+  // Servers granted to each user directly (subjectType user), indexed by user id. Role grants
   // follow from the role column.
-  const [held, setHeld] = useState<Map<string, EntitlementDTO[]>>(new Map())
+  const [held, setHeld] = useState<Map<string, ServerDTO[]>>(new Map())
 
   // The org's own view of the caller's role is the freshest; /me covers the first paint.
   const admin = org ? org.role === 'admin' : isAdmin
@@ -94,14 +94,14 @@ export function MembersPage() {
   const loadInvites = useCallback(() => api.org.invites.list().then(setInvites), [])
   const loadHeld = useCallback(
     () =>
-      api.entitlements
+      api.servers
         .list()
         .then((list) => {
-          const byUser = new Map<string, EntitlementDTO[]>()
-          for (const e of list) {
-            for (const g of e.grants) {
+          const byUser = new Map<string, ServerDTO[]>()
+          for (const s of list) {
+            for (const g of s.grants ?? []) {
               if (g.subjectType !== 'user') continue
-              byUser.set(g.subjectId, [...(byUser.get(g.subjectId) ?? []), e])
+              byUser.set(g.subjectId, [...(byUser.get(g.subjectId) ?? []), s])
             }
           }
           setHeld(byUser)
@@ -199,8 +199,8 @@ export function MembersPage() {
         title="Members"
         description={
           admin
-            ? 'Who shares this organisation’s servers, entitlements and audit trail. Invite people with a one-time link.'
-            : 'Who shares this organisation’s servers, entitlements and audit trail. Admins manage members and invites.'
+            ? 'Who shares this organisation’s servers and audit trail. Invite people with a one-time link.'
+            : 'Who shares this organisation’s servers and audit trail. Admins manage members and invites.'
         }
         actions={
           admin ? (
@@ -274,7 +274,7 @@ export function MembersPage() {
                           subtitle={m.userId}
                           mono
                         />
-                        {admin && <HeldLine entitlements={held.get(m.userId) ?? []} />}
+                        {admin && <HeldLine servers={held.get(m.userId) ?? []} />}
                       </div>
                     </div>
                     <Cell label="Email">
@@ -512,7 +512,7 @@ function RenameDialog({ open, current, onClose, onSaved }: { open: boolean; curr
 
 const ROLE_HINTS: Record<OrgRole, string> = {
   member: 'Sees the servers granted to them, uses the Explorer, and manages their own API keys and audit trail.',
-  admin: 'Everything a member can do, plus servers, entitlements, grants, members and invites.',
+  admin: 'Everything a member can do, plus servers, rules, grants, members and invites.',
 }
 
 function CreateInviteDialog({

@@ -5,8 +5,8 @@ The rules engine (`pkg/hooks`) sits behind Bifrost's front door. Every listing, 
 ## How a request flows
 
 1. The Go SDK server accepts the request, as before. Its middleware (`internal/gateway/gateway.go`) hands every method to the engine layer.
-2. `load` (`internal/gateway/hooks.go`) turns the caller's entitlements on the route into engine servers. Each gets its compiled rules, what the upstream said about itself, and the part of its catalog the request needs.
-3. The entitlement's allow lists (its selection) cut the catalog first. The engine only ever sees what the selection left.
+2. `load` (`internal/gateway/hooks.go`) turns the servers granted to the caller on the route into engine servers. Each gets its compiled rules, what the upstream said about itself, and the part of its catalog the request needs.
+3. Each server's allow lists (its selection) cut the catalog first. The engine only ever sees what the selection left.
 4. The engine answers the request, or says what to forward.
 5. `relay` sends the forward upstream and takes the reply back through the engine, event by event. Progress is relayed as it arrives.
 
@@ -17,7 +17,7 @@ The rules engine (`pkg/hooks`) sits behind Bifrost's front door. Every listing, 
 | Transport: the SDK server at the front, HTTP to upstreams | What is listed, and under what name |
 | Credentials and token refresh | What a call may carry, and whether it runs |
 | Caching of catalogs and handshakes | What a reply may hold, including progress |
-| The entitlement's allow lists | Confirmations and the upstream's own questions |
+| Each server's allow lists, and who holds the server | Confirmations and the upstream's own questions |
 | Its own tools: `refresh_services`, and the search tools' definitions | Search over what the rules expose |
 
 ## Decisions made while wiring
@@ -33,11 +33,12 @@ The rules engine (`pkg/hooks`) sits behind Bifrost's front door. Every listing, 
 - HTTP request headers reach rules only through an allow-list. `MCPGW_RULE_HEADERS` names the headers rules may read as `request.headers`, comma separated. It is empty unless set, so by default a rule sees no header. Headers that carry credentials are never shown.
 - Every result names the gateway in `_meta`, under `io.modelcontextprotocol/serverInfo`, as the protocol asks of a server. The SDK server stamps it; the first wiring's result type dropped it. Discovery keeps the identity the rules chose.
 - The state of a request that waits on an answer, to the gateway's question or to a server's, lives in the gateway's Postgres TTL cache, namespace `confirm`. Redeeming one deletes it in the same statement (`CacheTake`), so it works once across replicas. This replaces the engine's in-memory stand-in.
-- Stored hooks that cannot be read, or whose rules do not compile, leave the entitlement exposing nothing. The API reports why in `rulesError`.
+- Stored hooks that cannot be read, or whose rules do not compile, leave the server exposing nothing. The API reports why in `rulesError`.
+- A server owns its slug, its selection, its rules and its grants. There is no separate grantable view of a server: one server is one slug. A group of callers that needs different rules gets them from a rule that reads `request.caller`, not from a second view. Grants are to a user or to the `admin` or `member` role (`server_grants`). Changing the selection, the rules or the grants bumps the server's `generation`, which ends any request waiting for an answer.
 
 ## How rules are stored
 
-An entitlement keeps its rules as text, in one `jsonb` column on its row (`entitlements.hooks`). The object has one property per hook, holding the text of that hook's rules. A property that is absent means the hook has no rules:
+A server keeps its rules as text, in one `jsonb` column on its row (`servers.hooks`). The object has one property per hook, holding the text of that hook's rules. A property that is absent means the hook has no rules:
 
 ```json
 {
@@ -47,14 +48,14 @@ An entitlement keeps its rules as text, in one `jsonb` column on its row (`entit
 ```
 
 - The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.List` lists all 19 hooks.
-- The text is the only stored form. The gateway compiles it to the engine's rules when it loads the entitlement, and keeps the result until the entitlement's generation changes.
-- The API uses the same object, as the entitlement's `hooks`. `GET /entitlements/{id}` returns every property, with null where a hook has no rules. `PATCH` takes `hooks` and replaces all of them. A property that is not a hook's is refused.
-- `POST /entitlements/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
-- `GET /entitlements/hooks-schema` describes every hook: what it controls, what a rule there may read and set, and a worked example.
-- The engine's own input is still a list of JSON rules. Only the entitlement API and the database take text.
+- The text is the only stored form. The gateway compiles it to the engine's rules when it loads the server, and keeps the result until the server's generation changes.
+- The API uses the same object, as the server's `hooks`. `GET /servers/{id}` returns every property, with null where a hook has no rules. `PATCH /servers/{id}` takes `hooks` and replaces all of them, and `selection` beside it. A property that is not a hook's is refused. `PUT /servers/{id}/grants` replaces who holds the server.
+- `POST /rules/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
+- `GET /rules/hooks-schema` describes every hook: what it controls, what a rule there may read and set, and a worked example.
+- The engine's own input is still a list of JSON rules. Only the server API and the database take text.
 - A rule is switched off by commenting it out with `#`. A `//` comment may follow an expression on its line, and ends at the end of that line.
 - `confirm "question"` compiles to the engine's `confirm` key alone. The engine decides whether the question has been answered.
-- Rules are not counted. The API says only whether a hook, or an entitlement, has any.
+- Rules are not counted. The API says only whether a hook, or a server, has any.
 
 ## What was tested
 

@@ -6,7 +6,7 @@ import { JsonTree, type Json } from '../PayloadViewer'
 import { Definition } from '../../pages/explorer/shared'
 import type { CapabilityDTO } from '../../api'
 import { absoluteTime, cn, relativeTime } from '../../lib'
-import { KINDS } from './selection'
+import { KINDS } from '../rules/selection'
 
 type Obj = Record<string, unknown>
 

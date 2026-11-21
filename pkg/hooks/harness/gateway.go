@@ -260,7 +260,7 @@ func (g *Gateway) AddServer(t testing.TB, slug string, u *Upstream, rules ...hoo
 	}
 	catalog = catalog.StripMeta(g.MetaAllow)
 
-	b.server = &hooks.Server{Slug: slug, Entitlement: map[string]any{"slug": slug}, Info: info, Generation: "1", Catalog: catalog}
+	b.server = &hooks.Server{Slug: slug, Info: info, Generation: "1", Catalog: catalog}
 	b.server.Rules = compile(t, rules)
 	g.mu.Lock()
 	if _, ok := g.backends[slug]; !ok {

@@ -29,36 +29,80 @@ func isUnique(err error) bool {
 
 // ---- servers -----------------------------------------------------------
 
-const serverCols = `id, org_id, name, url, description, auth_kind, enabled, exclusive, created_at, updated_at`
+const serverCols = `id, org_id, slug, name, url, description, auth_kind, enabled, selection, hooks, generation, created_at, updated_at`
 
-func scanServer(row pgx.Row) (*Server, error) {
+// serverColsS is serverCols qualified for a query that aliases servers as s.
+const serverColsS = `s.id, s.org_id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.selection, s.hooks, s.generation, s.created_at, s.updated_at`
+
+func scanServer(row pgx.Row) (*Server, error) { return scanServerInto(row) }
+
+// scanServerInto scans serverCols, then any extra columns that follow them.
+func scanServerInto(row pgx.Row, extra ...any) (*Server, error) {
 	var s Server
-	err := row.Scan(&s.ID, &s.OrgID, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &s.Exclusive, &s.CreatedAt, &s.UpdatedAt)
+	var sel []byte
+	err := row.Scan(append([]any{&s.ID, &s.OrgID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &sel, &s.Hooks, &s.Generation, &s.CreatedAt, &s.UpdatedAt}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
+	_ = json.Unmarshal(sel, &s.Selection)
+	if s.Selection == nil {
+		s.Selection = Selection{}
+	}
+	if len(s.Hooks) == 0 {
+		s.Hooks = json.RawMessage("{}")
+	}
 	return &s, nil
 }
 
-// CreateServer inserts a server.
-func (p *Postgres) CreateServer(ctx context.Context, s *Server) error {
-	_, err := p.pool.Exec(ctx, `insert into servers (id, org_id, name, url, description, auth_kind, enabled, exclusive, created_at, updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		s.ID, s.OrgID, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, s.Exclusive, s.CreatedAt, s.UpdatedAt)
+// CreateServer inserts a server with its grants. ErrConflict when the slug
+// is taken in the org.
+func (p *Postgres) CreateServer(ctx context.Context, s *Server, by string) error {
+	if s.Selection == nil {
+		s.Selection = Selection{}
+	}
+	sel, _ := json.Marshal(s.Selection)
+	if len(s.Hooks) == 0 {
+		s.Hooks = json.RawMessage("{}")
+	}
+	tx, err := p.pool.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	err = tx.QueryRow(ctx, `insert into servers (id, org_id, slug, name, url, description, auth_kind, enabled, selection, hooks, created_at, updated_at)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning generation`,
+		s.ID, s.OrgID, s.Slug, s.Name, s.URL, s.Description, s.AuthKind, s.Enabled, sel, s.Hooks, s.CreatedAt, s.UpdatedAt).Scan(&s.Generation)
+	if isUnique(err) {
+		return ErrConflict
+	}
+	if err != nil {
+		return fmt.Errorf("store: %w", err)
+	}
+	if err := insertGrants(ctx, tx, s.ID, s.Grants, by); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
 	return nil
 }
 
-// GetServer fetches by id within an owner.
+// GetServer fetches by id within an owner, with its grants.
 func (p *Postgres) GetServer(ctx context.Context, owner string, id uuid.UUID) (*Server, error) {
-	return scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where org_id=$1 and id=$2`, owner, id))
+	s, err := scanServer(p.pool.QueryRow(ctx, `select `+serverCols+` from servers where org_id=$1 and id=$2`, owner, id))
+	if err != nil {
+		return nil, err
+	}
+	if err := p.withGrants(ctx, s); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
-// ListServers returns an owner's servers, oldest first.
+// ListServers returns an owner's servers with their grants, oldest first.
 func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, error) {
 	rows, err := p.pool.Query(ctx, `select `+serverCols+` from servers where org_id=$1 order by created_at`, owner)
 	if err != nil {
@@ -73,15 +117,22 @@ func (p *Postgres) ListServers(ctx context.Context, owner string) ([]*Server, er
 		}
 		out = append(out, s)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	if err := p.withGrants(ctx, out...); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
-// UpdateServer writes the mutable fields (not slug, owner, auth kind) and
+// UpdateServer writes the connection fields (not slug, owner, rules or
+// grants) and
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, exclusive=$8, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
-		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind, s.Exclusive).Scan(&s.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$7, updated_at=now() where org_id=$1 and id=$2 returning updated_at`,
+		s.OrgID, s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}

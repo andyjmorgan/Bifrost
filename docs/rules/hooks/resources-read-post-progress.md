@@ -17,8 +17,7 @@
 | `request.params` | `request.params.uri`, the URI the read named, as the server knows it |
 | `request.upstream` | The read as the server received it: `request.upstream.params.uri` |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `progress.params.message` and `progress.params.total` are absent when the server sent none. Read them with `progress.params.?message.orValue('')`, or guard with `has(progress.params.message)`.
 

@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 const backend = 'http://localhost:8080'
 
 // Everything the Go server owns is proxied in dev: the REST API, the MCP front door (mux and
-// per-entitlement slug), the OAuth callback and the well-known documents. Client routes stay with Vite.
+// per-server slug), the OAuth callback and the well-known documents. Client routes stay with Vite.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {

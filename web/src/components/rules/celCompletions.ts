@@ -3,7 +3,7 @@ import type { EditorView } from '@codemirror/view'
 import type { CapabilityDTO, HookInfo, HookSet, TreeNode } from '../../api'
 
 // Completion for a rule's CEL: its condition and each value it sets. What a rule may read comes
-// from GET /entitlements/hooks-schema for the rule's hook, so the suggestions cannot drift from
+// from GET /rules/hooks-schema for the rule's hook, so the suggestions cannot drift from
 // the engine. Only the CEL language itself (string methods, macros) and the live values from the
 // server's catalog are added here.
 //
@@ -19,7 +19,7 @@ export interface CelCompletionData {
   hook?: HookInfo
   /** Key of `caller` -> what it holds, from the schema. */
   caller?: Record<string, string>
-  /** The entitlement's slug. */
+  /** The server's slug. */
   slug: string
   /** The server's catalog, for names and values the rule can compare against. */
   caps: CapabilityDTO[]
@@ -155,7 +155,7 @@ const ITEM_VALUE = /^(?:(?:tool|prompt|resource|template|skill)(?:\.upstream)?|r
 
 /** The values a string comparison against `path` could use: a fixed set, a schema's enumeration, or what the catalog holds. */
 function literalValues(path: string, before: string, data: CelCompletionData): Literal[] {
-  if (path === 'entitlement.slug') return data.slug ? [{ label: data.slug, detail: 'this entitlement' }] : []
+  if (path === 'server.slug') return data.slug ? [{ label: data.slug, detail: 'this server' }] : []
   const node = resolve(path.replace(/\.\?/g, '.'), before, data)
   if (node && 'tree' in node && node.tree.enum) return node.tree.enum.map((label) => ({ label }))
   if (node && 'schema' in node) {
@@ -292,7 +292,7 @@ function membersOf(path: string, before: string, data: CelCompletionData): { mem
 }
 
 /** The item first, then the request, then what came back, then where it happened. */
-const ORDER = ['tool', 'prompt', 'resource', 'template', 'skill', 'request', 'response', 'progress', 'elicitation', 'server', 'entitlement']
+const ORDER = ['tool', 'prompt', 'resource', 'template', 'skill', 'request', 'response', 'progress', 'elicitation', 'server']
 
 function topLevel(data: CelCompletionData): Completion[] {
   const hook = data.hook

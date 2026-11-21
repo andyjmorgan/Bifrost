@@ -86,7 +86,7 @@ func (e *Engine) continuation(r Request, s *Server, method, target, hash, token 
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state expired"}
 	case st.Method != method || st.Target != target:
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state belongs to another request"}
-	case r.principal() == "" || st.Caller != r.principal() || st.Entitlement != entitlementID(s):
+	case r.principal() == "" || st.Caller != r.principal() || st.Server != serverID(s):
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state belongs to another caller"}
 	case st.Generation != generation(s):
 		return nil, nil, nil, &RPCError{Code: CodeInvalidParams, Message: "request state is from an older policy"}
@@ -189,7 +189,7 @@ func (e *Engine) elicitation(r Request, s *Server, method, target, hash string, 
 	if now.IsZero() {
 		now = time.Now()
 	}
-	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: r.principal(), Entitlement: entitlementID(s),
+	st := State{Challenge: fmt.Sprintf("%x", now.UnixNano()), Method: method, Caller: r.principal(), Server: serverID(s),
 		Target: target, ArgsHash: hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Pending: []string{key},
 		Asks: map[string]string{key: binding(marker, args)}, Confirmed: bindings(confirmed)}
 	reqs := mcp.InputRequestMap{KeyPrefix + key: &mcp.ElicitParams{
@@ -264,7 +264,7 @@ func (e *Engine) wrapState(r Request, s *Server, call *CallContext, clientToken,
 	if now.IsZero() {
 		now = timeNow()
 	}
-	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: r.principal(), Entitlement: entitlementID(s),
+	st := State{Challenge: fmt.Sprintf("u%x", now.UnixNano()), Method: call.Method, Caller: r.principal(), Server: serverID(s),
 		Target: call.Target, ArgsHash: call.Hash, Generation: generation(s), Expires: now.Add(StateTTL).Unix(), Upstream: upstreamState, UpstreamRound: true}
 	st.Confirmed = bindings(call.Confirmed)
 	for k := range reqs {

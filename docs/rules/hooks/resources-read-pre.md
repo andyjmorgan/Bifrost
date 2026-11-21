@@ -21,8 +21,7 @@
 | `resource.upstream` | The listed resource as the server declares it |
 | `request.params` | `request.params.uri`, the URI as the server knows it, without the mux prefix. `request.params._meta`, when the client sent one |
 | `request` | Also `request.method`, `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time` |
-| `server` | `server.slug` and what the gateway knows about the server |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug` and what the gateway knows about the server |
 
 `request.upstream` does not exist here, because nothing has been sent to the server yet.
 

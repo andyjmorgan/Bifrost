@@ -142,7 +142,7 @@ export function HookRules({
     <section className="space-y-4">
       {rulesError && (
         <Callout tone="danger">
-          <p className="font-medium">This entitlement exposes nothing until its rules are rewritten and saved.</p>
+          <p className="font-medium">This server exposes nothing until its rules are rewritten and saved.</p>
           <p className="break-words font-mono text-xs leading-5 text-muted-foreground">{rulesError}</p>
         </Callout>
       )}

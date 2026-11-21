@@ -202,7 +202,7 @@
   ]
  },
  {
-  "name": "overview: a rule list that does not compile fails the entitlement closed",
+  "name": "overview: a rule list that does not compile fails the server closed",
   "servers": [
    {
     "slug": "wiki",

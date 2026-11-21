@@ -4,7 +4,7 @@ This page is for the engineers who take the rules engine into another gateway. I
 
 ## What it is
 
-The rules engine decides what an MCP client may see and do through a gateway. An entitlement is one caller's view of one MCP server. Each entitlement carries rules, and the engine runs them at fixed points in a request, called hooks: when tools are listed, before a call is forwarded, when a result comes back, and so on. There are 19 hooks.
+The rules engine decides what an MCP client may see and do through a gateway. Each MCP server behind the gateway carries rules, and the engine runs them at fixed points in a request, called hooks: when tools are listed, before a call is forwarded, when a result comes back, and so on. There are 19 hooks.
 
 A rule is a condition and what to do when it holds. Both are CEL expressions. A rule can hide an item, refuse a call, ask the user to confirm, or change one thing the hook lets it change, such as a tool's name or a field of a result.
 
@@ -29,13 +29,13 @@ The engine does no I/O. Your gateway hands it a request and the server's catalog
 | `cmd/hookctl` | A command-line tool: run scenario files, check rules, print a hook's tree or its JSON Schema | Take it whole |
 | `pkg/hooks/harness` | A test gateway and scripted MCP servers, used to run the scenario files over real HTTP through the Go, Python and TypeScript client SDKs | Take it if you want the same proof for your gateway |
 | `internal/gateway/hooks.go` and `entitle.go` | How Bifrost calls the engine | A worked example, not a library. Your gateway will have its own |
-| `web/src/components/entitlements` | The rule editor, with autocomplete that walks each hook's tree | Optional |
+| `web/src/components/rules` | The rule editor, with autocomplete that walks each hook's tree | Optional |
 
 ## What your gateway must supply
 
-- The rules, compiled. Stored rule text goes through `ruletext.Compile`, then `hooks.Compile`. Keep the result until the entitlement changes. A set that does not compile leaves the entitlement exposing nothing.
-- A generation string for each entitlement that changes whenever the entitlement or the server's catalog changes. The engine adds a fingerprint of the rules itself. A request that is waiting for an answer is tied to both, so a change ends it.
-- The server's catalog, in the MCP Go SDK's types, already cut down to what the entitlement selects.
+- The rules, compiled. Stored rule text goes through `ruletext.Compile`, then `hooks.Compile`. Keep the result until the server's rules change. A set that does not compile leaves the server exposing nothing.
+- A generation string for each server that changes whenever its rules, its selection, who holds it or its catalog changes. The engine adds a fingerprint of the rules itself. A request that is waiting for an answer is tied to both, so a change ends it.
+- The server's catalog, in the MCP Go SDK's types, already cut down to what the server's selection allows.
 - A `Request` for each MCP request: the route, the caller, a principal, the client's `clientInfo` and capabilities, the time, and the servers on the route.
   - The principal is one string that identifies who is asking. Confirmations are bound to it. With no principal the engine refuses to ask for confirmation.
   - The caller is a map your gateway defines. Rules read it as `request.caller`. Leave out a field the caller does not have; do not fill it with an empty string.
@@ -56,7 +56,7 @@ The engine does no I/O. Your gateway hands it a request and the server's catalog
 
 - Nothing is filled in. An optional field the server left out is absent, and a rule that reads it plainly fails. A rule that fails in enforce mode denies. Rules read optional values with CEL's optional forms.
 - A rule cannot be evaluated: the item is hidden or the request is refused. The engine never lets something through because a rule broke.
-- Each hook changes one branch of its tree. `X` is the entitlement's form of a thing and `X.upstream` is the server's. Nothing can set `upstream`.
+- Each hook changes one branch of its tree. `X` is the gateway's form of a thing and `X.upstream` is the server's. Nothing can set `upstream`.
 - Every path a rule reads or sets is checked against the hook's tree when the rule is saved.
 - A URI has one spelling the gateway accepts. Rules compare text, and a server may read several spellings as one URI, so the rest are refused. See [URI form](hooks/overview.md#uri-form).
 - The engine decides whether a confirmation has been given, not the rule. A yes counts only for the question it answered: its words and the arguments at that moment.
@@ -81,7 +81,7 @@ Tests for the limits that are bugs are in `pkg/hooks/known_limits_test.go`. They
 ## What has not been built
 
 - Webhooks. Each hook's tree serialises to a JSON Schema (`hookctl schema <hook>`), which is meant to become the contract for one.
-- Labels on rules, layering of rules across entitlements, and rate limits.
+- Labels on rules, layering of rules across servers, and rate limits.
 
 ## How it was tested
 

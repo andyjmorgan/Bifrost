@@ -37,8 +37,7 @@ A rule that fails also hides the tool. That covers an enforce rule that fails to
 | `tool.params` | The gateway's view of the visible parameters. Each current parameter name maps to its property schema, with renames and constraints applied |
 | `tool.upstream` | The tool as the server declares it, with the same MCP fields. It never changes |
 | `request` | `request.caller`, `request.client`, `request.headers`, `request.route`, `request.flags`, `request.time`. `request.params` holds only `_meta` here |
-| `server` | `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions` where the server gave them |
-| `entitlement` | `entitlement.id`, `entitlement.slug`, `entitlement.name` |
+| `server` | `server.id`, `server.slug`, and `server.name`, `server.title`, `server.description`, `server.instructions` where the server gave them |
 
 Only `tool.name` and `tool.inputSchema` are always present. Every other field of the tool is absent when the server did not send it. Read those with the [optional forms](overview.md#optional-values):
 

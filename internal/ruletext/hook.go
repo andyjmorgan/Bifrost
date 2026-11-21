@@ -1,4 +1,4 @@
-// Package ruletext is the text form of an entitlement's rules.
+// Package ruletext is the text form of a server's rules.
 //
 // Rules are written as text, one text per hook. A hook is a place in a
 // request where rules run: a method, a side of it (pre, the request; post,

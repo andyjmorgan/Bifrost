@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path"
 	"strings"
 
@@ -19,12 +18,12 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
-// Entitlements are the gateway's only way to a server. A caller holds some
-// entitlements; each is one slug on one server, cut to the entitlement's
-// selection. The same cut decides what is listed and what may be called, so
-// a capability that is not listed is also not callable, and a refused call
-// looks exactly like a call to something that does not exist. What a server
-// has been seen to offer is recorded as governance data, never as a filter.
+// A caller reaches only the servers granted to them, each under its slug and
+// cut to its selection. The same cut decides what is listed and what may be
+// called, so a capability that is not listed is also not callable, and a
+// refused call looks exactly like a call to something that does not exist.
+// What a server has been seen to offer is recorded as governance data,
+// never as a filter.
 
 type slugsKey struct{}
 
@@ -42,16 +41,14 @@ func withSlugs(ctx context.Context, raw string) context.Context {
 	return context.WithValue(ctx, slugsKey{}, out)
 }
 
-// exposures lists the entitlements the caller holds with the live cache of
-// the given namespaces, narrowed to ?slugs= when the mux was called with
-// it; a slug named there that the caller does not hold is an error rather
-// than a silent gap, so a configuration mistake shows. On a server marked
-// exclusive a caller holding more than one entitlement gets none of them;
-// those come back as conflicts.
-func (g *Gateway) exposures(ctx context.Context, caller *auth.Caller, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, map[uuid.UUID]error, error) {
-	servers, cached, err := g.store.ListExposuresWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), ns...)
+// granted lists the servers the caller holds with the live cache of the
+// given namespaces, narrowed to ?slugs= when the mux was called with it; a
+// slug named there that the caller does not hold is an error rather than a
+// silent gap, so a configuration mistake shows.
+func (g *Gateway) granted(ctx context.Context, caller *auth.Caller, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error) {
+	servers, cached, err := g.store.ListGrantedWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), ns...)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if want, ok := ctx.Value(slugsKey{}).([]string); ok {
 		held := map[string]*store.Server{}
@@ -62,24 +59,12 @@ func (g *Gateway) exposures(ctx context.Context, caller *auth.Caller, ns ...stri
 		for _, w := range want {
 			s, ok := held[w]
 			if !ok {
-				return nil, nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown slug " + w}
+				return nil, nil, &jsonrpc.Error{Code: -32004, Message: "unknown slug " + w}
 			}
 			servers = append(servers, s)
 		}
 	}
-	bySrv := map[uuid.UUID][]string{}
-	for _, s := range servers {
-		if s.Exclusive {
-			bySrv[s.ID] = append(bySrv[s.ID], s.Slug)
-		}
-	}
-	conflicts := map[uuid.UUID]error{}
-	for id, slugs := range bySrv {
-		if len(slugs) > 1 {
-			conflicts[id] = fmt.Errorf("entitlements conflict: %s on an exclusive server", strings.Join(slugs, ", "))
-		}
-	}
-	return servers, cached, conflicts, nil
+	return servers, cached, nil
 }
 
 // rpcErr passes a JSON-RPC error through and wraps anything else as internal.
@@ -91,29 +76,15 @@ func rpcErr(err error) error {
 	return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}
 }
 
-// exposure resolves one slug the caller holds.
-func (g *Gateway) exposure(ctx context.Context, caller *auth.Caller, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
-	srv, bundle, err := g.store.GetExposureBySlugWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(slug), ns...)
-	if err != nil {
-		return nil, nil, err
-	}
-	if srv.Exclusive {
-		all, _, conflicts, err := g.exposures(ctx, caller)
-		if err != nil {
-			return nil, nil, err
-		}
-		_ = all
-		if c, ok := conflicts[srv.ID]; ok {
-			return nil, nil, c
-		}
-	}
-	return srv, bundle, nil
+// grantedServer resolves one slug the caller holds.
+func (g *Gateway) grantedServer(ctx context.Context, caller *auth.Caller, slug string, ns ...string) (*store.Server, store.CacheBundle, error) {
+	return g.store.GetGrantedBySlugWithCache(ctx, caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(slug), ns...)
 }
 
 // ---- catalog --------------------------------------------------------------------
 
-// observe records what a server offered, for the server page and the
-// entitlement editor. Called only after an upstream fetch, never on a cache
+// observe records what a server offered, for the server page and its rule
+// editor. Called only after an upstream fetch, never on a cache
 // hit. Bookkeeping: a failure must not fail the listing.
 func (g *Gateway) observeTools(ctx context.Context, srv *store.Server, tools []*mcp.Tool) {
 	items := make(map[string]store.Seen, len(tools))
@@ -225,13 +196,13 @@ func callerMap(c *auth.Caller) map[string]any {
 	return m
 }
 
-// cutter applies an exposure's allow lists: the entitlement's selection.
-// It decides what of a server's catalog the rules engine is given at all.
-// The entitlement's rules run afterwards, in the engine, on what is left.
+// cutter applies a server's allow lists: its selection. It decides what of a
+// server's catalog the rules engine is given at all. The server's rules run
+// afterwards, in the engine, on what is left.
 type cutter struct {
 	srv *store.Server
-	// broken is kept for callers that report a broken exposure; the
-	// selection alone cannot be broken.
+	// broken is kept for callers that report a broken server; the selection
+	// alone cannot be broken.
 	broken error
 }
 
@@ -279,7 +250,7 @@ func (c *cutter) tools(tools []*mcp.Tool) []*mcp.Tool {
 	return out
 }
 
-// raw filters a cached JSON list by the exposure.
+// raw filters a cached JSON list by the server's selection.
 func (c *cutter) raw(ns string, raw json.RawMessage) json.RawMessage {
 	var items []json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {
@@ -303,7 +274,7 @@ func (c *cutter) raw(ns string, raw json.RawMessage) json.RawMessage {
 
 // ---- the allow lists ----------------------------------------------------------
 
-// inList reports whether the entitlement's allow list for a kind names the
+// inList reports whether the server's allow list for a kind names the
 // capability, or there is no list for that kind.
 func inList(srv *store.Server, kind, name string) bool {
 	list, ok := srv.Selection[store.SelectionKey(kind)]

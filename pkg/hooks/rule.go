@@ -49,7 +49,7 @@ type Problem struct {
 }
 
 // Problems is every problem in a rule list. A non-empty list fails the whole
-// entitlement closed.
+// server closed.
 type Problems []Problem
 
 func (ps Problems) Error() string {
@@ -168,7 +168,7 @@ func (s *Set) Dynamic() map[string]bool {
 // Compile checks every rule and returns the evaluable set, or every problem.
 func Compile(rs []Rule, opts ...Options) (set *Set, problems Problems) {
 	// Rules are customer input. A panic while compiling them is reported as
-	// a problem, so the caller marks the entitlement broken (which denies)
+	// a problem, so the caller marks the server broken (which denies)
 	// and the process carries on.
 	defer func() {
 		if p := recover(); p != nil {

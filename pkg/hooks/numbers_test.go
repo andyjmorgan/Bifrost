@@ -36,7 +36,7 @@ func TestNumbersAreEqualByValueNotBySpelling(t *testing.T) {
 // An integer argument written as 1, 1.0, 1e0, 1E+0 or 0.1e1 passes the same
 // schema check and gives the same result when a rule adds to it.
 func TestEverySpellingOfAnIntegerGetsTheSameOutcome(t *testing.T) {
-	e, r := entitledRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"request.params.arguments.n": "request.params.arguments.n + 1"}})
+	e, r := serverRequest(t, Rule{Hook: "tools/call.pre", When: "true", Then: map[string]string{"request.params.arguments.n": "request.params.arguments.n + 1"}})
 	r.Servers[0].Catalog.Tools[0].InputSchema.(map[string]any)["properties"].(map[string]any)["n"] = map[string]any{"type": "integer"}
 	for _, number := range []string{"1", "1.0", "1e0", "1E+0", "0.1e1"} {
 		t.Run(number, func(t *testing.T) {

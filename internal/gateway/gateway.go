@@ -1,9 +1,9 @@
 // Package gateway is the front door: an MCP server (go-sdk, 2026-07-28 only)
-// in front of the caller's entitlements. /mcp multiplexes every entitlement
+// in front of the servers granted to the caller. /mcp multiplexes every one
 // with slug__name names; /{slug}/mcp is 1:1.
 //
-// The gateway does transport, credentials, caching and the entitlement's
-// allow lists. Every listing, call and reply then goes through the rules
+// The gateway does transport, credentials, caching and each server's allow
+// lists. Every listing, call and reply then goes through the rules
 // engine (pkg/hooks), which decides what a caller sees and may do. hooks.go
 // is where the two meet.
 package gateway
@@ -42,9 +42,9 @@ const Separator = "__"
 // Store is the slice of persistence the gateway reads.
 type Store interface {
 	ListServers(ctx context.Context, owner string) ([]*store.Server, error)
-	GetExposureBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
-	ListExposuresWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
-	GetExposureBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
+	GetGrantedBySlug(ctx context.Context, org, userID, role, slug string) (*store.Server, error)
+	ListGrantedWithCache(ctx context.Context, org, userID, role string, ns ...string) ([]*store.Server, map[uuid.UUID]store.CacheBundle, error)
+	GetGrantedBySlugWithCache(ctx context.Context, org, userID, role, slug string, ns ...string) (*store.Server, store.CacheBundle, error)
 	ObserveCapabilities(ctx context.Context, serverID uuid.UUID, kind string, items map[string]store.Seen) error
 	CacheGet(ctx context.Context, ns, key string) (json.RawMessage, error)
 	CacheSet(ctx context.Context, ns, key string, serverID *uuid.UUID, ifUpdatedAt time.Time, value json.RawMessage, ttl time.Duration) error
@@ -67,7 +67,7 @@ type Gateway struct {
 	// one fetch per replica per cold key; writes are idempotent and guarded
 	// by the server's updated_at, so no cross-process lock is needed.
 	flights singleflight.Group
-	// rules caches each entitlement's compiled rules by generation.
+	// rules caches each server's compiled rules by generation.
 	rules sync.Map
 	// engine is the rules engine: every listing, call and reply goes
 	// through it. See hooks.go.
@@ -162,7 +162,7 @@ func (g *Gateway) handler(route string) http.Handler {
 			// Resolve early so the inbound audit event carries the server even
 			// when the request fails before reaching a method handler.
 			caller := auth.CallerFrom(r.Context())
-			srv, err := g.store.GetExposureBySlug(r.Context(), caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(chi.URLParam(r, "slug")))
+			srv, err := g.store.GetGrantedBySlug(r.Context(), caller.OrgID, caller.UserID, string(caller.Role), strings.ToLower(chi.URLParam(r, "slug")))
 			if err != nil {
 				http.NotFound(w, r)
 				return

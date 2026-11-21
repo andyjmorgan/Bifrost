@@ -313,7 +313,7 @@ function Headers({ label, headers }: { label: string; headers?: Record<string, s
 
 const STAGE_LINE = /^(.+):(\d+)$/
 
-/** What the entitlement's rules did on a request: one row per rule that applied. */
+/** What the server's rules did on a request: one row per rule that applied. */
 function RuleHits({ rules }: { rules: RuleHitsDTO }) {
   return (
     <div className="space-y-2">

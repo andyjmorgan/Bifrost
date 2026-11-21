@@ -14,7 +14,7 @@ import (
 )
 
 // Tools: the listing, and tools/call on its way to the server and back.
-// How a tool is shaped for an entitlement is in tools.go.
+// How a tool is shaped for a server is in tools.go.
 
 // ListedTools is a tools/list result plus the gateway's working data.
 type ListedTools struct {

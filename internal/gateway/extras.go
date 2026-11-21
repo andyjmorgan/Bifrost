@@ -174,9 +174,8 @@ func fetchTemplates(sess *upstream.Session) (json.RawMessage, error) {
 func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug, ns string, force bool, fetch func(*upstream.Session) (json.RawMessage, error)) ([]listing, error) {
 	var servers []*store.Server
 	var cached map[uuid.UUID]store.CacheBundle
-	var conflicts map[uuid.UUID]error
 	if route == "direct" {
-		srv, bundle, err := g.exposure(ctx, caller, slug, ns, cache.NSInit)
+		srv, bundle, err := g.grantedServer(ctx, caller, slug, ns, cache.NSInit)
 		if err != nil {
 			return nil, &jsonrpc.Error{Code: -32004, Message: "unknown server"}
 		}
@@ -184,7 +183,7 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 		cached = map[uuid.UUID]store.CacheBundle{srv.ID: bundle}
 	} else {
 		var err error
-		servers, cached, conflicts, err = g.exposures(ctx, caller, ns, cache.NSInit)
+		servers, cached, err = g.granted(ctx, caller, ns, cache.NSInit)
 		if err != nil {
 			return nil, rpcErr(err)
 		}
@@ -196,13 +195,6 @@ func (g *Gateway) listings(ctx context.Context, caller *auth.Caller, route, slug
 	)
 	for _, srv := range servers {
 		if !srv.Enabled && route != "direct" {
-			continue
-		}
-		if c, ok := conflicts[srv.ID]; ok {
-			audit.AddIssue(ctx, srv.Slug+": "+c.Error())
-			mu.Lock()
-			out = append(out, listing{srv: srv, err: c})
-			mu.Unlock()
 			continue
 		}
 		wg.Add(1)

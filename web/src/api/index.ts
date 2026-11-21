@@ -30,11 +30,9 @@ import type {
   PageDTO,
   PingResult,
   ServerDTO,
-  EntitlementDTO,
-  EntitlementInput,
   GrantInput,
   CapabilityDTO,
-  ExposureDTO,
+  PortalServerDTO,
   HooksDTO,
   RulesCheck,
   HooksSchema,
@@ -109,6 +107,7 @@ export const api = {
     oauthStart: (id: string, input: OAuthStartInput) => http.post<OAuthStartResult>(`/servers/${encodeURIComponent(id)}/oauth/start`, input),
     ping: (id: string) => http.post<PingResult>(`/servers/${encodeURIComponent(id)}/ping`),
     discover: (id: string) => http.post<DiscoverResult>(`/servers/${encodeURIComponent(id)}/discover`),
+    putGrants: (id: string, grants: GrantInput[]) => http.put<ServerDTO>(`/servers/${encodeURIComponent(id)}/grants`, { grants }),
   },
 
   e2e: {
@@ -134,19 +133,13 @@ export const api = {
     trace: (id: string) => http.get<AuditTraceDTO>(`/audit/${encodeURIComponent(id)}/trace`),
   },
 
-  exposures: () => http.get<ExposureDTO[]>('/exposures'),
+  /** Every server the caller holds (any member). */
+  portal: () => http.get<PortalServerDTO[]>('/portal'),
 
-  entitlements: {
-    list: () => http.get<EntitlementDTO[]>('/entitlements'),
-    listForServer: (serverId: string) => http.get<EntitlementDTO[]>(`/servers/${encodeURIComponent(serverId)}/entitlements`),
-    create: (serverId: string, input: EntitlementInput) => http.post<EntitlementDTO>(`/servers/${encodeURIComponent(serverId)}/entitlements`, input),
-    get: (id: string) => http.get<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`),
-    update: (id: string, input: EntitlementInput) => http.patch<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}`, input),
-    remove: (id: string) => http.delete(`/entitlements/${encodeURIComponent(id)}`),
+  rules: {
     /** Checks rule text with the engine's compiler, then the sanity checks. */
-    validateRules: (hooks: HooksDTO, catalog?: Record<string, string[]>) => http.post<RulesCheck>('/entitlements/validate', { hooks, catalog }),
-    hooksSchema: () => http.get<HooksSchema>('/entitlements/hooks-schema'),
-    putGrants: (id: string, grants: GrantInput[]) => http.put<EntitlementDTO>(`/entitlements/${encodeURIComponent(id)}/grants`, { grants }),
+    validate: (hooks: HooksDTO, catalog?: Record<string, string[]>) => http.post<RulesCheck>('/rules/validate', { hooks, catalog }),
+    hooksSchema: () => http.get<HooksSchema>('/rules/hooks-schema'),
   },
 
   capabilities: {
