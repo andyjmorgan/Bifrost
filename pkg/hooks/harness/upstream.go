@@ -109,6 +109,10 @@ type Reply struct {
 	// status and Body, and nothing else.
 	Status int
 	Body   string
+	// ErrorStatus answers Error with this HTTP status instead of 200: as
+	// one JSON body, or as an SSE event when Stream is set. A server built
+	// on the C# SDK refuses a request this way.
+	ErrorStatus int
 	// Stream answers with an SSE stream instead of one JSON body.
 	Stream bool
 	// Delay waits before the first byte. Gap waits between events.
@@ -483,6 +487,19 @@ func (u *Upstream) write(w http.ResponseWriter, r *http.Request, rec Recorded, r
 		return
 	}
 	final := u.envelope(rec, rep)
+	if rep.ErrorStatus != 0 {
+		if rep.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(rep.ErrorStatus)
+			_, _ = io.WriteString(w, "event: message\n")
+			_ = writeSSEData(w, final)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(rep.ErrorStatus)
+		_, _ = w.Write(final)
+		return
+	}
 	if !rep.Stream {
 		if rep.Hang {
 			<-ctx.Done()

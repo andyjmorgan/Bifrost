@@ -616,6 +616,32 @@ func TestALostReplyTellsTheClientNothingAboutTheServer(t *testing.T) {
 	}
 }
 
+// A server may refuse a request with an HTTP error status and a JSON-RPC
+// error in the body, framed as one JSON body or as an SSE event. Either way
+// the server has answered: the client gets the server's own error, not the
+// lost-reply error that says the request may have run.
+func TestAServersErrorSentWithAnHTTPErrorStatusReachesTheClient(t *testing.T) {
+	for _, framing := range []struct {
+		name   string
+		stream bool
+	}{{"json", false}, {"sse", true}} {
+		t.Run(framing.name, func(t *testing.T) {
+			r := newRig(t)
+			u := harness.NewUpstream(t, harness.V2026)
+			u.Tool(toolT, harness.Static(harness.Reply{ErrorStatus: 400, Stream: framing.stream,
+				Error: &harness.RPCErr{Code: -32021, Message: "The request requires the 'io.modelcontextprotocol/tasks' client extension capability."}}))
+			r.serve("a", u)
+			rep := harness.Raw(t, r.direct("a"), call("t", nil))
+			if code(rep) != float64(-32021) {
+				t.Fatalf("want the server's -32021, got %v", rep.Final())
+			}
+			if !strings.Contains(dump(rep.Final()), "client extension capability") {
+				t.Fatalf("the server's message was lost: %v", rep.Final())
+			}
+		})
+	}
+}
+
 // ---- confirmations -----------------------------------------------------------------------
 
 func TestConfirmationRoundTripUsesTheSharedStoreOnce(t *testing.T) {

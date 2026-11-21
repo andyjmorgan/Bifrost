@@ -97,7 +97,68 @@ func (c *Connector) HTTPClient(ctx context.Context, srv *store.Server) (*http.Cl
 	ct := &credentialTransport{c: c, srv: srv, cred: cred}
 	var rt http.RoundTripper = c.recorder.Transport(baseTransport(), cred.HeaderName)
 	ct.next = rt
-	return &http.Client{Transport: ct, Timeout: c.timeout}, nil
+	return &http.Client{Transport: sseErrors{next: ct}, Timeout: c.timeout}, nil
+}
+
+// sseErrors rewrites an error response that a server framed as an SSE
+// event into the plain JSON body the client library reads. A server may
+// refuse a request with an HTTP error status and a JSON-RPC error in an
+// event, as servers built on the C# SDK do. The client library reads the
+// body of an error status as JSON only, so without this it would drop the
+// server's error and report the request as lost.
+type sseErrors struct{ next http.RoundTripper }
+
+// maxErrorBody bounds how much of an error response is read.
+const maxErrorBody = 1 << 20
+
+func (t sseErrors) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.next.RoundTrip(req)
+	if err != nil || resp.StatusCode < 400 || !strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return resp, err
+	}
+	body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	resp.Body.Close()
+	if rerr != nil {
+		return nil, rerr
+	}
+	if msg := firstSSEData(body); msg != nil {
+		body = msg
+		resp.Header = resp.Header.Clone()
+		resp.Header.Set("Content-Type", "application/json")
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.Header.Del("Content-Length")
+	return resp, nil
+}
+
+// firstSSEData is the data of the first event in an SSE body, when it is
+// a JSON object, or nil.
+func firstSSEData(body []byte) []byte {
+	var data []byte
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		line = bytes.TrimRight(line, "\r")
+		switch {
+		case len(line) == 0:
+			if len(data) > 0 {
+				return jsonObject(data)
+			}
+		case bytes.HasPrefix(line, []byte("data:")):
+			d := bytes.TrimPrefix(bytes.TrimPrefix(line, []byte("data:")), []byte(" "))
+			if len(data) > 0 {
+				data = append(data, '\n')
+			}
+			data = append(data, d...)
+		}
+	}
+	return jsonObject(data)
+}
+
+func jsonObject(b []byte) []byte {
+	if !json.Valid(b) || len(bytes.TrimSpace(b)) == 0 || bytes.TrimSpace(b)[0] != '{' {
+		return nil
+	}
+	return b
 }
 
 // Session is an open downstream connection.
