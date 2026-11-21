@@ -156,6 +156,7 @@ func (g *Gateway) handler(route string) http.Handler {
 		if route == "direct" {
 			// Extensions are passed through on the direct route only.
 			addTaskMethods(srv)
+			addSkillMethods(srv)
 		}
 		srv.AddReceivingMiddleware(g.middleware(route, strings.ToLower(chi.URLParam(r, "slug"))))
 		return srv
@@ -219,6 +220,11 @@ func (g *Gateway) middleware(route, slug string) mcp.Middleware {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid prompts/get params"}
 				}
 				return g.hookPrompt(ctx, caller, route, slug, req, p)
+			case "skills/list", "skills/get":
+				if route != "direct" {
+					break
+				}
+				return g.hookSkills(ctx, caller, route, slug, method, req)
 			case "tasks/get", "tasks/update", "tasks/cancel":
 				if route != "direct" {
 					break

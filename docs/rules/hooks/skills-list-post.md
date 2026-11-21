@@ -101,6 +101,7 @@ For API keys, a skill whose frontmatter has `metadata.tags: [internal]` is hidde
 - Denying a single file inside a skill is allowed, but can break the skill, because its manifest and `SKILL.md` still reference the file.
 - Skill names never change. A `resources/read.post.result` rewrite of the skill's own root `SKILL.md` that changes `name` is rejected, and the whole skill keeps the server's bytes.
 - `skills/list` is sorted by slug, then by skill URI, whatever order the server sends.
+- On Bifrost, `skills/list` and `skills/get` are served on the direct route only, for a server that advertises the `io.modelcontextprotocol/skills` extension. The mux route does not serve them.
 
 ## Related pages
 

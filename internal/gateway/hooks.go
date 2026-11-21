@@ -390,6 +390,8 @@ func (g *Gateway) expose(ctx context.Context, srv *store.Server, bundle store.Ca
 			_ = json.Unmarshal(cut.raw(n, raw), &hs.Catalog.Resources)
 		case cache.NSTemplates:
 			_ = json.Unmarshal(cut.raw(n, raw), &hs.Catalog.Templates)
+		case cache.NSSkills:
+			_ = json.Unmarshal(raw, &hs.Catalog.Skills)
 		}
 	}
 	// Upstream _meta is reduced to the allowed keys before any rule runs.
@@ -450,6 +452,9 @@ func (g *Gateway) listFor(ctx context.Context, srv *store.Server, bundle store.C
 	}
 	if raw := bundle[ns]; raw != nil {
 		return raw, nil
+	}
+	if ns == cache.NSSkills {
+		return g.fetchSkills(ctx, srv)
 	}
 	if ns == cache.NSTools {
 		tools, _, err := g.fetchTools(ctx, srv, in.ProtocolVersion, false, nil)
@@ -668,7 +673,13 @@ func (g *Gateway) hookPrompt(ctx context.Context, caller *auth.Caller, route, sl
 
 func (g *Gateway) hookRead(ctx context.Context, caller *auth.Caller, route, slug string, req mcp.Request, p *mcp.ReadResourceParams) (mcp.Result, error) {
 	meta := metaOf(req)
-	ld, err := g.load(ctx, caller, route, slug, meta, cache.NSResources, cache.NSTemplates)
+	ns := []string{cache.NSResources, cache.NSTemplates}
+	if route == "direct" {
+		// A skill vouches for its files, so a read on the direct route
+		// knows the server's skills.
+		ns = append(ns, cache.NSSkills)
+	}
+	ld, err := g.load(ctx, caller, route, slug, meta, ns...)
 	if err != nil {
 		return nil, err
 	}

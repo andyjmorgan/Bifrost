@@ -21,6 +21,7 @@ const (
 	NSPrompts   = "prompts"   // prompts/list
 	NSResources = "resources" // resources/list
 	NSTemplates = "templates" // resources/templates/list
+	NSSkills    = "skills"    // skills/list, for a server that advertises the skills extension
 )
 
 // Init is the cached initialize result: the negotiated protocol version lets
@@ -52,6 +53,10 @@ type Caps struct {
 // Has reports whether the surface named by a cache namespace was declared.
 // Unknown namespaces are assumed present.
 func (in Init) Has(ns string) bool {
+	if ns == NSSkills {
+		_, ok := in.Extensions["io.modelcontextprotocol/skills"]
+		return ok
+	}
 	if in.Caps == nil {
 		return true
 	}

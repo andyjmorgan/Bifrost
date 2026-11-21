@@ -251,6 +251,21 @@ The four list hooks (`tools/list.post`, `prompts/list.post`, `resources/list.pos
 | RH-SKL-10 | Is denying one file inside a skill allowed, leaving the manifest alone? | Yes | e2e |
 | RH-SKL-11 | Does the mux prefix leave digests unchanged? | Yes | e2e |
 | RH-SKL-12 | Does `skills/list.post` deny a skill from `skills/list` and `skills/get`? | Yes | e2e |
+| RH-SKL-13 | Does Bifrost advertise the skills extension and serve `skills/list` and `skills/get` on the direct route, and neither on the mux route? | Yes. `TestSkillsAreServedOnTheDirectRouteThroughTheRules` | integration |
+
+## Tasks
+
+| ID | Question | Expected | Level |
+| --- | --- | --- | --- |
+| RH-TSK-01 | Is a server offered tasks on a call whose client did not ask, on the mux route, on an older version, or with `settings.tasks` off? | No | unit |
+| RH-TSK-02 | Does a task handle reach the client under the server's id? | No. The client gets an id of the gateway's own | unit, integration |
+| RH-TSK-03 | Can another principal, the mux route, or the server's id follow a task? | No. `-32602`, unknown task | unit |
+| RH-TSK-04 | Do a task's statuses, questions and result go through post.task, post.elicit and post.result? | Yes, with the tree of the call that started it | unit, integration |
+| RH-TSK-05 | Does a deny in `tools/call.post.task` cancel the task at the server? | Yes | unit, integration |
+| RH-TSK-06 | Does a change of the server's policy end a task? | Yes. The next poll reports it failed, and the task is cancelled at the server | unit |
+| RH-TSK-07 | Does `tasks/update` pass an answer to a question the task did not ask, or answer one twice? | No | unit |
+| RH-TSK-08 | Is a task that asks for input ended for a client that cannot answer? | Yes | unit |
+| RH-TSK-09 | Does a server's error sent with HTTP 400 as an SSE event reach the client as the server's error? | Yes, not as a lost reply | integration |
 
 ## Mux URIs and fallback resolution
 

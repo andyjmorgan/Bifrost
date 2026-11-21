@@ -4,7 +4,7 @@ This page is for the engineers who take the rules engine into another gateway. I
 
 ## What it is
 
-The rules engine decides what an MCP client may see and do through a gateway. Each MCP server behind the gateway carries rules, and the engine runs them at fixed points in a request, called hooks: when tools are listed, before a call is forwarded, when a result comes back, and so on. There are 19 hooks.
+The rules engine decides what an MCP client may see and do through a gateway. Each MCP server behind the gateway carries rules, and the engine runs them at fixed points in a request, called hooks: when tools are listed, before a call is forwarded, when a result comes back, and so on. There are 20 hooks.
 
 A rule is a condition and what to do when it holds. Both are CEL expressions. A rule can hide an item, refuse a call, ask the user to confirm, or change one thing the hook lets it change, such as a tool's name or a field of a result.
 
@@ -74,7 +74,12 @@ The engine does no I/O. Your gateway hands it a request and the server's catalog
 - On the mux route, while one server's catalog is unavailable, a prefixed URI that the named server does not list is refused. The gateway cannot tell whether it belongs to the server that is down.
 - A resource whose URI the gateway cannot put in canonical form, such as one with a user name in it, is not listed. Nor is a template whose fixed text is not canonical, or that has an expression in its host or port; a deny on one covers everything under its fixed start. Two resources the server lists under spellings of one URI are both hidden.
 - There is no result hook for `prompts/get`, and no rule sees a JSON-RPC error from a server.
-- Skills and directory reads are in the engine and its tests. Bifrost's front door does not serve them yet.
+- Bifrost passes two extensions through, tasks and skills, on the direct route only. On the mux route it neither advertises nor forwards them. Serving them there needs a decision on how a mux client names a task or a skill of one server among several.
+- Bifrost serves `skills/list`, `skills/get` and skill file reads on the direct route. It does not serve directory reads (`resources/directory/read`) on either route.
+- Bifrost does not fetch the contents of skill files, so a `resources/read.post.result` rule does not rewrite a file a skill vouches for: the server's bytes are served, and the manifest stays true.
+- A server's skills are not cut to its selection. A skills/list.post deny hides a skill.
+- A task's `tasks/get` runs through tools/call.post.task, tools/call.post.elicit and tools/call.post.result, but no rule sees a failed task's error, as no rule sees a JSON-RPC error.
+- A task record lives in the gateway's shared cache for the server's `ttlMs`, at most 24 hours. A server that keeps a task longer is told nothing; the client's next poll finds the task unknown.
 
 Tests for the limits that are bugs are in `pkg/hooks/known_limits_test.go`. They are skipped unless `HOOKS_KNOWN_GAPS=1` is set, and fail when it is.
 

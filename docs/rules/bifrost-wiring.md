@@ -47,7 +47,7 @@ A server keeps its rules as text, in one `jsonb` column on its row (`servers.hoo
 }
 ```
 
-- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.List` lists all 19 hooks.
+- The property is the hook's name with the separators dropped and the parts joined in camel case: `tools/call.post.result` is `toolsCallPostResult`. `ruletext.Property` gives it, and `ruletext.List` lists all 20 hooks.
 - The text is the only stored form. The gateway compiles it to the engine's rules when it loads the server, and keeps the result until the server's generation changes.
 - The API uses the same object, as the server's `hooks`. `GET /servers/{id}` returns every property, with null where a hook has no rules. `PATCH /servers/{id}` takes `hooks` and replaces all of them, and `selection` beside it. A property that is not a hook's is refused. `PUT /servers/{id}/grants` replaces who holds the server.
 - `POST /rules/validate` takes `hooks` and returns `problems`, `warnings` and `hasRules`. Each problem names its `hook` and `line`.
@@ -74,9 +74,19 @@ All Go tests pass under the race detector. The race detector found one old bug, 
 - The Go SDK server requires the `Mcp-Name` header on calls, prompts and reads. The raw test client now sends it.
 - A real SDK server stamps its name and version into `_meta` of every result. The engine passes a result's `_meta` on, so a client saw the upstream's identity there even when `server.settings` hides it in discovery. The output allowlist now removes it. The catalog allowlist the design already called for was also missing from the first wiring; the same list covers it.
 
+## Extensions on the direct route
+
+Bifrost passes the tasks and skills extensions through on `/{slug}/mcp`, and only there.
+
+- The server's extensions are recorded from its handshake (`cache.Init.Extensions`). Discovery advertises each extension on the engine's list (`hooks.Extensions`) that the server advertises, with the server's own settings.
+- Tasks: a `tools/call` whose client declares `io.modelcontextprotocol/tasks` carries the opt-in to the server on that call. The client library drops a task handle's id and status, so the gateway reads the handle from the raw response (`upstream.Capture`). `tasks/get`, `tasks/update` and `tasks/cancel` go to the task's server as stateless requests (`upstream.Connector.Call`), with the server's task id as `Mcp-Name`. Task records live in the cache namespace `task`. A `tasks/cancel` the engine asks for is sent without waiting.
+- Skills: `skills/list` is fetched from the server as a stateless request and cached in the namespace `skills`. `skills/list` and `skills/get` are answered by the engine, and skill files are read with `resources/read`.
+- An error a server sends with an HTTP error status, framed as an SSE event, is rewritten to plain JSON before the client library reads it, so the server's own error reaches the client.
+
 ## Known gaps
 
-- `resources/directory/read` and the skills methods never reach the middleware: the SDK server answers "method not found" itself. Both belong to deferred extensions.
+- `resources/directory/read` never reaches the middleware: the SDK server answers "method not found" itself.
+- The skills and tasks methods are registered on the direct route's server only, as custom methods, and the middleware answers them. On the mux route the SDK server answers "method not found".
 - The scenario cases (685) run against the test gateway in `pkg/hooks/harness`, not against this front door. The wiring tests cover the seams, not every rule.
 - Faults and unknown shapes are logged and not stored. Rule hits are kept on the request's audit event, up to 100 per request.
 - The engine's record of unknown shapes sees less than it would on a raw path: an unknown content block fails the call before the engine sees it, and unknown fields and notifications are dropped by the client library. Its rules for unknown things still apply to anything the library does pass.
