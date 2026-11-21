@@ -459,6 +459,7 @@ export interface HooksDTO {
   toolsCallPostProgress?: string | null
   toolsCallPostElicit?: string | null
   toolsCallPostResult?: string | null
+  toolsCallPostTask?: string | null
   promptsListPost?: string | null
   promptsGetPre?: string | null
   promptsGetPostProgress?: string | null

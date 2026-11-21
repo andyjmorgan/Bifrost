@@ -14,7 +14,7 @@ This page explains the tree, how to read values that may be absent, the rule sha
 
 ## Hooks
 
-A hook is named after where it runs in a request: the MCP method, then `pre` for the request or `post` for the reply. Where a reply can be several things, the name ends with what came back: `progress`, `elicit` or `result`. `server.settings` and `server.session` belong to no method. The name is the exact text of a rule's `hook` value. There are 19 hooks.
+A hook is named after where it runs in a request: the MCP method, then `pre` for the request or `post` for the reply. Where a reply can be several things, the name ends with what came back: `progress`, `elicit`, `result` or `task`. `server.settings` and `server.session` belong to no method. The name is the exact text of a rule's `hook` value. There are 20 hooks.
 
 Server hooks:
 
@@ -29,6 +29,7 @@ Tool hooks:
 - [tools/call.post.progress](tools-call-post-progress.md): progress messages during a call
 - [tools/call.post.elicit](tools-call-post-elicit.md): questions the server asks the user during a call
 - [tools/call.post.result](tools-call-post-result.md): the content of tool results
+- [tools/call.post.task](tools-call-post-task.md): the status of a call that runs as a task
 
 Prompt hooks:
 
@@ -57,6 +58,7 @@ What a rule can see on a hook is one tree. Hooks differ only in which branches e
 | `request` | The request: MCP's `method` and `params`, plus what the gateway knows about who sent it and how | Every hook |
 | `response` | The response the client will get: `response.result` | The two `post.result` hooks |
 | `progress` | One progress notification: `progress.params` | The three `post.progress` hooks |
+| `task` | The status of a call that runs as a task: `task.status`, `task.statusMessage` | `tools/call.post.task` |
 | `elicitation` | One question the server asks the user: `elicitation.key`, `elicitation.method`, `elicitation.params` | The three `post.elicit` hooks |
 | `server` | The server as the gateway presents it, with its `id` and `slug` | Every hook |
 | `settings` | The switches a rule sets. Rules cannot read it | `server.settings` |
@@ -102,6 +104,7 @@ A rule sets a value by naming its path. The `set` paths are the same paths a rul
 | `resources/read.pre`, `skills/list.post` | Nothing. These rules only decide |
 | The `post.result` hooks | `response.result` |
 | The `post.progress` hooks | `progress.params` |
+| `tools/call.post.task` | `task` |
 | The `post.elicit` hooks | `elicitation.params` |
 | `server/discover.post` | `server` |
 | `server.settings` | `settings` |
@@ -288,6 +291,7 @@ The gateway runs a hook's rules on each item separately, from top to bottom. An 
 | Pre (`tools/call.pre`, `prompts/get.pre`, `resources/read.pre`) | `request.params.arguments.*`, and `timeout` on `tools/call.pre` | `decision: 'deny'`, `confirm: elicit(...)` |
 | Elicit (the `post.elicit` hooks) | `elicitation.params.message` | `decision: 'deny'` |
 | Progress (the `post.progress` hooks) | `progress.params.message` | `decision: 'deny'` |
+| Task (`tools/call.post.task`) | `task.statusMessage` | `decision: 'deny'` |
 | Result (the `post.result` hooks) | `response.result.content` and `response.result.structuredContent`, or `response.result.contents` for a read | `decision: 'deny'` |
 | Server (`server.settings`, `server.session`, `server/discover.post`) | Every writable path | Nothing |
 

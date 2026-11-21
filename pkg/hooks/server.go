@@ -10,7 +10,7 @@ import (
 )
 
 // switchDefaults are the server.settings defaults.
-var switchDefaults = map[string]bool{"tools": true, "prompts": true, "resources": true, "tasks": false, "instructions": true, "serverInfo": false, "searchRoster": true, "progress": true}
+var switchDefaults = map[string]bool{"tools": true, "prompts": true, "resources": true, "tasks": true, "instructions": true, "serverInfo": false, "searchRoster": true, "progress": true}
 
 // Config evaluates server.settings: each switch starts at its default and
 // matching rules set it. Errors fail closed by switching the kind off.
@@ -43,19 +43,21 @@ func (e *Engine) Config(ctx context.Context, r Request, s *Server) (sw map[strin
 		return out, o.hits
 	}
 	hits = o.hits
-	// Tasks are an extension the gateway does not support yet. The switch
-	// stays off for every server until result rules also run on task results.
-	if out["tasks"] {
-		out["tasks"] = false
-		hits = append(hits, gateHit("server.settings", s.Slug, "tasks", "tasks are not supported; the switch stays off"))
-	}
-	if out["progress"] && !s.current() {
-		out["progress"] = false
+	// Progress and tasks work differently before the front door's version,
+	// and the gateway does not translate them.
+	for _, gate := range []struct{ name, reason string }{
+		{"progress", "progress is only relayed from servers on " + ProtocolCurrent},
+		{"tasks", "tasks are only passed through for servers on " + ProtocolCurrent},
+	} {
+		if !out[gate.name] || s.current() {
+			continue
+		}
+		out[gate.name] = false
 		// The default is on, so only say so when a rule asked for it.
 		for _, h := range o.hits {
 			for _, f := range h.Fields {
-				if f == "settings.progress" {
-					hits = append(hits, gateHit("server.settings", s.Slug, "progress", "progress is only relayed from servers on "+ProtocolCurrent))
+				if f == "settings."+gate.name {
+					hits = append(hits, gateHit("server.settings", s.Slug, gate.name, gate.reason))
 				}
 			}
 		}
@@ -265,6 +267,18 @@ func (e *Engine) Discover(parent context.Context, r Request, version string) (re
 		}
 		if meta.Title != "" {
 			info["title"] = meta.Title
+		}
+		// The extensions the gateway passes through, each as the server
+		// advertises it.
+		for _, name := range Extensions {
+			if v, on := e.extensionOn(ctx, r, s, name, &o); on {
+				exts, _ := caps["extensions"].(map[string]any)
+				if exts == nil {
+					exts = map[string]any{}
+					caps["extensions"] = exts
+				}
+				exts[name] = v
+			}
 		}
 		res.Meta = map[string]any{MetaServerInfo: info}
 		o.Result = res

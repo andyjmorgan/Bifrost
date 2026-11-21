@@ -14,8 +14,8 @@ import (
 // version.
 
 // A server that is not on the front door's protocol version gets no
-// elicitation and no progress, whatever the rules say. A missing version
-// counts as old. Tasks are off for every server.
+// elicitation, no progress and no tasks, whatever the rules say. A missing
+// version counts as old.
 func TestVersionGate(t *testing.T) {
 	rules := []Rule{
 		{Hook: "server.session", When: "true", Then: map[string]string{"session.capabilities.elicitation": "true"}},
@@ -33,8 +33,8 @@ func TestVersionGate(t *testing.T) {
 		name := "version " + tc.version
 
 		sw, hits := e.Config(ctx, r, s)
-		if sw["tasks"] {
-			t.Errorf("%s: tasks are on", name)
+		if sw["tasks"] != tc.current {
+			t.Errorf("%s: tasks = %v, want %v", name, sw["tasks"], tc.current)
 		}
 		if sw["progress"] != tc.current {
 			t.Errorf("%s: progress = %v, want %v", name, sw["progress"], tc.current)
@@ -48,7 +48,7 @@ func TestVersionGate(t *testing.T) {
 				gated++
 			}
 		}
-		if want := map[bool]int{true: 1, false: 2}[tc.current]; gated != want {
+		if want := map[bool]int{true: 0, false: 2}[tc.current]; gated != want {
 			t.Errorf("%s: %d gate hits, want %d: %+v", name, gated, want, hits)
 		}
 

@@ -132,20 +132,7 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 	if issue != "" {
 		o.Issues = append(o.Issues, s.Slug+": "+issue)
 	}
-	var ept *preparedTool
-	if et.Changed {
-		ept = buildPrepared(et.Tool) // a per-request object: do not cache it
-	} else {
-		ept = prepare(et.Tool)
-	}
-	ts := newToolState(ept)
-	upBase := prepare(upstreamTool(s, tr.Upstream)).base
-	resolve := func(name string) (any, bool) {
-		if name == "upstream" {
-			return upBase, true
-		}
-		return ts.resolve(name)
-	}
+	resolve := toolResolver(s, et)
 	roots := r.context(s).roots("tools/call", callParams(tr.Exposed, celArgs(args), p.Meta))
 	var timeout time.Duration
 	c := preCall{
@@ -198,7 +185,34 @@ func (e *Engine) CallTool(parent context.Context, r Request, p *mcp.CallToolPara
 		o.Forward.Timeout = timeout.String()
 	}
 	o.Call = &CallContext{Server: s, Method: "tools/call", Target: tr.Upstream, Exposed: tr.Exposed, Transform: tr, Params: callParams(tr.Exposed, celArgs(args), p.Meta), Args: upArgs, Hash: pass.hash, State: pass.state, Confirmed: pass.confirmed, resolve: resolve}
+	if ext, ok := e.taskOptIn(ctx, r, s, &o); ok {
+		// The client may take this call as a task, and the server offers
+		// tasks: the server is told so on this call only.
+		o.Forward.Extensions = map[string]any{ExtTasks: ext}
+		o.Call.Tasks = true
+		o.Call.Name = p.Name
+		o.Call.ClientArgs = args
+	}
 	return o
+}
+
+// toolResolver gives rules a call's tool: its fields as the client sees
+// them, after every list rule, and `upstream` as the server declares it.
+func toolResolver(s *Server, et *ExposedTool) func(string) (any, bool) {
+	var ept *preparedTool
+	if et.Changed {
+		ept = buildPrepared(et.Tool) // a per-request object: do not cache it
+	} else {
+		ept = prepare(et.Tool)
+	}
+	ts := newToolState(ept)
+	upBase := prepare(upstreamTool(s, et.Transform.Upstream)).base
+	return func(name string) (any, bool) {
+		if name == "upstream" {
+			return upBase, true
+		}
+		return ts.resolve(name)
+	}
 }
 
 // decodeArgs parses arguments keeping numbers exact (big integers survive)
@@ -328,7 +342,11 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	itemResolve := replyResolve(call)
 	var seen unknowns
 	defer func() { ret.Unknown = append(ret.Unknown, seen.list()...) }()
-	if rt, _ := result["resultType"].(string); rt != "" && rt != "complete" && rt != "input_required" {
+	rt, _ := result["resultType"].(string)
+	if rt == "task" && call.Tasks {
+		return e.taskStarted(ctx, r, call, result)
+	}
+	if rt != "" && rt != "complete" && rt != "input_required" {
 		action := "passed"
 		if rt == "task" {
 			action = "refused"
@@ -337,12 +355,12 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	}
 	inputUnknowns(&seen, s.Slug, tr.Upstream, result)
 	contentUnknowns(&seen, s.Slug, tr.Upstream, result["content"])
-	if rt, _ := result["resultType"].(string); rt == "task" {
-		// Tasks are an extension the gateway does not support and never
-		// declares upstream. A handle returned anyway is refused: its result
-		// would later be fetched without passing through any result rule.
-		o.Issues = append(o.Issues, s.Slug+": "+tr.Upstream+" returned a task handle; tasks are not supported, so it was refused")
-		o.Result = toolError("This tool started a background task, which this gateway does not support.")
+	if rt == "task" {
+		// The server was not told it may answer with a task, so it must not
+		// have. A handle is refused: its result would later be fetched past
+		// every result rule.
+		o.Issues = append(o.Issues, s.Slug+": "+tr.Upstream+" returned a task handle it was not offered; it was refused")
+		o.Result = toolError("This tool started a background task, which this request did not ask for.")
 		return e.finishOutcome(ctx, o)
 	}
 	if isInputRequired(result) {
@@ -366,6 +384,18 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 		o.Result = InputRequired{InputRequests: reqs, RequestState: st}
 		return e.finishOutcome(ctx, o)
 	}
+	o2 := e.toolResult(ctx, r, call, result)
+	o2.Hits = append(o.Hits, o2.Hits...)
+	return e.finishOutcome(ctx, o2)
+}
+
+// toolResult runs tools/call.post.result on a tool's result and gives the
+// result the client gets: the shaped result, or an error result when a rule
+// denies.
+func (e *Engine) toolResult(ctx context.Context, r Request, call *CallContext, result map[string]any) Outcome {
+	s, tr := call.Server, call.Transform
+	itemResolve := replyResolve(call)
+	var o Outcome
 	view := NewView(result)
 	roots := call.roots(r)
 	upstream := map[string]any{"result": celMap(result)}
@@ -383,7 +413,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 	o.Hits = append(o.Hits, ro.hits...)
 	if ro.denied {
 		o.Result = toolError(denyOr(ro.reason, toolRefused(tr.Exposed)))
-		return e.finishOutcome(ctx, o)
+		return o
 	}
 	final := view.Materialize()
 	if v, ok := final["structuredContent"]; ok && v == nil && setKeys["structuredContent"] {
@@ -394,7 +424,7 @@ func (e *Engine) UpstreamToolReply(parent context.Context, r Request, call *Call
 		final = prefixResultURIs(final, s.Slug)
 	}
 	o.Result = complete(final)
-	return e.finishOutcome(ctx, o)
+	return o
 }
 
 // wellFormedResult refuses a value a rule sets on a tool result that MCP

@@ -25,16 +25,13 @@ func TestARuleCannotSendMalformedContent(t *testing.T) {
 	}
 }
 
-// Tasks are off for every server. A settings rule cannot switch them on, and
-// a task handle a server returns on a tool call, a prompt or a read does not
-// reach the client.
-func TestATaskHandleNeverReachesTheClient(t *testing.T) {
+// A server is offered tasks only on a tools/call whose client asked for
+// them. A task handle a server returns for a call it was not offered them
+// on, or for a prompt or a read, does not reach the client.
+func TestATaskHandleTheServerWasNotOfferedNeverReachesTheClient(t *testing.T) {
 	ctx := context.Background()
 	s := newServer(t, Catalog{Tools: anyArgsTool.Tools, Prompts: []*mcp.Prompt{{Name: "p"}}}, Rule{Hook: "server.settings", When: "true", Then: map[string]string{"settings.tasks": "true"}})
 	e, r := &Engine{}, newRequest("direct", s)
-	if sw, _ := e.Config(ctx, r, s); sw["tasks"] {
-		t.Error("tasks switch turned on")
-	}
 	tp := &mcp.CallToolParamsRaw{Name: "t"}
 	tc := e.CallTool(ctx, r, tp)
 	pp := &mcp.GetPromptParams{Name: "p"}

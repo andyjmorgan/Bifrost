@@ -24,7 +24,7 @@ This hook has no item, so there is no `upstream`. A rule cannot read `settings`:
 | `settings.tools` | bool | `true` | Expose tools |
 | `settings.prompts` | bool | `true` | Expose prompts |
 | `settings.resources` | bool | `true` | Expose resources, templates, skills and directory reads |
-| `settings.tasks` | bool | `false` | Reserved. The gateway does not support the `io.modelcontextprotocol/tasks` extension yet, so this switch stays off whatever a rule sets. A task handle a server returns is refused, for a tool call, a prompt or a read |
+| `settings.tasks` | bool | `true` | Let a tool call run as a task on the direct route, when the server offers the `io.modelcontextprotocol/tasks` extension and the client asks for it. Only servers that speak MCP 2026-07-28 can have it. See [tools/call.post.task](tools-call-post-task.md) |
 | `settings.instructions` | bool | `true` | Show the server's instructions in discover, mux excerpts and `get_server_instructions` |
 | `settings.serverInfo` | bool | `false` | On the direct route, show the server's name and version in discover instead of the gateway's |
 | `settings.searchRoster` | bool | `true` | Use the server's title, description and instructions, after [server/discover.post](server-discover-post.md), when search mode ranks tools |
@@ -102,7 +102,7 @@ On the direct route, discover returns the server's name and version in `_meta["i
 - If an enforce rule fails to evaluate, all eight switches are off for that request.
 - If the server's enabled rules do not compile, every switch is off.
 - Switches are per server. On the mux route, each server's switches apply only to that server's items.
-- When a rule asks for `settings.tasks`, or for `settings.progress` on a server that cannot have it, the gateway turns the switch off. It records why in the hits, under the rule label `(gateway)`.
+- When a rule asks for `settings.progress` or `settings.tasks` on a server that cannot have it, the gateway turns the switch off. It records why in the hits, under the rule label `(gateway)`.
 - Progress notifications pass through the progress hooks: [tools/call.post.progress](tools-call-post-progress.md), [prompts/get.post.progress](prompts-get-post-progress.md) and [resources/read.post.progress](resources-read-post-progress.md). No rule runs on any other notification.
 - `request.caller` fields come from the gateway. A plain read of a field the gateway does not supply fails the rule, which switches everything off.
 

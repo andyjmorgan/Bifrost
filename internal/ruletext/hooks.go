@@ -27,6 +27,7 @@ type Hooks struct {
 	ToolsCallPostProgress *string `json:"toolsCallPostProgress"`
 	ToolsCallPostElicit   *string `json:"toolsCallPostElicit"`
 	ToolsCallPostResult   *string `json:"toolsCallPostResult"`
+	ToolsCallPostTask     *string `json:"toolsCallPostTask"`
 
 	PromptsListPost        *string `json:"promptsListPost"`
 	PromptsGetPre          *string `json:"promptsGetPre"`

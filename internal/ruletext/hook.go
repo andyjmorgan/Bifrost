@@ -30,7 +30,7 @@ type Hook struct {
 	Group    string `json:"group"`           // Server, Tools, Prompts, Resources
 	Method   string `json:"method"`          // tools/call; "server" for the two that are not a method
 	Side     string `json:"side"`            // pre, post, settings or session
-	Event    string `json:"event,omitempty"` // progress, elicit or result
+	Event    string `json:"event,omitempty"` // progress, elicit, result or task
 	// Item is what a rule here is about: tool, prompt, resource, template,
 	// skill or server.
 	Item string `json:"item,omitempty"`
@@ -64,7 +64,7 @@ const upstreamNote = "upstream is the item's canonical definition, as the server
 var hookDefs = []Hook{
 	{Name: "server.settings", Group: "Server", Method: "server", Side: "settings",
 		Summary: "Switch whole parts of this server on or off.",
-		Notes:   []string{"A switch covers every method at once. tasks and serverInfo start off; the rest start on."},
+		Notes:   []string{"A switch covers every method at once. serverInfo starts off; the rest start on."},
 		Example: `# Switch a whole kind off for some callers.
 when request.route == 'mux'                       set settings.prompts = false
 when request.caller.role != 'admin'               set settings.resources = false
@@ -177,6 +177,20 @@ when response.result.content.exists(c, c.type == 'image')
 
 # Keep only the structured result.
 when has(response.result.structuredContent)                       set response.result.content = []
+`},
+
+	{Name: "tools/call.post.task", Group: "Tools", Method: "tools/call", Side: "post", Event: "task",
+		Summary: "Each status of a call that runs as a task, before the client sees it.", Deny: "ends the task",
+		Notes: []string{"A call runs as a task only on a direct route, when the client asks for it and the server offers tasks. settings.tasks switches it off.",
+			"This hook sees the task when it starts and on each poll while it is working or waiting for input. Its questions go through tools/call.post.elicit and its result through tools/call.post.result.",
+			"A deny ends the task: the gateway cancels it at the server, and the client is told it failed, with the reason."},
+		Example: `# End background work for some callers.
+when request.caller.type == 'apikey'                              deny "Background work is not available to API keys."
+
+# Reword the server's status messages.
+when has(task.statusMessage)
+  set task.statusMessage = tool.name + ': ' + task.statusMessage
+when task.status == 'input_required'                              set task.statusMessage = 'Waiting for your answer.'
 `},
 
 	{Name: "prompts/list.post", Group: "Prompts", Method: "prompts/list", Side: "post", Event: "result",

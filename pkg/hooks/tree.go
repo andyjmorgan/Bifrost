@@ -368,7 +368,7 @@ func buildTree(h *HookSpec) *Node {
 	method := hookMethod(h.Name)
 	root := object(map[string]*Node{})
 	pre := h.Phase == PhaseCall
-	post := h.Phase == PhaseElicit || h.Phase == PhaseResult || h.Phase == PhaseEvent
+	post := h.Phase == PhaseElicit || h.Phase == PhaseResult || h.Phase == PhaseEvent || h.Phase == PhaseTask
 	switch h.Name {
 	case "server.settings", "server.session":
 		method = "server/discover"
@@ -402,6 +402,17 @@ func buildTree(h *HookSpec) *Node {
 		up.Doc = "The question as the server asked it."
 		e.Keys["upstream"] = up
 		root.Keys["elicitation"] = e
+	case PhaseTask:
+		t := object(map[string]*Node{
+			"status":         doc(nStr, "working or input_required."),
+			"statusMessage":  writable(opt(nStr)),
+			"createdAt":      opt(nStr),
+			"lastUpdatedAt":  opt(nStr),
+			"ttlMs":          opt(nNum),
+			"pollIntervalMs": opt(nNum),
+		})
+		t.Doc = "The task's status as the client will get it. Its id, questions and result are not here."
+		root.Keys["task"] = withUpstream(t, "The status as the server sent it.")
 	case PhaseResult:
 		var result *Node
 		if h.Item == KindResource {
@@ -461,6 +472,8 @@ func (h *HookSpec) writeRoot() string {
 		return "progress.params."
 	case PhaseElicit:
 		return "elicitation.params."
+	case PhaseTask:
+		return "task."
 	}
 	if h.Name == "server.settings" {
 		return "settings."
@@ -469,7 +482,7 @@ func (h *HookSpec) writeRoot() string {
 }
 
 // dynamicRoots make a rule depend on the request rather than the catalog.
-var dynamicRoots = map[string]bool{"request": true, "response": true, "progress": true, "elicitation": true}
+var dynamicRoots = map[string]bool{"request": true, "response": true, "progress": true, "elicitation": true, "task": true}
 
 // ---- paths ----------------------------------------------------------------------------
 

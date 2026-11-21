@@ -694,7 +694,7 @@
   }
  },
  {
-  "name": "FR-13 control: a 2026-07-28 server can be given elicitation and progress; tasks stay off",
+  "name": "FR-13 control: a 2026-07-28 server can be given elicitation, progress and tasks",
   "ids": [
    "FR-13"
   ],
@@ -750,7 +750,7 @@
     "expect": [
      {
       "path": "outcome.result.tasks",
-      "equals": false
+      "equals": true
      },
      {
       "path": "outcome.result.progress",

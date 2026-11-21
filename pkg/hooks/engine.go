@@ -62,6 +62,9 @@ type ServerInfo struct {
 	Instructions    string `json:"instructions,omitempty"`
 	URL             string `json:"url,omitempty"`
 	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	// Extensions are the extensions the server advertises, by name, with
+	// the server's settings for each.
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
 // Catalog is an upstream's cached listings, in SDK shapes.
@@ -142,9 +145,16 @@ type Engine struct {
 	// share. Nil means MemoryStates, which is right for a single instance
 	// only.
 	States StateStore
+	// Tasks holds the record of each task a client follows through the
+	// gateway. A gateway with more than one instance must supply one they
+	// all share. Nil means MemoryTasks, which is right for a single
+	// instance only.
+	Tasks TaskStore
 
-	memOnce sync.Once
-	mem     *MemoryStates
+	memOnce  sync.Once
+	mem      *MemoryStates
+	taskOnce sync.Once
+	memTasks *MemoryTasks
 }
 
 func (e *Engine) version() string {
@@ -290,6 +300,9 @@ type Forward struct {
 	// Connect is what server.session decided the gateway tells the
 	// upstream: client identity, capabilities and whether _meta is forwarded.
 	Connect *ConnectInfo `json:"connect,omitempty"`
+	// Extensions are the client's opt-ins the server is told of on this
+	// request, by extension name, with the client's settings for each.
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
 // FallbackEvent describes an unprefixed URI resolved (or not) on the mux.
@@ -313,6 +326,14 @@ type Outcome struct {
 	// Call carries what was actually forwarded, for the reply handlers. It
 	// is set only with Forward.
 	Call *CallContext `json:"-"`
+	// Task carries the task a tasks/get, tasks/update or tasks/cancel
+	// forward belongs to, for UpstreamTaskReply. It is set only with
+	// Forward.
+	Task *TaskCall `json:"-"`
+	// Cancel is a tasks/cancel the gateway sends to a server without
+	// waiting for its reply, when a task ends at the gateway: a rule denied
+	// it, or the server's policy changed.
+	Cancel *Forward `json:"cancel,omitempty"`
 	// Fallback is set when an unprefixed URI went through fallback resolution.
 	Fallback *FallbackEvent `json:"fallback,omitempty"`
 	// Fault is set when the engine caught a panic while handling the
@@ -354,6 +375,12 @@ type CallContext struct {
 	Hash      string
 	State     *State
 	Confirmed map[string]bool // what the user has confirmed on this request, carried into an upstream round
+	// Tasks marks a tools/call the server was told it may answer with a
+	// task. Name and ClientArgs are the call as the client made it, which a
+	// task keeps so its later polls can be checked against the same tool.
+	Tasks      bool
+	Name       string
+	ClientArgs map[string]any
 }
 
 // roots builds the branches a reply hook reads: the request with both sides

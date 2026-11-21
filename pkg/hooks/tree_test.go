@@ -95,6 +95,7 @@ func TestEachHookChangesOneBranch(t *testing.T) {
 		"tools/call.post.result": "response", "resources/read.post.result": "response",
 		"tools/call.post.progress": "progress", "prompts/get.post.progress": "progress", "resources/read.post.progress": "progress",
 		"tools/call.post.elicit": "elicitation", "prompts/get.post.elicit": "elicitation", "resources/read.post.elicit": "elicitation",
+		"tools/call.post.task": "task",
 		"server/discover.post": "server", "server.settings": "settings", "server.session": "session",
 	}
 	for name, h := range Hooks {

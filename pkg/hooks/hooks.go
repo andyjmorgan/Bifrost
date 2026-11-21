@@ -48,6 +48,7 @@ const (
 	PhaseElicit Phase = "elicit" // shapes a question the upstream asks the user
 	PhaseResult Phase = "result" // shapes an upstream result
 	PhaseEvent  Phase = "event"  // drops or reshapes one event on a reply stream
+	PhaseTask   Phase = "task"   // shapes or ends a task's status
 	PhaseServer Phase = "server" // server-level settings
 )
 
@@ -102,7 +103,7 @@ const (
 //
 // A hook is named after where it runs: the method, then pre (the request) or
 // post (the reply), then, where a reply can be several things, which one
-// came back (progress, elicit or result). The two server hooks that belong
+// came back (progress, elicit, result or task). The two server hooks that belong
 // to no method are server.settings and server.session.
 var Hooks = map[string]*HookSpec{
 	"server.session":       {Name: "server.session", Item: KindNone, Phase: PhaseServer},
@@ -114,6 +115,7 @@ var Hooks = map[string]*HookSpec{
 	"tools/call.post.elicit":   {Name: "tools/call.post.elicit", Item: KindTool, Phase: PhaseElicit},
 	"tools/call.post.result":   {Name: "tools/call.post.result", Item: KindTool, Phase: PhaseResult, Helpers: []string{"drop"}},
 	"tools/call.post.progress": {Name: "tools/call.post.progress", Item: KindTool, Phase: PhaseEvent},
+	"tools/call.post.task":     {Name: "tools/call.post.task", Item: KindTool, Phase: PhaseTask},
 
 	"prompts/list.post":         {Name: "prompts/list.post", Item: KindPrompt, Phase: PhaseList},
 	"prompts/get.pre":           {Name: "prompts/get.pre", Item: KindPrompt, Phase: PhaseCall, Helpers: []string{"elicit"}},
