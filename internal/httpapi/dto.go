@@ -21,7 +21,7 @@ type ServerDTO struct {
 	Seen        int             `json:"seen"` // capabilities the gateway has seen on it
 	MCPURL      string          `json:"mcpUrl"`
 	Selection   store.Selection `json:"selection"`
-	// Hooks is the rules as the admin writes them: the text of each hook's
+	// Hooks is the rules as written: the text of each hook's
 	// rules, under the hook's property (see ruletext.Hooks). Every property
 	// is present; null means the hook has no rules.
 	Hooks ruletext.Hooks `json:"hooks"`

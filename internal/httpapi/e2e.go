@@ -34,7 +34,7 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	}
 	// The call goes through the front door as the caller themselves (their
 	// own bearer token, forwarded) unless a key is named, in which case it
-	// goes as that key: an admin can see what a key sees.
+	// goes as that key, so the UI shows what that key sees.
 	headers := map[string]string{}
 	if in.APIKeyID == "" {
 		if h := r.Header.Get("Authorization"); h != "" {
