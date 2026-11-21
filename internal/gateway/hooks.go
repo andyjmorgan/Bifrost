@@ -87,6 +87,7 @@ func newEngine(g *Gateway, version string) *hooks.Engine {
 	return &hooks.Engine{
 		Version: version,
 		States:  &cacheStates{g: g},
+		Tasks:   &cacheTasks{g: g},
 		OnFault: func(f hooks.Fault) {
 			// The engine failed closed. This is the record to investigate from.
 			b, _ := json.Marshal(f)
@@ -370,6 +371,7 @@ func (g *Gateway) expose(ctx context.Context, srv *store.Server, bundle store.Ca
 	}
 	x.init = in
 	hs.Info.Version, hs.Info.Title, hs.Info.Instructions, hs.Info.ProtocolVersion = in.ServerVersion, in.Title, in.Instructions, in.ProtocolVersion
+	hs.Info.Extensions = in.Extensions
 	cut := g.cutterFor(ctx, srv, in)
 	for _, n := range ns {
 		raw, err := g.listFor(ctx, srv, bundle, in, n)
@@ -404,6 +406,9 @@ func InitFrom(ir *mcp.InitializeResult) cache.Init {
 	in.ProtocolVersion, in.Instructions = ir.ProtocolVersion, ir.Instructions
 	if c := ir.Capabilities; c != nil {
 		in.Caps.Tools, in.Caps.Prompts, in.Caps.Resources = c.Tools != nil, c.Prompts != nil, c.Resources != nil
+		if len(c.Extensions) > 0 {
+			in.Extensions = c.Extensions
+		}
 	}
 	if ir.ServerInfo != nil {
 		in.ServerName, in.ServerVersion, in.Title = ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ServerInfo.Title
@@ -907,6 +912,7 @@ func (g *Gateway) relay(ctx context.Context, req mcp.Request, ld *loaded, out ho
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "the reply could not be processed"}
 		}
 		if ev.Final != nil {
+			g.cancelTask(ctx, ld, ev.Final.Cancel)
 			return g.done(ctx, *ev.Final, nil)
 		}
 		if sess == nil || upToken == nil || ev.Method != hooks.ProgressMethod {
@@ -979,6 +985,17 @@ func (g *Gateway) send(ctx context.Context, x *exposed, fwd *hooks.Forward, upTo
 			opts.Capabilities.Elicitation = &mcp.ElicitationCapabilities{}
 		}
 	}
+	// The client's opt-ins the engine passes on, on this request only. A
+	// task handle carries fields the client library drops, so its raw
+	// result is kept.
+	var capture *upstream.Capture
+	if current && len(fwd.Extensions) > 0 {
+		opts.Capabilities.Extensions = fwd.Extensions
+		if _, ok := fwd.Extensions[hooks.ExtTasks]; ok && fwd.Method == "tools/call" {
+			capture = &upstream.Capture{Method: "tools/call"}
+			opts.Capture = capture
+		}
+	}
 	if current && upToken != nil {
 		opts.OnProgress = func(p *mcp.ProgressNotificationParams) {
 			b, err := json.Marshal(p)
@@ -1020,7 +1037,9 @@ func (g *Gateway) send(ctx context.Context, x *exposed, fwd *hooks.Forward, upTo
 				final.err = err
 			}
 		default:
-			if b, merr := json.Marshal(res); merr != nil {
+			if raw := taskHandle(capture); raw != nil {
+				final.ev = hooks.UpstreamEvent{Result: keepMeta(raw, g.metaOut)}
+			} else if b, merr := json.Marshal(res); merr != nil {
 				final.err = merr
 			} else {
 				final.ev = hooks.UpstreamEvent{Result: keepMeta(b, g.metaOut)}

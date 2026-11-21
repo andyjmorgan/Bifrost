@@ -162,6 +162,9 @@ type Upstream struct {
 	Version      string
 	Name         string
 	Instructions string
+	// Extensions are the extensions the server advertises in discovery, by
+	// name, with its settings for each.
+	Extensions map[string]any
 
 	srv *httptest.Server
 
@@ -176,6 +179,7 @@ type Upstream struct {
 	readDefault Handler
 	fallback    Handler
 	rawLists    map[string]json.RawMessage
+	methodH     map[string]Handler
 	reqs        []Recorded
 
 	cancelled atomic.Int64
@@ -192,6 +196,17 @@ func NewUpstream(t testing.TB, version string) *Upstream {
 
 // URL is the server's endpoint.
 func (u *Upstream) URL() string { return u.srv.URL }
+
+// Method sets the handler for a method the mock server does not otherwise
+// answer, such as tasks/get.
+func (u *Upstream) Method(name string, h Handler) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.methodH == nil {
+		u.methodH = map[string]Handler{}
+	}
+	u.methodH[name] = h
+}
 
 // Tool adds a tool from its JSON definition and the handler that answers
 // calls to it. A nil handler answers with the text "ok".
@@ -361,6 +376,9 @@ func (u *Upstream) serve(w http.ResponseWriter, r *http.Request) {
 func (u *Upstream) dispatch(rec Recorded) Reply {
 	info := map[string]any{"name": u.Name, "version": "1.0.0"}
 	caps := map[string]any{"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{}}
+	if len(u.Extensions) > 0 {
+		caps["extensions"] = u.Extensions
+	}
 	notFound := Reply{Error: &RPCErr{Code: -32601, Message: "method not found: " + rec.Method}}
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -380,6 +398,9 @@ func (u *Upstream) dispatch(rec Recorded) Reply {
 				return callUnlocked(&u.mu, u.fallback, rec)
 			}
 		}
+	}
+	if h := u.methodH[rec.Method]; h != nil {
+		return callUnlocked(&u.mu, h, rec)
 	}
 	switch rec.Method {
 	case "server/discover":

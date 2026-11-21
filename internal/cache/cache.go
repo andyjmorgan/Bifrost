@@ -37,6 +37,9 @@ type Init struct {
 	// servers without one instead of asking. nil means not recorded (an
 	// entry written before this field existed): ask.
 	Caps *Caps `json:"caps,omitempty"`
+	// Extensions are the extensions the server advertised, by name, with
+	// the server's settings for each.
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
 // Caps is the subset of server capabilities the gateway routes on.

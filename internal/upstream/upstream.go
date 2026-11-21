@@ -215,6 +215,9 @@ type SessionOptions struct {
 	// question itself, and the gateway has nobody to ask: the question is
 	// the end client's to answer.
 	PassQuestions bool
+	// Capture, when set, keeps the raw result of one method's request on
+	// this session.
+	Capture *Capture
 }
 
 // OpenFor is OpenWith with the identity, capabilities and handlers of one
@@ -239,6 +242,9 @@ func (c *Connector) open(ctx context.Context, srv *store.Server, protocolVersion
 	if err != nil {
 		cancel()
 		return nil, err
+	}
+	if o.Capture != nil {
+		hc.Transport = captureTransport{next: hc.Transport, c: o.Capture}
 	}
 	as := o.Identity
 	if as == nil {
