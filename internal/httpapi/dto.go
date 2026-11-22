@@ -206,6 +206,17 @@ type E2EInput struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 	URI       string         `json:"uri,omitempty"`    // resources/read
 	Search    bool           `json:"search,omitempty"` // call the route in search mode (?search=true)
+	// TaskID names the gateway's task for tasks/get, tasks/update and
+	// tasks/cancel.
+	TaskID string `json:"taskId,omitempty"`
+	// InputResponses answers a task's questions on tasks/update, by key.
+	InputResponses map[string]json.RawMessage `json:"inputResponses,omitempty"`
+	// RequestState is the state a call that came back input_required
+	// handed out; the retry sends it back with the answers.
+	RequestState string `json:"requestState,omitempty"`
+	// Task declares the tasks extension on a tools/call, so the server may
+	// answer with a task.
+	Task bool `json:"task,omitempty"`
 }
 
 // AuditTraceDTO is one exchange as a trace: the inbound root (absent for

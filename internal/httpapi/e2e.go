@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,6 +112,39 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	headers["X-Request-Id"] = reqID
 	hc := &http.Client{Transport: &headerRT{base: http.DefaultTransport, headers: headers}, Timeout: 60 * time.Second}
+	if surface == "skills" || surface == "tasks" || surface+"/"+action == "tools/call" {
+		// Tool calls and the extensions go as plain JSON-RPC, the way an
+		// external client sends them: the client library cannot answer a
+		// call that comes back input_required, nor follow a task.
+		method, name, params, err := extensionCall(surface, action, in)
+		if err != nil {
+			res.Error = err.Error()
+			finish()
+			return
+		}
+		if method == "tools/call" {
+			params["_meta"] = map[string]any{"progressToken": reqID}
+		}
+		task := surface == "tasks" || in.Task
+		out, err := rawCall(ctx, hc, endpoint, method, name, params, a.cfgDTO.Version, task, emit)
+		switch {
+		case err != nil:
+			res.Error = err.Error()
+		case method == "tools/call":
+			var r struct {
+				IsError bool `json:"isError"`
+			}
+			_ = json.Unmarshal(out, &r)
+			res.OK, res.Result = !r.IsError, out
+			if r.IsError {
+				res.Error = "tool returned an error"
+			}
+		default:
+			res.OK, res.Result = true, out
+		}
+		finish()
+		return
+	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "bifrost-ui", Version: a.cfgDTO.Version}, &mcp.ClientOptions{
 		ProgressNotificationHandler: func(_ context.Context, n *mcp.ProgressNotificationClientRequest) {
 			emit("progress", map[string]any{"progress": n.Params.Progress, "total": n.Params.Total, "message": n.Params.Message})
@@ -133,23 +169,6 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 			res.Error = err.Error()
 		} else {
 			res.OK, res.Result = true, out
-		}
-	case "tools/call":
-		if in.Name == "" {
-			res.Error = "name is required"
-			finish()
-			return
-		}
-		params := &mcp.CallToolParams{Name: in.Name, Arguments: in.Arguments}
-		params.SetProgressToken(reqID)
-		out, err := sess.CallTool(ctx, params)
-		if err != nil {
-			res.Error = err.Error()
-		} else {
-			res.OK, res.Result = !out.IsError, out
-			if out.IsError {
-				res.Error = "tool returned an error"
-			}
 		}
 	case "prompts/list":
 		out, err := sess.ListPrompts(ctx, &mcp.ListPromptsParams{})
@@ -208,6 +227,159 @@ func (a *API) e2e(w http.ResponseWriter, r *http.Request) {
 		res.Error = "unknown action"
 	}
 	finish()
+}
+
+// Extension ids the UI declares on its raw calls.
+const (
+	extTasks  = "io.modelcontextprotocol/tasks"
+	extSkills = "io.modelcontextprotocol/skills"
+)
+
+// extensionCall maps a skills or tasks action to its JSON-RPC method, the
+// Mcp-Name header and the params, without _meta.
+func extensionCall(surface, action string, in E2EInput) (method, name string, params map[string]any, err error) {
+	params = map[string]any{}
+	switch surface + "/" + action {
+	case "skills/list":
+		return "skills/list", "", params, nil
+	case "skills/get":
+		if in.URI == "" {
+			return "", "", nil, fmt.Errorf("uri is required")
+		}
+		params["uri"] = in.URI
+		return "skills/get", in.URI, params, nil
+	case "tools/call":
+		if in.Name == "" {
+			return "", "", nil, fmt.Errorf("name is required")
+		}
+		params["name"] = in.Name
+		args := in.Arguments
+		if args == nil {
+			args = map[string]any{}
+		}
+		params["arguments"] = args
+		// The retry of a call that came back input_required carries the
+		// answers and the state the gateway handed out.
+		if len(in.InputResponses) > 0 {
+			params["inputResponses"] = in.InputResponses
+		}
+		if in.RequestState != "" {
+			params["requestState"] = in.RequestState
+		}
+		return "tools/call", in.Name, params, nil
+	case "tasks/get", "tasks/update", "tasks/cancel":
+		if in.TaskID == "" {
+			return "", "", nil, fmt.Errorf("taskId is required")
+		}
+		params["taskId"] = in.TaskID
+		if action == "update" {
+			params["inputResponses"] = in.InputResponses
+		}
+		return "tasks/" + action, in.TaskID, params, nil
+	}
+	return "", "", nil, fmt.Errorf("unknown action")
+}
+
+// rpcError is a JSON-RPC error as the front door sent it.
+type rpcError struct {
+	Code    int64           `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
+}
+
+func (e *rpcError) Error() string { return fmt.Sprintf("%s (%d)", e.Message, e.Code) }
+
+// rawCall sends one stateless 2026-07-28 request to the front door and
+// returns its result. It declares elicitation forms and links and the skills
+// extension, and the tasks extension when task is set. Progress and log
+// notifications that arrive before the reply are passed to emit.
+func rawCall(ctx context.Context, hc *http.Client, endpoint, method, name string, params map[string]any, version string, task bool, emit func(string, any)) (json.RawMessage, error) {
+	exts := map[string]any{extSkills: map[string]any{}}
+	if task {
+		exts[extTasks] = map[string]any{}
+	}
+	meta, _ := params["_meta"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["io.modelcontextprotocol/protocolVersion"] = "2026-07-28"
+	meta["io.modelcontextprotocol/clientInfo"] = map[string]any{"name": "bifrost-ui", "version": version}
+	meta["io.modelcontextprotocol/clientCapabilities"] = map[string]any{
+		"elicitation": map[string]any{"form": map[string]any{}, "url": map[string]any{}},
+		"extensions":  exts,
+	}
+	params["_meta"] = meta
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	req.Header.Set("Mcp-Method", method)
+	if name != "" {
+		req.Header.Set("Mcp-Name", name)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	// A JSON body is the reply. An SSE body is notifications, then the reply.
+	msgs := [][]byte{b}
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		msgs = nil
+		for _, ev := range strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n\n") {
+			var data []string
+			for _, line := range strings.Split(ev, "\n") {
+				if d, ok := strings.CutPrefix(line, "data:"); ok {
+					data = append(data, strings.TrimPrefix(d, " "))
+				}
+			}
+			if len(data) > 0 {
+				msgs = append(msgs, []byte(strings.Join(data, "\n")))
+			}
+		}
+	}
+	for _, m := range msgs {
+		var msg struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+			Result json.RawMessage `json:"result"`
+			Error  *rpcError       `json:"error"`
+		}
+		if err := json.Unmarshal(m, &msg); err != nil {
+			continue
+		}
+		switch msg.Method {
+		case "notifications/progress":
+			var p map[string]any
+			_ = json.Unmarshal(msg.Params, &p)
+			emit("progress", map[string]any{"progress": p["progress"], "total": p["total"], "message": p["message"]})
+			continue
+		case "notifications/message":
+			var p map[string]any
+			_ = json.Unmarshal(msg.Params, &p)
+			emit("log", map[string]any{"level": p["level"], "logger": p["logger"], "data": p["data"]})
+			continue
+		}
+		if msg.Error != nil {
+			return nil, msg.Error
+		}
+		if msg.Result != nil {
+			return msg.Result, nil
+		}
+	}
+	return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 }
 
 type headerRT struct {

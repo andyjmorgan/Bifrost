@@ -277,7 +277,7 @@ function Meta({ mimeType, size, server }: { mimeType?: string; size?: number; se
   )
 }
 
-function ReadResult({ result }: { result: E2EResult<ReadResourceResult> }) {
+export function ReadResult({ result }: { result: E2EResult<ReadResourceResult> }) {
   const [raw, setRaw] = useState(false)
   const contents = result.result?.contents ?? []
   return (

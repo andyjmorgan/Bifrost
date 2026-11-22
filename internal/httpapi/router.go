@@ -126,7 +126,7 @@ func (a *API) Router() http.Handler {
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeMCPExecute))
-			r.Post("/e2e/{route:[a-z0-9-]{1,24}}/{surface:tools|prompts|resources}/{action:list|call|get|templates|read}", a.e2e)
+			r.Post("/e2e/{route:[a-z0-9-]{1,24}}/{surface:tools|prompts|resources|skills|tasks}/{action:list|call|get|templates|read|update|cancel}", a.e2e)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(a.authn.RequireAPI(auth.ScopeAPIEdit))

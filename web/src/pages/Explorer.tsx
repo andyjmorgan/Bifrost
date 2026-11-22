@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Braces, Compass, FileText, ListTree, MessageSquareText, Play, Wrench } from 'lucide-react'
+import { Braces, Compass, FileText, ListTree, MessageSquareText, Play, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Switch } from '../ui/components/switch'
@@ -16,21 +16,26 @@ import { FormField } from '../components/FormField'
 import { Tabs, TabPanel, type Tab } from '../components/Tabs'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/components/sheet'
 import { SchemaForm, initialDraft, toArguments, type Draft } from '../components/SchemaForm'
-import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type PortalServerDTO } from '../api'
+import { api, errorMessage, type APIKeyDTO, type CallToolResult, type E2EResult, type ListToolsResult, type MCPTool, type PortalServerDTO, type TaskInputRequest, type TaskResult } from '../api'
 import { cn } from '../lib'
 import { useMe } from '../me'
 import { Definition, JsonView, ListOutcome, MUX, RequestLink, StreamPanel, TargetFields, TextOrJson, UnavailableCallout, collect, type StreamEvent } from './explorer/shared'
 import { PromptsTab } from './explorer/PromptsTab'
 import { ResourcesTab } from './explorer/ResourcesTab'
+import { SkillsTab } from './explorer/SkillsTab'
+import { TaskPanel } from './explorer/TaskPanel'
+import { ElicitationDialog, type ElicitResponse } from '../components/elicitation/ElicitationDialog'
 
 const SEARCH_STORAGE = 'mcpgw-explorer-search'
 const KEY_STORAGE = 'mcpgw-explorer-key'
+const TASK_STORAGE = 'mcpgw-explorer-task'
 
-type TabKey = 'tools' | 'prompts' | 'resources'
+type TabKey = 'tools' | 'prompts' | 'resources' | 'skills'
 const TABS: Tab<TabKey>[] = [
   { key: 'tools', label: 'Tools', icon: <Wrench className="size-4" /> },
   { key: 'prompts', label: 'Prompts', icon: <MessageSquareText className="size-4" /> },
   { key: 'resources', label: 'Resources', icon: <FileText className="size-4" /> },
+  { key: 'skills', label: 'Skills', icon: <Sparkles className="size-4" /> },
 ]
 
 /** Props every tab gets: the shared route/key and a renderer for the shared route/key selects. */
@@ -48,7 +53,7 @@ export function ExplorerPage() {
   const [params, setParams] = useSearchParams()
   const route = params.get('route') || MUX
   const tabParam = params.get('tab')
-  const tab: TabKey = tabParam === 'prompts' || tabParam === 'resources' ? tabParam : 'tools'
+  const tab: TabKey = tabParam === 'prompts' || tabParam === 'resources' || tabParam === 'skills' ? tabParam : 'tools'
   const [held, setHeld] = useState<PortalServerDTO[]>([])
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
   const [keyId, setKeyId] = useState<string>(() => {
@@ -117,7 +122,7 @@ export function ExplorerPage() {
       <PageHeader
         eyebrow="Gateway"
         title="Explorer"
-        description="List and call tools, prompts and resources through the gateway's front door as yourself or as one of your API keys, exactly as an agent would. Every call is audited."
+        description="List and call tools, prompts, resources and skills through the gateway's front door as yourself or as one of your API keys, exactly as an agent would. Every call is audited."
       />
 
       <Tabs tabs={TABS} value={tab} onChange={setTab} label="Explorer surface" />
@@ -133,6 +138,9 @@ export function ExplorerPage() {
       </TabPanel>
       <TabPanel tabKey="resources" className={cn(tab !== 'resources' && 'hidden')}>
         <ResourcesTab key={route} {...props} />
+      </TabPanel>
+      <TabPanel tabKey="skills" className={cn(tab !== 'skills' && 'hidden')}>
+        <SkillsTab key={route} {...props} />
       </TabPanel>
     </div>
   )
@@ -160,6 +168,28 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
   const [draft, setDraft] = useState<Draft>({})
   const [calling, setCalling] = useState(false)
   const [callResult, setCallResult] = useState<E2EResult<CallToolResult>>()
+  // Run as task: the call declares the tasks extension, so a server that supports it may answer
+  // with a task to follow. Only the direct route passes tasks through.
+  const [asTask, setAsTask] = useState(() => {
+    try {
+      return sessionStorage.getItem(TASK_STORAGE) === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(TASK_STORAGE, asTask ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [asTask])
+  const [taskStart, setTaskStart] = useState<E2EResult<TaskResult>>()
+  const taskMode = asTask && route !== MUX
+  // A call that comes back input_required asks its questions in a dialog, then is sent again with
+  // the answers and the state the gateway handed out, until it finishes.
+  const [asking, setAsking] = useState<{ requests: [string, TaskInputRequest][]; state?: string; args: Record<string, unknown> }>()
+  const [rounds, setRounds] = useState<Round[]>([])
   const [formError, setFormError] = useState<string>()
   const [raw, setRaw] = useState(false)
   // Notifications streamed from the upstream during the current list/call.
@@ -194,6 +224,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
     setSelectedName(t.name)
     setDraft(initialDraft(t.inputSchema))
     setCallResult(undefined)
+    setTaskStart(undefined)
     setFormError(undefined)
   }
 
@@ -207,16 +238,36 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
       return
     }
     setFormError(undefined)
-    setCalling(true)
     setCallResult(undefined)
+    setTaskStart(undefined)
     setCallEvents([])
+    setRounds([])
+    await send(selected.name, args)
+  }
+
+  const send = async (name: string, args: Record<string, unknown>, answer?: { inputResponses: Record<string, ElicitResponse>; requestState?: string }) => {
+    setCalling(true)
     try {
-      setCallResult(await api.e2e.callTool(route, { apiKeyId: keyId || undefined, name: selected.name, arguments: args, search }, collect(setCallEvents)))
+      const r = await api.e2e.callTool(route, { apiKeyId: keyId || undefined, name, arguments: args, search, task: taskMode, ...answer }, collect(setCallEvents))
+      setRounds((x) => [...x, { requestId: r.requestId, outcome: r.result?.resultType ?? (r.ok ? 'complete' : 'error'), answers: answer && summarize(answer.inputResponses) }])
+      if (r.ok && r.result?.resultType === 'input_required') {
+        setAsking({ requests: Object.entries(r.result.inputRequests ?? {}), state: r.result.requestState, args })
+        return
+      }
+      // A task handle is followed in the task panel; anything else is the call's result.
+      if (r.ok && r.result?.resultType === 'task') setTaskStart(r)
+      else setCallResult(r)
     } catch (e) {
       setCallResult({ ok: false, latencyMs: 0, endpoint: '', error: errorMessage(e) })
     } finally {
       setCalling(false)
     }
+  }
+
+  const answered = (responses: Record<string, ElicitResponse>) => {
+    const a = asking
+    setAsking(undefined)
+    if (a && selected) void send(selected.name, a.args, { inputResponses: responses, requestState: a.state })
   }
 
   return (
@@ -287,6 +338,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
           if (!o) {
             setSelectedName(undefined)
             setCallResult(undefined)
+            setTaskStart(undefined)
           }
         }}
       >
@@ -320,12 +372,18 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
                     <SchemaForm schema={selected.inputSchema} draft={draft} onChange={setDraft} disabled={calling} />
                   )}
                   {formError && <Callout tone="danger">{formError}</Callout>}
-                  <div className="flex items-center justify-end">
-                    <Button variant="primary" onClick={callTool} disabled={calling}>
-                      <Play /> {calling ? 'Calling…' : 'Call tool'}
+                  <div className="flex flex-wrap items-center justify-end gap-4">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground" title={route === MUX ? 'Tasks pass through on a direct route only.' : 'Declare the tasks extension; the server may answer with a task to follow.'}>
+                      <Switch checked={asTask && route !== MUX} onCheckedChange={setAsTask} disabled={route === MUX || calling} aria-label="Run as task" />
+                      Run as task{route === MUX && ' (direct route only)'}
+                    </label>
+                    <Button variant="primary" onClick={callTool} disabled={calling || !!asking}>
+                      <Play /> {calling ? 'Calling…' : asking ? 'Waiting for your answer…' : taskMode ? 'Start task' : 'Call tool'}
                     </Button>
                   </div>
                   {(calling || callEvents.length > 0) && <StreamPanel events={callEvents} busy={calling} />}
+                  {rounds.length > 1 && <Rounds rounds={rounds} />}
+                  {taskStart && <TaskPanel key={taskStart.result?.taskId} route={route} keyId={keyId} start={taskStart} raw={raw} tool={selected.name} />}
                   {callResult && <ResultPanel result={callResult} raw={raw} />}
                 </div>
               </SheetBody>
@@ -333,6 +391,44 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
           )}
         </SheetContent>
       </Sheet>
+      <ElicitationDialog requests={asking?.requests} source={selected ? `${selected.name} · ${route === MUX ? 'mux' : route}` : undefined} onDone={answered} />
+    </div>
+  )
+}
+
+interface Round {
+  requestId?: string
+  outcome: string
+  answers?: string
+}
+
+/** One line per answer: decline, cancel or the accepted fields. */
+function summarize(responses: Record<string, ElicitResponse>): string {
+  return Object.values(responses)
+    .map((r) => (r.action === 'accept' ? `accept ${r.content ? Object.keys(r.content).join(', ') : ''}`.trim() : r.action))
+    .join('; ')
+}
+
+/** The rounds of a call that asked questions: each tools/call, what it came back with, what was answered. */
+function Rounds({ rounds }: { rounds: Round[] }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5" data-testid="call-rounds">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Rounds ({rounds.length})</p>
+      <ol className="space-y-1.5 font-mono text-xs">
+        {rounds.map((r, i) => (
+          <li key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-muted-foreground">{i + 1}</span>
+            <span>tools/call</span>
+            {r.answers && <span className="text-muted-foreground">with {r.answers}</span>}
+            <Badge mono variant={r.outcome === 'input_required' ? 'warning' : r.outcome === 'error' ? 'danger' : 'muted'}>{r.outcome}</Badge>
+            {r.requestId && (
+              <span className="ml-auto">
+                <RequestLink id={r.requestId} />
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }

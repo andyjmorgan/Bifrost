@@ -22,7 +22,8 @@ function primaryType(s: JSONSchema): string {
 export function initialDraft(schema?: JSONSchema): Draft {
   const d: Draft = {}
   for (const [k, s] of Object.entries(schema?.properties ?? {})) {
-    if (s.default === undefined) continue
+    // A null default (a nullable field) starts empty, not as the text "null".
+    if (s.default === undefined || s.default === null) continue
     const t = primaryType(s)
     d[k] = t === 'object' || t === 'array' ? JSON.stringify(s.default, null, 2) : String(s.default)
   }

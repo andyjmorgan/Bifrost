@@ -262,6 +262,14 @@ export interface E2EInput {
   name?: string
   arguments?: Record<string, unknown>
   uri?: string
+  /** The gateway's task id, for tasks/get, tasks/update and tasks/cancel. */
+  taskId?: string
+  /** Answers to the questions a reply asked, by key: on tasks/update, or on the retry of a tools/call. */
+  inputResponses?: Record<string, unknown>
+  /** The state a tools/call that came back input_required handed out; the retry sends it back. */
+  requestState?: string
+  /** Declare the tasks extension on tools/call, so the server may answer with a task. */
+  task?: boolean
 }
 
 export interface E2EResult<T = unknown> {
@@ -509,7 +517,7 @@ export interface HookInfo {
   /** e.g. "tools/call"; "server" for the two that are not a method. */
   method: string
   side: 'pre' | 'post' | 'settings' | 'session'
-  event?: 'progress' | 'elicit' | 'result'
+  event?: 'progress' | 'elicit' | 'result' | 'task'
   /** What a rule here is about: tool, prompt, resource, template, skill or server. */
   item?: string
   summary: string
@@ -596,4 +604,50 @@ export interface PortalServerDTO {
   capabilities: string[]
   /** Whether the server has rules on some hook. */
   hasRules: boolean
+}
+
+// The tasks extension (io.modelcontextprotocol/tasks).
+export type TaskStatus = 'working' | 'input_required' | 'completed' | 'failed' | 'cancelled'
+
+/** A question a task asks, keyed in inputRequests. */
+export interface TaskInputRequest {
+  method: string
+  params?: { message?: string; mode?: string; requestedSchema?: JSONSchema; [key: string]: unknown }
+}
+
+/** A tools/call reply with the tasks opt-in (resultType "task" or an ordinary result), or a tasks/get reply. */
+export interface TaskResult extends CallToolResult {
+  resultType?: string
+  taskId?: string
+  status?: TaskStatus
+  statusMessage?: string
+  createdAt?: string
+  lastUpdatedAt?: string
+  ttlMs?: number
+  pollIntervalMs?: number
+  inputRequests?: Record<string, TaskInputRequest>
+  /** On a reply that came back input_required: the state to send back with the answers. */
+  requestState?: string
+  result?: CallToolResult
+  error?: { code?: number; message?: string; [key: string]: unknown }
+}
+
+// The skills extension (io.modelcontextprotocol/skills).
+export interface MCPSkillFile {
+  uri: string
+  size?: number
+  digest?: string
+  mimeType?: string
+}
+
+export interface MCPSkill {
+  uri: string
+  frontmatter?: { name?: string; description?: string; [key: string]: unknown }
+  resources?: MCPSkillFile[]
+  [key: string]: unknown
+}
+
+export interface ListSkillsResult {
+  skills?: MCPSkill[]
+  nextCursor?: string
 }
