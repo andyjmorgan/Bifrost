@@ -7,10 +7,16 @@ import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../../
 import { IconTile } from '../../components/IconTile'
 import { Callout } from '../../components/Callout'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
-import { api, errorMessage, type E2EResult, type ListSkillsResult, type MCPSkill, type ReadResourceResult } from '../../api'
+import { api, errorMessage, type E2EResult, type ListSkillsResult, type MCPSkill, type MCPSkillFile, type ReadResourceResult } from '../../api'
 import type { TabProps } from '../Explorer'
 import { Definition, ListOutcome, MUX, StreamPanel, collect, formatBytes, type StreamEvent } from './shared'
 import { ReadResult } from './ResourcesTab'
+
+/**
+ * A skill's files, when the server lists them. A server may send something else instead, such as
+ * "dynamic" for a skill whose content is generated on each read; then only SKILL.md is known.
+ */
+const filesOf = (s: MCPSkill): MCPSkillFile[] | undefined => (Array.isArray(s.resources) ? s.resources.filter((f) => f && typeof f.uri === 'string') : undefined)
 
 const skillName = (s: MCPSkill) => s.frontmatter?.name ?? s.uri.split('/').slice(-2, -1)[0] ?? s.uri
 
@@ -110,9 +116,7 @@ export function SkillsTab({ route, keyId, fields }: TabProps) {
                   <IconTile icon={Sparkles} tone="muted" />
                   <Primary title={<span className="font-mono text-xs">{skillName(s)}</span>} subtitle={s.frontmatter?.description?.split('\n')[0]} />
                 </div>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {(s.resources?.length ?? 0).toLocaleString()} {s.resources?.length === 1 ? 'file' : 'files'}
-                </span>
+                <span className="font-mono text-xs text-muted-foreground">{fileCount(s)}</span>
               </ListRow>
             ))}
           </ListRows>
@@ -138,7 +142,7 @@ export function SkillsTab({ route, keyId, fields }: TabProps) {
                   <div>
                     <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Files</p>
                     <ul className="divide-y divide-border rounded-lg border border-border">
-                      {(selected.resources ?? [{ uri: selected.uri }]).map((f) => (
+                      {(filesOf(selected) ?? [{ uri: selected.uri }]).map((f) => (
                         <li key={f.uri}>
                           <button
                             type="button"
@@ -154,6 +158,11 @@ export function SkillsTab({ route, keyId, fields }: TabProps) {
                         </li>
                       ))}
                     </ul>
+                    {!filesOf(selected) && selected.resources !== undefined && (
+                      <p className="mt-1.5 text-xs leading-5 text-faint-foreground">
+                        The server lists this skill&rsquo;s files as <span className="font-mono">{String(selected.resources)}</span>, so only SKILL.md is shown.
+                      </p>
+                    )}
                   </div>
                   {(reading || readEvents.length > 0) && <StreamPanel events={readEvents} busy={reading} />}
                   {readResult && <ReadResult result={readResult} />}
@@ -166,4 +175,10 @@ export function SkillsTab({ route, keyId, fields }: TabProps) {
       </Sheet>
     </div>
   )
+}
+
+function fileCount(s: MCPSkill): string {
+  const files = filesOf(s)
+  if (!files) return typeof s.resources === 'string' ? s.resources : '1 file'
+  return `${files.length.toLocaleString()} ${files.length === 1 ? 'file' : 'files'}`
 }

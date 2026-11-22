@@ -643,7 +643,8 @@ export interface MCPSkillFile {
 export interface MCPSkill {
   uri: string
   frontmatter?: { name?: string; description?: string; [key: string]: unknown }
-  resources?: MCPSkillFile[]
+  /** The skill's files; a server may send a string such as "dynamic" instead. */
+  resources?: MCPSkillFile[] | string
   [key: string]: unknown
 }
 
