@@ -107,7 +107,9 @@ func (s *OAuthConfigService) Upsert(ctx context.Context, provider, clientID stri
 
 	row.ProviderKey = provider
 	row.ClientIDCipher = clientIDBlob
+	detail := "client id or scopes edited; client secret kept"
 	if deref(clientSecret) != "" {
+		detail = "client secret replaced"
 		secretBlob, err := s.cipher.EncryptString(*clientSecret)
 		if err != nil {
 			return uuid.Nil, err
@@ -119,14 +121,33 @@ func (s *OAuthConfigService) Upsert(ctx context.Context, provider, clientID stri
 	if err := s.store.UpdateOAuthConfig(ctx, row); err != nil {
 		return uuid.Nil, err
 	}
+	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialChanged, Outcome: audit.OutcomeSuccess,
+		TargetKind: "provider_config", TargetProvider: provider, TargetName: provider, Detail: detail})
 	return row.ID, nil
 }
 
-// Delete removes one of the caller's configs.
+// Delete removes one of the caller's configs, and records the removal under the provider's name.
 func (s *OAuthConfigService) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	ctx, span := startSpan(ctx, "oauthconfig.delete")
 	defer span.End()
-	return s.store.DeleteOAuthConfig(ctx, contracts.CallerFrom(ctx).UserID, id)
+	caller := contracts.CallerFrom(ctx)
+	provider := ""
+	rows, err := s.store.ListOAuthConfigs(ctx, caller.UserID)
+	if err != nil {
+		return false, err
+	}
+	for i := range rows {
+		if rows[i].ID == id {
+			provider = rows[i].ProviderKey
+		}
+	}
+	ok, err := s.store.DeleteOAuthConfig(ctx, caller.UserID, id)
+	if err != nil || !ok {
+		return ok, err
+	}
+	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialRemoved, Outcome: audit.OutcomeSuccess,
+		TargetKind: "provider_config", TargetProvider: provider, TargetName: provider})
+	return true, nil
 }
 
 func mask(s string) string {

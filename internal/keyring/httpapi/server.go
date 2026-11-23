@@ -62,12 +62,14 @@ type Deps struct {
 	OAuthConfigs *service.OAuthConfigService
 	OAuthTokens  *service.OAuthTokenService
 	OAuthFlow    *service.OAuthFlowService
-	Resolver     *manifests.Resolver
-	Discovery    *manifests.Discovery
-	AuditLog     *audit.Log
-	AuditQuery   *audit.QueryService
-	IPResolver   *audit.ForwardedIPResolver
-	Logger       *slog.Logger
+	// Providers adds, edits and removes providers, auditing each change.
+	Providers  *service.ProviderService
+	Resolver   *manifests.Resolver
+	Discovery  *manifests.Discovery
+	AuditLog   *audit.Log
+	AuditQuery *audit.QueryService
+	IPResolver *audit.ForwardedIPResolver
+	Logger     *slog.Logger
 
 	OIDC OIDCConfig
 	// PublicBaseURL is the base of the OAuth redirect URI ({base}/api/oauth/callback): the address

@@ -127,14 +127,31 @@ func (s *AccessKeyService) SetEnabled(ctx context.Context, id uuid.UUID, enabled
 	if err != nil || entity == nil {
 		return nil, err
 	}
+	detail := "disabled"
+	if enabled {
+		detail = "enabled"
+	}
+	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialChanged, Outcome: audit.OutcomeSuccess,
+		TargetKind: "access_key", TargetName: entity.Name, Detail: detail})
 	return toStoredAccessKey(entity), nil
 }
 
-// Delete removes one of the caller's keys.
+// Delete removes one of the caller's keys, and records the removal under the key's name.
 func (s *AccessKeyService) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	ctx, span := startSpan(ctx, "accesskey.delete")
 	defer span.End()
-	return s.store.DeleteAccessKey(ctx, contracts.CallerFrom(ctx).UserID, id)
+	caller := contracts.CallerFrom(ctx)
+	entity, err := s.store.GetAccessKeyByID(ctx, caller.UserID, id)
+	if err != nil || entity == nil {
+		return false, err
+	}
+	ok, err := s.store.DeleteAccessKey(ctx, caller.UserID, id)
+	if err != nil || !ok {
+		return ok, err
+	}
+	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialRemoved, Outcome: audit.OutcomeSuccess,
+		TargetKind: "access_key", TargetName: entity.Name})
+	return true, nil
 }
 
 // Authenticate resolves a presented secret to its owner + scopes, or nil if unknown/disabled.

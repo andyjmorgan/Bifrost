@@ -209,7 +209,7 @@ func (s *Server) handleUpsertManifest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unsupported token endpoint authentication method.")
 		return
 	}
-	err := s.deps.Resolver.UpsertOAuth(r.Context(), fromManifestRequest(dto))
+	err := s.deps.Providers.Save(r.Context(), fromManifestRequest(dto))
 	var slugErr manifests.ErrInvalidSlug
 	if errors.As(err, &slugErr) {
 		writeError(w, http.StatusBadRequest, slugErr.Error())
@@ -236,7 +236,7 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteManifest(w http.ResponseWriter, r *http.Request) {
-	deleted, err := s.deps.Resolver.Delete(r.Context(), chi.URLParam(r, "kind"), chi.URLParam(r, "key"))
+	deleted, err := s.deps.Providers.Remove(r.Context(), chi.URLParam(r, "kind"), chi.URLParam(r, "key"))
 	if writeServiceError(w, err) {
 		return
 	}

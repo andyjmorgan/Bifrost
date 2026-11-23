@@ -6,7 +6,7 @@ import (
 )
 
 func TestEventTypeString(t *testing.T) {
-	for tp := EventUnknown; tp <= EventTokenRemoved; tp++ {
+	for tp := EventUnknown; tp <= lastEventType; tp++ {
 		if tp.String() == "" {
 			t.Fatalf("missing string for %d", tp)
 		}

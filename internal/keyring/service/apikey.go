@@ -67,7 +67,8 @@ func NewAPIKeyService(s store.Store, c crypto.Cipher, a *audit.Log) *APIKeyServi
 }
 
 // Create inserts a new credential or edits an existing one of the same name. A blank secret on edit
-// keeps the stored secret. Only a create emits a CredentialCreated audit event.
+// keeps the stored secret. A create is audited as CredentialCreated and an edit as CredentialChanged,
+// whose detail says whether the secret itself was replaced. Neither carries the value.
 func (s *APIKeyService) Create(ctx context.Context, p CreateAPIKeyParams) (*StoredAPIKey, error) {
 	ctx, span := startSpan(ctx, "apikey.create")
 	defer span.End()
@@ -150,8 +151,16 @@ func (s *APIKeyService) Create(ctx context.Context, p CreateAPIKeyParams) (*Stor
 		}
 		s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialCreated, Outcome: audit.OutcomeSuccess,
 			TargetKind: "api_key", TargetName: existing.Name})
-	} else if err := s.store.UpdateAPIKey(ctx, existing); err != nil {
-		return nil, err
+	} else {
+		if err := s.store.UpdateAPIKey(ctx, existing); err != nil {
+			return nil, err
+		}
+		detail := "details edited; secret kept"
+		if secret != "" {
+			detail = "secret replaced"
+		}
+		s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialChanged, Outcome: audit.OutcomeSuccess,
+			TargetKind: "api_key", TargetName: existing.Name, Detail: detail})
 	}
 
 	return toStoredAPIKey(existing), nil
@@ -204,11 +213,30 @@ func (s *APIKeyService) GetByName(ctx context.Context, name string) (*APIKeySecr
 	}, nil
 }
 
-// Delete removes one of the caller's credentials.
+// Delete removes one of the caller's credentials, and records the removal under the credential's
+// name.
 func (s *APIKeyService) Delete(ctx context.Context, id uuid.UUID) (bool, error) {
 	ctx, span := startSpan(ctx, "apikey.delete")
 	defer span.End()
-	return s.store.DeleteAPIKey(ctx, contracts.CallerFrom(ctx).UserID, id)
+	caller := contracts.CallerFrom(ctx)
+	// The row is read first for its name: the audit trail says which secret went, not only its id.
+	name := ""
+	rows, err := s.store.ListAPIKeys(ctx, caller.UserID)
+	if err != nil {
+		return false, err
+	}
+	for i := range rows {
+		if rows[i].ID == id {
+			name = rows[i].Name
+		}
+	}
+	ok, err := s.store.DeleteAPIKey(ctx, caller.UserID, id)
+	if err != nil || !ok {
+		return ok, err
+	}
+	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventCredentialRemoved, Outcome: audit.OutcomeSuccess,
+		TargetKind: "api_key", TargetName: name})
+	return true, nil
 }
 
 func toStoredAPIKey(k *store.APIKey) *StoredAPIKey {

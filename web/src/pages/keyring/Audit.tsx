@@ -17,7 +17,7 @@ const ALL = '__all__'
 const COLS = '130px minmax(0,1.2fr) 110px minmax(0,1.4fr) 170px minmax(0,1.3fr)'
 
 // The event types the keyring records, as they appear on the wire.
-const TYPES = ['TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'TokenRemoved', 'CredentialCreated', 'AuthSucceeded', 'AuthFailed', 'AuditAccessed'] as const
+const TYPES = ['TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'TokenRemoved', 'CredentialCreated', 'CredentialChanged', 'CredentialRemoved', 'AuthSucceeded', 'AuthFailed', 'AuditAccessed'] as const
 
 // "TokenAccessed" reads as "Token accessed" in the list; the raw type stays the filter value.
 const prettyType = (t: string) => t.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)

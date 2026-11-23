@@ -117,6 +117,7 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 		OAuthConfigs: service.NewOAuthConfigService(st, cipher, auditLog, resolver),
 		OAuthTokens:  tokens,
 		OAuthFlow:    service.NewOAuthFlowService(st, cipher, resolver, auditLog, oauthClient, log),
+		Providers:    service.NewProviderService(st, resolver, auditLog),
 		Resolver:     resolver,
 		Discovery:    manifests.NewDiscovery(oauthClient),
 		AuditLog:     auditLog,

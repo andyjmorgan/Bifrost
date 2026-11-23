@@ -26,6 +26,15 @@ const (
 	EventAuthFailed        EventType = 6
 	EventAuditAccessed     EventType = 7
 	EventTokenRemoved      EventType = 8
+	// EventCredentialRemoved is a stored secret, an access key, a provider or a provider's app
+	// credentials being deleted. A connected OAuth account going away is EventTokenRemoved.
+	EventCredentialRemoved EventType = 9
+	// EventCredentialChanged is an existing credential being replaced or edited in place: a secret
+	// given a new value, an access key switched on or off, a provider or its app credentials edited.
+	EventCredentialChanged EventType = 10
+
+	// lastEventType is the highest value in use; ParseEventType walks up to it.
+	lastEventType = EventCredentialChanged
 )
 
 // String renders the PascalCase name emitted on the wire, so the audit DTO's `type` field is
@@ -48,6 +57,10 @@ func (t EventType) String() string {
 		return "AuditAccessed"
 	case EventTokenRemoved:
 		return "TokenRemoved"
+	case EventCredentialRemoved:
+		return "CredentialRemoved"
+	case EventCredentialChanged:
+		return "CredentialChanged"
 	default:
 		return "Unknown"
 	}
@@ -55,7 +68,7 @@ func (t EventType) String() string {
 
 // ParseEventType maps a case-insensitive name to an EventType; ok is false for an unknown name.
 func ParseEventType(s string) (EventType, bool) {
-	for t := EventUnknown; t <= EventTokenRemoved; t++ {
+	for t := EventUnknown; t <= lastEventType; t++ {
 		if equalFold(t.String(), s) {
 			return t, true
 		}

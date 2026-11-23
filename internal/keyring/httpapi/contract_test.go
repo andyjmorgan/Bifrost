@@ -109,6 +109,7 @@ func contractServer(t *testing.T) *Server {
 		OAuthConfigs:  service.NewOAuthConfigService(ms, cipher, auditLog, resolver),
 		OAuthTokens:   service.NewOAuthTokenService(ms, cipher, auditLog, resolver, http.DefaultClient),
 		OAuthFlow:     service.NewOAuthFlowService(ms, cipher, resolver, auditLog, http.DefaultClient, nil),
+		Providers:     service.NewProviderService(ms, resolver, auditLog),
 		Resolver:      resolver,
 		Discovery:     manifests.NewDiscovery(http.DefaultClient),
 		AuditLog:      auditLog,

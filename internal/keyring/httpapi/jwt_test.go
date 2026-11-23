@@ -61,6 +61,7 @@ func newJWTHarness(t *testing.T) *harness {
 		OAuthConfigs: service.NewOAuthConfigService(h.ms, cipher, auditLog, resolver),
 		OAuthTokens:  service.NewOAuthTokenService(h.ms, cipher, auditLog, resolver, http.DefaultClient),
 		OAuthFlow:    service.NewOAuthFlowService(h.ms, cipher, resolver, auditLog, http.DefaultClient, nil),
+		Providers:    service.NewProviderService(h.ms, resolver, auditLog),
 		Resolver:     resolver, Discovery: manifests.NewDiscovery(http.DefaultClient),
 		AuditLog: auditLog, AuditQuery: audit.NewQueryService(h.ms, auditLog),
 		IPResolver: audit.NewForwardedIPResolver(nil), PublicBaseURL: "https://v",
