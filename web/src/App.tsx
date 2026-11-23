@@ -15,6 +15,10 @@ import { ApiKeysPage } from './pages/ApiKeys'
 import { PortalPage } from './pages/Portal'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
+import { SecretsPage } from './pages/Secrets'
+import { ConnectPage } from './pages/Connect'
+import { ProvidersPage } from './pages/Providers'
+import { keyringEnabled } from './keyring'
 
 function useAuthed(): boolean {
   return useSyncExternalStore(subscribeAuth, isAuthed, () => false)
@@ -56,6 +60,12 @@ function AppShell() {
   )
 }
 
+/** An old address for a page that moved: go to the new one, keeping the query string. */
+function Moved({ to }: { to: string }) {
+  const { search } = useLocation()
+  return <Navigate to={to + search} replace />
+}
+
 // "/" is the sign-in screen until there's a session, then the app.
 function Root() {
   const authed = useAuthed()
@@ -77,6 +87,20 @@ export function App() {
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          {/* The keyring's pages exist only when the server has a keyring; otherwise these
+              addresses fall through to the catch-all like any unknown route. */}
+          {keyringEnabled() && (
+            <>
+              <Route path="/secrets" element={<SecretsPage />} />
+              <Route path="/oauth-accounts" element={<SecretsPage />} />
+              <Route path="/connect" element={<ConnectPage />} />
+              <Route path="/providers" element={<ProvidersPage />} />
+              {/* The keyring's OAuth callback answers with /connect?connected=… or ?oauth_error=…;
+                  left unconfigured it falls back to Vault's old /oauthconnect, so honour that too.
+                  (Vault's other page addresses are redirected by the server, on the Vault host.) */}
+              <Route path="/oauthconnect" element={<Moved to="/connect" />} />
+            </>
+          )}
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
