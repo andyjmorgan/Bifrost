@@ -23,6 +23,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/db"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
 	"github.com/andyjmorgan/Bifrost/internal/httpapi"
+	"github.com/andyjmorgan/Bifrost/internal/keyring"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
@@ -97,7 +98,21 @@ func main() {
 
 	go worker.New(st, conn, log, cfg.RefreshInterval, cfg.RefreshLeeway, cfg.AuditRetention).Run(ctx)
 
-	srv := &http.Server{Addr: cfg.ListenAddr, Handler: api.Router(), ReadHeaderTimeout: 10 * time.Second}
+	// The keyring is nil, and Wrap a no-op, unless its KEKs are configured.
+	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
+		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
+	}, log)
+	if err != nil {
+		log.Error("keyring", "err", err)
+		os.Exit(1)
+	}
+	if kr != nil {
+		kr.Start()
+		defer kr.Shutdown()
+		log.Info("keyring enabled", "prefix", keyring.MountPrefix, "legacyHosts", kr.LegacyHosts())
+	}
+
+	srv := &http.Server{Addr: cfg.ListenAddr, Handler: kr.Wrap(api.Router()), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
