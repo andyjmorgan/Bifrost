@@ -245,9 +245,27 @@ oauth_scopes=case when cardinality($6::text[])>0 then $6 else oauth_scopes end, 
 	return nil
 }
 
-// SetCredentialState marks a credential ok/pending/broken with a reason.
+// FindServerByKeyringOAuth returns the server whose credential is the
+// keyring OAuth account of owner under provider, or ErrNotFound. A server's
+// own connection is stored under a provider named after the server, so at
+// most one server has it.
+func (p *Postgres) FindServerByKeyringOAuth(ctx context.Context, owner, provider string) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := p.pool.QueryRow(ctx, `select server_id from credentials where kind='keyring_oauth' and keyring_owner=$1 and keyring_provider=$2 order by updated_at desc limit 1`, owner, provider).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("store: %w", err)
+	}
+	return id, nil
+}
+
+// SetCredentialState marks a credential ok/pending/broken with a reason. A
+// broken credential keeps the reason as its last error, and one that is ok
+// again loses it.
 func (p *Postgres) SetCredentialState(ctx context.Context, serverID uuid.UUID, state CredentialState, reason string) error {
-	_, err := p.pool.Exec(ctx, `update credentials set state=$2, state_reason=nullif($3,''), last_error=case when $2='broken' then nullif($3,'') else last_error end, updated_at=now() where server_id=$1`,
+	_, err := p.pool.Exec(ctx, `update credentials set state=$2, state_reason=nullif($3,''), last_error=case when $2='broken' then nullif($3,'') when $2='ok' then null else last_error end, updated_at=now() where server_id=$1`,
 		serverID, state, reason)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)

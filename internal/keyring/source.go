@@ -10,6 +10,7 @@ import (
 
 	"github.com/andyjmorgan/Bifrost/internal/keyring/audit"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/contracts"
+	"github.com/andyjmorgan/Bifrost/internal/keyring/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/manifests"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/service"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/store"
@@ -30,15 +31,14 @@ const gatewayTransport = "gateway"
 // a credential that belongs to a server. Every fetch and every change is recorded in the keyring's
 // audit trail with the gateway and the server as the caller.
 type Source struct {
-	store    store.Store
-	resolver *manifests.Resolver
-	secrets  *service.APIKeyService
-	tokens   *service.OAuthTokenService
-	audit    *audit.Log
-}
-
-func newSource(st store.Store, resolver *manifests.Resolver, secrets *service.APIKeyService, tokens *service.OAuthTokenService, log *audit.Log) *Source {
-	return &Source{store: st, resolver: resolver, secrets: secrets, tokens: tokens, audit: log}
+	store     store.Store
+	resolver  *manifests.Resolver
+	cipher    crypto.Cipher
+	secrets   *service.APIKeyService
+	tokens    *service.OAuthTokenService
+	flow      *service.OAuthFlowService
+	providers *service.ProviderService
+	audit     *audit.Log
 }
 
 // Source returns the gateway's door into the keyring, or nil when the keyring is off. The nil is an
@@ -85,15 +85,18 @@ func (s *Source) OAuthToken(ctx context.Context, ref keyringref.Ref, use keyring
 	} else {
 		tok, err = s.tokens.ReplaceRejectedToken(ctx, ref.Provider, ref.Account, rejected)
 	}
+	var broken *service.BrokenError
 	switch {
 	case errors.Is(err, service.ErrNotRefreshable):
 		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNoRefresh)
+	case errors.As(err, &broken):
+		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, &keyringref.BrokenError{Reason: broken.Reason})
 	case err != nil:
 		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, err)
 	case tok == nil: // removed between the two reads
 		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
 	}
-	return keyringref.Token{AccessToken: tok.AccessToken, ExpiresAt: tok.ExpiresAt}, nil
+	return keyringref.Token{TokenType: tok.TokenType, AccessToken: tok.AccessToken, ExpiresAt: tok.ExpiresAt}, nil
 }
 
 // SecretHeader implements keyringref.Keyring.
@@ -124,8 +127,8 @@ func (s *Source) Describe(ctx context.Context, ref keyringref.Ref) (keyringref.D
 	if err != nil {
 		return keyringref.Description{}, err
 	}
-	if ref.Kind != keyringref.KindSecret {
-		return keyringref.Description{}, fmt.Errorf("keyring: %s has no description: %w", ref, keyringref.ErrUnusable)
+	if ref.Kind == keyringref.KindOAuth {
+		return s.describeOAuth(ctx, owner, ref)
 	}
 	row, err := s.findSecret(ctx, owner, ref)
 	if err != nil {
@@ -175,15 +178,132 @@ func (s *Source) putSecret(ctx context.Context, owner, tenant uuid.UUID, use key
 	return ref, nil
 }
 
-// Forget implements keyringref.Keyring.
+// describeOAuth says what the keyring holds for an OAuth reference: its provider, the client it
+// was issued to, and its token's scopes and expiry. A provider with no token yet is a connection
+// whose consent has not finished.
+func (s *Source) describeOAuth(ctx context.Context, owner uuid.UUID, ref keyringref.Ref) (keyringref.Description, error) {
+	d := keyringref.Description{Scheme: keyringref.SchemeOAuth, Scopes: []string{}}
+	manifest, err := s.resolver.GetOAuth(ctx, ref.Provider, owner)
+	if err != nil {
+		return d, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if manifest == nil {
+		return d, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	if manifest.MCP != nil {
+		d.Issuer, d.Resource, d.RegistrationKind = manifest.MCP.Issuer, manifest.MCP.Resource, manifest.MCP.RegistrationKind
+	}
+	config, err := s.store.GetOAuthConfigByProvider(ctx, owner, manifest.ID)
+	if err != nil {
+		return d, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if config != nil {
+		// The client id is public: it travels in every authorization URL.
+		if d.ClientID, err = s.cipher.DecryptToString(config.ClientIDCipher); err != nil {
+			return d, fmt.Errorf("keyring %s: %w", ref, err)
+		}
+		d.Scopes = service.DecodeScopes(config.ScopesJSON)
+	}
+	token, err := s.store.FindOAuthToken(ctx, owner, manifest.ID, ref.Account)
+	if err != nil {
+		return d, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if token == nil {
+		return d, nil
+	}
+	d.Connected, d.ExpiresAt, d.LastRefreshedAt = true, token.ExpiresAt, token.LastRefreshedAt
+	d.HasRefreshToken = len(token.RefreshTokenCipher) > 0
+	if scopes := service.DecodeScopes(token.ScopesJSON); len(scopes) > 0 {
+		d.Scopes = scopes
+	}
+	if token.BrokenAt != nil {
+		d.Broken = deref(token.BrokenReason)
+	}
+	return d, nil
+}
+
+// BeginServerOAuth implements keyringref.Holder.
+func (s *Source) BeginServerOAuth(ctx context.Context, use keyringref.Use, in keyringref.ServerOAuth) (string, keyringref.Ref, error) {
+	if use.Slug == "" {
+		return "", keyringref.Ref{}, errors.New("keyring: a server connection needs the server's slug")
+	}
+	ref := keyringref.Ref{Owner: keyringref.GatewayOwner, Kind: keyringref.KindOAuth, Provider: keyringref.ServerCredentialName(use.Slug), Account: keyringref.ServerAccount}
+	res, err := s.flow.BeginServer(asGateway(ctx, gatewayOwnerID, uuid.Nil, use), service.BeginServerParams{
+		Provider: ref.Provider, Name: in.Name, ServerURL: in.URL, Scopes: in.Scopes, ReturnTo: in.ReturnTo,
+	})
+	if err != nil {
+		return "", keyringref.Ref{}, err
+	}
+	return res.AuthorizeURL, ref, nil
+}
+
+// OAuthState implements keyringref.Holder. Only a server's own pending consent is answered for:
+// a round trip somebody started for their own account finishes at the keyring's callback, not the
+// gateway's.
+func (s *Source) OAuthState(ctx context.Context, state string) (keyringref.OAuthState, error) {
+	info, err := s.flow.StateInfo(ctx, state)
+	if err != nil {
+		return keyringref.OAuthState{}, err
+	}
+	if info == nil || !info.Server || info.Owner != gatewayOwnerID {
+		return keyringref.OAuthState{}, keyringref.ErrNoState
+	}
+	return keyringref.OAuthState{
+		Ref:      keyringref.Ref{Owner: keyringref.GatewayOwner, Kind: keyringref.KindOAuth, Provider: info.Provider, Account: keyringref.ServerAccount},
+		ReturnTo: info.ReturnTo,
+	}, nil
+}
+
+// CompleteServerOAuth implements keyringref.Holder.
+func (s *Source) CompleteServerOAuth(ctx context.Context, code, state string) error {
+	if _, err := s.OAuthState(ctx, state); err != nil {
+		return err
+	}
+	_, err := s.flow.Complete(asCallback(ctx), code, state)
+	return err
+}
+
+// AbandonServerOAuth implements keyringref.Holder.
+func (s *Source) AbandonServerOAuth(ctx context.Context, state, reason string) error {
+	if _, err := s.OAuthState(ctx, state); err != nil {
+		return err
+	}
+	return s.flow.Abandon(asCallback(ctx), state, reason)
+}
+
+// asCallback is the audited source of a consent round trip coming back through the gateway's
+// callback. The owner is the state row's; nobody is signed in at a callback.
+func asCallback(ctx context.Context) context.Context {
+	method := "oauth callback"
+	return audit.WithRequestInfo(ctx, audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}})
+}
+
+// Forget implements keyringref.Holder.
 func (s *Source) Forget(ctx context.Context, ref keyringref.Ref, use keyringref.Use) error {
 	if !ref.HeldByGateway() {
 		return nil // a person's credential outlives the server that borrowed it
 	}
-	if ref.Kind != keyringref.KindSecret {
-		return fmt.Errorf("keyring: cannot forget %s", ref)
+	if ref.Kind == keyringref.KindOAuth {
+		return s.forgetOAuth(ctx, gatewayOwnerID, ref, use)
 	}
 	return s.forgetSecret(ctx, gatewayOwnerID, ref, use)
+}
+
+// forgetOAuth removes a server's own connection from owner's keyring: the provider, the client
+// registered for it and its tokens. Only a provider discovered from an MCP server is removed; one
+// somebody wrote is theirs to keep.
+func (s *Source) forgetOAuth(ctx context.Context, owner uuid.UUID, ref keyringref.Ref, use keyringref.Use) error {
+	manifest, err := s.resolver.GetOAuth(ctx, ref.Provider, owner)
+	if err != nil {
+		return fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if manifest == nil || manifest.MCP == nil {
+		return nil
+	}
+	if _, err := s.providers.Remove(asGateway(ctx, owner, uuid.Nil, use), "oauth", ref.Provider); err != nil {
+		return fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	return nil
 }
 
 // forgetSecret deletes the stored secret ref names from owner's keyring, if it is there.

@@ -46,6 +46,28 @@ type Manifest struct {
 	DefaultScopes           []string          `json:"defaultScopes" yaml:"default_scopes"`
 	Scopes                  []ScopeDef        `json:"scopes" yaml:"scopes"`
 	AuthorizeParams         map[string]string `json:"authorizeParams" yaml:"authorize_params"`
+	// MCP is set on a provider that was discovered from an MCP server instead of written by a
+	// person. Its client was registered by the flow, and its tokens are bound to the server.
+	MCP *MCPProvider `json:"mcp,omitempty" yaml:"-"`
+}
+
+// MCPProvider is what discovery and registration found for one MCP server: enough to authorize,
+// exchange and refresh the way the MCP authorization spec asks, with no further discovery.
+type MCPProvider struct {
+	// ServerURL is the MCP server the provider was discovered from.
+	ServerURL string `json:"serverUrl"`
+	// Issuer is the authorization server the protected resource metadata named.
+	Issuer string `json:"issuer"`
+	// Resource is the resource indicator (RFC 8707) sent on the authorization request, the code
+	// exchange and every refresh, which binds the token to the server.
+	Resource string `json:"resource"`
+	// RegistrationKind is how the client was registered: "cimd" (the client id is the URL of a
+	// Client ID Metadata Document) or "dcr" (RFC 7591 dynamic registration).
+	RegistrationKind string `json:"registrationKind"`
+	// RegistrationEndpoint is the dynamic registration endpoint, when the server has one.
+	RegistrationEndpoint string `json:"registrationEndpoint,omitempty"`
+	// RedirectURI is the callback the client was registered with.
+	RedirectURI string `json:"redirectUri"`
 }
 
 // Loader holds the validated embedded catalog, indexed by key and by stable id.

@@ -307,7 +307,15 @@ func serverDTO(base string, s *store.Server, c *store.Credential, held *keyringr
 // is stored, not what it is. A reference into a person's keyring keeps its
 // keyring kind, because whose it is matters there.
 func presentedKind(c *store.Credential, held *keyringref.Description) store.AuthKind {
-	if held == nil || !c.Kind.FromKeyring() || !c.KeyringRef().HeldByGateway() {
+	if !c.Kind.FromKeyring() || !c.KeyringRef().HeldByGateway() {
+		return c.Kind
+	}
+	// A server's own connection is OAuth whether or not the keyring holds
+	// anything for it yet: discovery may have failed before it did.
+	if c.Kind == store.AuthKeyringOAuth {
+		return store.AuthOAuth
+	}
+	if held == nil {
 		return c.Kind
 	}
 	switch held.Scheme {
@@ -315,6 +323,8 @@ func presentedKind(c *store.Credential, held *keyringref.Description) store.Auth
 		return store.AuthBasic
 	case keyringref.SchemeHeader:
 		return store.AuthHeader
+	case keyringref.SchemeOAuth:
+		return store.AuthOAuth
 	}
 	return c.Kind
 }
@@ -340,6 +350,19 @@ func credentialDTO(c *store.Credential, held *keyringref.Description) *Credentia
 	if held != nil {
 		// How the secret is sent is the keyring's to say; these are names.
 		d.BasicUsername, d.HeaderName = held.Username, held.HeaderName
+	}
+	if held != nil && held.Scheme == keyringref.SchemeOAuth {
+		// A server's own connection: what the keyring discovered and holds.
+		d.OAuthIssuer, d.OAuthClientID, d.OAuthRegistrationKind, d.OAuthResource = held.Issuer, held.ClientID, held.RegistrationKind, held.Resource
+		d.OAuthExpiresAt, d.OAuthHasRefreshToken, d.LastRefreshedAt = held.ExpiresAt, held.HasRefreshToken, held.LastRefreshedAt
+		if held.Scopes != nil {
+			d.OAuthScopes = held.Scopes
+		}
+		// The keyring may have found the account broken before any request
+		// through the gateway did.
+		if held.Broken != "" && d.State == store.StateOK {
+			d.State, d.StateReason = store.StateBroken, held.Broken
+		}
 	}
 	return d
 }

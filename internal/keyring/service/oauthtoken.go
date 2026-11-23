@@ -17,6 +17,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/keyring/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/manifests"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/store"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 )
 
 // refreshWindow is how close to expiry a token is proactively refreshed.
@@ -31,6 +32,8 @@ type OAuthAccessToken struct {
 	AccessToken string
 	ExpiresAt   *time.Time
 	Scopes      []string
+	// TokenType is the type the authorization server issued; empty reads as Bearer.
+	TokenType string
 }
 
 // OAuthTokenSummary is the non-secret view of a connected account.
@@ -50,15 +53,21 @@ type OAuthTokenService struct {
 	audit        *audit.Log
 	resolver     *manifests.Resolver
 	client       *http.Client
-	refreshLocks *keyedMutex // serialises refreshes per token id (avoids rotating-token clobber)
+	refreshLocks *keyedMutex         // serialises refreshes per token id (avoids rotating-token clobber)
+	server       *oauthclient.Client // refreshes the accounts of MCP servers; nil when not configured
+	guard        RefreshGuard        // held for the length of every refresh
 }
 
 // NewOAuthTokenService builds the service.
-func NewOAuthTokenService(s store.Store, c crypto.Cipher, a *audit.Log, r *manifests.Resolver, client *http.Client) *OAuthTokenService {
+func NewOAuthTokenService(s store.Store, c crypto.Cipher, a *audit.Log, r *manifests.Resolver, client *http.Client, opts ...TokenOption) *OAuthTokenService {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &OAuthTokenService{store: s, cipher: c, audit: a, resolver: r, client: client, refreshLocks: newKeyedMutex()}
+	svc := &OAuthTokenService{store: s, cipher: c, audit: a, resolver: r, client: client, refreshLocks: newKeyedMutex(), guard: noGuard{}}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // List returns the caller's connected tokens.
@@ -145,13 +154,18 @@ func (s *OAuthTokenService) accessToken(ctx context.Context, provider, account, 
 	s.audit.Emit(ctx, audit.EmitParams{Type: audit.EventTokenAccessed, Outcome: audit.OutcomeSuccess,
 		TargetKind: "oauth_token", TargetProvider: token.ProviderKey, TargetAccount: token.Account})
 
+	// A broken account is not handed out and not refreshed: its refresh token is known to be dead.
+	if token.BrokenAt != nil {
+		return nil, &BrokenError{Reason: deref(token.BrokenReason)}
+	}
+
 	scopes := decodeScopes(token.ScopesJSON)
 	if rejected == "" && (token.ExpiresAt == nil || token.ExpiresAt.After(time.Now().Add(refreshWindow))) {
 		access, err := s.cipher.DecryptToString(token.AccessTokenCipher)
 		if err != nil {
 			return nil, err
 		}
-		return &OAuthAccessToken{AccessToken: access, ExpiresAt: token.ExpiresAt, Scopes: scopes}, nil
+		return &OAuthAccessToken{AccessToken: access, ExpiresAt: token.ExpiresAt, Scopes: scopes, TokenType: deref(token.TokenType)}, nil
 	}
 
 	manifest, err := s.resolver.GetOAuth(ctx, provider, token.UserID)
@@ -170,7 +184,7 @@ func (s *OAuthTokenService) accessToken(ctx context.Context, provider, account, 
 		if err != nil {
 			return nil, err
 		}
-		return &OAuthAccessToken{AccessToken: access, ExpiresAt: token.ExpiresAt, Scopes: scopes}, nil
+		return &OAuthAccessToken{AccessToken: access, ExpiresAt: token.ExpiresAt, Scopes: scopes, TokenType: deref(token.TokenType)}, nil
 	}
 
 	return s.refresh(ctx, manifest, config, token, rejected)
@@ -187,7 +201,21 @@ func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Man
 	// lock is held, re-read the row — a sibling may have already refreshed it.
 	unlock := s.refreshLocks.lock(token.ID)
 	defer unlock()
-	if fresh, err := s.store.FindOAuthToken(ctx, token.UserID, token.ProviderID, token.Account); err == nil && fresh != nil {
+	// The guard is what a credential migration holds while it moves rows between stores. Waiting
+	// for it here, and reading the row again below, means a refresh never rotates a token that is
+	// being copied, and never refreshes a row that has just been moved away.
+	release, err := s.guard.Shared(ctx)
+	if err != nil {
+		return nil, OAuthRefreshError{"refresh held off: " + err.Error()}
+	}
+	defer release()
+	if fresh, err := s.store.FindOAuthToken(ctx, token.UserID, token.ProviderID, token.Account); err == nil {
+		if fresh == nil {
+			return nil, nil // the account went away while this refresh waited
+		}
+		if fresh.BrokenAt != nil {
+			return nil, &BrokenError{Reason: deref(fresh.BrokenReason)}
+		}
 		live := fresh.ExpiresAt != nil && fresh.ExpiresAt.After(time.Now().Add(refreshWindow))
 		if live || rejected != "" {
 			access, derr := s.cipher.DecryptToString(fresh.AccessTokenCipher)
@@ -197,13 +225,16 @@ func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Man
 			// A rejected token is replaced unless the stored one is already another: then a
 			// sibling has refreshed it, and refreshing again would only spend a rotation.
 			if (rejected == "" && live) || (rejected != "" && access != rejected) {
-				return &OAuthAccessToken{AccessToken: access, ExpiresAt: fresh.ExpiresAt, Scopes: decodeScopes(fresh.ScopesJSON)}, nil
+				return &OAuthAccessToken{AccessToken: access, ExpiresAt: fresh.ExpiresAt, Scopes: decodeScopes(fresh.ScopesJSON), TokenType: deref(fresh.TokenType)}, nil
 			}
 		}
 		token = fresh
 	}
 	if len(token.RefreshTokenCipher) == 0 {
 		return nil, ErrNotRefreshable
+	}
+	if manifest.MCP != nil {
+		return s.refreshServer(ctx, manifest, config, token)
 	}
 
 	refreshTok, err := s.cipher.DecryptToString(token.RefreshTokenCipher)

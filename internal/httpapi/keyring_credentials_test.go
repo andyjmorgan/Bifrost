@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -101,6 +102,24 @@ func (k keyringStub) Describe(ctx context.Context, ref keyringref.Ref) (keyringr
 		return keyringref.Description{Scheme: s.Scheme, Username: s.Username, HeaderName: s.HeaderName}, nil
 	}
 	return keyringref.Description{Scheme: keyringref.SchemeHeader, HeaderName: stubHeader}, nil
+}
+
+// The stub connects no servers; server_oauth_test.go runs those through the
+// real keyring.
+func (k keyringStub) BeginServerOAuth(context.Context, keyringref.Use, keyringref.ServerOAuth) (string, keyringref.Ref, error) {
+	return "", keyringref.Ref{}, errors.New("the stub keyring connects no servers")
+}
+
+func (k keyringStub) OAuthState(context.Context, string) (keyringref.OAuthState, error) {
+	return keyringref.OAuthState{}, keyringref.ErrNoState
+}
+
+func (k keyringStub) CompleteServerOAuth(context.Context, string, string) error {
+	return keyringref.ErrNoState
+}
+
+func (k keyringStub) AbandonServerOAuth(context.Context, string, string) error {
+	return keyringref.ErrNoState
 }
 
 func (k keyringStub) PutServerSecret(_ context.Context, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error) {

@@ -96,8 +96,10 @@ func (c *Connector) HTTPClient(ctx context.Context, srv *store.Server) (*http.Cl
 	} else if err != nil {
 		return nil, err
 	}
-	// Fail fast with a clear reason instead of letting the dial wrap it.
-	if cred.Kind == store.AuthOAuth {
+	// Fail fast with a clear reason instead of letting the dial wrap it. A
+	// server's own connection held in the keyring has the same two states:
+	// waiting for consent, and refused by its token endpoint.
+	if cred.Kind == store.AuthOAuth || cred.Kind == store.AuthKeyringOAuth {
 		switch cred.State {
 		case store.StateBroken:
 			return nil, fmt.Errorf("%w (%s)", ErrCredentialBroken, cred.StateReason)

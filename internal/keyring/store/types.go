@@ -76,6 +76,9 @@ type OAuthState struct {
 	RedirectURI   string
 	ExpiresAt     time.Time
 	CreatedAt     time.Time
+	// ReturnTo is where the browser goes once the round trip has finished; nil means the keyring's
+	// own connect page. Set for an MCP server's consent, which returns to the server's page.
+	ReturnTo *string
 }
 
 // OAuthToken is a stored token set for a provider + account (tokens are envelope-encrypted).
@@ -93,6 +96,12 @@ type OAuthToken struct {
 	LastRefreshedAt    *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          *time.Time
+	// TokenType is the type the authorization server issued; nil reads as Bearer.
+	TokenType *string
+	// BrokenAt and BrokenReason are set once the token endpoint has definitively refused a refresh.
+	// A broken account is not refreshed again and is not handed out until it is authorized anew.
+	BrokenAt     *time.Time
+	BrokenReason *string
 }
 
 // ProviderManifest is a DB-stored custom OAuth provider manifest (serialized as JSON).

@@ -166,6 +166,9 @@ func encodeScopes(scopes []string) string {
 	return string(b)
 }
 
+// DecodeScopes reads a scopes_json column: the scopes it lists, or none.
+func DecodeScopes(j *string) []string { return decodeScopes(j) }
+
 func decodeScopes(j *string) []string {
 	if j == nil || *j == "" {
 		return []string{}

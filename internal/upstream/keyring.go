@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
+	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // keyringMemo is what the keyring handed out for one HTTP client, which is
@@ -70,7 +72,7 @@ func (t *credentialTransport) keyringOAuth(req *http.Request) (*http.Response, e
 		return nil, t.keyringErr(err)
 	}
 	req = cloneWithBody(req)
-	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+	req.Header.Set("Authorization", authorization(tok))
 	resp, err := t.next.RoundTrip(req)
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		return resp, err
@@ -89,8 +91,18 @@ func (t *credentialTransport) keyringOAuth(req *http.Request) (*http.Response, e
 	}
 	t.c.log.Info("upstream: keyring token rejected; retrying with a refreshed one", "slug", t.srv.Slug)
 	retry := cloneWithBody(req)
-	retry.Header.Set("Authorization", "Bearer "+fresh.AccessToken)
+	retry.Header.Set("Authorization", authorization(fresh))
 	return t.next.RoundTrip(retry)
+}
+
+// authorization is a keyring token as the Authorization header carries it,
+// under the type the authorization server issued it as.
+func authorization(tok keyringref.Token) string {
+	typ := tok.TokenType
+	if typ == "" || strings.EqualFold(typ, "bearer") {
+		typ = "Bearer"
+	}
+	return typ + " " + tok.AccessToken
 }
 
 // keyringSecret sends the request with the keyring secret the server
@@ -117,7 +129,21 @@ func (t *credentialTransport) keyringSecret(req *http.Request) (*http.Response, 
 
 // keyringErr is a keyring failure as the caller of the server sees it. The
 // keyring's errors name the credential and never carry its value.
+//
+// An account the keyring has found broken (its token endpoint definitively
+// refused a refresh) breaks the server's credential too: the state is
+// stored, which drops the server's cached tools, and the caller is told to
+// re-authorize, as for a credential the gateway refreshed itself.
 func (t *credentialTransport) keyringErr(err error) error {
 	t.c.log.Warn("upstream: keyring credential unavailable", "slug", t.srv.Slug, "credential", t.cred.KeyringRef().String(), "owner", t.cred.KeyringOwner, "err", err)
+	var broken *keyringref.BrokenError
+	if errors.As(err, &broken) {
+		ctx, cancel := context.WithTimeout(context.Background(), t.c.timeout)
+		defer cancel()
+		if sErr := t.c.store.SetCredentialState(ctx, t.srv.ID, store.StateBroken, broken.Reason); sErr != nil {
+			t.c.log.Error("mark broken failed", "slug", t.srv.Slug, "err", sErr)
+		}
+		return fmt.Errorf("%w: %s", ErrCredentialBroken, broken.Reason)
+	}
 	return fmt.Errorf("upstream: keyring credential unavailable: %w", err)
 }

@@ -91,6 +91,9 @@ const (
 	SchemeBasic = "basic"
 	// SchemeHeader is one header carrying a value.
 	SchemeHeader = "header"
+	// SchemeOAuth is a bearer token of an OAuth account. It is what
+	// Describe says of an OAuth reference; a ServerSecret is never this.
+	SchemeOAuth = "oauth"
 )
 
 // ServerSecret is a static credential a server owns itself, on its way into
@@ -119,10 +122,58 @@ type Description struct {
 	Username string
 	// HeaderName is the header the secret is sent in.
 	HeaderName string
+
+	// The rest describes an OAuth account (Scheme is SchemeOAuth).
+
+	// Connected reports whether the account holds a token. A connection
+	// whose consent has not finished does not.
+	Connected bool
+	// Broken is why the account needs authorizing again, or empty.
+	Broken string
+	// Issuer, Resource and RegistrationKind are what discovery and
+	// registration found for a server's own connection. Empty for an
+	// account of a provider somebody wrote.
+	Issuer           string
+	Resource         string
+	RegistrationKind string
+	// ClientID is the client the account was issued to. It is public.
+	ClientID        string
+	Scopes          []string
+	ExpiresAt       *time.Time
+	LastRefreshedAt *time.Time
+	HasRefreshToken bool
+}
+
+// ServerAccount is the account name of a server's own OAuth connection. A
+// server has one, so the name is fixed.
+const ServerAccount = "default"
+
+// ServerOAuth is an MCP server that wants OAuth, on its way to being
+// connected through the keyring.
+type ServerOAuth struct {
+	// URL is the server's MCP endpoint, where discovery starts.
+	URL string
+	// Name is the server's display name.
+	Name string
+	// Scopes overrides the scopes discovery finds. Empty takes those.
+	Scopes []string
+	// ReturnTo is where the browser goes once consent has finished.
+	ReturnTo string
+}
+
+// OAuthState is what a consent round trip in flight is for.
+type OAuthState struct {
+	// Ref is the connection being authorized.
+	Ref Ref
+	// ReturnTo is where the round trip asked to end.
+	ReturnTo string
 }
 
 // Token is a live OAuth access token.
 type Token struct {
+	// TokenType is the type the authorization server issued. Empty reads
+	// as Bearer.
+	TokenType   string
 	AccessToken string
 	// ExpiresAt is when the provider said the token ends; nil when it gave
 	// no lifetime.
@@ -148,7 +199,22 @@ var (
 	// ErrNoRefresh is an OAuth account that cannot be refreshed: it holds
 	// no refresh token, or its provider has no app credentials.
 	ErrNoRefresh = errors.New("cannot be refreshed")
+	// ErrBroken is an OAuth account whose refresh the token endpoint has
+	// definitively refused. It stays unusable until it is authorized again.
+	// Match it with errors.Is; the error itself is a *BrokenError.
+	ErrBroken = errors.New("needs to be authorized again")
+	// ErrNoState is a consent round trip the keyring does not know: never
+	// started, already finished, expired, or not a server's.
+	ErrNoState = errors.New("unknown or expired authorization state")
 )
+
+// BrokenError is ErrBroken with the token endpoint's reason.
+type BrokenError struct{ Reason string }
+
+func (e *BrokenError) Error() string { return ErrBroken.Error() + ": " + e.Reason }
+
+// Is makes errors.Is(err, ErrBroken) hold.
+func (e *BrokenError) Is(target error) bool { return target == ErrBroken }
 
 // Keyring is what the gateway asks of the keyring to send a request: the
 // credential a reference names. The connector is handed this much.
@@ -178,8 +244,30 @@ type Holder interface {
 	Keyring
 
 	// Describe says how the credential ref names is sent, without
-	// decrypting it. It leaves no audit record.
+	// decrypting its secret. It leaves no audit record. An OAuth connection
+	// whose consent has not finished is described too, as not connected.
 	Describe(ctx context.Context, ref Ref) (Description, error)
+
+	// BeginServerOAuth starts connecting the server use names to its own
+	// OAuth authorization server: discovery from the MCP endpoint, client
+	// registration (CIMD first, DCR otherwise) and PKCE. The provider, its
+	// client and, later, its tokens are kept in the gateway's own keyring
+	// space under ServerCredentialName of the slug. It returns the URL to
+	// send the browser to and the reference the connection will have. A
+	// connection the server already had is dropped.
+	BeginServerOAuth(ctx context.Context, use Use, server ServerOAuth) (authorizeURL string, ref Ref, err error)
+
+	// OAuthState says what the round trip state belongs to, without
+	// consuming it. ErrNoState when it is not a server's pending consent.
+	OAuthState(ctx context.Context, state string) (OAuthState, error)
+
+	// CompleteServerOAuth redeems the code the authorization server sent
+	// back and stores the tokens. The state is consumed whether or not the
+	// exchange succeeds.
+	CompleteServerOAuth(ctx context.Context, code, state string) error
+
+	// AbandonServerOAuth ends a round trip the authorization server refused.
+	AbandonServerOAuth(ctx context.Context, state, reason string) error
 
 	// PutServerSecret stores the static credential of the server use names
 	// in the gateway's own keyring space, replacing the one it had, and

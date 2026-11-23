@@ -20,6 +20,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/keyring/manifests"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/oauth"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/store"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 )
 
 // BeginAuthResult is the authorize URL plus the anti-forgery state for a started flow.
@@ -34,6 +35,8 @@ type CompleteAuthResult struct {
 	Account   string
 	Scopes    []string
 	ExpiresAt *time.Time
+	// ReturnTo is where the round trip asked to end; empty means the keyring's connect page.
+	ReturnTo string
 }
 
 // OAuthFlowService drives the authorization-code + PKCE flow and stores the resulting tokens.
@@ -44,17 +47,22 @@ type OAuthFlowService struct {
 	audit    *audit.Log
 	client   *http.Client
 	logger   *slog.Logger
+	server   *oauthclient.Client // connects MCP servers; nil when not configured
 }
 
 // NewOAuthFlowService builds the service.
-func NewOAuthFlowService(s store.Store, c crypto.Cipher, r *manifests.Resolver, a *audit.Log, client *http.Client, logger *slog.Logger) *OAuthFlowService {
+func NewOAuthFlowService(s store.Store, c crypto.Cipher, r *manifests.Resolver, a *audit.Log, client *http.Client, logger *slog.Logger, opts ...FlowOption) *OAuthFlowService {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &OAuthFlowService{store: s, cipher: c, resolver: r, audit: a, client: client, logger: logger}
+	svc := &OAuthFlowService{store: s, cipher: c, resolver: r, audit: a, client: client, logger: logger}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // Begin starts a flow: it persists a one-time PKCE/state row and returns the provider authorize URL.
@@ -205,6 +213,9 @@ func (s *OAuthFlowService) completeCore(ctx context.Context, code, state string)
 	}
 	if config == nil {
 		return nil, OAuthAuthorizationError{"no OAuth app config for '" + provider + "'."}
+	}
+	if manifest.MCP != nil {
+		return s.completeServer(ctx, stateRow, manifest, config, code)
 	}
 
 	clientID, err := s.cipher.DecryptToString(config.ClientIDCipher)

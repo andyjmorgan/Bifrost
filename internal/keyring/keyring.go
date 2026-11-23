@@ -23,6 +23,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/keyring/service"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/store"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/telemetry"
+	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 )
 
 // UI routes of the gateway's SPA that the keyring sends browsers to.
@@ -115,16 +116,24 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 	// refuses link-local and metadata destinations.
 	oauthClient := &http.Client{Timeout: 30 * time.Second, Transport: httpx.DefaultSafeTransport()}
 
+	// The gateway's own OAuth client, for the connections of MCP servers. It is built from the
+	// gateway's public base and nothing else, so its client metadata URL and its callback are the
+	// gateway's: the identity every MCP authorization server already knows it by.
+	serverOAuth := oauthclient.New(cfg.GatewayBaseURL, &http.Client{Timeout: 20 * time.Second, Transport: httpx.DefaultSafeTransport()})
+
 	secrets := service.NewAPIKeyService(st, cipher, auditLog)
-	tokens := service.NewOAuthTokenService(st, cipher, auditLog, resolver, oauthClient)
+	tokens := service.NewOAuthTokenService(st, cipher, auditLog, resolver, oauthClient,
+		service.WithServerOAuth(serverOAuth), service.WithRefreshGuard(cfg.RefreshGuard))
+	flow := service.NewOAuthFlowService(st, cipher, resolver, auditLog, oauthClient, log, service.WithServerFlow(serverOAuth))
+	providers := service.NewProviderService(st, resolver, auditLog)
 
 	srv, err := httpapi.NewServer(ctx, httpapi.Deps{
 		APIKeys:      secrets,
 		AccessKeys:   service.NewAccessKeyService(st, auditLog),
 		OAuthConfigs: service.NewOAuthConfigService(st, cipher, auditLog, resolver),
 		OAuthTokens:  tokens,
-		OAuthFlow:    service.NewOAuthFlowService(st, cipher, resolver, auditLog, oauthClient, log),
-		Providers:    service.NewProviderService(st, resolver, auditLog),
+		OAuthFlow:    flow,
+		Providers:    providers,
 		Resolver:     resolver,
 		Discovery:    manifests.NewDiscovery(oauthClient),
 		AuditLog:     auditLog,
@@ -147,7 +156,8 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 
 	return &Keyring{
 		cfg: cfg, log: log, api: srv.Handler(),
-		source:   newSource(st, resolver, secrets, tokens, auditLog),
+		source: &Source{store: st, resolver: resolver, cipher: cipher, secrets: secrets, tokens: tokens, flow: flow,
+			providers: providers, audit: auditLog},
 		auditLog: auditLog,
 		writer: audit.NewWriter(auditLog, st, log, metrics, audit.WriterOptions{
 			BatchSize: cfg.AuditBatchSize, FlushInterval: cfg.AuditFlushInterval}),

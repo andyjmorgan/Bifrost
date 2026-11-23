@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/andyjmorgan/Bifrost/internal/keyring/service"
 )
 
 // Every keyring setting is read as MCPGW_KEYRING_<NAME> first and VAULT_<NAME> second, so the
@@ -32,6 +34,9 @@ type HostConfig struct {
 	PublicBaseURL   string // the gateway's external base, no trailing slash
 	OIDCIssuer      string // empty when the gateway runs in dev mode
 	OIDCWebClientID string // the client the gateway's SPA signs in with
+	// RefreshGuard is held, shared, by every token refresh, so that `gateway migrate-credentials`
+	// can keep refreshes off while it moves rows. Nil leaves refreshes unguarded.
+	RefreshGuard service.RefreshGuard
 }
 
 // Config is the fully resolved keyring configuration.
@@ -49,6 +54,11 @@ type Config struct {
 	// UIBaseURL is where browsers are sent: after an OAuth callback, and when a page is requested
 	// on a legacy host. It is independent of OAuthRedirectBaseURL.
 	UIBaseURL string
+	// GatewayBaseURL is the gateway's own external base. The OAuth client that connects MCP servers
+	// is built from it: its client metadata document and its callback live on the gateway.
+	GatewayBaseURL string
+	// RefreshGuard is HostConfig.RefreshGuard.
+	RefreshGuard service.RefreshGuard
 	// LegacyHosts are the request hosts on which the keyring is served at Vault's original paths.
 	// An entry is a host name, which matches any port; host:port, which matches only that port; or
 	// :port, which matches any host on that port (a NodePort, reached by whichever node address).
@@ -101,6 +111,8 @@ func LoadConfig(host HostConfig) (*Config, error) {
 		Keks:                 keks,
 		OAuthRedirectBaseURL: strings.TrimRight(firstNonEmpty(env("PUBLIC_BASE_URL"), hostBase+MountPrefix), "/"),
 		UIBaseURL:            strings.TrimRight(firstNonEmpty(env("UI_BASE_URL"), hostBase), "/"),
+		GatewayBaseURL:       hostBase,
+		RefreshGuard:         host.RefreshGuard,
 		LegacyHosts:          normalizeHosts(splitList(env("LEGACY_HOSTS"))),
 		OIDCAuthority:        firstNonEmpty(env("OIDC_AUTHORITY"), host.OIDCIssuer),
 		OIDCInternal:         env("OIDC_INTERNAL_AUTHORITY"),

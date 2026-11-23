@@ -48,7 +48,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	want := &Config{
 		DSN: "postgres://gateway", RunMigrations: true,
 		ActiveKekID: "local:v1", Keks: map[string]string{"local:v1": testKek},
-		OAuthRedirectBaseURL: "https://bifrost.test/keyring", UIBaseURL: "https://bifrost.test",
+		OAuthRedirectBaseURL: "https://bifrost.test/keyring", UIBaseURL: "https://bifrost.test", GatewayBaseURL: "https://bifrost.test",
 		LegacyHosts:   []string{},
 		OIDCAuthority: "https://idp.test/realms/r", OIDCScopes: "openid profile email",
 		// With no web client of its own, the keyring's is the gateway's.

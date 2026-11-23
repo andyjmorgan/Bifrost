@@ -272,9 +272,9 @@ func (p *Postgres) DeleteOAuthConfig(ctx context.Context, userID, id uuid.UUID) 
 // InsertOAuthState persists a new OAuth flow state and back-fills its ID and timestamp.
 func (p *Postgres) InsertOAuthState(ctx context.Context, s *OAuthState) error {
 	return p.pool.QueryRow(ctx, `
-		INSERT INTO vault.oauth_states (state, provider, code_verifier, owner_user_id, owner_tenant_id, redirect_uri, expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
-		s.State, s.Provider, s.CodeVerifier, s.OwnerUserID, s.OwnerTenantID, s.RedirectURI, s.ExpiresAt,
+		INSERT INTO vault.oauth_states (state, provider, code_verifier, owner_user_id, owner_tenant_id, redirect_uri, expires_at, return_to)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at`,
+		s.State, s.Provider, s.CodeVerifier, s.OwnerUserID, s.OwnerTenantID, s.RedirectURI, s.ExpiresAt, s.ReturnTo,
 	).Scan(&s.ID, &s.CreatedAt)
 }
 
@@ -282,9 +282,9 @@ func (p *Postgres) InsertOAuthState(ctx context.Context, s *OAuthState) error {
 func (p *Postgres) GetOAuthStateByState(ctx context.Context, state string) (*OAuthState, error) {
 	var s OAuthState
 	err := p.pool.QueryRow(ctx, `
-		SELECT id, state, provider, code_verifier, owner_user_id, owner_tenant_id, redirect_uri, expires_at, created_at
+		SELECT id, state, provider, code_verifier, owner_user_id, owner_tenant_id, redirect_uri, expires_at, created_at, return_to
 		FROM vault.oauth_states WHERE state=$1`, state).
-		Scan(&s.ID, &s.State, &s.Provider, &s.CodeVerifier, &s.OwnerUserID, &s.OwnerTenantID, &s.RedirectURI, &s.ExpiresAt, &s.CreatedAt)
+		Scan(&s.ID, &s.State, &s.Provider, &s.CodeVerifier, &s.OwnerUserID, &s.OwnerTenantID, &s.RedirectURI, &s.ExpiresAt, &s.CreatedAt, &s.ReturnTo)
 	if noRows(err) {
 		return nil, nil
 	}
@@ -304,12 +304,13 @@ func (p *Postgres) DeleteOAuthState(ctx context.Context, id uuid.UUID) (int64, e
 // ---- oauth tokens ----
 
 //nolint:gosec // G101: column-name list for the oauth_tokens table, not an embedded credential.
-const tokenCols = `id, user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at, created_at, updated_at`
+const tokenCols = `id, user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at, created_at, updated_at, token_type, broken_at, broken_reason`
 
 func scanToken(row pgx.Row) (*OAuthToken, error) {
 	var t OAuthToken
 	err := row.Scan(&t.ID, &t.UserID, &t.TenantID, &t.ProviderID, &t.ProviderKey, &t.Account,
-		&t.AccessTokenCipher, &t.RefreshTokenCipher, &t.ScopesJSON, &t.ExpiresAt, &t.LastRefreshedAt, &t.CreatedAt, &t.UpdatedAt)
+		&t.AccessTokenCipher, &t.RefreshTokenCipher, &t.ScopesJSON, &t.ExpiresAt, &t.LastRefreshedAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.TokenType, &t.BrokenAt, &t.BrokenReason)
 	if err != nil {
 		return nil, err
 	}
@@ -319,19 +320,22 @@ func scanToken(row pgx.Row) (*OAuthToken, error) {
 // InsertOAuthToken persists a new OAuth token and back-fills its ID and timestamp.
 func (p *Postgres) InsertOAuthToken(ctx context.Context, t *OAuthToken) error {
 	return p.pool.QueryRow(ctx, `
-		INSERT INTO vault.oauth_tokens (user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10) RETURNING id, created_at`,
+		INSERT INTO vault.oauth_tokens (user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at, token_type, broken_at, broken_reason)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13) RETURNING id, created_at`,
 		t.UserID, t.TenantID, t.ProviderID, t.ProviderKey, t.Account, t.AccessTokenCipher, t.RefreshTokenCipher, t.ScopesJSON, t.ExpiresAt, t.LastRefreshedAt,
+		t.TokenType, t.BrokenAt, t.BrokenReason,
 	).Scan(&t.ID, &t.CreatedAt)
 }
 
-// UpdateOAuthToken overwrites a token's ciphers, scopes and expiry after a refresh.
+// UpdateOAuthToken overwrites a token's ciphers, scopes, expiry, type and broken mark after a
+// refresh, a new consent or a refusal.
 func (p *Postgres) UpdateOAuthToken(ctx context.Context, t *OAuthToken) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE vault.oauth_tokens SET access_token_cipher=$2, refresh_token_cipher=$3, scopes_json=$4::jsonb,
-			expires_at=$5, last_refreshed_at=$6, updated_at=now()
+			expires_at=$5, last_refreshed_at=$6, token_type=$7, broken_at=$8, broken_reason=$9, updated_at=now()
 		WHERE id=$1`,
-		t.ID, t.AccessTokenCipher, t.RefreshTokenCipher, t.ScopesJSON, t.ExpiresAt, t.LastRefreshedAt)
+		t.ID, t.AccessTokenCipher, t.RefreshTokenCipher, t.ScopesJSON, t.ExpiresAt, t.LastRefreshedAt,
+		t.TokenType, t.BrokenAt, t.BrokenReason)
 	return err
 }
 
