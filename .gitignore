@@ -7,3 +7,5 @@
 internal/e2e/testdata/real/
 # Output of the engine soak test.
 pkg/hooks/soak.log
+# Local OAuth test tokens written by tools run in the checkout: never commit.
+authorized_tokens.json
