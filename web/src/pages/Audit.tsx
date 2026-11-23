@@ -65,7 +65,7 @@ export function AuditPage() {
       // Each trail has its own filters, so switching starts the other one clean.
       onChange={(next) => setParams(next === 'keyring' ? { tab: 'keyring' } : {})}
       tabs={[
-        { key: 'gateway', label: 'Gateway' },
+        { key: 'gateway', label: 'MCP' },
         { key: 'keyring', label: 'Keyring' },
       ]}
     />

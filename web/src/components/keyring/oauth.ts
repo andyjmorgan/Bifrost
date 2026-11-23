@@ -17,7 +17,7 @@ export const shortScope = (s: string) => (s.includes('://') ? s.replace(/\/+$/, 
  * The end of a connect flow. The provider redirects to the server's callback, which sends the
  * browser to /connect with the outcome in the query string, the same two parameters the Vault
  * console read: `connected=<provider>` on success, `oauth_error=<reason>` on failure. Report it in
- * a toast and settle on the OAuth accounts tab with the parameters gone, so a reload does not
+ * a toast and settle on the OAuth accounts page with the parameters gone, so a reload does not
  * repeat the toast. Connect is where the callback lands; the accounts page runs this too, so an
  * outcome that arrives there is not lost.
  */

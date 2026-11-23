@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Database, KeyRound, Lock, Pencil, Plug, Plus, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
@@ -9,7 +9,6 @@ import { Badge } from '../ui/components/badge'
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/components/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/components/select'
 import { PageHeader } from '../components/PageHeader'
-import { TabPanel, Tabs } from '../components/Tabs'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListRows, Primary, RowActions } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { StatusPill } from '../components/StatusPill'
@@ -21,7 +20,7 @@ import { Callout } from '../components/Callout'
 import { SearchBox } from '../components/SearchBox'
 import { ProviderIcon } from '../components/keyring/ProviderIcon'
 import { RevealButton } from '../components/keyring/RevealButton'
-import { CONNECT_ROUTE, OAUTH_ACCOUNTS_ROUTE, SECRETS_ROUTE, shortScope, useOAuthOutcome } from '../components/keyring/oauth'
+import { CONNECT_ROUTE, OAUTH_ACCOUNTS_ROUTE, shortScope, useOAuthOutcome } from '../components/keyring/oauth'
 import { errorMessage } from '../api'
 import { keyring, type OAuthAccount, type OAuthProvider, type SaveSecretInput, type Secret, type SecretKind } from '../api/keyring'
 import { absoluteTime, cn, relativeTime } from '../lib'
@@ -94,20 +93,28 @@ const ACCOUNT_COLS = 'minmax(0,1.4fr) minmax(0,1.5fr) 130px 180px 140px 72px'
 type FormState = { open: boolean; item?: Secret; view?: boolean }
 const closedForm: FormState = { open: false }
 
-type TabKey = 'secrets' | 'oauth'
+type View = 'secrets' | 'oauth'
 type Deleting = { kind: 'secret'; item: Secret } | { kind: 'account'; item: OAuthAccount }
 
-/**
- * The keyring's stored credentials: secrets on /secrets and connected OAuth accounts on
- * /oauth-accounts, as two tabs of one page. The route is the tab, so each has its own address.
- */
+/** Stored secrets, on /secrets. */
 export function SecretsPage() {
-  const location = useLocation()
-  const navigate = useNavigate()
   const [params] = useSearchParams()
-  // /secrets?tab=oauth is honoured too: that is how the Vault console addressed this tab.
-  const tab: TabKey = location.pathname === OAUTH_ACCOUNTS_ROUTE || params.get('tab') === 'oauth' ? 'oauth' : 'secrets'
-  const setTab = (next: TabKey) => navigate(next === 'oauth' ? OAUTH_ACCOUNTS_ROUTE : SECRETS_ROUTE, { replace: true })
+  // /secrets?tab=oauth is how the Vault console addressed its OAuth tab; here that is its own page.
+  if (params.get('tab') === 'oauth') return <Navigate to={OAUTH_ACCOUNTS_ROUTE} replace />
+  return <CredentialList view="secrets" />
+}
+
+/** Connected OAuth accounts, on /oauth-accounts. */
+export function OAuthAccountsPage() {
+  return <CredentialList view="oauth" />
+}
+
+/**
+ * The keyring's stored credentials, one kind per page: secrets or connected OAuth accounts. They
+ * share a list shape, the search, the pager and the delete dialog, so they share this component.
+ */
+function CredentialList({ view }: { view: View }) {
+  const tab = view
   useOAuthOutcome()
 
   const [secrets, setSecrets] = useState<Secret[]>([])
@@ -125,8 +132,13 @@ export function SecretsPage() {
 
   const load = useCallback(
     () =>
-      // The provider list only names and illustrates accounts; without it rows show the slug.
-      Promise.all([keyring.secrets.list(), keyring.oauth.accounts(), keyring.providers.list().catch(() => [] as OAuthProvider[])])
+      // Each page loads its own kind. The provider list only names and illustrates accounts;
+      // without it rows show the slug.
+      Promise.all([
+        view === 'secrets' ? keyring.secrets.list() : Promise.resolve([] as Secret[]),
+        view === 'oauth' ? keyring.oauth.accounts() : Promise.resolve([] as OAuthAccount[]),
+        view === 'oauth' ? keyring.providers.list().catch(() => [] as OAuthProvider[]) : Promise.resolve([] as OAuthProvider[]),
+      ])
         .then(([s, a, p]) => {
           setSecrets(s ?? [])
           setAccounts(a ?? [])
@@ -135,7 +147,7 @@ export function SecretsPage() {
         })
         .catch((e) => setError(errorMessage(e)))
         .finally(() => setLoaded(true)),
-    [],
+    [view],
   )
   useEffect(() => {
     void load()
@@ -219,18 +231,8 @@ export function SecretsPage() {
 
       {error && <Callout tone="danger">{error}</Callout>}
 
-      <Tabs
-        label="Credential type"
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { key: 'secrets', label: 'Secrets', count: loaded ? secrets.length : undefined },
-          { key: 'oauth', label: 'OAuth accounts', count: loaded ? accounts.length : undefined },
-        ]}
-      />
-
       {tab === 'secrets' && (
-        <TabPanel tabKey="secrets">
+        <>
           <ListCard>
             <ListBar>
               <span>
@@ -327,11 +329,11 @@ export function SecretsPage() {
               </>
             )}
           </ListCard>
-        </TabPanel>
+        </>
       )}
 
       {tab === 'oauth' && (
-        <TabPanel tabKey="oauth">
+        <>
           <ListCard>
             <ListBar>
               <span>
@@ -431,7 +433,7 @@ export function SecretsPage() {
               </>
             )}
           </ListCard>
-        </TabPanel>
+        </>
       )}
 
       <Dialog open={form.open} onOpenChange={(o) => !o && setForm(closedForm)}>

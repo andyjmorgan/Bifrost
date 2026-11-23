@@ -18,6 +18,7 @@ import {
   Server,
   Sun,
   UserRound,
+  UserRoundCheck,
   X,
 } from 'lucide-react'
 import { Logo } from './Logo'
@@ -45,7 +46,7 @@ type NavGroup = { label?: string; items: NavItem[] }
 // Sidebar groups. Each icon carries its own hue so the rail reads at a glance when collapsed.
 const navigation: NavGroup[] = [
   {
-    label: 'Gateway',
+    label: 'MCP',
     items: [
       { name: 'My servers', href: '/portal', icon: LayoutGrid, color: 'text-success' },
       { name: 'Servers', href: '/servers', icon: Server, color: 'text-accent' },
@@ -59,18 +60,19 @@ const navigation: NavGroup[] = [
   { label: 'Observe', items: [{ name: 'Audit', href: '/audit', icon: Activity, color: 'text-warning' }] },
 ]
 
-// The keyring's group, shown only when the server has a keyring. "Secrets" also covers the OAuth
-// accounts tab of the same page. Its access keys and audit trail are tabs on API keys and Audit.
+// The keyring's group, shown only when the server has a keyring. Its access keys and audit trail
+// are tabs on API keys and Audit.
 const keyringGroup: NavGroup = {
   label: 'Keyring',
   items: [
-    { name: 'Secrets', href: '/secrets', icon: Lock, color: 'text-accent', also: ['/oauth-accounts'] },
+    { name: 'Secrets', href: '/secrets', icon: Lock, color: 'text-accent' },
+    { name: 'OAuth accounts', href: '/oauth-accounts', icon: UserRoundCheck, color: 'text-success' },
     { name: 'Connect', href: '/connect', icon: Plug, color: 'text-info' },
     { name: 'Providers', href: '/providers', icon: Boxes, color: 'text-plum' },
   ],
 }
 
-/** Gateway first, then the keyring beside it, then access and audit, which span both. */
+/** MCP first, then the keyring beside it, then access and audit, which span both. */
 function navGroups(): NavGroup[] {
   return keyringEnabled() ? [navigation[0], keyringGroup, ...navigation.slice(1)] : navigation
 }

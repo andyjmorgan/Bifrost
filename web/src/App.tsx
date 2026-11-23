@@ -15,7 +15,7 @@ import { ApiKeysPage } from './pages/ApiKeys'
 import { PortalPage } from './pages/Portal'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
-import { SecretsPage } from './pages/Secrets'
+import { OAuthAccountsPage, SecretsPage } from './pages/Secrets'
 import { ConnectPage } from './pages/Connect'
 import { ProvidersPage } from './pages/Providers'
 import { keyringEnabled } from './keyring'
@@ -92,7 +92,7 @@ export function App() {
           {keyringEnabled() && (
             <>
               <Route path="/secrets" element={<SecretsPage />} />
-              <Route path="/oauth-accounts" element={<SecretsPage />} />
+              <Route path="/oauth-accounts" element={<OAuthAccountsPage />} />
               <Route path="/connect" element={<ConnectPage />} />
               <Route path="/providers" element={<ProvidersPage />} />
               {/* The keyring's OAuth callback answers with /connect?connected=… or ?oauth_error=…;

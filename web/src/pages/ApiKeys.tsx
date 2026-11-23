@@ -49,7 +49,7 @@ export function ApiKeysPage() {
       value={tab}
       onChange={(next) => setParams(next === 'keyring' ? { tab: 'keyring' } : {}, { replace: true })}
       tabs={[
-        { key: 'gateway', label: 'Gateway keys' },
+        { key: 'gateway', label: 'MCP keys' },
         { key: 'keyring', label: 'Keyring access keys' },
       ]}
     />

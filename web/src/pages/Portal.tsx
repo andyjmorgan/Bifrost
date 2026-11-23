@@ -42,7 +42,7 @@ export function PortalPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Gateway"
+        eyebrow="MCP"
         title="My servers"
         description="The MCP servers you have been granted. Point an agent at an MCP URL with one of your API keys, or at /mcp to reach all of them at once."
       />
