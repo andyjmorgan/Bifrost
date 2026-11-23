@@ -1,6 +1,11 @@
 // Mirrors internal/httpapi/dto.go. Keep the field names identical to the Go JSON tags.
 
-export type AuthKind = 'none' | 'oauth' | 'basic' | 'header'
+/**
+ * How the gateway authenticates to a server. The two keyring kinds send a credential that lives in
+ * the keyring (an OAuth account or a stored secret); the gateway keeps only its name. They exist
+ * only when the keyring is enabled.
+ */
+export type AuthKind = 'none' | 'oauth' | 'basic' | 'header' | 'keyring_oauth' | 'keyring_secret'
 export type CredentialState = 'ok' | 'pending' | 'broken'
 export type Hop = 'inbound' | 'upstream'
 export type Outcome = 'success' | 'error' | 'denied' | 'partial'
@@ -49,6 +54,13 @@ export interface CredentialDTO {
   oauthScopes: string[]
   oauthExpiresAt?: string
   oauthHasRefreshToken: boolean
+  /** Keyring kinds: the user whose keyring holds the credential (the person who set it). */
+  keyringOwner?: string
+  /** keyring_oauth: the provider and account. Names only; the token is never returned. */
+  keyringProvider?: string
+  keyringAccount?: string
+  /** keyring_secret: the secret's name. The value is never returned. */
+  keyringSecretName?: string
   lastRefreshedAt?: string
   lastError?: string
   updatedAt: string
@@ -85,6 +97,11 @@ export interface AuthInput {
   headerName?: string
   headerValue?: string
   scopes?: string[]
+  /** keyring_oauth: an OAuth account in the caller's own keyring. */
+  keyringProvider?: string
+  keyringAccount?: string
+  /** keyring_secret: the name of a secret in the caller's own keyring. */
+  keyringSecretName?: string
 }
 
 export interface CreateServerInput {

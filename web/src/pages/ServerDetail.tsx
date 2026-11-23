@@ -17,7 +17,8 @@ import { GrantsEditor } from '../components/servers/GrantsEditor'
 import { KindSection } from '../components/servers/SelectionEditor'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
-import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
+import { authKindBadge, authKindLabel, credentialStatus, isKeyringKind, keyringCredentialName, keyringOwnerPhrase } from '../components/servers/credential'
+import { useMe } from '../me'
 import { HookRules, type RuleText } from '../components/rules/HookRules'
 import { KINDS, selectionDetail, selectionSummary } from '../components/rules/selection'
 import {
@@ -137,6 +138,7 @@ export function ServerDetailPage() {
   const [caps, setCaps] = useState<CapabilityDTO[]>([])
   const [capsLoaded, setCapsLoaded] = useState(false)
   const [users, setUsers] = useState<UserDTO[]>([])
+  const { userId } = useMe()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string>()
   const [problems, setProblems] = useState<RuleProblem[]>([])
@@ -427,6 +429,7 @@ export function ServerDetailPage() {
   const cred = server.credential
   const status = credentialStatus(server)
   const oauth = server.authKind === 'oauth'
+  const keyringOwner = cred && isKeyringKind(cred.kind) ? keyringOwnerPhrase(cred, userId, users) : undefined
   const rulesBroken = hasProblems || !!server.rulesError
   const tabs: Tab<PageTab>[] = [
     { key: 'overview', label: 'Overview' },
@@ -534,12 +537,10 @@ export function ServerDetailPage() {
                   {authKindLabel(server.authKind)}
                 </Badge>
                 <StatusPill tone={status.tone}>{status.label}</StatusPill>
-                <CredentialSummary cred={cred} />
-                {server.authKind !== 'none' && (
-                  <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
-                    <KeyRound /> Replace
-                  </Button>
-                )}
+                <CredentialSummary cred={cred} keyringOwner={keyringOwner} />
+                <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
+                  <KeyRound /> {server.authKind === 'none' ? 'Set credential' : 'Replace'}
+                </Button>
                 {oauth && (
                   <Button variant="link" size="sm" onClick={reauthorize} disabled={reauthBusy}>
                     <RefreshCw /> {reauthBusy ? 'Starting…' : 'Re-authorize'}
@@ -567,6 +568,17 @@ export function ServerDetailPage() {
               Details
             </summary>
             <DefinitionList className="mt-3">
+              {cred && isKeyringKind(cred.kind) && (
+                <>
+                  <Definition label="Keyring credential" mono>
+                    <span className="break-all">{keyringCredentialName(cred) || '—'}</span>
+                  </Definition>
+                  <Definition label="Held in">
+                    <span>{keyringOwner}</span>
+                    <span className="ml-2 text-faint-foreground">The gateway stores this name and asks the keyring for the value on each request.</span>
+                  </Definition>
+                </>
+              )}
               {cred?.kind === 'oauth' && (
                 <>
                   <Definition label="Registration" mono>
@@ -672,7 +684,7 @@ export function ServerDetailPage() {
           toast.success(`Saved ${updated.name}`)
         }}
       />
-      <CredentialDialog open={replacing} server={server} onClose={() => setReplacing(false)} onSaved={followAuthorize} />
+      <CredentialDialog open={replacing} server={server} users={users} onClose={() => setReplacing(false)} onSaved={followAuthorize} />
       <ConfirmDialog
         open={deleting}
         title={`Delete ${server.name}?`}
@@ -698,10 +710,18 @@ function SectionTitle({ title, hint }: { title: string; hint: string }) {
   )
 }
 
-/** One muted phrase describing the stored credential: who/what header, or scopes + expiry for OAuth. */
-function CredentialSummary({ cred }: { cred?: ServerDTO['credential'] }) {
+/**
+ * One muted phrase describing the credential: who/what header, scopes + expiry for OAuth, or the
+ * name of the keyring credential and whose keyring it is in.
+ */
+function CredentialSummary({ cred, keyringOwner }: { cred?: ServerDTO['credential']; keyringOwner?: string }) {
   if (!cred) return null
   const parts: string[] = []
+  if (isKeyringKind(cred.kind)) {
+    const name = keyringCredentialName(cred)
+    if (name) parts.push(name)
+    if (keyringOwner) parts.push(`from ${keyringOwner}`)
+  }
   if (cred.kind === 'basic' && cred.basicUsername) parts.push(`user ${cred.basicUsername}`)
   if (cred.kind === 'header' && cred.headerName) parts.push(cred.headerName)
   if (cred.kind === 'oauth') {

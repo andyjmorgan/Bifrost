@@ -28,6 +28,15 @@ function target(e: KeyringAuditEvent): string {
   return parts.length ? parts.join(' · ') : '—'
 }
 
+/**
+ * Where a request came from. The gateway reads the keyring in process, for an MCP server that
+ * authenticates with a keyring credential: those rows carry no address, the transport "gateway",
+ * and the server in `method`.
+ */
+function source(e: KeyringAuditEvent): string {
+  return e.transport === 'gateway' ? 'Bifrost gateway' : e.sourceIp || '—'
+}
+
 function accessKey(e: KeyringAuditEvent): string {
   if (!e.accessKeyPrefix && !e.accessKeyName) return '—'
   return [e.accessKeyName, e.accessKeyPrefix ? `${e.accessKeyPrefix}…` : undefined].filter(Boolean).join(' · ')
@@ -184,7 +193,7 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
                   </Cell>
                   <Cell label="Source" at="lg">
                     <span className="block truncate font-mono text-xs text-muted-foreground" title={[e.sourceIp, e.method, e.transport].filter(Boolean).join(' · ')}>
-                      {e.sourceIp || '—'}
+                      {source(e)}
                       {e.method && <span className="text-faint-foreground"> · {e.method}</span>}
                     </span>
                   </Cell>

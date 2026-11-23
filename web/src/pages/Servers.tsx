@@ -13,7 +13,7 @@ import { Callout } from '../components/Callout'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { CopyButton } from '../components/CopyButton'
 import { ServerDialog } from '../components/servers/ServerDialog'
-import { authKindBadge, credentialStatus } from '../components/servers/credential'
+import { authKindBadge, authKindLabel, authKindTag, credentialStatus } from '../components/servers/credential'
 import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../api'
 import { cn } from '../lib'
 
@@ -198,8 +198,8 @@ export function ServersPage() {
                     </span>
                   </Cell>
                   <Cell label="Auth">
-                    <Badge mono variant={authKindBadge[s.authKind]}>
-                      {s.authKind}
+                    <Badge mono variant={authKindBadge[s.authKind]} title={authKindLabel(s.authKind)}>
+                      {authKindTag(s.authKind)}
                     </Badge>
                   </Cell>
                   <Cell label="Credential">
