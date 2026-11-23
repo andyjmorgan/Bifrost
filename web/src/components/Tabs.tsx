@@ -81,6 +81,14 @@ export function Tabs<K extends string>({
   )
 }
 
+/**
+ * The tabpanel attributes for an element that already is the tab's content (a ListCard, say), for
+ * pages where the tab strip is optional: with `active` false there are no tabs and it adds nothing.
+ */
+export function tabPanelProps(tabKey: string, active = true) {
+  return active ? { role: 'tabpanel', id: `panel-${tabKey}`, 'aria-labelledby': `tab-${tabKey}` } : {}
+}
+
 /** The content for one tab; render only the active one so the DOM holds a single panel. */
 export function TabPanel({ tabKey, children, className }: { tabKey: string; children: ReactNode; className?: string }) {
   return (

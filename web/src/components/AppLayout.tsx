@@ -1,17 +1,20 @@
 import { useState, type ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   BookOpen,
+  Boxes,
   Compass,
   Github,
   KeySquare,
   LayoutGrid,
+  Lock,
   LogOut,
   Menu,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Plug,
   Server,
   Sun,
   UserRound,
@@ -31,12 +34,16 @@ import { cn, initials } from '../lib'
 import { logout } from '../auth'
 import { toggleTheme, useTheme } from '../theme'
 import { useMe } from '../me'
+import { keyringEnabled } from '../keyring'
 
 export const REPO = 'https://github.com/andyjmorgan/Bifrost'
 export const DOCS = 'https://github.com/andyjmorgan/Bifrost#readme'
 
+type NavItem = { name: string; href: string; icon: typeof Server; color: string; /** Other routes this item stays lit on. */ also?: string[] }
+type NavGroup = { label?: string; items: NavItem[] }
+
 // Sidebar groups. Each icon carries its own hue so the rail reads at a glance when collapsed.
-const navigation: { label?: string; items: { name: string; href: string; icon: typeof Server; color: string }[] }[] = [
+const navigation: NavGroup[] = [
   {
     label: 'Gateway',
     items: [
@@ -51,6 +58,22 @@ const navigation: { label?: string; items: { name: string; href: string; icon: t
   },
   { label: 'Observe', items: [{ name: 'Audit', href: '/audit', icon: Activity, color: 'text-warning' }] },
 ]
+
+// The keyring's group, shown only when the server has a keyring. "Secrets" also covers the OAuth
+// accounts tab of the same page. Its access keys and audit trail are tabs on API keys and Audit.
+const keyringGroup: NavGroup = {
+  label: 'Keyring',
+  items: [
+    { name: 'Secrets', href: '/secrets', icon: Lock, color: 'text-accent', also: ['/oauth-accounts'] },
+    { name: 'Connect', href: '/connect', icon: Plug, color: 'text-info' },
+    { name: 'Providers', href: '/providers', icon: Boxes, color: 'text-plum' },
+  ],
+}
+
+/** Gateway first, then the keyring beside it, then access and audit, which span both. */
+function navGroups(): NavGroup[] {
+  return keyringEnabled() ? [navigation[0], keyringGroup, ...navigation.slice(1)] : navigation
+}
 
 const COLLAPSED_KEY = 'mcpgw-sidebar-collapsed'
 
@@ -82,6 +105,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [collapsed, toggleCollapsed] = useCollapsed()
   const theme = useTheme()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
@@ -101,7 +125,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </Button>
         </div>
         <nav className={cn('flex-1 space-y-3 overflow-y-auto p-4', collapsed && 'md:px-2')} aria-label="Main">
-          {navigation.map((group, index) => (
+          {navGroups().map((group, index) => (
             <div key={group.label ?? index} className="space-y-1">
               {group.label && collapsed && <div aria-hidden className="mx-2 hidden border-t border-border md:block" />}
               {group.label && (
@@ -123,7 +147,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     cn(
                       'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                       collapsed && 'md:justify-center md:px-0',
-                      isActive ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated hover:text-foreground',
+                      isActive || item.also?.includes(pathname) ? 'bg-elevated text-foreground' : 'text-muted-foreground hover:bg-elevated hover:text-foreground',
                     )
                   }
                 >

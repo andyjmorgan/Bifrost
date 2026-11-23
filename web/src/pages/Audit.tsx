@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Activity, ChevronRight, RotateCw, Waypoints, X } from 'lucide-react'
 import { TraceView } from '../components/TraceView'
@@ -12,6 +12,9 @@ import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListR
 import { StatusPill, type Tone } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { BodyViewer, findUnavailable } from '../components/PayloadViewer'
+import { Tabs, tabPanelProps } from '../components/Tabs'
+import { KeyringAudit } from './keyring/Audit'
+import { keyringEnabled } from '../keyring'
 import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type AuditTraceDTO, type RuleHitsDTO, type Hop, type Outcome } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
@@ -44,7 +47,33 @@ function readFilters(p: URLSearchParams): Filters {
   }
 }
 
+type TabKey = 'gateway' | 'keyring'
+
+/**
+ * Two trails once the gateway has a keyring: the gateway's own (MCP requests and upstream hops)
+ * and the keyring's (credential reads, token refreshes, sign-ins). They record different things in
+ * different shapes, so they are two tabs. Without a keyring there is one trail and no tab strip.
+ */
 export function AuditPage() {
+  const [params, setParams] = useSearchParams()
+  const withKeyring = keyringEnabled()
+  const tab: TabKey = withKeyring && params.get('tab') === 'keyring' ? 'keyring' : 'gateway'
+  const tabs = withKeyring ? (
+    <Tabs<TabKey>
+      label="Audit trail"
+      value={tab}
+      // Each trail has its own filters, so switching starts the other one clean.
+      onChange={(next) => setParams(next === 'keyring' ? { tab: 'keyring' } : {})}
+      tabs={[
+        { key: 'gateway', label: 'Gateway' },
+        { key: 'keyring', label: 'Keyring' },
+      ]}
+    />
+  ) : null
+  return tab === 'keyring' ? <KeyringAudit tabs={tabs} /> : <GatewayAudit tabs={tabs} />
+}
+
+function GatewayAudit({ tabs }: { tabs: ReactNode }) {
   const [params, setParams] = useSearchParams()
   const filters = useMemo(() => readFilters(params), [params])
   const offset = Number(params.get('offset')) || 0
@@ -108,6 +137,8 @@ export function AuditPage() {
         }
       />
 
+      {tabs}
+
       {error && <Callout tone="danger">{error}</Callout>}
 
       {filters.requestId && (
@@ -120,7 +151,7 @@ export function AuditPage() {
         </Callout>
       )}
 
-      <ListCard>
+      <ListCard {...tabPanelProps('gateway', !!tabs)}>
         <ListBar className="items-end">
           <span className="pb-2.5">
             {total.toLocaleString()} {total === 1 ? 'event' : 'events'}

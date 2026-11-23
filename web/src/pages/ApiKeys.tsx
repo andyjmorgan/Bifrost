@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { KeyRound, KeySquare, Plus, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
@@ -14,6 +15,9 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FormField } from '../components/FormField'
 import { CopyButton } from '../components/CopyButton'
 import { ScopeBadges } from '../components/ScopeBadges'
+import { Tabs, tabPanelProps } from '../components/Tabs'
+import { KeyringAccessKeys } from './keyring/AccessKeys'
+import { keyringEnabled } from '../keyring'
 import { getConfig } from '../auth'
 import { api, errorMessage, type APIKeyDTO, type CreateAPIKeyResult, type UserDTO } from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
@@ -28,7 +32,32 @@ const DEFAULT_SCOPES = ['api:read', 'api:edit', 'mcp:execute', 'mcp:edit']
 
 const COLS = 'minmax(0,1.4fr) minmax(0,1.3fr) minmax(0,1fr) 130px 130px 110px 56px'
 
+type TabKey = 'gateway' | 'keyring'
+
+/**
+ * Two kinds of key live here once the gateway has a keyring: the gateway's own API keys, and the
+ * keyring's access keys (dwv_…). They open different APIs, so they are separate tabs with separate
+ * names rather than one mixed list. Without a keyring there is one list and no tab strip.
+ */
 export function ApiKeysPage() {
+  const [params, setParams] = useSearchParams()
+  const withKeyring = keyringEnabled()
+  const tab: TabKey = withKeyring && params.get('tab') === 'keyring' ? 'keyring' : 'gateway'
+  const tabs = withKeyring ? (
+    <Tabs<TabKey>
+      label="Key type"
+      value={tab}
+      onChange={(next) => setParams(next === 'keyring' ? { tab: 'keyring' } : {}, { replace: true })}
+      tabs={[
+        { key: 'gateway', label: 'Gateway keys' },
+        { key: 'keyring', label: 'Keyring access keys' },
+      ]}
+    />
+  ) : null
+  return tab === 'keyring' ? <KeyringAccessKeys tabs={tabs} /> : <GatewayKeys tabs={tabs} />
+}
+
+function GatewayKeys({ tabs }: { tabs: ReactNode }) {
   const [keys, setKeys] = useState<APIKeyDTO[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string>()
@@ -98,9 +127,11 @@ export function ApiKeysPage() {
         }
       />
 
+      {tabs}
+
       {error && <Callout tone="danger">{error}</Callout>}
 
-      <ListCard>
+      <ListCard {...tabPanelProps('gateway', !!tabs)}>
         <ListBar>
           <span>
             {keys.length.toLocaleString()} {keys.length === 1 ? 'key' : 'keys'}

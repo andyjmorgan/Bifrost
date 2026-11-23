@@ -5,10 +5,12 @@ import './index.css'
 import { App } from './App'
 import { initAuth } from './auth'
 import { initTheme } from './theme'
+import { initKeyring } from './keyring'
 
 initTheme()
 
-initAuth()
+// The keyring probe rides alongside the auth bootstrap and never fails it.
+Promise.all([initAuth(), initKeyring()])
   .then(() => {
     createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
