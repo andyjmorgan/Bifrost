@@ -42,7 +42,10 @@ export interface UserDTO {
 }
 
 export interface CredentialDTO {
+  /** The credential as it was set. A Basic or header credential kept in the keyring is still basic or header. */
   kind: AuthKind
+  /** Where the secret is held: the keyring, or the gateway's own store for one not moved yet. Absent for none. */
+  store?: 'keyring' | 'gateway'
   state: CredentialState
   stateReason?: string
   basicUsername?: string

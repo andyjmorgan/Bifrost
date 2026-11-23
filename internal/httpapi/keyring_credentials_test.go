@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,22 +48,79 @@ var (
 	stubSecret = strings.Join([]string{"stub", "secret", "value"}, "-")
 )
 
-const stubHeader = "X-Stub-Credential"
+const (
+	stubHeader = "X-Stub-Credential"
+	stubUser   = "stub-user"
+)
 
 // keyringStub is a keyring holding names per owner. It gives every OAuth
 // account the same token and every secret the same header, so a test can
-// look for those two values anywhere they should not be.
+// look for those two values anywhere they should not be. What the gateway
+// stores for a server is kept as it was given, in gateway.
 type keyringStub struct {
-	held map[string][]keyringref.Ref // by owner
+	held    map[string][]keyringref.Ref // by owner
+	gateway *gatewaySpace
+}
+
+// gatewaySpace is the stub's stand-in for the keyring space of
+// keyringref.GatewayOwner: the credentials servers own themselves, by name.
+type gatewaySpace struct {
+	mu      sync.Mutex
+	secrets map[string]keyringref.ServerSecret
+	puts    []keyringref.Use
+	forgot  []string
+}
+
+func (g *gatewaySpace) secret(name string) (keyringref.ServerSecret, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	s, ok := g.secrets[name]
+	return s, ok
 }
 
 func (k keyringStub) Check(_ context.Context, ref keyringref.Ref) error {
+	if ref.HeldByGateway() && k.gateway != nil {
+		if _, ok := k.gateway.secret(ref.Secret); ok {
+			return nil
+		}
+	}
 	for _, h := range k.held[ref.Owner] {
 		if h == ref {
 			return nil
 		}
 	}
 	return fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+}
+
+func (k keyringStub) Describe(ctx context.Context, ref keyringref.Ref) (keyringref.Description, error) {
+	if err := k.Check(ctx, ref); err != nil {
+		return keyringref.Description{}, err
+	}
+	if ref.HeldByGateway() {
+		s, _ := k.gateway.secret(ref.Secret)
+		return keyringref.Description{Scheme: s.Scheme, Username: s.Username, HeaderName: s.HeaderName}, nil
+	}
+	return keyringref.Description{Scheme: keyringref.SchemeHeader, HeaderName: stubHeader}, nil
+}
+
+func (k keyringStub) PutServerSecret(_ context.Context, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error) {
+	k.gateway.mu.Lock()
+	defer k.gateway.mu.Unlock()
+	name := keyringref.ServerCredentialName(use.Slug)
+	k.gateway.secrets[name] = in
+	k.gateway.puts = append(k.gateway.puts, use)
+	return keyringref.Ref{Owner: keyringref.GatewayOwner, Kind: keyringref.KindSecret, Secret: name}, nil
+}
+
+func (k keyringStub) Forget(_ context.Context, ref keyringref.Ref, _ keyringref.Use) error {
+	if !ref.HeldByGateway() {
+		return nil
+	}
+	k.gateway.mu.Lock()
+	defer k.gateway.mu.Unlock()
+	delete(k.gateway.secrets, ref.Secret)
+	k.gateway.forgot = append(k.gateway.forgot, ref.Secret)
+	return nil
 }
 
 func (k keyringStub) OAuthToken(ctx context.Context, ref keyringref.Ref, _ keyringref.Use, _ string) (keyringref.Token, error) {
@@ -76,13 +134,20 @@ func (k keyringStub) SecretHeader(ctx context.Context, ref keyringref.Ref, _ key
 	if err := k.Check(ctx, ref); err != nil {
 		return keyringref.Header{}, err
 	}
+	if ref.HeldByGateway() {
+		s, _ := k.gateway.secret(ref.Secret)
+		if s.Scheme == keyringref.SchemeBasic {
+			return keyringref.Header{Name: "Authorization", Value: "Basic " + base64.StdEncoding.EncodeToString([]byte(s.Username+":"+s.Value))}, nil
+		}
+		return keyringref.Header{Name: s.HeaderName, Value: s.Value}, nil
+	}
 	return keyringref.Header{Name: stubHeader, Value: stubSecret}, nil
 }
 
 // aliceHolds is a keyring in which Alice has one OAuth account and one
 // secret, and Bob has nothing.
 func aliceHolds() keyringStub {
-	return keyringStub{held: map[string][]keyringref.Ref{alice: {
+	return keyringStub{gateway: &gatewaySpace{secrets: map[string]keyringref.ServerSecret{}}, held: map[string][]keyringref.Ref{alice: {
 		{Owner: alice, Kind: keyringref.KindOAuth, Provider: "x", Account: "alice"},
 		{Owner: alice, Kind: keyringref.KindSecret, Secret: "atlas"},
 	}}}
@@ -117,7 +182,7 @@ type apiRig struct {
 }
 
 // newAPIRig builds the API with kr as its keyring; nil is the keyring off.
-func newAPIRig(t *testing.T, kr keyringref.Keyring) *apiRig {
+func newAPIRig(t *testing.T, kr keyringref.Holder) *apiRig {
 	t.Helper()
 	dsn := os.Getenv("MCPGW_TEST_DSN")
 	if dsn == "" {
@@ -158,7 +223,8 @@ func newAPIRig(t *testing.T, kr keyringref.Keyring) *apiRig {
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	inner := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, Logger: quiet})
 	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+stubToken && r.Header.Get(stubHeader) != stubSecret {
+		user, pass, _ := r.BasicAuth()
+		if r.Header.Get("Authorization") != "Bearer "+stubToken && r.Header.Get(stubHeader) != stubSecret && (user != stubUser || pass != stubSecret) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

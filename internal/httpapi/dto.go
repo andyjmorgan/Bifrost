@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -37,7 +38,13 @@ type ServerDTO struct {
 
 // CredentialDTO is the non-secret view of a credential.
 type CredentialDTO struct {
-	Kind                  store.AuthKind        `json:"kind"`
+	// Kind is the credential as the operator set it. A Basic or header
+	// credential the gateway keeps in the keyring is still basic or header
+	// here; Store says where it lives.
+	Kind store.AuthKind `json:"kind"`
+	// Store is where the secret is held: "keyring", or "gateway" for a
+	// credential still sealed in the gateway's own store. Absent for none.
+	Store                 string                `json:"store,omitempty"`
 	State                 store.CredentialState `json:"state"`
 	StateReason           string                `json:"stateReason,omitempty"`
 	BasicUsername         string                `json:"basicUsername,omitempty"`
@@ -277,7 +284,9 @@ type ConfigDTO struct {
 	AllScopes     []string `json:"apiKeyScopes"`
 }
 
-func serverDTO(base string, s *store.Server, c *store.Credential, users map[string]*store.User, seen int) ServerDTO {
+// serverDTO is a server as the API returns it. held is what the keyring
+// says about a credential it keeps for the server, or nil.
+func serverDTO(base string, s *store.Server, c *store.Credential, held *keyringref.Description, users map[string]*store.User, seen int) ServerDTO {
 	d := ServerDTO{
 		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description,
 		AuthKind: s.AuthKind, Enabled: s.Enabled, Seen: seen, MCPURL: base + "/" + s.Slug + "/mcp",
@@ -286,23 +295,53 @@ func serverDTO(base string, s *store.Server, c *store.Credential, users map[stri
 	}
 	d.Hooks, d.RulesError = rulesOf(s.Hooks)
 	if c != nil {
-		d.Credential = credentialDTO(c)
+		d.Credential = credentialDTO(c, held)
+		d.AuthKind = d.Credential.Kind
 	}
 	return d
 }
 
-func credentialDTO(c *store.Credential) *CredentialDTO {
+// presentedKind is a credential's kind as the API shows it. A credential
+// the gateway holds for a server in the keyring is shown as what the
+// operator set, Basic or a header: that it lives in the keyring is where it
+// is stored, not what it is. A reference into a person's keyring keeps its
+// keyring kind, because whose it is matters there.
+func presentedKind(c *store.Credential, held *keyringref.Description) store.AuthKind {
+	if held == nil || !c.Kind.FromKeyring() || !c.KeyringRef().HeldByGateway() {
+		return c.Kind
+	}
+	switch held.Scheme {
+	case keyringref.SchemeBasic:
+		return store.AuthBasic
+	case keyringref.SchemeHeader:
+		return store.AuthHeader
+	}
+	return c.Kind
+}
+
+func credentialDTO(c *store.Credential, held *keyringref.Description) *CredentialDTO {
 	scopes := c.OAuthScopes
 	if scopes == nil {
 		scopes = []string{}
 	}
-	return &CredentialDTO{
-		Kind: c.Kind, State: c.State, StateReason: c.StateReason, BasicUsername: c.BasicUsername, HeaderName: c.HeaderName,
+	d := &CredentialDTO{
+		Kind: presentedKind(c, held), State: c.State, StateReason: c.StateReason, BasicUsername: c.BasicUsername, HeaderName: c.HeaderName,
 		OAuthIssuer: c.OAuthIssuer, OAuthClientID: c.OAuthClientID, OAuthRegistrationKind: c.OAuthRegistrationKind,
 		OAuthResource: c.OAuthResource, OAuthScopes: scopes, OAuthExpiresAt: c.OAuthExpiresAt, OAuthHasRefreshToken: c.OAuthHasRefreshToken,
 		KeyringOwner: c.KeyringOwner, KeyringProvider: c.KeyringProvider, KeyringAccount: c.KeyringAccount, KeyringSecretName: c.KeyringSecretName,
 		LastRefreshedAt: c.LastRefreshedAt, LastError: c.LastError, UpdatedAt: c.UpdatedAt,
 	}
+	switch {
+	case c.Kind.FromKeyring():
+		d.Store = "keyring"
+	case c.Kind != store.AuthNone:
+		d.Store = "gateway"
+	}
+	if held != nil {
+		// How the secret is sent is the keyring's to say; these are names.
+		d.BasicUsername, d.HeaderName = held.Username, held.HeaderName
+	}
+	return d
 }
 
 func keyDTO(k *store.APIKey) APIKeyDTO {

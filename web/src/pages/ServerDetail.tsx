@@ -729,6 +729,9 @@ function CredentialSummary({ cred, keyringOwner }: { cred?: ServerDTO['credentia
     if (cred.oauthExpiresAt) parts.push(`expires ${relativeTime(cred.oauthExpiresAt)}`)
     if (!cred.oauthHasRefreshToken && cred.state === 'ok') parts.push('no refresh token')
   }
+  // A credential the server owns itself says where it is kept; one lent from a keyring already does.
+  if (!isKeyringKind(cred.kind) && cred.store === 'keyring') parts.push('kept in the keyring')
+  if (!isKeyringKind(cred.kind) && cred.store === 'gateway') parts.push('kept by the gateway, not yet moved to the keyring')
   if (cred.stateReason) parts.push(cred.stateReason)
   if (!parts.length) return null
   return <span className="font-mono text-xs text-muted-foreground">{parts.join(' · ')}</span>

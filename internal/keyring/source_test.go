@@ -57,7 +57,7 @@ type sourceRig struct {
 	k      *Keyring
 	ms     *memstore.Mem
 	cipher crypto.Cipher
-	src    keyringref.Keyring
+	src    keyringref.Holder
 
 	idp       *httptest.Server
 	mu        sync.Mutex

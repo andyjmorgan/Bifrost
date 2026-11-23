@@ -12,6 +12,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/keyring/audit"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/contracts"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/service"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 )
 
 // apiKeyPrefix marks an access-key secret presented as X-Api-Key or Authorization: Bearer.
@@ -53,6 +54,10 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			if err != nil || principal == nil {
 				s.emitAuthFailed(ctx, "invalid or disabled API key.")
 				writeError(w, http.StatusUnauthorized, "invalid or disabled API key.")
+				return
+			}
+			if isGatewayOwner(principal.UserID) {
+				s.refuseGatewayOwner(ctx, w)
 				return
 			}
 			ctx = s.withAccessKeyCaller(ctx, principal)
@@ -104,6 +109,10 @@ func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw
 	userID, err := uuid.Parse(claims.Sub)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "authenticated subject is missing or not a valid identifier.")
+		return ctx, false
+	}
+	if isGatewayOwner(userID) {
+		s.refuseGatewayOwner(ctx, w)
 		return ctx, false
 	}
 	tenantID, _ := uuid.Parse(claims.TenantID)
@@ -177,6 +186,16 @@ func hasScope(granted map[string]bool, required string) bool {
 		return granted[strings.TrimSuffix(required, ":read")+":readwrite"]
 	}
 	return false
+}
+
+// isGatewayOwner reports whether id is the keyring user that holds the credentials MCP servers own
+// themselves. That space is the gateway's, reached in process; no caller of this API may act as it,
+// whatever token or key says so.
+func isGatewayOwner(id uuid.UUID) bool { return id.String() == keyringref.GatewayOwner }
+
+func (s *Server) refuseGatewayOwner(ctx context.Context, w http.ResponseWriter) {
+	s.emitAuthFailed(ctx, "the gateway's own keyring space is not reachable through the API.")
+	writeError(w, http.StatusForbidden, "the gateway's own keyring space is not reachable through the API.")
 }
 
 func (s *Server) emitAuthFailed(ctx context.Context, reason string) {

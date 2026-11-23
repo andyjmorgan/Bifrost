@@ -46,6 +46,10 @@ func main() {
 		createKey(ctx, cfg, log, os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-credentials" {
+		migrateCredentials(ctx, cfg, log, os.Args[2:])
+		return
+	}
 
 	pool, err := db.Open(ctx, cfg.DSN)
 	if err != nil {

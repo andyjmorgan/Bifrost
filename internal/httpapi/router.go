@@ -31,7 +31,7 @@ type API struct {
 	cache      *cache.Writer
 	toolsTTL   time.Duration
 	oauth      *oauthclient.Client
-	keyring    keyringref.Keyring // nil when the keyring is off
+	keyring    keyringref.Holder // nil when the keyring is off
 	gw         *gateway.Gateway
 	rec        *audit.Recorder
 	log        *slog.Logger
@@ -50,9 +50,11 @@ type Deps struct {
 	Cache    *cache.Writer
 	ToolsTTL time.Duration
 	OAuth    *oauthclient.Client
-	// Keyring validates the keyring references servers are given. Nil when
-	// the keyring is off, and the keyring credential kinds are then refused.
-	Keyring    keyringref.Keyring
+	// Keyring validates the keyring references servers are given, and holds
+	// the credentials servers own themselves. Nil when the keyring is off:
+	// the keyring credential kinds are then refused, and a Basic or header
+	// credential is sealed in the gateway's own store.
+	Keyring    keyringref.Holder
 	Gateway    *gateway.Gateway
 	Recorder   *audit.Recorder
 	Log        *slog.Logger

@@ -38,7 +38,25 @@ func (a *API) serverView(r *http.Request, s *store.Server, users map[string]*sto
 	if caps, err := a.store.ListCapabilities(ctx, s.ID); err == nil {
 		seen = len(caps)
 	}
-	return serverDTO(a.publicBase, s, c, users, seen)
+	return serverDTO(a.publicBase, s, c, a.describe(ctx, s, c), users, seen)
+}
+
+// describe asks the keyring how a credential the gateway holds for a server
+// is sent, so the API can show it as what the operator set: Basic with a
+// username, or a header. Nil for every other credential, and when the
+// keyring cannot say; the reference is then shown as it is stored.
+func (a *API) describe(ctx context.Context, s *store.Server, c *store.Credential) *keyringref.Description {
+	if c == nil || a.keyring == nil || c.Kind != store.AuthKeyringSecret {
+		return nil
+	}
+	d, err := a.keyring.Describe(ctx, c.KeyringRef())
+	if err != nil {
+		if c.KeyringRef().HeldByGateway() {
+			a.log.Warn("the keyring has no usable credential for a server", "slug", s.Slug, "credential", c.KeyringRef().String(), "err", err)
+		}
+		return nil
+	}
+	return &d
 }
 
 func (a *API) listServers(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +139,7 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	// A new server offers everything it has and is held by the person who
 	// added it.
-	s := &store.Server{ID: uuid.New(), Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: in.Auth.Kind, Enabled: true,
+	s := &store.Server{ID: uuid.New(), Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: a.storedKind(in.Auth.Kind), Enabled: true,
 		Selection: store.Selection{}, Grants: []store.Grant{{UserID: caller.UserID}}, CreatedAt: now, UpdatedAt: now}
 	if in.Slug != "" {
 		s.Slug = in.Slug
@@ -148,7 +166,7 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 	authorizeURL, err := a.applyAuth(r.Context(), s, in.Auth, caller)
 	if err != nil {
 		// Keep the server so the user can fix the credential, but report why.
-		broken := credentialFor(s.ID, in.Auth, caller)
+		broken := a.credentialFor(s.Slug, s.ID, in.Auth, caller)
 		broken.State, broken.StateReason = store.StateBroken, err.Error()
 		_ = a.store.UpsertCredential(r.Context(), broken)
 		writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r, s)})
@@ -186,16 +204,33 @@ func validateAuth(in AuthInput) error {
 	return nil
 }
 
-// credentialFor is the credential row for in before any secret is sealed
-// into it: the kind and, for the keyring kinds, the reference, owned by the
-// caller who is setting it.
-func credentialFor(serverID uuid.UUID, in AuthInput, by *auth.Caller) *store.Credential {
-	cred := &store.Credential{ServerID: serverID, Kind: in.Kind, State: store.StateOK, OAuthScopes: []string{}}
+// storedKind is the kind a credential is stored as. With the keyring on, a
+// Basic or header credential is a secret in the gateway's own keyring space
+// and the gateway keeps the reference; the API goes on calling it Basic or
+// header (see presentedKind).
+func (a *API) storedKind(kind store.AuthKind) store.AuthKind {
+	if a.keyring != nil && (kind == store.AuthBasic || kind == store.AuthHeader) {
+		return store.AuthKeyringSecret
+	}
+	return kind
+}
+
+// credentialFor is the credential row for in before any secret is stored:
+// the kind and, for a credential in the keyring, the reference. A reference
+// into a person's keyring is owned by the caller who is setting it; the
+// credential a server owns itself is held by the gateway, under the
+// server's name.
+func (a *API) credentialFor(slug string, serverID uuid.UUID, in AuthInput, by *auth.Caller) *store.Credential {
+	cred := &store.Credential{ServerID: serverID, Kind: a.storedKind(in.Kind), State: store.StateOK, OAuthScopes: []string{}}
 	switch in.Kind {
 	case store.AuthKeyringOAuth:
 		cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount = by.UserID, strings.TrimSpace(in.KeyringProvider), strings.TrimSpace(in.KeyringAccount)
 	case store.AuthKeyringSecret:
 		cred.KeyringOwner, cred.KeyringSecretName = by.UserID, strings.TrimSpace(in.KeyringSecretName)
+	case store.AuthBasic, store.AuthHeader:
+		if cred.Kind == store.AuthKeyringSecret {
+			cred.KeyringOwner, cred.KeyringSecretName = keyringref.GatewayOwner, keyringref.ServerCredentialName(slug)
+		}
 	}
 	return cred
 }
@@ -220,7 +255,7 @@ func (a *API) checkKeyringAuth(ctx context.Context, by *auth.Caller, in AuthInpu
 	if by == nil || !ownsKeyring(by, by.UserID) {
 		return http.StatusForbidden, errors.New("a keyring credential is set by its owner, signed in; an API key cannot set one")
 	}
-	if err := a.keyring.Check(ctx, credentialFor(uuid.Nil, in, by).KeyringRef()); err != nil {
+	if err := a.keyring.Check(ctx, a.credentialFor("", uuid.Nil, in, by).KeyringRef()); err != nil {
 		if errors.Is(err, keyringref.ErrNotFound) || errors.Is(err, keyringref.ErrUnusable) {
 			return http.StatusBadRequest, err
 		}
@@ -240,12 +275,16 @@ func ownsKeyring(by *auth.Caller, owner string) bool {
 // credential somewhere new, unless the caller is the credential's owner.
 // Every operator may edit every server, but the credential is one person's:
 // re-pointing the server would hand it to whoever answers at the new URL.
+//
+// A credential the gateway holds for the server is nobody's in particular.
+// It was typed in for this server by an operator, and any operator may
+// re-point the server, as they could when the gateway stored it itself.
 func (a *API) keyringOwnerOnly(ctx context.Context, by *auth.Caller, s *store.Server) error {
 	if !s.AuthKind.FromKeyring() {
 		return nil
 	}
 	cred, err := a.store.GetCredential(ctx, s.ID)
-	if err != nil || !cred.Kind.FromKeyring() || ownsKeyring(by, cred.KeyringOwner) {
+	if err != nil || !cred.Kind.FromKeyring() || cred.KeyringRef().HeldByGateway() || ownsKeyring(by, cred.KeyringOwner) {
 		return nil
 	}
 	return errors.New("this server uses a credential from another user's keyring; only its owner, signed in, can change the URL. Replace the credential first to take the server over")
@@ -253,18 +292,35 @@ func (a *API) keyringOwnerOnly(ctx context.Context, by *auth.Caller, s *store.Se
 
 // applyAuth stores a basic/header secret or a keyring reference, or runs
 // OAuth discovery and registration and returns the consent URL to open.
-// by is the caller, who becomes the owner of a keyring reference.
+// by is the caller, who becomes the owner of a reference into their keyring.
+//
+// With the keyring on, a Basic or header credential goes into the gateway's
+// own keyring space and the gateway keeps the reference to it. With the
+// keyring off it is sealed in the gateway's own store, as it always was.
 func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput, by *auth.Caller) (string, error) {
-	cred := credentialFor(s.ID, in, by)
+	cred := a.credentialFor(s.Slug, s.ID, in, by)
+	previous, _ := a.store.GetCredential(ctx, s.ID)
 	switch in.Kind {
 	case store.AuthNone, store.AuthKeyringOAuth, store.AuthKeyringSecret:
 	case store.AuthBasic:
+		if cred.Kind == store.AuthKeyringSecret {
+			if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeBasic, Username: in.Username, Value: in.Password, URL: s.URL}); err != nil {
+				return "", err
+			}
+			break
+		}
 		blob, err := a.conn.SealSecret(s.ID, &store.Secret{Password: in.Password})
 		if err != nil {
 			return "", err
 		}
 		cred.BasicUsername, cred.SecretBlob = in.Username, blob
 	case store.AuthHeader:
+		if cred.Kind == store.AuthKeyringSecret {
+			if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeHeader, HeaderName: in.HeaderName, Value: in.HeaderValue, URL: s.URL}); err != nil {
+				return "", err
+			}
+			break
+		}
 		blob, err := a.conn.SealSecret(s.ID, &store.Secret{HeaderValue: in.HeaderValue})
 		if err != nil {
 			return "", err
@@ -276,8 +332,37 @@ func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput, by *
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
 		return "", err
 	}
+	a.forget(ctx, s, previous, cred, by)
 	a.warmTools(ctx, s.ID)
 	return "", nil
+}
+
+// use names the server, and the caller acting on it, for the keyring's
+// audit trail.
+func (a *API) use(s *store.Server, by *auth.Caller) keyringref.Use {
+	u := keyringref.Use{ServerID: s.ID.String(), Slug: s.Slug}
+	if by != nil {
+		u.Actor = by.UserID
+	}
+	return u
+}
+
+// forget deletes the credential the gateway held for a server in the
+// keyring, once the server has been given another (now) or is gone (now is
+// nil). A credential that is still the server's is left alone, and so is
+// one from a person's keyring, which was only ever borrowed. A failure is
+// logged and leaves a credential nothing refers to; it never fails the
+// change that made it redundant.
+func (a *API) forget(ctx context.Context, s *store.Server, was, now *store.Credential, by *auth.Caller) {
+	if a.keyring == nil || was == nil || !was.Kind.FromKeyring() || !was.KeyringRef().HeldByGateway() {
+		return
+	}
+	if now != nil && now.Kind.FromKeyring() && now.KeyringRef() == was.KeyringRef() {
+		return
+	}
+	if err := a.keyring.Forget(context.WithoutCancel(ctx), was.KeyringRef(), a.use(s, by)); err != nil {
+		a.log.Warn("a server's old keyring credential could not be deleted", "slug", s.Slug, "credential", was.KeyringRef().String(), "err", err)
+	}
 }
 
 // warmTools lists a server's tools with its current configuration and
@@ -411,10 +496,13 @@ func (a *API) deleteServer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	held, _ := a.store.GetCredential(r.Context(), s.ID)
 	if err := a.store.DeleteServer(r.Context(), s.ID); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
+	// The credential the gateway held for the server goes with it.
+	a.forget(r.Context(), s, held, nil, auth.CallerFrom(r.Context()))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -441,8 +529,8 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err.Error())
 		return
 	}
-	if s.AuthKind != in.Kind {
-		s.AuthKind = in.Kind
+	if kind := a.storedKind(in.Kind); s.AuthKind != kind {
+		s.AuthKind = kind
 		if err := a.store.UpdateServer(r.Context(), s); err != nil {
 			writeStoreErr(w, err)
 			return

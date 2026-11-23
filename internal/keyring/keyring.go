@@ -81,6 +81,13 @@ func Open(ctx context.Context, cfg *Config, log *slog.Logger) (*Keyring, error) 
 	return k, nil
 }
 
+// New builds the module over a store the caller already has, without connecting to a database or
+// applying migrations. It is how a test runs the whole keyring on the in-memory store; a server
+// calls Open.
+func New(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (*Keyring, error) {
+	return build(ctx, cfg, st, log)
+}
+
 // build wires the services over any Store, so tests can run the whole module on the in-memory one.
 func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (*Keyring, error) {
 	if log == nil {

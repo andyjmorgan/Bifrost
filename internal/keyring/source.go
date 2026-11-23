@@ -20,13 +20,15 @@ import (
 // credential, in process, for one of its MCP servers. Rows from the HTTP API carry "http".
 const gatewayTransport = "gateway"
 
-// Source lends keyring credentials to the gateway for the MCP servers that reference one. It is the
-// keyring's side of keyringref.Keyring, and the only way the gateway reaches into the keyring: it
-// calls the same services as the HTTP API, in process, as the user the reference belongs to.
+// Source lends keyring credentials to the gateway for the MCP servers that reference one, and holds
+// the credentials a server owns itself. It is the keyring's side of keyringref.Keyring, and the only
+// way the gateway reaches into the keyring: it calls the same services as the HTTP API, in process,
+// as the user the reference belongs to.
 //
 // Every lookup is scoped to the reference's owner, so a reference can only ever resolve inside the
-// keyring of the person who set it. Every fetch is recorded in the keyring's audit trail with the
-// gateway and the server as the caller.
+// keyring of the person who set it, or inside the gateway's own space (keyringref.GatewayOwner) for
+// a credential that belongs to a server. Every fetch and every change is recorded in the keyring's
+// audit trail with the gateway and the server as the caller.
 type Source struct {
 	store    store.Store
 	resolver *manifests.Resolver
@@ -41,7 +43,7 @@ func newSource(st store.Store, resolver *manifests.Resolver, secrets *service.AP
 
 // Source returns the gateway's door into the keyring, or nil when the keyring is off. The nil is an
 // untyped interface value, so the gateway can test it directly.
-func (k *Keyring) Source() keyringref.Keyring {
+func (k *Keyring) Source() keyringref.Holder {
 	if k == nil {
 		return nil
 	}
@@ -114,6 +116,89 @@ func (s *Source) SecretHeader(ctx context.Context, ref keyringref.Ref, use keyri
 	}
 	name, value := service.AssembleHeader(sec.Kind, deref(sec.Header), deref(sec.Prefix), deref(sec.Username), sec.Secret)
 	return keyringref.Header{Name: name, Value: value}, nil
+}
+
+// Describe implements keyringref.Keyring. It reads the row, never the secret, and records nothing.
+func (s *Source) Describe(ctx context.Context, ref keyringref.Ref) (keyringref.Description, error) {
+	owner, err := ownerID(ref)
+	if err != nil {
+		return keyringref.Description{}, err
+	}
+	if ref.Kind != keyringref.KindSecret {
+		return keyringref.Description{}, fmt.Errorf("keyring: %s has no description: %w", ref, keyringref.ErrUnusable)
+	}
+	row, err := s.findSecret(ctx, owner, ref)
+	if err != nil {
+		return keyringref.Description{}, err
+	}
+	if contracts.CredentialKindFromWire(row.Kind) == contracts.KindHTTPBasic {
+		return keyringref.Description{Scheme: keyringref.SchemeBasic, Username: deref(row.Username)}, nil
+	}
+	return keyringref.Description{Scheme: keyringref.SchemeHeader, HeaderName: service.HeaderName(deref(row.HeaderName))}, nil
+}
+
+// PutServerSecret implements keyringref.Keyring. The secret is written through the same service as
+// one a person stores, so it is sealed and audited the same way; only its owner differs.
+func (s *Source) PutServerSecret(ctx context.Context, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error) {
+	return s.putSecret(ctx, gatewayOwnerID, uuid.Nil, use, in)
+}
+
+// putSecret stores a server's static credential in owner's keyring under the server's name.
+func (s *Source) putSecret(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error) {
+	if use.Slug == "" {
+		return keyringref.Ref{}, errors.New("keyring: a server credential needs the server's slug")
+	}
+	ref := keyringref.Ref{Owner: owner.String(), Kind: keyringref.KindSecret, Secret: keyringref.ServerCredentialName(use.Slug)}
+	params := service.CreateAPIKeyParams{Name: ref.Secret, Secret: &in.Value}
+	about := "The credential of the MCP server " + use.Slug + ", held for the gateway."
+	params.Description = &about
+	if in.URL != "" {
+		params.BaseURL = &in.URL
+	}
+	switch in.Scheme {
+	case keyringref.SchemeBasic:
+		if in.Username == "" || in.Value == "" {
+			return keyringref.Ref{}, errors.New("keyring: a Basic credential needs a username and a password")
+		}
+		params.Kind, params.Username = contracts.KindHTTPBasic, &in.Username
+	case keyringref.SchemeHeader:
+		if in.HeaderName == "" || in.Value == "" || strings.ContainsAny(in.HeaderName, " :\r\n") {
+			return keyringref.Ref{}, errors.New("keyring: a header credential needs a valid header name and a value")
+		}
+		params.Kind, params.Header = contracts.KindHeaderAPIKey, &in.HeaderName
+	default:
+		return keyringref.Ref{}, fmt.Errorf("keyring: unknown credential scheme %q", in.Scheme)
+	}
+	if _, err := s.secrets.Create(asGateway(ctx, owner, tenant, use), params); err != nil {
+		return keyringref.Ref{}, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	return ref, nil
+}
+
+// Forget implements keyringref.Keyring.
+func (s *Source) Forget(ctx context.Context, ref keyringref.Ref, use keyringref.Use) error {
+	if !ref.HeldByGateway() {
+		return nil // a person's credential outlives the server that borrowed it
+	}
+	if ref.Kind != keyringref.KindSecret {
+		return fmt.Errorf("keyring: cannot forget %s", ref)
+	}
+	return s.forgetSecret(ctx, gatewayOwnerID, ref, use)
+}
+
+// forgetSecret deletes the stored secret ref names from owner's keyring, if it is there.
+func (s *Source) forgetSecret(ctx context.Context, owner uuid.UUID, ref keyringref.Ref, use keyringref.Use) error {
+	row, err := s.store.GetAPIKeyByName(ctx, owner, ref.Secret)
+	if err != nil {
+		return fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if row == nil {
+		return nil
+	}
+	if _, err := s.secrets.Delete(asGateway(ctx, owner, row.TenantID, use), row.ID); err != nil {
+		return fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	return nil
 }
 
 // findToken reads the OAuth account ref names in owner's keyring.
@@ -198,9 +283,17 @@ func asGateway(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use)
 	if use.ServerID != "" {
 		method += " (" + use.ServerID + ")"
 	}
+	// A change to a credential the gateway holds is made by somebody: the row is the gateway's,
+	// and the person is named beside the server.
+	if use.Actor != "" {
+		method += " by " + use.Actor
+	}
 	ctx = contracts.WithCaller(ctx, contracts.Caller{UserID: owner, TenantID: tenant})
 	return audit.WithRequestInfo(ctx, audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}})
 }
+
+// gatewayOwnerID is keyringref.GatewayOwner as the keyring's stores take it.
+var gatewayOwnerID = uuid.MustParse(keyringref.GatewayOwner)
 
 // ownerID is the keyring user a reference belongs to. The keyring knows its users by the UUID
 // subject of their identity provider token, which is the gateway's user id as well.

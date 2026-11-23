@@ -27,12 +27,30 @@ const (
 	KindSecret Kind = "secret"
 )
 
+// GatewayOwner is the keyring user that holds the credentials an MCP server
+// owns itself: the Basic password or header value typed in when the server
+// was added, and the OAuth registration and tokens of a server the gateway
+// connected to. It is a fixed id and no person: every keyring row keeps an
+// explicit owner, and this is the owner of the rows that belong to a server
+// rather than to somebody.
+//
+// Nobody reads this space through the keyring's API. The keyring refuses a
+// caller that presents this id, so an MCP server's credential is handed to
+// the gateway, in process, and to nothing else.
+const GatewayOwner = "b1f405c7-0000-4000-8000-000000000001"
+
+// ServerCredentialName is the name, in the keyring, of the credential a
+// server owns itself: the name of its secret, and the key of its OAuth
+// provider. A server's slug never changes, so neither does this.
+func ServerCredentialName(slug string) string { return "mcp-" + slug }
+
 // Ref names one credential in one user's keyring. Keyring rows belong to a
 // user, so the owner is always part of the reference and a lookup never
 // leaves that user's space.
 type Ref struct {
-	// Owner is the identity provider subject of the user whose keyring
-	// holds the credential: the person who pointed the server at it.
+	// Owner is the keyring user that holds the credential: the identity
+	// provider subject of the person who pointed the server at it, or
+	// GatewayOwner for a credential the server owns itself.
 	Owner string
 	Kind  Kind
 	// Provider and Account name an OAuth account (KindOAuth).
@@ -41,6 +59,10 @@ type Ref struct {
 	// Secret is the name of a stored secret (KindSecret).
 	Secret string
 }
+
+// HeldByGateway reports whether the credential is one a server owns itself
+// rather than one lent from a person's keyring.
+func (r Ref) HeldByGateway() bool { return r.Owner == GatewayOwner }
 
 // String is the reference as a log line or an error may show it: names
 // only, never a value.
@@ -51,11 +73,52 @@ func (r Ref) String() string {
 	return "secret " + r.Secret
 }
 
-// Use says which MCP server a credential is fetched for. The keyring
-// records it in its audit trail as the caller, beside the gateway itself.
+// Use says which MCP server a credential is fetched or changed for. The
+// keyring records it in its audit trail as the caller, beside the gateway
+// itself.
 type Use struct {
 	ServerID string
 	Slug     string
+	// Actor is the gateway user who asked for a change to a credential the
+	// gateway holds: the person who typed in a server's password, or
+	// deleted the server. Empty for a fetch, which nobody asked for.
+	Actor string
+}
+
+// Schemes a server's own static credential is sent by.
+const (
+	// SchemeBasic is HTTP Basic: a username and a password.
+	SchemeBasic = "basic"
+	// SchemeHeader is one header carrying a value.
+	SchemeHeader = "header"
+)
+
+// ServerSecret is a static credential a server owns itself, on its way into
+// the keyring.
+type ServerSecret struct {
+	// Scheme is SchemeBasic or SchemeHeader.
+	Scheme string
+	// Username is the Basic user name.
+	Username string
+	// HeaderName is the header a SchemeHeader value is sent in.
+	HeaderName string
+	// Value is the password or the header value.
+	Value string
+	// URL is the server's address, kept beside the secret as a description
+	// of what it is for. It is not used to send the secret anywhere.
+	URL string
+}
+
+// Description is what the keyring says about a credential without
+// decrypting its secret: enough for the servers API to show how a server
+// authenticates.
+type Description struct {
+	// Scheme is SchemeBasic or SchemeHeader for a secret.
+	Scheme string
+	// Username is the Basic user name.
+	Username string
+	// HeaderName is the header the secret is sent in.
+	HeaderName string
 }
 
 // Token is a live OAuth access token.
@@ -87,7 +150,8 @@ var (
 	ErrNoRefresh = errors.New("cannot be refreshed")
 )
 
-// Keyring is everything the gateway may ask of the keyring.
+// Keyring is what the gateway asks of the keyring to send a request: the
+// credential a reference names. The connector is handed this much.
 type Keyring interface {
 	// Check reports whether ref names a credential the gateway could use,
 	// without decrypting it. It is how a reference is validated when it is
@@ -105,4 +169,27 @@ type Keyring interface {
 	// the header the secret describes: its own header and prefix, or HTTP
 	// Basic with its username.
 	SecretHeader(ctx context.Context, ref Ref, use Use) (Header, error)
+}
+
+// Holder is everything the gateway may ask of the keyring: what Keyring
+// lends, and the keeping of the credentials servers own themselves. The
+// servers API is handed this.
+type Holder interface {
+	Keyring
+
+	// Describe says how the credential ref names is sent, without
+	// decrypting it. It leaves no audit record.
+	Describe(ctx context.Context, ref Ref) (Description, error)
+
+	// PutServerSecret stores the static credential of the server use names
+	// in the gateway's own keyring space, replacing the one it had, and
+	// returns the reference to it. The owner is GatewayOwner and the name
+	// is ServerCredentialName of the slug.
+	PutServerSecret(ctx context.Context, use Use, secret ServerSecret) (Ref, error)
+
+	// Forget deletes a credential the gateway holds for a server, when the
+	// server is deleted or given another credential. It does nothing to a
+	// reference into a person's keyring: that credential is theirs.
+	// Forgetting what is already gone is not an error.
+	Forget(ctx context.Context, ref Ref, use Use) error
 }
