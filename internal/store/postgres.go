@@ -126,12 +126,11 @@ func (p *Postgres) ListServers(ctx context.Context) ([]*Server, error) {
 	return out, nil
 }
 
-// UpdateServer writes the connection fields (not slug, rules or
-// grants) and
+// UpdateServer writes the connection fields (not slug, rules or grants) and
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$3, url=$4, description=$5, enabled=$6, auth_kind=$6, updated_at=now() where id=$1 returning updated_at`,
+	err := p.pool.QueryRow(ctx, `update servers set name=$2, url=$3, description=$4, enabled=$5, auth_kind=$6, updated_at=now() where id=$1 returning updated_at`,
 		s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
