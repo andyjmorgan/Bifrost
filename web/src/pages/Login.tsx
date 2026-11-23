@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom'
 import { Button } from '../ui/components/button'
 import { Logo } from '../components/Logo'
 import { login } from '../auth'
+import { keyringEnabled } from '../keyring'
 
 // Sign-in: the am.ai mark, a greeting, one icon button per identity provider (Keycloak
 // kc_idp_hint), and a quiet fallback for the realm's own username/password form. Same
@@ -63,7 +64,11 @@ export function LoginPage() {
             <Logo compact imageClassName="size-24" />
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold">Welcome back</h1>
-              <p className="text-muted-foreground">Sign in to manage your MCP servers</p>
+              <p className="text-muted-foreground">
+                {keyringEnabled()
+                  ? 'Sign in to manage your MCP servers and secrets'
+                  : 'Sign in to manage your MCP servers'}
+              </p>
             </div>
           </div>
           <div className="flex justify-center gap-4">
