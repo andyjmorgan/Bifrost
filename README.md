@@ -35,6 +35,7 @@ agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth
 | `GET /.well-known/mcp-client-metadata.json` | the gateway's own CIMD document for upstream registration |
 | `GET /oauth/callback` | consent callback for upstream OAuth |
 | `/api/v1/*` | REST API: servers with their rules and grants, the portal, users, API keys, audit, e2e |
+| `/keyring/api/*` | the keyring's API, when the keyring is on (see [Keyring](#keyring)) |
 | `/` | the SPA |
 
 Front-door callers authenticate with an OIDC bearer token (audience and realm-role checked) or a gateway API key. API keys carry scopes: `api:read`, `api:edit`, `mcp:execute`, `mcp:edit`.
@@ -105,6 +106,94 @@ when tool.name.startsWith('delete_') && !(request.caller.?email.orValue('') in [
 
 `/mcp` is the union of every server the caller holds; `/mcp?slugs=a,b` narrows it to named slugs, and a slug the caller does not hold is an error. What a server has been seen to offer, with the definition it sent, is recorded under `/servers/{id}/capabilities` as governance data for the editor and the server page; it never filters.
 
+## Keyring
+
+The keyring is the DonkeyWork Vault server, embedded: stored secrets, OAuth accounts and their provider apps, `dwv_` access keys and their audit trail. It keeps Vault's Postgres schema (`vault`), its `DWV1` envelope format and its KEKs, so rows written by Vault are read as they are, with no re-encryption. Every row keeps its `user_id` and `tenant_id`.
+
+It is off by default. It turns on when its KEKs are configured, and with no keyring variable set the gateway runs exactly as it does without the module: no route, no schema, no log line.
+
+### Where it answers
+
+One handler, mounted twice. It is checked before the gateway's own router, because both define `/api/v1/api-keys`, `/api/v1/audit` and `/api/v1/me`, with different meanings.
+
+| Request | Served by |
+|---|---|
+| `/keyring/api/…`, `/keyring/healthz`, any host | the keyring, prefix removed: `/keyring/api/v1/api-keys`, `/keyring/api/config`, `/keyring/api/oauth/callback` |
+| `/api/…`, `/healthz` on a legacy host | the keyring at Vault's original paths. Nothing under `/api` on a legacy host reaches the gateway |
+| any other `GET` or `HEAD` on a legacy host | `302` to the gateway's UI |
+| anything else | the gateway |
+
+A legacy host is one listed in `MCPGW_KEYRING_LEGACY_HOSTS`, matched against the request's `Host` header. An entry is `host` (any port), `host:port`, or `:port` (any host on that port, for a NodePort).
+
+API calls on a legacy host are served, never redirected: an HTTP client drops the `Authorization` header when a redirect changes host, so every existing `dwvault` binary would fail. Only page loads are redirected, by this map, with the query string carried over. The root and anything not listed go to `/secrets`.
+
+| Vault page | Gateway UI |
+|---|---|
+| `/credentials` | `/secrets` |
+| `/providers` | `/providers` |
+| `/oauthconnect` | `/connect` |
+| `/profile` | `/profile` |
+
+The keyring serves no UI of its own. Its pages are part of the gateway's SPA.
+
+### OAuth flows have two addresses
+
+- The **redirect URI** sent to a provider is `MCPGW_KEYRING_PUBLIC_BASE_URL` + `/api/oauth/callback`. It must be the address registered with the provider's app. It defaults to `<MCPGW_PUBLIC_BASE_URL>/keyring`; a deployment that took over a Vault sets it to the old Vault origin and keeps that host in `MCPGW_KEYRING_LEGACY_HOSTS`, so no provider app has to change.
+- The **page the browser ends on** after the callback is `MCPGW_KEYRING_UI_BASE_URL` + `/connect`, with `?connected=<provider>` or `?oauth_error=<reason>`. It defaults to `MCPGW_PUBLIC_BASE_URL`.
+
+Neither depends on the other, or on the host the callback arrived on.
+
+### Who may call it
+
+The keyring keeps Vault's authentication and Vault's scopes (`vault:read`, `vault:readwrite`, `vault:audit`). The gateway's `mcpg_` keys and its role check do not apply to it.
+
+| Caller | Presents | Scopes |
+|---|---|---|
+| a script or service | a `dwv_` access key, as `X-Api-Key` or `Authorization: Bearer` | the key's own |
+| the CLI | an OIDC token whose `azp` is the CLI client and whose `aud` includes the keyring's web client | read, readwrite |
+| a browser | an OIDC token whose `azp` is the keyring's web client, or the gateway's (`MCPGW_OIDC_WEB_CLIENT_ID`) | read, readwrite, audit |
+
+The gateway's client is accepted only when the keyring and the gateway verify against the same issuer, which is the default: the keyring's authority falls back to `MCPGW_OIDC_ISSUER`. Tokens are checked for signature, issuer and expiry; the client is read from `azp`. Rows are owned by the token's `sub`, which must be a UUID, so one person is the same owner through any client.
+
+### Configuration
+
+Every setting is read as `MCPGW_KEYRING_<NAME>` first and `VAULT_<NAME>` second, so the variables a Vault deployment carries can be given to the gateway unchanged.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MCPGW_KEYRING_CRYPTO_KEKS` | unset = keyring off | `id=base64,…`, each key 32 bytes |
+| `MCPGW_KEYRING_CRYPTO_ACTIVE_KEK_ID` | | the KEK that wraps new data keys; must be set with the KEKs |
+| `MCPGW_KEYRING_DSN` | `MCPGW_DSN` | database holding schema `vault`. The keyring opens its own pool |
+| `MCPGW_KEYRING_RUN_MIGRATIONS` | `true` | apply the keyring's baseline at startup |
+| `MCPGW_KEYRING_PUBLIC_BASE_URL` | `<MCPGW_PUBLIC_BASE_URL>/keyring` | base of the OAuth redirect URI |
+| `MCPGW_KEYRING_UI_BASE_URL` | `MCPGW_PUBLIC_BASE_URL` | where browsers are sent |
+| `MCPGW_KEYRING_LEGACY_HOSTS` | empty | hosts served at Vault's original paths, comma separated |
+| `MCPGW_KEYRING_OIDC_AUTHORITY` | `MCPGW_OIDC_ISSUER` | issuer of the tokens the keyring accepts; empty leaves access keys only |
+| `MCPGW_KEYRING_OIDC_INTERNAL_AUTHORITY` | | in-cluster address for discovery, when it differs |
+| `MCPGW_KEYRING_OIDC_WEB_CLIENT_ID` | `MCPGW_OIDC_WEB_CLIENT_ID` | the keyring's web client. Also read from `…_OIDC_CLIENT_ID` and `…_OIDC_AUDIENCE` |
+| `MCPGW_KEYRING_OIDC_CLI_CLIENT_ID` | `donkeywork-vault-cli` | the CLI's client |
+| `MCPGW_KEYRING_OIDC_WEB_SCOPES`, `…_OIDC_CLI_SCOPES`, `…_OIDC_SCOPES` | | scopes advertised to clients in `/api/config` |
+| `MCPGW_KEYRING_OIDC_REQUIRE_HTTPS` | `true` | refuse an authority that is not https |
+| `MCPGW_KEYRING_TRUSTED_PROXIES` | k3s pod and service ranges, loopback | peers whose `X-Forwarded-For` is believed for the audit trail |
+| `MCPGW_KEYRING_AUDIT_RETENTION_DAYS` | `180` | |
+| `MCPGW_KEYRING_AUDIT_CHANNEL_CAPACITY`, `…_AUDIT_BATCH_SIZE`, `…_AUDIT_FLUSH_MS`, `…_AUDIT_SWEEP_HOURS`, `…_AUDIT_RETENTION_BATCH` | `8192`, `100`, `500`, `12`, `5000` | audit writer and sweeper tuning |
+
+A keyring with only one of the two KEK variables set, or with a UI base on a legacy host, stops the gateway at startup with an error that names the variable.
+
+### Database
+
+The keyring's migrations are its own: one idempotent baseline, recorded in `vault.schema_migrations`, applied under an advisory lock. They never touch the gateway's numbered migrations or its `schema_migrations` table, and both can live in one database.
+
+### Telemetry
+
+Service spans and the `vault.*` counters are kept as calls to the OpenTelemetry API. They are no-ops until the process installs a provider, and the keyring installs none. Vault's OTLP exporters, its log bridge and the `otelhttp` and `otelpgx` wrappers were left behind.
+
+### Tests
+
+`go test ./internal/keyring/...` runs everything that needs no database. `VAULT_TEST_DSN` adds the Postgres suite; it drops and recreates schema `vault` and a database named `vault_migrate_test`, so point it at a throwaway server only. The wire contract is `internal/keyring/api/openapi.json`, and a test pins the route table to it.
+
+Taking over a running Vault is described in [docs/keyring-cutover.md](docs/keyring-cutover.md).
+
 ## Design notes
 
 - Connections are opened per call. There is no session cache yet; the init cache removes the discovery probe and the tools cache removes most listing traffic, which covers the common case.
@@ -125,6 +214,8 @@ internal/cache       async cache writer
 internal/toolsearch  BM25
 internal/store       Postgres
 internal/db          pool and embedded migrations
+internal/keyring     the embedded Vault server: config, the two mounts, and its packages
+                     (crypto, store, db, service, manifests, audit, httpapi)
 web/                 React, Vite, Tailwind 4
 ```
 
