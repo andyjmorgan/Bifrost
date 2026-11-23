@@ -49,9 +49,16 @@ type CredentialDTO struct {
 	OAuthScopes           []string              `json:"oauthScopes"`
 	OAuthExpiresAt        *time.Time            `json:"oauthExpiresAt,omitempty"`
 	OAuthHasRefreshToken  bool                  `json:"oauthHasRefreshToken"`
-	LastRefreshedAt       *time.Time            `json:"lastRefreshedAt,omitempty"`
-	LastError             string                `json:"lastError,omitempty"`
-	UpdatedAt             time.Time             `json:"updatedAt"`
+	// The keyring reference of a keyring_oauth or keyring_secret credential:
+	// whose keyring, and the name of the entry. Names only; the gateway
+	// holds no secret for these kinds and never returns one.
+	KeyringOwner      string     `json:"keyringOwner,omitempty"`
+	KeyringProvider   string     `json:"keyringProvider,omitempty"`
+	KeyringAccount    string     `json:"keyringAccount,omitempty"`
+	KeyringSecretName string     `json:"keyringSecretName,omitempty"`
+	LastRefreshedAt   *time.Time `json:"lastRefreshedAt,omitempty"`
+	LastError         string     `json:"lastError,omitempty"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
 // AuthInput is the credential part of a create/update request.
@@ -62,6 +69,11 @@ type AuthInput struct {
 	HeaderName  string         `json:"headerName,omitempty"`
 	HeaderValue string         `json:"headerValue,omitempty"`
 	Scopes      []string       `json:"scopes,omitempty"` // oauth: override discovered scopes
+	// keyring_oauth: an OAuth account in the caller's keyring.
+	KeyringProvider string `json:"keyringProvider,omitempty"`
+	KeyringAccount  string `json:"keyringAccount,omitempty"`
+	// keyring_secret: the name of a secret in the caller's keyring.
+	KeyringSecretName string `json:"keyringSecretName,omitempty"`
 }
 
 // CreateServerInput is the body of POST /servers. Slug is derived from the
@@ -288,6 +300,7 @@ func credentialDTO(c *store.Credential) *CredentialDTO {
 		Kind: c.Kind, State: c.State, StateReason: c.StateReason, BasicUsername: c.BasicUsername, HeaderName: c.HeaderName,
 		OAuthIssuer: c.OAuthIssuer, OAuthClientID: c.OAuthClientID, OAuthRegistrationKind: c.OAuthRegistrationKind,
 		OAuthResource: c.OAuthResource, OAuthScopes: scopes, OAuthExpiresAt: c.OAuthExpiresAt, OAuthHasRefreshToken: c.OAuthHasRefreshToken,
+		KeyringOwner: c.KeyringOwner, KeyringProvider: c.KeyringProvider, KeyringAccount: c.KeyringAccount, KeyringSecretName: c.KeyringSecretName,
 		LastRefreshedAt: c.LastRefreshedAt, LastError: c.LastError, UpdatedAt: c.UpdatedAt,
 	}
 }

@@ -266,7 +266,7 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn := upstream.New(ms, sealer, nil, rec, log, 10*time.Second, time.Minute, "test")
+	conn := upstream.New(ms, sealer, nil, nil, rec, log, 10*time.Second, time.Minute, "test")
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		b, _ := json.Marshal(gateway.InitFrom(ir))
 		_ = ms.CacheSet(ctx, cache.NSInit, srv.ID.String(), nil, time.Time{}, b, time.Minute)

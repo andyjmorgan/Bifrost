@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 )
 
 // Sentinel errors.
@@ -27,7 +29,17 @@ const (
 	AuthOAuth  AuthKind = "oauth"
 	AuthBasic  AuthKind = "basic"
 	AuthHeader AuthKind = "header"
+	// AuthKeyringOAuth sends a live access token of an OAuth account held
+	// in the keyring. The gateway stores the reference, not the token.
+	AuthKeyringOAuth AuthKind = "keyring_oauth"
+	// AuthKeyringSecret sends a secret held in the keyring, as the header
+	// the secret describes. The gateway stores the reference, not the secret.
+	AuthKeyringSecret AuthKind = "keyring_secret"
 )
+
+// FromKeyring reports whether the credential lives in the keyring rather
+// than in the gateway's own store.
+func (k AuthKind) FromKeyring() bool { return k == AuthKeyringOAuth || k == AuthKeyringSecret }
 
 // CredentialState tracks whether a credential is usable.
 type CredentialState string
@@ -83,10 +95,29 @@ type Credential struct {
 	OAuthExpiresAt             *time.Time
 	OAuthHasRefreshToken       bool
 
+	// The keyring reference of the kinds keyring_oauth and keyring_secret.
+	// KeyringOwner is the user whose keyring holds the credential: the
+	// person who pointed the server at it. Lookups never leave that user's
+	// space. These are names, not secrets.
+	KeyringOwner      string
+	KeyringProvider   string // keyring_oauth
+	KeyringAccount    string // keyring_oauth
+	KeyringSecretName string // keyring_secret
+
 	SecretBlob      []byte
 	LastRefreshedAt *time.Time
 	LastError       string
 	UpdatedAt       time.Time
+}
+
+// KeyringRef is the keyring credential c points at. It is meaningful only
+// when c.Kind.FromKeyring().
+func (c *Credential) KeyringRef() keyringref.Ref {
+	ref := keyringref.Ref{Owner: c.KeyringOwner, Kind: keyringref.KindSecret, Secret: c.KeyringSecretName}
+	if c.Kind == AuthKeyringOAuth {
+		ref = keyringref.Ref{Owner: c.KeyringOwner, Kind: keyringref.KindOAuth, Provider: c.KeyringProvider, Account: c.KeyringAccount}
+	}
+	return ref
 }
 
 // Secret is the decrypted content of Credential.SecretBlob.

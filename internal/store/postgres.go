@@ -163,14 +163,16 @@ func (p *Postgres) DeleteServer(ctx context.Context, id uuid.UUID) error {
 const credCols = `server_id, kind, state, coalesce(state_reason,''), coalesce(basic_username,''), coalesce(header_name,''),
 coalesce(oauth_issuer,''), coalesce(oauth_authorization_endpoint,''), coalesce(oauth_token_endpoint,''), coalesce(oauth_registration_endpoint,''),
 coalesce(oauth_registration_kind,''), coalesce(oauth_client_id,''), coalesce(oauth_resource,''), oauth_scopes, coalesce(oauth_token_type,''),
-oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, coalesce(last_error,''), updated_at`
+oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, coalesce(last_error,''), updated_at,
+coalesce(keyring_owner,''), coalesce(keyring_provider,''), coalesce(keyring_account,''), coalesce(keyring_secret_name,'')`
 
 func scanCredential(row pgx.Row) (*Credential, error) {
 	var c Credential
 	err := row.Scan(&c.ServerID, &c.Kind, &c.State, &c.StateReason, &c.BasicUsername, &c.HeaderName,
 		&c.OAuthIssuer, &c.OAuthAuthorizationEndpoint, &c.OAuthTokenEndpoint, &c.OAuthRegistrationEndpoint,
 		&c.OAuthRegistrationKind, &c.OAuthClientID, &c.OAuthResource, &c.OAuthScopes, &c.OAuthTokenType,
-		&c.OAuthExpiresAt, &c.OAuthHasRefreshToken, &c.SecretBlob, &c.LastRefreshedAt, &c.LastError, &c.UpdatedAt)
+		&c.OAuthExpiresAt, &c.OAuthHasRefreshToken, &c.SecretBlob, &c.LastRefreshedAt, &c.LastError, &c.UpdatedAt,
+		&c.KeyringOwner, &c.KeyringProvider, &c.KeyringAccount, &c.KeyringSecretName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -187,18 +189,23 @@ func scanCredential(row pgx.Row) (*Credential, error) {
 func (p *Postgres) UpsertCredential(ctx context.Context, c *Credential) error {
 	_, err := p.pool.Exec(ctx, `insert into credentials (server_id, kind, state, state_reason, basic_username, header_name,
 oauth_issuer, oauth_authorization_endpoint, oauth_token_endpoint, oauth_registration_endpoint, oauth_registration_kind, oauth_client_id,
-oauth_resource, oauth_scopes, oauth_token_type, oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, last_error, updated_at)
-values ($1,$2,$3,nullif($4,''),nullif($5,''),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),nullif($10,''),nullif($11,''),nullif($12,''),nullif($13,''),$14,nullif($15,''),$16,$17,$18,$19,nullif($20,''),now())
+oauth_resource, oauth_scopes, oauth_token_type, oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, last_error, updated_at,
+keyring_owner, keyring_provider, keyring_account, keyring_secret_name)
+values ($1,$2,$3,nullif($4,''),nullif($5,''),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),nullif($10,''),nullif($11,''),nullif($12,''),nullif($13,''),$14,nullif($15,''),$16,$17,$18,$19,nullif($20,''),now(),
+nullif($21,''),nullif($22,''),nullif($23,''),nullif($24,''))
 on conflict (server_id) do update set kind=excluded.kind, state=excluded.state, state_reason=excluded.state_reason,
 basic_username=excluded.basic_username, header_name=excluded.header_name, oauth_issuer=excluded.oauth_issuer,
 oauth_authorization_endpoint=excluded.oauth_authorization_endpoint, oauth_token_endpoint=excluded.oauth_token_endpoint,
 oauth_registration_endpoint=excluded.oauth_registration_endpoint, oauth_registration_kind=excluded.oauth_registration_kind,
 oauth_client_id=excluded.oauth_client_id, oauth_resource=excluded.oauth_resource, oauth_scopes=excluded.oauth_scopes,
 oauth_token_type=excluded.oauth_token_type, oauth_expires_at=excluded.oauth_expires_at, oauth_has_refresh_token=excluded.oauth_has_refresh_token,
-secret_blob=excluded.secret_blob, last_refreshed_at=excluded.last_refreshed_at, last_error=excluded.last_error, updated_at=now()`,
+secret_blob=excluded.secret_blob, last_refreshed_at=excluded.last_refreshed_at, last_error=excluded.last_error, updated_at=now(),
+keyring_owner=excluded.keyring_owner, keyring_provider=excluded.keyring_provider, keyring_account=excluded.keyring_account,
+keyring_secret_name=excluded.keyring_secret_name`,
 		c.ServerID, c.Kind, c.State, c.StateReason, c.BasicUsername, c.HeaderName,
 		c.OAuthIssuer, c.OAuthAuthorizationEndpoint, c.OAuthTokenEndpoint, c.OAuthRegistrationEndpoint, c.OAuthRegistrationKind, c.OAuthClientID,
-		c.OAuthResource, c.OAuthScopes, c.OAuthTokenType, c.OAuthExpiresAt, c.OAuthHasRefreshToken, c.SecretBlob, c.LastRefreshedAt, c.LastError)
+		c.OAuthResource, c.OAuthScopes, c.OAuthTokenType, c.OAuthExpiresAt, c.OAuthHasRefreshToken, c.SecretBlob, c.LastRefreshedAt, c.LastError,
+		c.KeyringOwner, c.KeyringProvider, c.KeyringAccount, c.KeyringSecretName)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}

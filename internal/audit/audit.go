@@ -272,6 +272,21 @@ func Redact(h http.Header, extra ...string) map[string]string {
 	return out
 }
 
+type redactKey struct{}
+
+// WithRedactedHeader names a request header that carries a credential, so
+// the upstream audit transport masks it. It is for a header whose name is
+// only known once the request is being built, as with a keyring secret that
+// names its own header.
+func WithRedactedHeader(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, redactKey{}, name)
+}
+
+func redactedHeader(ctx context.Context) string {
+	name, _ := ctx.Value(redactKey{}).(string)
+	return name
+}
+
 // ---- JSON-RPC sniffing --------------------------------------------------------
 
 // RPCInfo is what we can learn from a JSON-RPC request body.
@@ -534,7 +549,7 @@ func (t *auditTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if e.Route == "" {
 		e.Route = "api"
 	}
-	payload := &store.AuditPayload{RequestHeaders: Redact(req.Header, t.redact), RequestBody: clip(reqBody)}
+	payload := &store.AuditPayload{RequestHeaders: Redact(req.Header, t.redact, redactedHeader(ctx)), RequestBody: clip(reqBody)}
 
 	resp, err := t.next.RoundTrip(req)
 	if err != nil {
@@ -547,7 +562,7 @@ func (t *auditTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	e.StatusCode = resp.StatusCode
-	payload.ResponseHeaders = Redact(resp.Header, t.redact)
+	payload.ResponseHeaders = Redact(resp.Header, t.redact, redactedHeader(ctx))
 	// Bodies may stream (SSE); record once the consumer finishes with it.
 	resp.Body = &tailBody{ReadCloser: resp.Body, done: func(body []byte, n int64) {
 		e.ResponseBytes = n

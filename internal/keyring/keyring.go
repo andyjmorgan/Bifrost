@@ -38,6 +38,7 @@ type Keyring struct {
 	log *slog.Logger
 	api http.Handler
 
+	source    *Source
 	auditLog  *audit.Log
 	writer    *audit.Writer
 	retention *audit.Retention
@@ -107,11 +108,14 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 	// refuses link-local and metadata destinations.
 	oauthClient := &http.Client{Timeout: 30 * time.Second, Transport: httpx.DefaultSafeTransport()}
 
+	secrets := service.NewAPIKeyService(st, cipher, auditLog)
+	tokens := service.NewOAuthTokenService(st, cipher, auditLog, resolver, oauthClient)
+
 	srv, err := httpapi.NewServer(ctx, httpapi.Deps{
-		APIKeys:      service.NewAPIKeyService(st, cipher, auditLog),
+		APIKeys:      secrets,
 		AccessKeys:   service.NewAccessKeyService(st, auditLog),
 		OAuthConfigs: service.NewOAuthConfigService(st, cipher, auditLog, resolver),
-		OAuthTokens:  service.NewOAuthTokenService(st, cipher, auditLog, resolver, oauthClient),
+		OAuthTokens:  tokens,
 		OAuthFlow:    service.NewOAuthFlowService(st, cipher, resolver, auditLog, oauthClient, log),
 		Resolver:     resolver,
 		Discovery:    manifests.NewDiscovery(oauthClient),
@@ -135,6 +139,7 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 
 	return &Keyring{
 		cfg: cfg, log: log, api: srv.Handler(),
+		source:   newSource(st, resolver, secrets, tokens, auditLog),
 		auditLog: auditLog,
 		writer: audit.NewWriter(auditLog, st, log, metrics, audit.WriterOptions{
 			BatchSize: cfg.AuditBatchSize, FlushInterval: cfg.AuditFlushInterval}),

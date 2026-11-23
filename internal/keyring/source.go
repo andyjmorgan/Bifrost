@@ -1,0 +1,220 @@
+package keyring
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/andyjmorgan/Bifrost/internal/keyring/audit"
+	"github.com/andyjmorgan/Bifrost/internal/keyring/contracts"
+	"github.com/andyjmorgan/Bifrost/internal/keyring/manifests"
+	"github.com/andyjmorgan/Bifrost/internal/keyring/service"
+	"github.com/andyjmorgan/Bifrost/internal/keyring/store"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
+)
+
+// gatewayTransport is the transport an audit row carries when the gateway itself fetched the
+// credential, in process, for one of its MCP servers. Rows from the HTTP API carry "http".
+const gatewayTransport = "gateway"
+
+// Source lends keyring credentials to the gateway for the MCP servers that reference one. It is the
+// keyring's side of keyringref.Keyring, and the only way the gateway reaches into the keyring: it
+// calls the same services as the HTTP API, in process, as the user the reference belongs to.
+//
+// Every lookup is scoped to the reference's owner, so a reference can only ever resolve inside the
+// keyring of the person who set it. Every fetch is recorded in the keyring's audit trail with the
+// gateway and the server as the caller.
+type Source struct {
+	store    store.Store
+	resolver *manifests.Resolver
+	secrets  *service.APIKeyService
+	tokens   *service.OAuthTokenService
+	audit    *audit.Log
+}
+
+func newSource(st store.Store, resolver *manifests.Resolver, secrets *service.APIKeyService, tokens *service.OAuthTokenService, log *audit.Log) *Source {
+	return &Source{store: st, resolver: resolver, secrets: secrets, tokens: tokens, audit: log}
+}
+
+// Source returns the gateway's door into the keyring, or nil when the keyring is off. The nil is an
+// untyped interface value, so the gateway can test it directly.
+func (k *Keyring) Source() keyringref.Keyring {
+	if k == nil {
+		return nil
+	}
+	return k.source
+}
+
+// Check implements keyringref.Keyring. It reads the row, never the secret, and records nothing.
+func (s *Source) Check(ctx context.Context, ref keyringref.Ref) error {
+	owner, err := ownerID(ref)
+	if err != nil {
+		return err
+	}
+	switch ref.Kind {
+	case keyringref.KindOAuth:
+		_, err = s.findToken(ctx, owner, ref)
+	case keyringref.KindSecret:
+		_, err = s.findSecret(ctx, owner, ref)
+	default:
+		err = fmt.Errorf("keyring: unknown credential kind %q", ref.Kind)
+	}
+	return err
+}
+
+// OAuthToken implements keyringref.Keyring.
+func (s *Source) OAuthToken(ctx context.Context, ref keyringref.Ref, use keyringref.Use, rejected string) (keyringref.Token, error) {
+	owner, err := ownerID(ref)
+	if err != nil {
+		return keyringref.Token{}, err
+	}
+	row, err := s.findToken(ctx, owner, ref)
+	if err != nil {
+		s.refused(ctx, owner, use, err, audit.EmitParams{TargetKind: "oauth_token", TargetProvider: ref.Provider, TargetAccount: ref.Account})
+		return keyringref.Token{}, err
+	}
+	ctx = asGateway(ctx, owner, row.TenantID, use)
+	var tok *service.OAuthAccessToken
+	if rejected == "" {
+		tok, err = s.tokens.GetAccessToken(ctx, ref.Provider, ref.Account)
+	} else {
+		tok, err = s.tokens.ReplaceRejectedToken(ctx, ref.Provider, ref.Account, rejected)
+	}
+	switch {
+	case errors.Is(err, service.ErrNotRefreshable):
+		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNoRefresh)
+	case err != nil:
+		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, err)
+	case tok == nil: // removed between the two reads
+		return keyringref.Token{}, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	return keyringref.Token{AccessToken: tok.AccessToken, ExpiresAt: tok.ExpiresAt}, nil
+}
+
+// SecretHeader implements keyringref.Keyring.
+func (s *Source) SecretHeader(ctx context.Context, ref keyringref.Ref, use keyringref.Use) (keyringref.Header, error) {
+	owner, err := ownerID(ref)
+	if err != nil {
+		return keyringref.Header{}, err
+	}
+	row, err := s.findSecret(ctx, owner, ref)
+	if err != nil {
+		s.refused(ctx, owner, use, err, audit.EmitParams{TargetKind: "api_key", TargetName: ref.Secret})
+		return keyringref.Header{}, err
+	}
+	sec, err := s.secrets.GetByName(asGateway(ctx, owner, row.TenantID, use), ref.Secret)
+	if err != nil {
+		return keyringref.Header{}, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if sec == nil { // removed between the two reads
+		return keyringref.Header{}, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	name, value := service.AssembleHeader(sec.Kind, deref(sec.Header), deref(sec.Prefix), deref(sec.Username), sec.Secret)
+	return keyringref.Header{Name: name, Value: value}, nil
+}
+
+// findToken reads the OAuth account ref names in owner's keyring.
+func (s *Source) findToken(ctx context.Context, owner uuid.UUID, ref keyringref.Ref) (*store.OAuthToken, error) {
+	if ref.Provider == "" || ref.Account == "" {
+		return nil, fmt.Errorf("keyring: an OAuth account needs a provider and an account: %w", keyringref.ErrNotFound)
+	}
+	providerID, err := s.resolver.ResolveProviderID(ctx, ref.Provider, owner)
+	if err != nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if providerID == uuid.Nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	row, err := s.store.FindOAuthToken(ctx, owner, providerID, ref.Account)
+	if err != nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if row == nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	return row, nil
+}
+
+// findSecret reads the stored secret ref names in owner's keyring, without decrypting it, and
+// refuses one that does not describe an HTTP header.
+func (s *Source) findSecret(ctx context.Context, owner uuid.UUID, ref keyringref.Ref) (*store.APIKey, error) {
+	if ref.Secret == "" {
+		return nil, fmt.Errorf("keyring: a secret needs a name: %w", keyringref.ErrNotFound)
+	}
+	row, err := s.store.GetAPIKeyByName(ctx, owner, ref.Secret)
+	if err != nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, err)
+	}
+	if row == nil {
+		return nil, fmt.Errorf("keyring %s: %w", ref, keyringref.ErrNotFound)
+	}
+	if why := notAHeader(row); why != "" {
+		return nil, fmt.Errorf("keyring %s %s: %w", ref, why, keyringref.ErrUnusable)
+	}
+	return row, nil
+}
+
+// notAHeader says why a stored secret cannot authenticate an HTTP request, or "" when it can. A
+// secret describes itself: http_basic is sent as Authorization: Basic with its username, and a
+// secret with a header is sent in that header behind its prefix. Anything else (an SSH login, a
+// connection string, an opaque value) says nothing about HTTP, and guessing would send it somewhere
+// its owner never meant.
+func notAHeader(row *store.APIKey) string {
+	kind := contracts.CredentialKindFromWire(row.Kind)
+	header := deref(row.HeaderName)
+	if strings.ContainsAny(header, " :\r\n") {
+		return "names an invalid header"
+	}
+	switch {
+	case kind == contracts.KindHTTPBasic:
+		if deref(row.Username) == "" {
+			return "is HTTP Basic without a username"
+		}
+	case kind == contracts.KindHeaderAPIKey || header != "":
+	default:
+		return "is of kind " + string(kind) + ", which names no header"
+	}
+	return ""
+}
+
+// refused records a fetch that found nothing to hand out. The services record the ones that do.
+func (s *Source) refused(ctx context.Context, owner uuid.UUID, use keyringref.Use, cause error, p audit.EmitParams) {
+	p.Type, p.Outcome = audit.EventTokenAccessed, audit.OutcomeFailure
+	p.Detail = "credential not found"
+	if errors.Is(cause, keyringref.ErrUnusable) {
+		p.Detail = "credential cannot be sent as an HTTP header"
+	}
+	s.audit.Emit(asGateway(ctx, owner, uuid.Nil, use), p)
+}
+
+// asGateway is the context a service is called with: the owner as the caller, so every row it
+// touches is the owner's, and the gateway and the server as the audited source of the request.
+// tenant is the credential row's own, so the audit row lands where its owner can read it.
+func asGateway(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use) context.Context {
+	method := "mcp-server " + use.Slug
+	if use.ServerID != "" {
+		method += " (" + use.ServerID + ")"
+	}
+	ctx = contracts.WithCaller(ctx, contracts.Caller{UserID: owner, TenantID: tenant})
+	return audit.WithRequestInfo(ctx, audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}})
+}
+
+// ownerID is the keyring user a reference belongs to. The keyring knows its users by the UUID
+// subject of their identity provider token, which is the gateway's user id as well.
+func ownerID(ref keyringref.Ref) (uuid.UUID, error) {
+	id, err := uuid.Parse(ref.Owner)
+	if err != nil || id == uuid.Nil {
+		return uuid.Nil, fmt.Errorf("keyring: user %q has no keyring: %w", ref.Owner, keyringref.ErrNotFound)
+	}
+	return id, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}

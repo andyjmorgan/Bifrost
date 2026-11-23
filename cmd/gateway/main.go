@@ -73,9 +73,25 @@ func main() {
 		authn.OIDC = oidc
 	}
 
+	// The keyring is nil, and Wrap a no-op, unless its KEKs are configured.
+	// It is built before the connector, which resolves the servers that
+	// reference a keyring credential through it.
+	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
+		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
+	}, log)
+	if err != nil {
+		log.Error("keyring", "err", err)
+		os.Exit(1)
+	}
+	if kr != nil {
+		kr.Start()
+		defer kr.Shutdown()
+		log.Info("keyring enabled", "prefix", keyring.MountPrefix, "legacyHosts", kr.LegacyHosts())
+	}
+
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
-	conn := upstream.New(st, sealer, oauth, rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
+	conn := upstream.New(st, sealer, oauth, kr.Source(), rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		id := srv.ID
@@ -90,27 +106,13 @@ func main() {
 		selfBase = "http://" + cfg.ListenAddr
 	}
 	api := httpapi.New(httpapi.Deps{
-		Store: st, Keys: keys, Authn: authn, Conn: conn, OAuth: oauth, Gateway: gw, Recorder: rec, Cache: cw, ToolsTTL: cfg.ToolsCacheTTL, Log: log,
+		Store: st, Keys: keys, Authn: authn, Conn: conn, OAuth: oauth, Keyring: kr.Source(), Gateway: gw, Recorder: rec, Cache: cw, ToolsTTL: cfg.ToolsCacheTTL, Log: log,
 		PublicBase: cfg.PublicBaseURL, SelfBase: selfBase, WebRoot: cfg.WebRoot,
 		Config: httpapi.ConfigDTO{DevMode: cfg.DevMode(), OIDCIssuer: cfg.OIDCIssuer, OIDCClientID: cfg.OIDCWebClientID,
 			PublicBaseURL: cfg.PublicBaseURL, Version: cfg.Version, MCPScope: cfg.OIDCScope, AllScopes: auth.AllScopes},
 	})
 
 	go worker.New(st, conn, log, cfg.RefreshInterval, cfg.RefreshLeeway, cfg.AuditRetention).Run(ctx)
-
-	// The keyring is nil, and Wrap a no-op, unless its KEKs are configured.
-	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
-		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
-	}, log)
-	if err != nil {
-		log.Error("keyring", "err", err)
-		os.Exit(1)
-	}
-	if kr != nil {
-		kr.Start()
-		defer kr.Shutdown()
-		log.Info("keyring enabled", "prefix", keyring.MountPrefix, "legacyHosts", kr.LegacyHosts())
-	}
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: kr.Wrap(api.Router()), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
