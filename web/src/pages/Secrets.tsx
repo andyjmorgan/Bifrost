@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, Navigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Database, KeyRound, Lock, Pencil, Plug, Plus, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Database, KeyRound, Lock, Pencil, Plug, Plus, Server, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Textarea } from '../ui/components/textarea'
@@ -21,7 +21,8 @@ import { SearchBox } from '../components/SearchBox'
 import { ProviderIcon } from '../components/keyring/ProviderIcon'
 import { RevealButton } from '../components/keyring/RevealButton'
 import { CONNECT_ROUTE, OAUTH_ACCOUNTS_ROUTE, shortScope, useOAuthOutcome } from '../components/keyring/oauth'
-import { errorMessage } from '../api'
+import { api, errorMessage, type CredentialDTO, type ServerDTO } from '../api'
+import { useMe } from '../me'
 import { keyring, type OAuthAccount, type OAuthProvider, type SaveSecretInput, type Secret, type SecretKind } from '../api/keyring'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
@@ -88,13 +89,42 @@ const authSummary = (s: Secret): string => {
 }
 
 const SECRET_COLS = 'minmax(0,1.7fr) 170px minmax(0,1.1fr) minmax(0,1.1fr) 108px'
-const ACCOUNT_COLS = 'minmax(0,1.4fr) minmax(0,1.5fr) 130px 180px 140px 72px'
+// "Held for" took the room of the old Refreshed column, whose time now sits under the expiry.
+const ACCOUNT_COLS = 'minmax(0,1.4fr) 112px minmax(0,1.3fr) 132px 190px 72px'
+
+/**
+ * A row of the OAuth accounts page. Two different things hold OAuth tokens: the keyring, for an
+ * account a person connected through a provider, and the gateway, for an MCP server it signed in to
+ * itself. They are listed together and each row says which it is.
+ */
+type OAuthRow = { kind: 'account'; account: OAuthAccount } | { kind: 'server'; server: ServerDTO; cred: CredentialDTO }
+
+/** The state of the OAuth connection the gateway holds for an MCP server. */
+function serverTokenStatus(cred: CredentialDTO, expired: boolean): { tone: 'success' | 'warning' | 'danger'; label: string; title?: string } {
+  if (cred.state === 'pending') return { tone: 'warning', label: 'Awaiting consent', title: 'Consent was started and has not been completed.' }
+  if (cred.state === 'broken') return { tone: 'danger', label: 'Broken', title: cred.stateReason || cred.lastError || 'The server needs to be re-authorized.' }
+  if (expired && cred.oauthHasRefreshToken) return { tone: 'warning', label: 'Refresh due', title: 'The access token has expired. The gateway refreshes it on the next request.' }
+  if (expired) return { tone: 'danger', label: 'Expired', title: 'The access token has expired and there is no refresh token. Re-authorize the server.' }
+  return { tone: 'success', label: 'Connected' }
+}
+
+const hostOf = (url?: string) => {
+  try {
+    return url ? new URL(url).host : ''
+  } catch {
+    return url ?? ''
+  }
+}
 
 type FormState = { open: boolean; item?: Secret; view?: boolean }
 const closedForm: FormState = { open: false }
 
 type View = 'secrets' | 'oauth'
 type Deleting = { kind: 'secret'; item: Secret } | { kind: 'account'; item: OAuthAccount }
+
+/** What deleting a keyring credential does to the MCP servers that authenticate with it. */
+const stopsServers = (list: ServerDTO[]) =>
+  list.length ? ` ${list.map((s) => s.name).join(', ')} ${list.length === 1 ? 'authenticates' : 'authenticate'} with it and will stop connecting.` : ''
 
 /** Stored secrets, on /secrets. */
 export function SecretsPage() {
@@ -116,10 +146,13 @@ export function OAuthAccountsPage() {
 function CredentialList({ view }: { view: View }) {
   const tab = view
   useOAuthOutcome()
+  const navigate = useNavigate()
+  const { userId } = useMe()
 
   const [secrets, setSecrets] = useState<Secret[]>([])
   const [accounts, setAccounts] = useState<OAuthAccount[]>([])
   const [providers, setProviders] = useState<OAuthProvider[]>([])
+  const [servers, setServers] = useState<ServerDTO[]>([])
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string>()
   const [search, setSearch] = useState('')
@@ -138,11 +171,16 @@ function CredentialList({ view }: { view: View }) {
         view === 'secrets' ? keyring.secrets.list() : Promise.resolve([] as Secret[]),
         view === 'oauth' ? keyring.oauth.accounts() : Promise.resolve([] as OAuthAccount[]),
         view === 'oauth' ? keyring.providers.list().catch(() => [] as OAuthProvider[]) : Promise.resolve([] as OAuthProvider[]),
+        // The gateway's servers: the OAuth connections it holds for them are listed beside the
+        // accounts, and a credential a server uses says so. A keyring user who may not read the
+        // gateway's API still gets their keyring.
+        api.servers.list().catch(() => [] as ServerDTO[]),
       ])
-        .then(([s, a, p]) => {
+        .then(([s, a, p, srv]) => {
           setSecrets(s ?? [])
           setAccounts(a ?? [])
           setProviders(p ?? [])
+          setServers(srv ?? [])
           setError(undefined)
         })
         .catch((e) => setError(errorMessage(e)))
@@ -161,14 +199,41 @@ function CredentialList({ view }: { view: View }) {
     () => accounts.filter((a) => matchesSearch(a, search, [providers.find((p) => p.key === a.provider)?.name ?? ''])),
     [accounts, providers, search],
   )
+  // The OAuth connections the gateway holds for its MCP servers. Only what the servers API
+  // returns: issuer, scopes, expiry. The token itself never leaves the gateway.
+  const serverTokens = useMemo(
+    () => servers.flatMap((s): OAuthRow[] => (s.credential?.kind === 'oauth' ? [{ kind: 'server', server: s, cred: s.credential }] : [])),
+    [servers],
+  )
+  const filteredServerTokens = useMemo(
+    () =>
+      serverTokens.filter(
+        (r) => r.kind === 'server' && matchesSearch([r.server.name, r.server.slug, r.server.url, r.cred.oauthIssuer, r.cred.oauthScopes, r.cred.state], search, ['MCP server']),
+      ),
+    [serverTokens, search],
+  )
+  const oauthRows = useMemo<OAuthRow[]>(
+    () => [...filteredAccounts.map((account): OAuthRow => ({ kind: 'account', account })), ...filteredServerTokens],
+    [filteredAccounts, filteredServerTokens],
+  )
+  // The caller's keyring credentials that MCP servers authenticate with: removing one breaks them.
+  const serversUsingAccount = (a: OAuthAccount) =>
+    servers.filter((s) => {
+      const c = s.credential
+      return c?.kind === 'keyring_oauth' && c.keyringOwner === userId && c.keyringProvider === a.provider && c.keyringAccount === a.account
+    })
+  const serversUsingSecret = (x: Secret) =>
+    servers.filter((s) => s.credential?.kind === 'keyring_secret' && s.credential.keyringOwner === userId && s.credential.keyringSecretName === x.name)
+  const usedBy = (list: ServerDTO[]) => (list.length ? `used by ${list.length === 1 ? 'MCP server' : 'MCP servers'} ${list.map((s) => s.name).join(', ')}` : '')
+
   const secretPages = Math.max(1, Math.ceil(filteredSecrets.length / PAGE_SIZE))
-  const accountPages = Math.max(1, Math.ceil(filteredAccounts.length / PAGE_SIZE))
+  const accountPages = Math.max(1, Math.ceil(oauthRows.length / PAGE_SIZE))
   // Clamp rather than store, so deleting the last row of a page or narrowing the search never
   // leaves the list on a page that no longer exists.
   const sp = Math.min(secretPage, secretPages - 1)
   const ap = Math.min(accountPage, accountPages - 1)
   const visibleSecrets = filteredSecrets.slice(sp * PAGE_SIZE, (sp + 1) * PAGE_SIZE)
-  const visibleAccounts = filteredAccounts.slice(ap * PAGE_SIZE, (ap + 1) * PAGE_SIZE)
+  const visibleRows = oauthRows.slice(ap * PAGE_SIZE, (ap + 1) * PAGE_SIZE)
 
   const updateSearch = (value: string) => {
     setSearch(value)
@@ -212,7 +277,7 @@ function CredentialList({ view }: { view: View }) {
         description={
           tab === 'secrets'
             ? 'Stored API keys, passwords, SSH keys and connection strings that agents fetch by name. Each one describes itself, so an agent knows where and how to send it.'
-            : 'Accounts connected through an OAuth provider. The keyring holds the refresh token and hands agents a fresh access token on request.'
+            : 'Accounts connected through an OAuth provider: the keyring holds the refresh token and hands agents a fresh access token on request. The OAuth connections the gateway holds for its MCP servers are listed too; those tokens never leave the gateway.'
         }
         actions={
           tab === 'secrets' ? (
@@ -270,7 +335,7 @@ function CredentialList({ view }: { view: View }) {
                     <ListRow key={s.id} cols={SECRET_COLS} onClick={() => setForm({ open: true, item: s, view: true })}>
                       <div className="flex min-w-0 items-center gap-3">
                         <IconTile icon={kindIcon(s.kind)} />
-                        <Primary title={s.name} subtitle={s.description || undefined} />
+                        <Primary title={s.name} subtitle={[s.description, usedBy(serversUsingSecret(s))].filter(Boolean).join(' · ') || undefined} />
                       </div>
                       <Cell label="Kind">
                         <Badge>{kindLabel(s.kind)}</Badge>
@@ -339,26 +404,33 @@ function CredentialList({ view }: { view: View }) {
               <span>
                 {filteredAccounts.length.toLocaleString()} connected {filteredAccounts.length === 1 ? 'account' : 'accounts'}
                 {search && accounts.length !== filteredAccounts.length ? ` of ${accounts.length}` : ''}
+                {serverTokens.length > 0 && (
+                  <>
+                    {' · '}
+                    {filteredServerTokens.length.toLocaleString()} MCP server {filteredServerTokens.length === 1 ? 'connection' : 'connections'}
+                    {search && serverTokens.length !== filteredServerTokens.length ? ` of ${serverTokens.length}` : ''}
+                  </>
+                )}
               </span>
-              <SearchBox value={search} onChange={updateSearch} placeholder="Search accounts" />
+              <SearchBox value={search} onChange={updateSearch} placeholder="Search accounts and servers" />
             </ListBar>
-            {visibleAccounts.length > 0 && (
+            {visibleRows.length > 0 && (
               <ListHead cols={ACCOUNT_COLS}>
                 <span>Account</span>
+                <span>Held for</span>
                 <span>Scopes</span>
                 <span>Status</span>
                 <span>Access token</span>
-                <span>Refreshed</span>
                 <span />
               </ListHead>
             )}
-            {filteredAccounts.length === 0 ? (
+            {oauthRows.length === 0 ? (
               <ListEmpty
                 icon={Plug}
-                title={accounts.length === 0 ? (loaded ? 'No OAuth accounts connected' : 'Loading…') : 'No accounts match your search'}
-                hint={accounts.length === 0 && loaded ? 'Connect a provider and the keyring keeps its access token fresh for you.' : undefined}
+                title={accounts.length + serverTokens.length === 0 ? (loaded ? 'No OAuth accounts connected' : 'Loading…') : 'Nothing matches your search'}
+                hint={accounts.length + serverTokens.length === 0 && loaded ? 'Connect a provider and the keyring keeps its access token fresh for you.' : undefined}
                 action={
-                  accounts.length === 0 && loaded ? (
+                  accounts.length + serverTokens.length === 0 && loaded ? (
                     <Button variant="secondary" asChild>
                       <Link to={CONNECT_ROUTE}>
                         <Plug /> Connect account
@@ -370,16 +442,68 @@ function CredentialList({ view }: { view: View }) {
             ) : (
               <>
                 <ListRows>
-                  {visibleAccounts.map((a) => {
+                  {visibleRows.map((row) => {
+                    if (row.kind === 'server') {
+                      const { server: srv, cred } = row
+                      const expired = !!cred.oauthExpiresAt && new Date(cred.oauthExpiresAt).getTime() < Date.now()
+                      const state = serverTokenStatus(cred, expired)
+                      const to = `/servers/${srv.id}`
+                      return (
+                        <ListRow key={`server:${srv.id}`} cols={ACCOUNT_COLS} onClick={() => navigate(to)}>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <IconTile icon={Server} tone="muted" />
+                            <Primary title={srv.name} subtitle={<span title={cred.oauthIssuer || srv.url}>{hostOf(cred.oauthIssuer) || hostOf(srv.url)}</span>} />
+                          </div>
+                          <Cell label="Held for">
+                            <Badge variant="plum" title="The gateway signed in to this MCP server itself and holds the token. It is used only to call the server.">
+                              MCP server
+                            </Badge>
+                          </Cell>
+                          <Cell label="Scopes">
+                            <ScopeBadges scopes={cred.oauthScopes ?? []} variant="muted" label={shortScope} />
+                          </Cell>
+                          <Cell label="Status">
+                            <StatusPill tone={state.tone}>
+                              <span title={state.title}>{state.label}</span>
+                            </StatusPill>
+                          </Cell>
+                          <Cell label="Access token">
+                            <span
+                              className={cn('block truncate font-mono text-xs', expired ? 'text-warning' : 'text-muted-foreground')}
+                              title={absoluteTime(cred.oauthExpiresAt)}
+                            >
+                              {cred.state === 'pending' ? 'not issued yet' : cred.oauthExpiresAt ? `${expired ? 'expired' : 'expires'} ${relativeTime(cred.oauthExpiresAt)}` : 'no expiry'}
+                            </span>
+                            <span className="mt-0.5 block truncate font-mono text-[11px] text-faint-foreground" title={absoluteTime(cred.lastRefreshedAt)}>
+                              {cred.lastRefreshedAt ? `refreshed ${relativeTime(cred.lastRefreshedAt)}` : cred.oauthHasRefreshToken ? 'never refreshed' : 'no refresh token'}
+                            </span>
+                          </Cell>
+                          <RowActions>
+                            <Button variant="ghost" size="iconSm" asChild>
+                              <Link to={to} aria-label={`Open ${srv.name}`} title="Open the server">
+                                <ArrowUpRight />
+                              </Link>
+                            </Button>
+                          </RowActions>
+                        </ListRow>
+                      )
+                    }
+                    const a = row.account
                     const name = providerName(a.provider)
                     const title = `${name}${a.account ? ` · ${a.account}` : ''}`
                     const expired = !!a.expiresAt && new Date(a.expiresAt).getTime() < Date.now()
+                    const used = usedBy(serversUsingAccount(a))
                     return (
-                      <ListRow key={a.id} cols={ACCOUNT_COLS}>
+                      <ListRow key={`account:${a.id}`} cols={ACCOUNT_COLS}>
                         <div className="flex min-w-0 items-center gap-3">
                           <ProviderIcon src={providerOf(a.provider)?.iconUrl} name={name} />
-                          <Primary title={a.account || name} subtitle={a.account ? name : a.provider} />
+                          <Primary title={a.account || name} subtitle={used ? <span title={used}>{used}</span> : a.account ? name : a.provider} />
                         </div>
+                        <Cell label="Held for">
+                          <Badge title={`An account at ${name}, held in your keyring.`} className="max-w-full">
+                            <span className="truncate">{name}</span>
+                          </Badge>
+                        </Cell>
                         <Cell label="Scopes">
                           <ScopeBadges scopes={a.scopes ?? []} variant="muted" label={shortScope} />
                         </Cell>
@@ -396,10 +520,8 @@ function CredentialList({ view }: { view: View }) {
                           <span className={cn('block truncate font-mono text-xs', expired ? 'text-warning' : 'text-muted-foreground')} title={absoluteTime(a.expiresAt)}>
                             {a.expiresAt ? `${expired ? 'expired' : 'expires'} ${relativeTime(a.expiresAt)}` : 'no expiry'}
                           </span>
-                        </Cell>
-                        <Cell label="Refreshed">
-                          <span className="block truncate font-mono text-xs text-muted-foreground" title={absoluteTime(a.lastRefreshedAt)}>
-                            {a.lastRefreshedAt ? relativeTime(a.lastRefreshedAt) : 'never'}
+                          <span className="mt-0.5 block truncate font-mono text-[11px] text-faint-foreground" title={absoluteTime(a.lastRefreshedAt)}>
+                            {a.lastRefreshedAt ? `refreshed ${relativeTime(a.lastRefreshedAt)}` : 'never refreshed'}
                           </span>
                         </Cell>
                         <RowActions>
@@ -419,13 +541,13 @@ function CredentialList({ view }: { view: View }) {
                     )
                   })}
                 </ListRows>
-                {filteredAccounts.length > PAGE_SIZE && (
+                {oauthRows.length > PAGE_SIZE && (
                   <ListPager
                     from={ap * PAGE_SIZE + 1}
-                    to={Math.min((ap + 1) * PAGE_SIZE, filteredAccounts.length)}
-                    total={filteredAccounts.length}
+                    to={Math.min((ap + 1) * PAGE_SIZE, oauthRows.length)}
+                    total={oauthRows.length}
                     canPrev={ap > 0}
-                    canNext={(ap + 1) * PAGE_SIZE < filteredAccounts.length}
+                    canNext={(ap + 1) * PAGE_SIZE < oauthRows.length}
                     onPrev={() => setAccountPage(ap - 1)}
                     onNext={() => setAccountPage(ap + 1)}
                   />
@@ -465,9 +587,9 @@ function CredentialList({ view }: { view: View }) {
         title={deleting?.kind === 'account' ? 'Disconnect account?' : `Delete ${deleting?.item.name ?? 'secret'}?`}
         description={
           deleting?.kind === 'secret'
-            ? 'This permanently deletes the secret. Agents that fetch it by name will start failing.'
+            ? `This permanently deletes the secret. Agents that fetch it by name will start failing.${stopsServers(serversUsingSecret(deleting.item))}`
             : deleting
-              ? `This removes the stored ${providerName(deleting.item.provider)} token${deleting.item.account ? ` for ${deleting.item.account}` : ''}. You can connect it again later.`
+              ? `This removes the stored ${providerName(deleting.item.provider)} token${deleting.item.account ? ` for ${deleting.item.account}` : ''}. You can connect it again later.${stopsServers(serversUsingAccount(deleting.item))}`
               : undefined
         }
         confirmLabel={deleting?.kind === 'account' ? 'Disconnect' : 'Delete'}

@@ -21,10 +21,10 @@ export function ScopeBadges({
   const shown = scopes.slice(0, max)
   const rest = scopes.slice(max)
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex min-w-0 flex-wrap gap-1">
       {shown.map((s) =>
         label ? (
-          <Badge key={s} mono variant={variant} title={s} className="max-w-44">
+          <Badge key={s} mono variant={variant} title={s} className="max-w-[min(11rem,100%)]">
             <span className="truncate">{label(s)}</span>
           </Badge>
         ) : (
