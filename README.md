@@ -126,6 +126,7 @@ internal/toolsearch  BM25
 internal/store       Postgres
 internal/db          pool and embedded migrations
 web/                 React, Vite, Tailwind 4
+cli/                 the bifrost credential CLI, its own Go module (cli/README.md)
 ```
 
 ## License
