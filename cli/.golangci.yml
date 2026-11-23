@@ -1,0 +1,24 @@
+# Lint config for the CLI module, carried over from the Vault repository. golangci-lint
+# walks up from the working directory and stops at the first config it finds, so running
+# `golangci-lint run` from cli/ uses this file and not the gateway's at the repository root.
+# Generated files (the "Code generated … DO NOT EDIT" header, e.g.
+# internal/vaultapi/vaultapi.gen.go) are excluded automatically.
+version: "2"
+
+linters:
+  # On top of the v2 defaults (errcheck, govet, ineffassign, staticcheck, unused):
+  enable:
+    - bodyclose
+    - contextcheck
+    - gocritic
+    - gosec
+    - revive
+    - unconvert
+    - unparam
+  exclusions:
+    generated: lax
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

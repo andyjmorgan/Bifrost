@@ -217,6 +217,7 @@ internal/db          pool and embedded migrations
 internal/keyring     the embedded Vault server: config, the two mounts, and its packages
                      (crypto, store, db, service, manifests, audit, httpapi)
 web/                 React, Vite, Tailwind 4
+cli/                 the bifrost credential CLI, its own Go module (cli/README.md)
 ```
 
 ## License

@@ -1,0 +1,9 @@
+# oapi-codegen config — generates the CLI's Go client from the keyring's OpenAPI document.
+# The CLI imports github.com/andyjmorgan/Bifrost/cli/internal/vaultapi. Regenerate with ./gen.sh.
+package: vaultapi
+output: internal/vaultapi/vaultapi.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true

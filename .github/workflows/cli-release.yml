@@ -1,0 +1,151 @@
+name: cli-release
+
+# Publish the bifrost CLI (cli/) as a GitHub release, modelled on the two workflows the
+# Vault repository used for dwvault (cli-autorelease.yml and release.yml).
+#
+# Two ways in:
+#   - a push to main that changes cli/**: the next patch after the newest cli-vX.Y.Z tag is
+#     computed (cli-v0.3.0 when there is none, continuing from dwvault's v0.2.x) and released;
+#   - a pushed cli-vX.Y.Z tag: that exact version is released, for a minor or major bump.
+#
+# The CLI shares this repository with the gateway, so its tags are cli-vX.Y.Z and never a
+# bare vX.Y.Z. `bifrost update` and cli/install.sh look for that prefix and ignore every
+# other release, so a gateway release can never be installed as the CLI.
+#
+# Each release carries bifrost-<os>-<arch> for linux and darwin on amd64 and arm64, plus
+# SHA256SUMS, which both installers verify.
+on:
+  push:
+    branches: [main]
+    paths: ['cli/**']
+    tags: ['cli-v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full tag history to compute the next version
+
+      - name: Resolve version
+        id: ver
+        env: # via env (not inline) per GH best practice
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # Strict semver (no leading zeroes) so the patch bump can't hit bash octal.
+          strict='^cli-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [ "$REF_TYPE" = "tag" ]; then
+            if ! printf '%s\n' "$REF_NAME" | grep -Eq "$strict"; then
+              echo "::error::tag $REF_NAME is not of the form cli-vX.Y.Z"; exit 1
+            fi
+            tag="$REF_NAME"
+          else
+            git fetch --tags --force
+            latest=$(git tag -l 'cli-v*' | grep -E "$strict" | sed 's/^cli-//' | sort -V | tail -n1 || true)
+            if [ -z "$latest" ]; then
+              next="v0.3.0"
+            else
+              v=${latest#v}; IFS=. read -r MA MI PA <<<"$v"
+              next="v${MA}.${MI}.$((10#$PA + 1))"
+            fi
+            tag="cli-$next"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::tag $tag already exists; aborting"; exit 1
+            fi
+            echo "Next bifrost version: $next (from ${latest:-<none>})"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#cli-}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Test + coverage gate (cli, ≥95%)
+        # Don't publish a release if the CLI tests fail or coverage of hand-written code
+        # regresses below the threshold.
+        run: bash cli/coverage.sh
+
+      - name: Build bifrost (multi-arch)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash cli/build.sh
+
+      - name: Is macOS signing configured?
+        # Signing is optional: without the Developer ID secrets the darwin binaries ship
+        # unsigned (Go ad-hoc signs arm64), which runs when fetched with curl but not when
+        # downloaded in a browser.
+        id: signing
+        env:
+          P12: ${{ secrets.MACOS_DEVID_P12_BASE64 }}
+        run: |
+          if [ -n "$P12" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else echo "enabled=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Sign & notarize macOS binaries
+        # rcodesign (the Rust apple-codesign implementation) signs from a Linux runner.
+        # Operates in place, so it runs AFTER the build and BEFORE the checksums.
+        if: steps.signing.outputs.enabled == 'true'
+        working-directory: cli/dist
+        env:
+          P12_B64: ${{ secrets.MACOS_DEVID_P12_BASE64 }}
+          P12_PASS: ${{ secrets.MACOS_DEVID_P12_PASSWORD }}
+          NOTARY_P8: ${{ secrets.MACOS_NOTARY_P8 }}
+          ISSUER_ID: 69a6de86-6cb1-47e3-e053-5b8c7c11a4d1 # App Store Connect issuer (not secret)
+          KEY_ID: 84826SWSQ2 # App Store Connect key id (not secret)
+          RCODESIGN_VERSION: "0.29.0"
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          pkg="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${pkg}.tar.gz" \
+            | tar xz --strip-components=1 -C "$work" "${pkg}/rcodesign"
+          "$work/rcodesign" --version
+
+          echo "$P12_B64" | base64 -d > "$work/devid.p12"
+          printf '%s' "$NOTARY_P8" > "$work/AuthKey.p8"
+          "$work/rcodesign" encode-app-store-connect-api-key \
+            -o "$work/notary-key.json" "$ISSUER_ID" "$KEY_ID" "$work/AuthKey.p8"
+
+          for arch in arm64 amd64; do
+            bin="bifrost-darwin-$arch"
+            [ -f "$bin" ] || { echo "::error::missing $bin"; exit 1; }
+
+            "$work/rcodesign" sign --for-notarization \
+              --code-signature-flags runtime \
+              --p12-file "$work/devid.p12" --p12-password "$P12_PASS" \
+              "$bin"
+
+            # A bare Mach-O can't be stapled, so submit a zip for notarization.
+            zip -qj "$work/$bin.zip" "$bin"
+            "$work/rcodesign" notary-submit --api-key-file "$work/notary-key.json" --wait "$work/$bin.zip"
+          done
+
+      - name: Checksums
+        # Recomputed here because signing rewrites the darwin binaries.
+        working-directory: cli/dist
+        run: sha256sum bifrost-* > SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: bifrost ${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }} # bind the tag to the built commit
+          files: |
+            cli/dist/bifrost-*
+            cli/dist/SHA256SUMS
+          generate_release_notes: true
