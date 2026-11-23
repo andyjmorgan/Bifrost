@@ -2,6 +2,10 @@
 // credential for a server is applied by an http.RoundTripper middleware on
 // the client, which also refreshes expiring OAuth tokens inline, retries
 // once after a 401, and marks a credential broken when refresh fails.
+//
+// A server's credential is either the gateway's own (sealed in its store)
+// or a reference into the keyring, fetched through keyringref.Keyring for
+// each session (see keyring.go).
 package upstream
 
 import (
@@ -24,6 +28,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/crypto"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -39,6 +44,9 @@ type Store interface {
 var (
 	ErrCredentialBroken  = errors.New("upstream: credential is broken; re-authorize the server")
 	ErrCredentialPending = errors.New("upstream: credential is pending authorization")
+	// ErrKeyringOff is a server whose credential lives in the keyring on a
+	// gateway that runs without one.
+	ErrKeyringOff = errors.New("upstream: the server uses a keyring credential, and the keyring is not enabled on this gateway")
 )
 
 // Connector builds authenticated MCP sessions.
@@ -46,6 +54,7 @@ type Connector struct {
 	store    Store
 	sealer   *crypto.Sealer
 	oauth    *oauthclient.Client
+	keyring  keyringref.Keyring // nil when the keyring is off
 	recorder *audit.Recorder
 	log      *slog.Logger
 	timeout  time.Duration
@@ -56,9 +65,11 @@ type Connector struct {
 	locks   sync.Map // serverID -> *sync.Mutex guarding refresh
 }
 
-// New builds a connector.
-func New(s Store, sealer *crypto.Sealer, oauth *oauthclient.Client, rec *audit.Recorder, log *slog.Logger, timeout, leeway time.Duration, version string) *Connector {
-	return &Connector{store: s, sealer: sealer, oauth: oauth, recorder: rec, log: log, timeout: timeout, leeway: leeway, version: version}
+// New builds a connector. kr is the keyring that servers with a keyring
+// credential are resolved through; nil means the keyring is off, and such
+// a server then fails to connect with ErrKeyringOff.
+func New(s Store, sealer *crypto.Sealer, oauth *oauthclient.Client, kr keyringref.Keyring, rec *audit.Recorder, log *slog.Logger, timeout, leeway time.Duration, version string) *Connector {
+	return &Connector{store: s, sealer: sealer, oauth: oauth, keyring: kr, recorder: rec, log: log, timeout: timeout, leeway: leeway, version: version}
 }
 
 // Timeout is the per-call upstream budget.
@@ -93,6 +104,10 @@ func (c *Connector) HTTPClient(ctx context.Context, srv *store.Server) (*http.Cl
 		case store.StatePending:
 			return nil, ErrCredentialPending
 		}
+	}
+	if cred.Kind.FromKeyring() && c.keyring == nil {
+		c.log.Warn("upstream: keyring credential on a gateway without a keyring", "slug", srv.Slug, "kind", cred.Kind)
+		return nil, ErrKeyringOff
 	}
 	ct := &credentialTransport{c: c, srv: srv, cred: cred}
 	var rt http.RoundTripper = c.recorder.Transport(baseTransport(), cred.HeaderName)
@@ -319,6 +334,9 @@ type credentialTransport struct {
 	srv  *store.Server
 	cred *store.Credential
 	next http.RoundTripper
+	// kr is what the keyring handed out for this client, when the
+	// credential is a keyring reference.
+	kr keyringMemo
 }
 
 func (t *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -379,6 +397,10 @@ func (t *credentialTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		retry := cloneWithBody(req)
 		retry.Header.Set("Authorization", bearer(cred, sec))
 		return t.next.RoundTrip(retry)
+	case store.AuthKeyringOAuth:
+		return t.keyringOAuth(req)
+	case store.AuthKeyringSecret:
+		return t.keyringSecret(req)
 	}
 	return nil, fmt.Errorf("upstream: unknown credential kind %q", cred.Kind)
 }

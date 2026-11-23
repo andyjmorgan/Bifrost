@@ -16,6 +16,7 @@ import (
 
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/slug"
 	"github.com/andyjmorgan/Bifrost/internal/store"
@@ -108,6 +109,10 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if status, err := a.checkKeyringAuth(r.Context(), caller, in.Auth); err != nil {
+		writeErr(w, status, err.Error())
+		return
+	}
 	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
 	if in.Slug != "" && (!slug.Valid(in.Slug) || in.Slug == "mcp") {
 		writeErr(w, http.StatusBadRequest, "slug must be 1-24 characters of a-z, 0-9 and -, and not mcp")
@@ -140,10 +145,12 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	authorizeURL, err := a.applyAuth(r.Context(), s, in.Auth)
+	authorizeURL, err := a.applyAuth(r.Context(), s, in.Auth, caller)
 	if err != nil {
 		// Keep the server so the user can fix the credential, but report why.
-		_ = a.store.UpsertCredential(r.Context(), &store.Credential{ServerID: s.ID, Kind: in.Auth.Kind, State: store.StateBroken, StateReason: err.Error(), OAuthScopes: []string{}})
+		broken := credentialFor(s.ID, in.Auth, caller)
+		broken.State, broken.StateReason = store.StateBroken, err.Error()
+		_ = a.store.UpsertCredential(r.Context(), broken)
 		writeJSON(w, http.StatusCreated, CreateServerResult{Server: a.withCredential(r, s)})
 		return
 	}
@@ -154,6 +161,14 @@ func validateAuth(in AuthInput) error {
 	switch in.Kind {
 	case store.AuthNone, store.AuthOAuth:
 		return nil
+	case store.AuthKeyringOAuth:
+		if strings.TrimSpace(in.KeyringProvider) == "" || strings.TrimSpace(in.KeyringAccount) == "" {
+			return errors.New("a keyring OAuth account needs keyringProvider and keyringAccount")
+		}
+	case store.AuthKeyringSecret:
+		if strings.TrimSpace(in.KeyringSecretName) == "" {
+			return errors.New("a keyring secret needs keyringSecretName")
+		}
 	case store.AuthBasic:
 		if in.Username == "" || in.Password == "" {
 			return errors.New("basic auth needs username and password")
@@ -171,12 +186,78 @@ func validateAuth(in AuthInput) error {
 	return nil
 }
 
-// applyAuth stores a basic/header secret, or runs OAuth discovery and
-// registration and returns the consent URL to open.
-func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput) (string, error) {
-	cred := &store.Credential{ServerID: s.ID, Kind: in.Kind, State: store.StateOK, OAuthScopes: []string{}}
+// credentialFor is the credential row for in before any secret is sealed
+// into it: the kind and, for the keyring kinds, the reference, owned by the
+// caller who is setting it.
+func credentialFor(serverID uuid.UUID, in AuthInput, by *auth.Caller) *store.Credential {
+	cred := &store.Credential{ServerID: serverID, Kind: in.Kind, State: store.StateOK, OAuthScopes: []string{}}
 	switch in.Kind {
-	case store.AuthNone:
+	case store.AuthKeyringOAuth:
+		cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount = by.UserID, strings.TrimSpace(in.KeyringProvider), strings.TrimSpace(in.KeyringAccount)
+	case store.AuthKeyringSecret:
+		cred.KeyringOwner, cred.KeyringSecretName = by.UserID, strings.TrimSpace(in.KeyringSecretName)
+	}
+	return cred
+}
+
+// checkKeyringAuth refuses a keyring credential the caller may not set,
+// with the status to answer with. Other kinds pass.
+//
+//   - The keyring must be on.
+//   - The caller must be a person. A gateway API key carries no right to
+//     read the keyring, and pointing a server at a keyring credential makes
+//     the gateway send that credential wherever the server's URL says.
+//   - The reference must name something usable in the caller's own keyring.
+//     It is resolved there and nowhere else, so somebody else's credential
+//     is simply not found.
+func (a *API) checkKeyringAuth(ctx context.Context, by *auth.Caller, in AuthInput) (int, error) {
+	if !in.Kind.FromKeyring() {
+		return 0, nil
+	}
+	if a.keyring == nil {
+		return http.StatusBadRequest, keyringref.ErrOff
+	}
+	if by == nil || !ownsKeyring(by, by.UserID) {
+		return http.StatusForbidden, errors.New("a keyring credential is set by its owner, signed in; an API key cannot set one")
+	}
+	if err := a.keyring.Check(ctx, credentialFor(uuid.Nil, in, by).KeyringRef()); err != nil {
+		if errors.Is(err, keyringref.ErrNotFound) || errors.Is(err, keyringref.ErrUnusable) {
+			return http.StatusBadRequest, err
+		}
+		a.log.Error("keyring check failed", "err", err)
+		return http.StatusBadGateway, errors.New("the keyring could not be read")
+	}
+	return 0, nil
+}
+
+// ownsKeyring reports whether the caller is the person owner names, signed
+// in as themselves rather than acting through an API key.
+func ownsKeyring(by *auth.Caller, owner string) bool {
+	return by != nil && by.UserID != "" && by.UserID == owner && by.Type != auth.ActorAPIKey
+}
+
+// keyringOwnerOnly refuses a change that would send a server's keyring
+// credential somewhere new, unless the caller is the credential's owner.
+// Every operator may edit every server, but the credential is one person's:
+// re-pointing the server would hand it to whoever answers at the new URL.
+func (a *API) keyringOwnerOnly(ctx context.Context, by *auth.Caller, s *store.Server) error {
+	if !s.AuthKind.FromKeyring() {
+		return nil
+	}
+	cred, err := a.store.GetCredential(ctx, s.ID)
+	if err != nil || !cred.Kind.FromKeyring() || ownsKeyring(by, cred.KeyringOwner) {
+		return nil
+	}
+	return errors.New("this server uses a credential from another user's keyring; only its owner, signed in, can change the URL. Replace the credential first to take the server over")
+}
+
+// applyAuth stores a basic/header secret or a keyring reference, or runs
+// OAuth discovery and registration and returns the consent URL to open.
+// by is the caller, who becomes the owner of a keyring reference.
+func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput, by *auth.Caller) (string, error) {
+	cred := credentialFor(s.ID, in, by)
+	switch in.Kind {
+	case store.AuthNone, store.AuthKeyringOAuth, store.AuthKeyringSecret:
 	case store.AuthBasic:
 		blob, err := a.conn.SealSecret(s.ID, &store.Secret{Password: in.Password})
 		if err != nil {
@@ -282,6 +363,12 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if *in.URL != s.URL {
+			if err := a.keyringOwnerOnly(r.Context(), auth.CallerFrom(r.Context()), s); err != nil {
+				writeErr(w, http.StatusForbidden, err.Error())
+				return
+			}
+		}
 		s.URL = *in.URL
 	}
 	if in.Description != nil {
@@ -349,6 +436,11 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	caller := auth.CallerFrom(r.Context())
+	if status, err := a.checkKeyringAuth(r.Context(), caller, in); err != nil {
+		writeErr(w, status, err.Error())
+		return
+	}
 	if s.AuthKind != in.Kind {
 		s.AuthKind = in.Kind
 		if err := a.store.UpdateServer(r.Context(), s); err != nil {
@@ -356,7 +448,7 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	authorizeURL, err := a.applyAuth(r.Context(), s, in)
+	authorizeURL, err := a.applyAuth(r.Context(), s, in, caller)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return

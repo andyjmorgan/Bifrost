@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -20,6 +21,10 @@ import (
 
 // refreshWindow is how close to expiry a token is proactively refreshed.
 const refreshWindow = 60 * time.Second
+
+// ErrNotRefreshable is returned by ReplaceRejectedToken for an account that cannot be refreshed: it
+// holds no refresh token, or its provider or the provider's app credentials are gone.
+var ErrNotRefreshable = errors.New("oauth token cannot be refreshed: no refresh token or no provider app credentials")
 
 // OAuthAccessToken is a live access token (auto-refreshed by the vault).
 type OAuthAccessToken struct {
@@ -95,6 +100,23 @@ func (s *OAuthTokenService) Delete(ctx context.Context, id uuid.UUID) (bool, err
 // GetAccessToken returns a live access token for the provider (optionally a specific account),
 // refreshing it server-to-server when within the refresh window. Returns nil when none is found.
 func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, account string) (*OAuthAccessToken, error) {
+	return s.accessToken(ctx, provider, account, "")
+}
+
+// ReplaceRejectedToken returns an access token to use in place of rejected, one the provider's
+// resource has just refused although its expiry said it was live. The token is refreshed whatever
+// its expiry, unless the stored one already differs from rejected (a sibling refreshed it first), in
+// which case that one is returned. Returns nil when no token is found, and ErrNotRefreshable when
+// the account cannot be refreshed.
+func (s *OAuthTokenService) ReplaceRejectedToken(ctx context.Context, provider, account, rejected string) (*OAuthAccessToken, error) {
+	if rejected == "" {
+		return nil, ValidationError{"the rejected access token is required."}
+	}
+	return s.accessToken(ctx, provider, account, rejected)
+}
+
+// accessToken is GetAccessToken when rejected is empty and ReplaceRejectedToken otherwise.
+func (s *OAuthTokenService) accessToken(ctx context.Context, provider, account, rejected string) (*OAuthAccessToken, error) {
 	ctx, span := startSpan(ctx, "oauthtoken.get_access_token")
 	defer span.End()
 	span.SetAttributes(attribute.String("oauth.provider", provider))
@@ -124,7 +146,7 @@ func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, accoun
 		TargetKind: "oauth_token", TargetProvider: token.ProviderKey, TargetAccount: token.Account})
 
 	scopes := decodeScopes(token.ScopesJSON)
-	if token.ExpiresAt == nil || token.ExpiresAt.After(time.Now().Add(refreshWindow)) {
+	if rejected == "" && (token.ExpiresAt == nil || token.ExpiresAt.After(time.Now().Add(refreshWindow))) {
 		access, err := s.cipher.DecryptToString(token.AccessTokenCipher)
 		if err != nil {
 			return nil, err
@@ -141,6 +163,9 @@ func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, accoun
 		return nil, err
 	}
 	if manifest == nil || config == nil || len(token.RefreshTokenCipher) == 0 {
+		if rejected != "" {
+			return nil, ErrNotRefreshable
+		}
 		access, err := s.cipher.DecryptToString(token.AccessTokenCipher)
 		if err != nil {
 			return nil, err
@@ -148,10 +173,12 @@ func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, accoun
 		return &OAuthAccessToken{AccessToken: access, ExpiresAt: token.ExpiresAt, Scopes: scopes}, nil
 	}
 
-	return s.refresh(ctx, manifest, config, token)
+	return s.refresh(ctx, manifest, config, token, rejected)
 }
 
-func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Manifest, config *store.OAuthProviderConfig, token *store.OAuthToken) (*OAuthAccessToken, error) {
+// refresh exchanges the refresh token for a new access token. A non-empty rejected is an access
+// token the caller knows to be dead: the stored token is then replaced however far off its expiry.
+func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Manifest, config *store.OAuthProviderConfig, token *store.OAuthToken, rejected string) (*OAuthAccessToken, error) {
 	ctx, span := startSpan(ctx, "oauthtoken.refresh")
 	defer span.End()
 
@@ -161,14 +188,22 @@ func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Man
 	unlock := s.refreshLocks.lock(token.ID)
 	defer unlock()
 	if fresh, err := s.store.FindOAuthToken(ctx, token.UserID, token.ProviderID, token.Account); err == nil && fresh != nil {
-		if fresh.ExpiresAt != nil && fresh.ExpiresAt.After(time.Now().Add(refreshWindow)) {
+		live := fresh.ExpiresAt != nil && fresh.ExpiresAt.After(time.Now().Add(refreshWindow))
+		if live || rejected != "" {
 			access, derr := s.cipher.DecryptToString(fresh.AccessTokenCipher)
 			if derr != nil {
 				return nil, derr
 			}
-			return &OAuthAccessToken{AccessToken: access, ExpiresAt: fresh.ExpiresAt, Scopes: decodeScopes(fresh.ScopesJSON)}, nil
+			// A rejected token is replaced unless the stored one is already another: then a
+			// sibling has refreshed it, and refreshing again would only spend a rotation.
+			if (rejected == "" && live) || (rejected != "" && access != rejected) {
+				return &OAuthAccessToken{AccessToken: access, ExpiresAt: fresh.ExpiresAt, Scopes: decodeScopes(fresh.ScopesJSON)}, nil
+			}
 		}
 		token = fresh
+	}
+	if len(token.RefreshTokenCipher) == 0 {
+		return nil, ErrNotRefreshable
 	}
 
 	refreshTok, err := s.cipher.DecryptToString(token.RefreshTokenCipher)

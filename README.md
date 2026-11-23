@@ -84,6 +84,8 @@ curl -X POST $BASE/api/v1/servers -H "Authorization: Bearer $KEY" -H 'Content-Ty
 
 A new server offers everything it has and is held by the person who added it. Its slug is the one given, or one derived from the name (lowercase `a-z0-9-`, 24 characters, collisions bump the tail). Slugs never change. For `auth.kind: oauth` the response carries an `authorizeUrl` to open in a browser; the gateway handles the callback. Write descriptions as capabilities, because search mode shows them to the model.
 
+`auth.kind` is one of `none`, `oauth`, `basic`, `header` and, when the keyring is enabled, `keyring_oauth` and `keyring_secret`: a credential from the caller's own keyring, which the gateway fetches for each request and never stores. See [Servers that use a keyring credential](#servers-that-use-a-keyring-credential).
+
 ## Access and rules
 
 A server's allow lists say what of its catalog exists for callers. A list present means only what it names; a list absent means everything of that kind. Resource entries are URI patterns (`*` within a segment, `**` as a prefix). Its grants say who holds it: one user per grant.
@@ -155,6 +157,27 @@ The keyring keeps Vault's authentication and Vault's scopes (`vault:read`, `vaul
 
 The gateway's client is accepted only when the keyring and the gateway verify against the same issuer, which is the default: the keyring's authority falls back to `MCPGW_OIDC_ISSUER`. Tokens are checked for signature, issuer and expiry; the client is read from `azp`. Rows are owned by the token's `sub`, which must be a UUID, so one person is the same owner through any client.
 
+### Servers that use a keyring credential
+
+A server can authenticate upstream with a keyring credential instead of one the gateway stores. The gateway keeps the reference and asks the keyring, in process, for each forwarded request.
+
+```sh
+# a connected OAuth account, sent as a bearer token and refreshed by the keyring
+{"kind": "keyring_oauth", "keyringProvider": "x", "keyringAccount": "alice_dev"}
+# a stored secret, sent in the header it describes (or as HTTP Basic with its username)
+{"kind": "keyring_secret", "keyringSecretName": "atlas-api"}
+```
+
+- The reference belongs to the person who set it and resolves only in their keyring. They must be signed in: an `mcpg_` API key cannot set one, and only the owner can change the URL of a server that uses one.
+- A 401 from the server makes the keyring refresh the OAuth token once, and the request is retried once.
+- Nothing is cached beyond one forwarded request, so a changed or deleted keyring credential takes effect on the next one.
+- Each fetch is in the keyring's audit trail with transport `gateway` and the server as its source. The servers API returns the names (`keyringOwner`, `keyringProvider`, `keyringAccount`, `keyringSecretName`), never a value.
+- With the keyring off the API refuses both kinds, and a server that holds one fails to connect with an error that says so.
+
+The OAuth accounts page also lists the OAuth connections the gateway holds for its MCP servers, tagged `MCP server`. Those are read from the servers API and cannot be revealed.
+
+The gateway's own credential store is still there. [docs/keyring-credentials.md](docs/keyring-credentials.md) has the detail and what moving it onto the keyring would take.
+
 ### Configuration
 
 Every setting is read as `MCPGW_KEYRING_<NAME>` first and `VAULT_<NAME>` second, so the variables a Vault deployment carries can be given to the gateway unchanged.
@@ -190,7 +213,7 @@ Service spans and the `vault.*` counters are kept as calls to the OpenTelemetry 
 
 ### Tests
 
-`go test ./internal/keyring/...` runs everything that needs no database. `VAULT_TEST_DSN` adds the Postgres suite; it drops and recreates schema `vault` and a database named `vault_migrate_test`, so point it at a throwaway server only. The wire contract is `internal/keyring/api/openapi.json`, and a test pins the route table to it.
+`go test ./internal/keyring/...` runs everything that needs no database, including the gateway's credential middleware against the real keyring services on the in-memory store. `MCPGW_TEST_DSN` adds the gateway's own Postgres tests (`internal/store`, `internal/db`, `internal/httpapi`): they create and delete their own rows and a scratch database named `mig_…`. `VAULT_TEST_DSN` adds the Postgres suite; it drops and recreates schema `vault` and a database named `vault_migrate_test`, so point it at a throwaway server only. The wire contract is `internal/keyring/api/openapi.json`, and a test pins the route table to it.
 
 Taking over a running Vault is described in [docs/keyring-cutover.md](docs/keyring-cutover.md).
 
@@ -216,6 +239,7 @@ internal/store       Postgres
 internal/db          pool and embedded migrations
 internal/keyring     the embedded Vault server: config, the two mounts, and its packages
                      (crypto, store, db, service, manifests, audit, httpapi)
+internal/keyringref  the one interface the gateway reaches the keyring through
 web/                 React, Vite, Tailwind 4
 cli/                 the bifrost credential CLI, its own Go module (cli/README.md)
 ```

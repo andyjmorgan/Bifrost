@@ -16,6 +16,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
@@ -30,6 +31,7 @@ type API struct {
 	cache      *cache.Writer
 	toolsTTL   time.Duration
 	oauth      *oauthclient.Client
+	keyring    keyringref.Keyring // nil when the keyring is off
 	gw         *gateway.Gateway
 	rec        *audit.Recorder
 	log        *slog.Logger
@@ -41,13 +43,16 @@ type API struct {
 
 // Deps wires an API.
 type Deps struct {
-	Store      *store.Postgres
-	Keys       *auth.Keys
-	Authn      *auth.Authenticator
-	Conn       *upstream.Connector
-	Cache      *cache.Writer
-	ToolsTTL   time.Duration
-	OAuth      *oauthclient.Client
+	Store    *store.Postgres
+	Keys     *auth.Keys
+	Authn    *auth.Authenticator
+	Conn     *upstream.Connector
+	Cache    *cache.Writer
+	ToolsTTL time.Duration
+	OAuth    *oauthclient.Client
+	// Keyring validates the keyring references servers are given. Nil when
+	// the keyring is off, and the keyring credential kinds are then refused.
+	Keyring    keyringref.Keyring
 	Gateway    *gateway.Gateway
 	Recorder   *audit.Recorder
 	Log        *slog.Logger
@@ -59,7 +64,7 @@ type Deps struct {
 
 // New builds the API.
 func New(d Deps) *API {
-	return &API{store: d.Store, keys: d.Keys, authn: d.Authn, conn: d.Conn, cache: d.Cache, toolsTTL: d.ToolsTTL, oauth: d.OAuth, gw: d.Gateway, rec: d.Recorder,
+	return &API{store: d.Store, keys: d.Keys, authn: d.Authn, conn: d.Conn, cache: d.Cache, toolsTTL: d.ToolsTTL, oauth: d.OAuth, keyring: d.Keyring, gw: d.Gateway, rec: d.Recorder,
 		log: d.Log, publicBase: d.PublicBase, selfBase: d.SelfBase, webRoot: d.WebRoot, cfgDTO: d.Config}
 }
 
