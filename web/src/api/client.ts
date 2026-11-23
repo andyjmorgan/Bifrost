@@ -35,17 +35,24 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, message, parsed)
 }
 
-/** Fetch against /api/v1 with the bearer token, JSON parsing, and ApiError on non-2xx. */
-export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Fetch `${base}${path}` with the bearer token, JSON parsing, and ApiError on non-2xx.
+ *
+ * `foreign` marks an API mounted beside the gateway's own (the keyring). A 401 from one of those
+ * while we do hold a token means that API refused this session, not that the session ended, so it
+ * is reported as an error instead of signing the user out of the gateway.
+ */
+export async function requestAt<T>(base: string, path: string, init: RequestInit = {}, foreign = false): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (init.body !== undefined && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  let token = ''
   if (!isDevMode()) {
-    const token = await getAccessToken()
+    token = await getAccessToken()
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers })
-  if (res.status === 401 && !isDevMode()) {
+  const res = await fetch(`${base}${path}`, { ...init, headers })
+  if (res.status === 401 && !isDevMode() && !(foreign && token)) {
     signOutOn401()
     throw new ApiError(401, 'Your session has expired. Please sign in again.')
   }
@@ -53,6 +60,11 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (res.status === 204) return undefined as T
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
+}
+
+/** Fetch against /api/v1 with the bearer token, JSON parsing, and ApiError on non-2xx. */
+export function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return requestAt<T>(BASE, path, init)
 }
 
 export type SSEHandler = (event: string, data: unknown, raw: string) => void
