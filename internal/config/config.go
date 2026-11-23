@@ -41,6 +41,11 @@ type Config struct {
 	// request.headers (MCPGW_RULE_HEADERS, comma separated). Empty shows
 	// rules no header. A header that carries a credential is never shown.
 	RuleHeaders []string
+	// LegacyProtocolVersions is the older MCP protocol versions the front
+	// door accepts besides 2026-07-28 (MCPGW_LEGACY_PROTOCOL_VERSIONS, comma
+	// separated, e.g. "2025-11-25,2025-06-18,2025-03-26"). Empty by default:
+	// the front door is 2026-07-28 only.
+	LegacyProtocolVersions []string
 }
 
 // FromEnv builds a Config from MCPGW_* variables, failing on anything unusable.
@@ -70,6 +75,7 @@ func FromEnv() (Config, error) {
 	}
 	c.MetaAllowIn, c.MetaAllowOut = list("MCPGW_META_ALLOW_IN"), list("MCPGW_META_ALLOW_OUT")
 	c.RuleHeaders = list("MCPGW_RULE_HEADERS")
+	c.LegacyProtocolVersions = list("MCPGW_LEGACY_PROTOCOL_VERSIONS")
 	var err error
 	if c.RefreshInterval, err = durationEnv("MCPGW_REFRESH_INTERVAL", 4*time.Hour); err != nil {
 		return c, err

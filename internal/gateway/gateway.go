@@ -33,7 +33,8 @@ import (
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
 )
 
-// ProtocolVersion is the only version the front door accepts.
+// ProtocolVersion is the version the front door speaks. It is the only one it
+// accepts unless older ones are allowed with SetLegacyProtocolVersions.
 const ProtocolVersion = "2026-07-28"
 
 // Separator joins slug and tool name on the mux route.
@@ -77,6 +78,9 @@ type Gateway struct {
 	// ruleHeaders are the HTTP request headers rules may read; see
 	// SetRuleHeaders.
 	ruleHeaders []string
+	// legacy is the older protocol versions the front door also accepts; see
+	// SetLegacyProtocolVersions.
+	legacy []string
 }
 
 // MetaKeyUnavailable carries, on a mux tools/list result, the servers that
@@ -88,6 +92,30 @@ func New(s Store, conn *upstream.Connector, rec *audit.Recorder, cw *cache.Write
 	g := &Gateway{store: s, conn: conn, rec: rec, cache: cw, toolsTTL: toolsTTL, log: log, version: version}
 	g.engine = newEngine(g, version)
 	return g
+}
+
+// SetLegacyProtocolVersions allows clients that speak an older protocol
+// version through the front door, in addition to ProtocolVersion. It is off by
+// default. Without it such a client's initialize is answered, since the
+// library negotiates before it checks, and its next request, which names the
+// version it settled on in the Mcp-Protocol-Version header, is refused with a
+// 400: the handshake looks fine and nothing works. Clients known to need it
+// in 2026-11: Claude Code before 2.1.3xx, Codex without its mcp_2026_07_28
+// feature, pi's pi-mcp 1.5 and 1.6. Listing, calling and the rules are the
+// same on either path; progress, tasks and the other 2026-07-28 additions are
+// simply never asked for by an older client. Call it before serving.
+func (g *Gateway) SetLegacyProtocolVersions(versions []string) {
+	g.legacy = nil
+	for _, v := range versions {
+		if v = strings.TrimSpace(v); v != "" && v != ProtocolVersion {
+			g.legacy = append(g.legacy, v)
+		}
+	}
+}
+
+// protocolVersions is what the front door accepts, newest first.
+func (g *Gateway) protocolVersions() []string {
+	return append([]string{ProtocolVersion}, g.legacy...)
 }
 
 type routeKey struct{}
@@ -145,7 +173,7 @@ func (g *Gateway) DirectHandler() http.Handler { return g.handler("direct") }
 func (g *Gateway) handler(route string) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version}, &mcp.ServerOptions{
-			SupportedProtocolVersions: []string{ProtocolVersion},
+			SupportedProtocolVersions: g.protocolVersions(),
 			Logger:                    g.log,
 			// Advertise the surfaces the middleware forwards; nothing is
 			// registered on this server itself.

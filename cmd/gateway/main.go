@@ -84,6 +84,10 @@ func main() {
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
 	gw.SetMetaAllow(cfg.MetaAllowIn, cfg.MetaAllowOut)
 	gw.SetRuleHeaders(cfg.RuleHeaders)
+	gw.SetLegacyProtocolVersions(cfg.LegacyProtocolVersions)
+	if len(cfg.LegacyProtocolVersions) > 0 {
+		log.Info("front door also accepts older protocol versions", "versions", cfg.LegacyProtocolVersions)
+	}
 
 	selfBase := "http://127.0.0.1" + cfg.ListenAddr
 	if !strings.HasPrefix(cfg.ListenAddr, ":") {
