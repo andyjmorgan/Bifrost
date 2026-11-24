@@ -15,8 +15,8 @@ agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth
 
 - **Front door** on the Model Context Protocol, 2026-07-28 by default. Older clients can be let in with `MCPGW_LEGACY_PROTOCOL_VERSIONS` (comma separated, for example `2025-11-25,2025-06-18,2025-03-26`); without it an older client's `initialize` is answered and its next request is refused with a 400, so the handshake looks fine and nothing works. `/mcp` multiplexes every server the caller holds (tool names are `slug__tool`); `/{slug}/mcp` is one server, unprefixed. Downstream it speaks whatever version each server negotiates, from 2024-11-05 up.
 - **Servers own their access**: each server has its slug, allow lists for tools, prompts, resources and templates, rules on 19 hooks, and grants to users. The same lists decide what is listed and what can be called, so a refused call looks like a call to something that does not exist. A caller holds the union of their servers on `/mcp`, narrowed with `?slugs=`.
-- **Credential registry** with three kinds: OAuth 2.1 (discovery from `WWW-Authenticate`, protected-resource and authorization-server metadata, client registration by Client ID Metadata Document first and Dynamic Client Registration as fallback, PKCE, refresh), HTTP Basic, and a static header such as `X-Api-Key` or `Authorization: Bearer`. Secrets are sealed with AES-256-GCM in Postgres.
-- **Credential middleware**: an `http.RoundTripper` chain on the upstream client adds the credential, refreshes OAuth tokens near expiry or on a 401, and marks a credential broken only when the token endpoint definitively rejects it. A background worker refreshes tokens that will expire before its next pass.
+- **Credentials in the keyring**: a server authenticates upstream with OAuth 2.1 (discovery from `WWW-Authenticate`, protected-resource and authorization-server metadata, client registration by Client ID Metadata Document first and Dynamic Client Registration as fallback, PKCE, the `resource` parameter, refresh), HTTP Basic, a static header such as `X-Api-Key` or `Authorization: Bearer`, or a credential lent from a person's own keyring. Every one of them is held in the keyring, sealed with its envelope cipher; the gateway stores a reference and no secret. See `docs/keyring-credentials.md`.
+- **Credential middleware**: an `http.RoundTripper` chain on the upstream client asks the keyring for the credential once for each forwarded request. The keyring refreshes an OAuth token near expiry or after a 401, and marks the account broken only when the token endpoint definitively rejects the refresh. There is no background refresh.
 - **Search mode**: append `?search=true` and the front door offers four small tools instead of every upstream tool: `tool_search` (BM25 over names, descriptions and schemas, with the connected servers described up front), `list_tools`, `get_tool_definition`, `execute_tool`, plus `refresh_services`. An agent's context stops scaling with the number of servers behind the gateway. The gateway's own tools declare an `outputSchema` and return the same JSON as `structuredContent` and as the text block, as the spec asks.
 - **Cache in Postgres**, not Redis: each server's tools and initialize result live in a TTL table, swept by pg_cron and the worker, hidden at read time by a row-level-security policy. Concurrent misses for one server share a single upstream fetch per process, no connection is held while the upstream is in flight, and a write only lands if the server has not been edited since the fetch started. Edits and credential changes refetch and overwrite the row instead of deleting it; disabling a server or a credential going pending or broken clears it. Ping, the Explorer and `refresh_services` bypass and rewrite the cache.
 - **Audit everything**: inbound and upstream hops with full JSON-RPC bodies, auth headers redacted, 30-day retention. The UI shows each exchange with JSON and SSE viewers, and each request as a trace: a flame chart of every upstream connection under the inbound span.
@@ -58,7 +58,7 @@ Postgres needs pg_cron for the cache sweep in production; without it the worker'
 |---|---|---|
 | `MCPGW_LISTEN_ADDR` | `:8080` | |
 | `MCPGW_DSN` | | Postgres connection string |
-| `MCPGW_MASTER_KEY` | | base64, 32 bytes; seals credentials and API key plaintext |
+| `MCPGW_MASTER_KEY` | | base64, 32 bytes; seals API key plaintext, and opens the credentials the gateway sealed before they moved to the keyring (`gateway migrate-credentials`) |
 | `MCPGW_PUBLIC_BASE_URL` | | external origin; used for CIMD, callbacks and audiences |
 | `MCPGW_OIDC_ISSUER` | unset = dev mode | OIDC issuer for the UI and MCP bearer tokens |
 | `MCPGW_OIDC_WEB_CLIENT_ID` | `mcp-gateway-web` | SPA client id |
@@ -227,10 +227,12 @@ Taking over a running Vault is described in [docs/keyring-cutover.md](docs/keyri
 ## Layout
 
 ```
-cmd/gateway          main, create-key
+cmd/gateway          main, create-key, migrate-credentials
 internal/gateway     front door: mux, direct, search mode, progress
-internal/upstream    connector, credential transport, refresh
-internal/oauthclient discovery, CIMD/DCR, PKCE, token exchange
+internal/upstream    connector, credential transport (asks the keyring)
+internal/credmigrate the one-off move of the gateway's old sealed credentials into the keyring
+internal/refreshguard the lock that keeps token refreshes off while credentials are moved
+internal/oauthclient discovery, CIMD/DCR, PKCE, token exchange (used by the keyring)
 internal/auth        OIDC, API keys, scopes, RFC 9728 challenge
 internal/audit       recorder, inbound middleware, upstream transport
 internal/cache       async cache writer

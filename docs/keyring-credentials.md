@@ -1,110 +1,128 @@
-# Servers that use a keyring credential
+# Server credentials live in the keyring
 
-An MCP server can authenticate upstream with a credential held in the keyring instead of one the gateway stores itself. This page says how that works, and what it would take to move the gateway's own credentials onto the keyring, which has not been done.
+Every credential an MCP server authenticates upstream with is held in the keyring. The gateway stores a reference and no secret. This page says how that works, how the credentials the gateway used to store itself are moved, and what is left to do.
 
-## What exists
+## The kinds
 
-Two credential kinds, beside `none`, `oauth`, `basic` and `header`:
+A server's credential is one of these. The API's `kind` is what the operator set; `store` says where the secret is.
 
-| Kind | The reference | What is sent |
-|---|---|---|
-| `keyring_oauth` | provider and account of a connected OAuth account | `Authorization: Bearer <access token>`. The keyring refreshes the token as it does for the CLI |
-| `keyring_secret` | the name of a stored secret | the header the secret describes: its header and prefix, or `Authorization: Basic` with its username |
+| API kind | Stored as | Whose keyring | What is sent |
+|---|---|---|---|
+| `none` | nothing | | nothing |
+| `basic` | `keyring_secret` | the gateway's own space | `Authorization: Basic` with the secret's username |
+| `header` | `keyring_secret` | the gateway's own space | the header the secret names |
+| `oauth` | `keyring_oauth` | the gateway's own space | the token of the server's own OAuth connection, under its token type |
+| `keyring_secret` | `keyring_secret` | a person's | the header the secret describes |
+| `keyring_oauth` | `keyring_oauth` | a person's | `Authorization: Bearer` with the account's token |
 
-The gateway stores the reference and no secret. `keyring_oauth` is what reaches a server that wants a provider token and offers no MCP OAuth discovery, such as X's.
+The first three are credentials the server owns. Somebody typed them in, or gave consent, for this server. The last two are lent: a person pointed the server at something in their own keyring.
 
-A secret must describe a header. `http_basic` needs its username. Any other kind must be a `header_api_key` (which defaults to `Authorization`) or name a header. An SSH login, a connection string or an opaque value is refused when the reference is set, and again when it is used.
+### The gateway's own space
 
-### Ownership
+Keyring rows belong to a user. A credential that belongs to a server belongs to no person, so its owner is a fixed service user, `keyringref.GatewayOwner` (`b1f405c7-0000-4000-8000-000000000001`), with the nil tenant. Three things follow.
 
-Keyring rows belong to a user, so a reference records its owner (`credentials.keyring_owner`): the person who set it. Every lookup runs in that user's keyring and nowhere else. A credential somebody else holds under the same name is not found.
+- Nobody reads that space through the keyring's API. A token or access key that resolves to the gateway's id is refused with 403, whatever it says. The gateway reaches the space in process and nothing else does, which keeps the promise that an MCP server's token is never handed out.
+- The rules for a server's own credential are the ones the gateway had when it stored the credential itself: an API key with `mcp:edit` may set one, and any operator may re-point the server. The rules for a lent credential are unchanged: only a signed-in person sets one, from their own keyring, and only they may change the URL of a server that uses it.
+- The name is `mcp-<slug>`: the name of the secret, or the key of the OAuth provider with the account `default`. A slug never changes.
 
-Three rules follow from the owner being a person:
-
-- Only a signed-in person can set a keyring credential, and only from their own keyring. A gateway API key (`mcpg_`) cannot: it carries no right to read the keyring, and pointing a server at a keyring credential makes the gateway send that credential to the server's URL.
-- Only the owner can change the URL of a server that uses their keyring credential, for the same reason. Anyone may replace the credential, which makes them the owner of the new reference.
-- Everyone the server is granted to calls it with the owner's credential. That is the same as for the gateway's own credentials, which are also per server.
-
-The gateway's user id is the identity provider's subject, and so is the keyring's, which requires it to be a UUID. A dev-mode owner such as `dev` has no keyring.
-
-### The one interface
-
-`internal/keyringref` holds the interface and nothing else:
-
-```go
-type Keyring interface {
-    Check(ctx context.Context, ref Ref) error
-    OAuthToken(ctx context.Context, ref Ref, use Use, rejected string) (Token, error)
-    SecretHeader(ctx context.Context, ref Ref, use Use) (Header, error)
-}
-```
-
-`keyring.Source` implements it over the keyring's own services, in process. `internal/upstream` and `internal/httpapi` are handed it at start and import nothing else of the keyring. With the keyring off they are handed nil.
-
-### Each request
-
-The credential middleware (`internal/upstream/keyring.go`) asks the keyring once for each upstream session, which is one forwarded request: the initialize, the call and the close share what was fetched. Nothing is kept past the session, and an access token is dropped at its own expiry even within it. A changed or deleted keyring credential takes effect on the next request.
-
-A 401 from the server with a `keyring_oauth` credential asks the keyring to replace the rejected token, and the request is sent once more. The keyring refreshes whatever the expiry says, unless the stored token is already a different one, in which case a sibling refreshed it first and that one is used. If the account has no refresh token the 401 stands.
-
-### What is written down
-
-- The keyring's audit trail gets one entry for each fetch, under the owner, with transport `gateway` and the server in `method` (`mcp-server <slug> (<id>)`). A fetch that finds nothing is recorded as a failure.
-- The gateway's audit payloads mask the credential header. A secret names its own header, so the name is passed to the audit transport with the request.
-- The servers API returns the reference (`keyringOwner`, `keyringProvider`, `keyringAccount`, `keyringSecretName`) and never a value. Logs carry names only.
+Deleting a server, or giving it another credential, deletes what the gateway held for it. A lent credential is never deleted by the gateway.
 
 ### With the keyring off
 
-The API refuses the two kinds with `the keyring is not enabled on this gateway`. Responses for other kinds are unchanged: the reference fields are omitted when empty. A server that already holds a keyring reference fails to connect with an error that says the keyring is off; nothing is sent upstream without the credential.
+The keyring is off unless its KEKs are configured. A gateway without it can register servers with no credential and nothing else: `basic`, `header`, `oauth` and the two lent kinds are refused with `the keyring is not enabled on this gateway`. A server that already holds a reference fails to connect with an error that says the keyring is off. Nothing is sent upstream without its credential.
 
-## Moving the gateway's own credentials onto the keyring
+## OAuth for an MCP server
 
-Not done. The gateway still has its own store for `oauth`, `basic` and `header` credentials (`credentials.secret_blob`, sealed with `MCPGW_MASTER_KEY`), its own OAuth client (`internal/oauthclient`) and its own refresh worker. This is what one store would take.
+The keyring runs the MCP authorization flow. The protocol is `internal/oauthclient`, which the keyring uses as it is.
 
-### Static credentials: small
+1. Discovery starts at the server: its `WWW-Authenticate` challenge, the protected resource metadata it points to (RFC 9728), and the authorization server metadata that names (RFC 8414, then the OIDC document).
+2. The client is registered by the flow. Where the authorization server takes a Client ID Metadata Document the client id is the gateway's `/.well-known/mcp-client-metadata.json`; otherwise the keyring registers dynamically (RFC 7591) and keeps the client secret.
+3. The authorization request carries PKCE and the `resource` (RFC 8707). So do the code exchange and every refresh.
+4. The redirect URI is the gateway's `/oauth/callback`. The gateway's handler asks the keyring whether the state is a server's pending consent, and the keyring redeems the code.
 
-`basic` and `header` rows map directly onto keyring secrets (`http_basic` with the username; `header_api_key` with the header name and an empty prefix).
+The gateway's identity to upstream servers is the client metadata URL and the callback path. Both are built from `MCPGW_PUBLIC_BASE_URL` alone and neither has moved, so no registration made before this change needs consent again.
 
-1. Decide the owner. A gateway credential belongs to a server, not a person. Either each one goes to the keyring of whoever is recorded as the server's first grant holder, or the keyring gains a service owner (see below).
-2. For each row: open `secret_blob` with the gateway's sealer, store the value as a keyring secret named after the server's slug, switch the row to `keyring_secret`, clear `secret_blob`. This has to run in the gateway process, which holds both keys. It is a one-off command like `create-key`, not a SQL migration.
-3. Stop accepting `basic` and `header` in the API, or keep accepting them and write to the keyring behind the scenes.
+What is stored, all under the gateway's id:
 
-Rollback is the reverse while the old blobs are kept; clear them in a later release.
+- a provider `mcp-<slug>` whose manifest carries an `mcp` block: the server URL, issuer, resource, registration kind and endpoint, and the redirect URI. Only the flow writes that block; the provider API neither returns nor accepts it.
+- the provider's app credentials: the client id and, for a dynamic registration, the client secret.
+- one account, `default`: the access and refresh token, scopes, expiry and token type.
 
-### OAuth credentials: the real work
+### Refresh and the broken state
 
-A gateway OAuth credential and a keyring OAuth account are different things, and the keyring cannot hold the gateway's today.
+The keyring refreshes on demand, inside the request that needs the token, when the token is within a minute of expiry or the server has just refused it with a 401. There is no background refresh.
 
-| | Gateway (`internal/oauthclient`) | Keyring |
-|---|---|---|
-| Authorization server | discovered from the MCP server (RFC 9728, then RFC 8414) | a provider manifest someone added |
-| Client | registered per server: CIMD, falling back to DCR | an OAuth app whose id and secret a person entered |
-| Token request | carries `resource` (RFC 8707) and the scopes | no `resource` |
-| Refresh | sends `resource` and scope; a definitive rejection marks the credential broken | no `resource`; failure is an error to the caller |
-| Token type | stored, and honoured when sending | not stored; the gateway sends it as Bearer |
-| Belongs to | a server | a user |
+A refresh the token endpoint definitively refuses (a 4xx such as `invalid_grant`) marks the account broken (`oauth_tokens.broken_at`, `broken_reason`). A broken account is not refreshed again and not handed out. The gateway stores the state on its reference, which drops the server's cached tools, and the server's page asks for authorization again. A network error, a timeout or a 5xx is transient: that request fails and the next one tries again.
 
-To move them the keyring needs:
+## Each request
 
-1. **A provider that is discovered, not written.** A manifest kind created from an MCP server's metadata, holding the endpoints, the registration kind and the resource. One per server.
-2. **Registration.** CIMD and DCR, so the client id (and the DCR secret) is produced by the flow instead of typed in. `internal/oauthclient` already does this and could become the keyring's implementation of it.
-3. **`resource` on the authorization request, the code exchange and the refresh.** Without it a token is not bound to the MCP server and a compliant server refuses it.
-4. **The callback.** The gateway's redirect URI is `<base>/oauth/callback`; the keyring's is `<keyring base>/api/oauth/callback`. Every existing CIMD or DCR registration names the gateway's. Either the keyring serves the gateway's path for these providers, or every server is re-registered and re-consented.
-5. **A broken state.** The gateway marks a credential broken on `invalid_grant` so the UI can ask for re-authorization, and drops the server's cached tools. The keyring has no such state on a token.
-6. **An owner that is not a person,** or an agreed person. Server tokens are shared by everyone the server is granted to.
-7. **Background refresh.** The gateway's worker renews tokens ahead of expiry; the keyring refreshes on demand. On demand is enough once the middleware asks the keyring, so the worker's refresh pass could go.
+The credential middleware (`internal/upstream/keyring.go`) asks the keyring once for each upstream session, which is one forwarded request. Nothing is kept past the session, and an access token is dropped at its own expiry even within it. A changed or deleted credential takes effect on the next request.
 
-Then the data: for each `oauth` row, write a provider, an app config (client id, DCR secret) and a token row (access and refresh token, expiry, scopes) in the keyring, re-encrypted from the gateway's sealer to the keyring's envelope, and switch the row to `keyring_oauth`. Refresh tokens rotate, so a server must not refresh on both sides during the move: do it with the gateway stopped, or one server at a time under its refresh lock.
+## What is written down
 
-After that `internal/oauthclient` is the keyring's, `credentials` keeps only references, `MCPGW_MASTER_KEY` seals nothing but API keys, and the OAuth accounts page lists one kind of row.
+- The keyring's audit trail gets a row for every fetch, under the credential's owner, with transport `gateway` and the server in `method` (`mcp-server <slug> (<id>)`). A change the gateway makes for somebody (storing a server's password, deleting the server) also names them: `… by <user id>`.
+- Deletes and changes are audited like reads: `CredentialRemoved` and `CredentialChanged` for secrets, access keys, providers and their app credentials; `TokenRemoved` for an account. No row carries a value.
+- A fetch made for a forwarded request carries that request's id (`audit_log.request_id`). See "Tracing a credential's use" below.
+- The gateway's audit payloads mask the credential header.
+- The servers API returns names and never a value. Logs carry names only.
 
-### A service owner
+### Tracing a credential's use
 
-Both moves want an owner that is not a person. The keyring's rows carry `user_id` and `tenant_id` and nothing checks that the user is human, so a fixed, documented UUID for "the gateway" would work with no schema change. What it needs is a decision on who may read those rows through the keyring's API: nobody (the gateway alone, in process) is the answer that keeps today's promise that an MCP server's token is never handed out.
+The gateway's audit trail and the keyring's are two tables and stay two. The request id is on both.
 
-### Order
+- From a gateway audit event: `GET /api/v1/audit/{id}/keyring` lists the keyring rows written for that event's request, whoever owns the credential. `heldByGateway` marks a credential the server owns. Those rows are in no person's keyring trail, so this is where they are seen.
+- From a keyring row: `requestId` is on the row, the keyring's audit API filters on `?requestId=`, and `GET /api/v1/audit?requestId=` lists the gateway's events of that request.
 
-1. Static credentials, with a service owner. Small, reversible.
-2. Keyring support for discovered providers, registration and `resource`, with no data moved: new OAuth servers go to the keyring, old ones stay.
-3. Move the existing OAuth rows.
-4. Remove the gateway's credential store, its refresh worker and the sealed columns.
+Every request to the gateway's API has a request id: the caller's `X-Request-Id`, or one made on arrival.
+
+## Moving the credentials the gateway stored itself
+
+Before this, the gateway sealed `basic`, `header` and `oauth` credentials in `credentials.secret_blob` under `MCPGW_MASTER_KEY`. `gateway migrate-credentials` moves them. It runs in a process that holds both the master key and the keyring's KEKs, with the same environment as the server:
+
+```
+gateway migrate-credentials -kind static|oauth [-dry-run] [-rollback]
+        [-owner gateway|<user id>] [-server slug,slug] [-include-new] [-ignore-other-sessions]
+```
+
+For each server it copies the credential into the keyring, reads the copy back and compares it with the original, and only then switches the gateway's row to the reference and clears the sealed blob. A run can stop anywhere: a server is either wholly moved or wholly not, and the next run carries on. The report is one line for each server, names only. The exit status is 0, 1 when a credential could not be moved, or 2 for a usage or setup error.
+
+- `-dry-run` prints what would be done and changes nothing.
+- `-owner` is the keyring user the moved credentials belong to: the gateway's own space, or a person's id. In a person's keyring an unrelated secret or provider that already has the server's name is never overwritten; that server is reported as failed.
+- `-rollback` moves back the rows this command moved (`credentials.migrated_from`), resealing the keyring's current value, which is the only right one once a token has been refreshed. `-include-new` also takes back credentials that were stored in the keyring from the start.
+
+### OAuth rows and token refresh
+
+Refresh tokens rotate. A token refreshed while its row was being copied would leave the copy with a retired token, and the server would need consent again. So the command holds off every refresh while it runs.
+
+`internal/refreshguard` is a Postgres advisory lock on the gateway's database. Every refresh holds it shared for as long as it talks to the token endpoint and stores the result. The command holds it exclusive: it waits for refreshes in flight and keeps new ones from starting. A refresh that waited reads its row again before doing anything.
+
+A gateway from before the guard takes no lock. The command reads `pg_stat_activity` and refuses to move OAuth rows while a session that does not name itself as this version of Bifrost is connected to the database. `-ignore-other-sessions` vouches for a `psql` or a backup.
+
+A connection awaiting consent moves as a registration without tokens and stays pending. A broken one stays broken on both sides.
+
+### Running it on a live gateway
+
+The rows can be moved in either of two ways. Both were rehearsed against a throwaway database with the real binaries.
+
+- **Two deploys, no downtime.** Deploy the build at the commit "Servers: existing OAuth connections move into the keyring". It still serves the gateway's own store and holds the refresh guard. Run the command for `static` and then `oauth` while it serves. Then deploy the head.
+- **One deploy.** Deploy the head. Servers whose credential has not been moved fail until the command has run, which takes seconds. Nothing refreshes an unmoved row in the meantime, because the head has no code that could.
+
+Either way, the command must not run beside a gateway older than this branch; it refuses to for OAuth rows.
+
+To go back to an image older than this branch, run `-rollback` for `oauth` first, and for `static` if the image predates keyring credentials altogether. An older image over moved rows still sends Basic and header credentials, and sends an OAuth token until it expires, but it cannot refresh a server's connection: its keyring knows nothing of the `resource` parameter or of a client without a secret.
+
+### What this release no longer does
+
+The gateway no longer reads or writes its own sealed credentials. The refresh worker's token pass, the gateway's own OAuth start and callback, and the sealing of Basic and header values are gone. `internal/credmigrate` is the only code that touches the old columns.
+
+The columns themselves stay for one release, unused: `credentials.secret_blob`, `basic_username`, `header_name`, the `oauth_*` columns and `last_refreshed_at`, and the table `oauth_states`. A later migration drops them, together with `credentials.migrated_from` and the rollback mode.
+
+A server whose credential has not been moved does not authenticate with this release. A request through it fails with `upstream.ErrNotMigrated`, which names the command, and nothing is sent upstream. The API shows it with `store: "gateway"`, state `broken` and the reason. `POST /servers/{id}/oauth/start` on it is refused. The gateway logs the slugs once at start. Replacing the credential in the UI works and discards the sealed one.
+
+`MCPGW_REFRESH_INTERVAL` now only paces the cache sweep and the audit purge. `MCPGW_REFRESH_LEEWAY` is read and ignored.
+
+## What is still in two
+
+- **Key formats.** The gateway's `mcpg_` keys and the keyring's `dwv_` keys are separate tables, scopes and checks. `docs/one-key-format.md` says what one format would take.
+- **Audit trails.** Two tables, joined by the request id.
+- **The old columns.** Unused, until a later migration drops them.
