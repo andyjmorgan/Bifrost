@@ -230,6 +230,9 @@ type auditEventDTO struct {
 	Method          *string   `json:"method"`
 	Detail          *string   `json:"detail"`
 	CreatedAt       time.Time `json:"createdAt"`
+	// RequestID is the gateway's request id, on a row written for a request the gateway forwarded
+	// to an MCP server; the gateway's audit trail lists that request under the same id.
+	RequestID *string `json:"requestId,omitempty"`
 }
 
 type auditPageResponse struct {
@@ -313,6 +316,7 @@ func toAuditDTO(e store.AuditEntry) auditEventDTO {
 		UserID: e.UserID, TenantID: e.TenantID, AccessKeyPrefix: e.AccessKeyPrefix, AccessKeyName: e.AccessKeyName,
 		SourceIP: e.SourceIP, TargetKind: e.TargetKind, TargetProvider: e.TargetProvider, TargetAccount: e.TargetAccount,
 		TargetName: e.TargetName, Transport: e.Transport, Method: e.Method, Detail: e.Detail, CreatedAt: e.CreatedAt,
+		RequestID: e.RequestID,
 	}
 }
 

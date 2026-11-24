@@ -621,6 +621,9 @@ func (m *Mem) QueryAudit(_ context.Context, f store.AuditFilter) ([]store.AuditE
 		if f.Until != nil && !e.CreatedAt.Before(*f.Until) {
 			continue
 		}
+		if f.RequestID != nil && (e.RequestID == nil || *e.RequestID != *f.RequestID) {
+			continue
+		}
 		matched = append(matched, e)
 	}
 	sort.Slice(matched, func(i, j int) bool { return matched[i].CreatedAt.After(matched[j].CreatedAt) })
@@ -634,6 +637,26 @@ func (m *Mem) QueryAudit(_ context.Context, f store.AuditFilter) ([]store.AuditE
 		hi = total
 	}
 	return matched[lo:hi], total, nil
+}
+
+// AuditByRequestID returns the rows written for one gateway request, oldest first, whoever owns them.
+func (m *Mem) AuditByRequestID(_ context.Context, requestID string, limit int) ([]store.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+	var out []store.AuditEntry
+	for _, e := range m.audit {
+		if requestID != "" && e.RequestID != nil && *e.RequestID == requestID {
+			out = append(out, e)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // DeleteAuditOlderThan deletes up to batchSize audit rows older than cutoff, returning the count.

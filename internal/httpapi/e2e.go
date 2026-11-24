@@ -398,9 +398,14 @@ func (h *headerRT) RoundTrip(r *http.Request) (*http.Response, error) {
 // requestIDMiddleware honours X-Request-Id so an e2e run can be found in the audit log.
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.Header.Get("X-Request-Id"); id != "" && len(id) <= 64 {
-			r = r.WithContext(audit.WithRequestID(r.Context(), id))
+		// Every request has an id, the caller's or one made here. Upstream
+		// calls the API starts itself (a ping, a discover, a catalogue
+		// refresh) are audited under it like forwarded ones, and the keyring
+		// writes it on the row of any credential it hands out for them.
+		id := r.Header.Get("X-Request-Id")
+		if id == "" || len(id) > 64 {
+			id = uuid.NewString()
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(audit.WithRequestID(r.Context(), id)))
 	})
 }

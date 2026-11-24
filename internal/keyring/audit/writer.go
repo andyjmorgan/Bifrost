@@ -155,5 +155,6 @@ func toEntry(e Event) store.AuditEntry {
 		Method:          e.Method,
 		Detail:          e.Detail,
 		CreatedAt:       e.CreatedAt,
+		RequestID:       e.RequestID,
 	}
 }

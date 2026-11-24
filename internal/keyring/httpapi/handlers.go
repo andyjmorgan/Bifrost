@@ -394,6 +394,9 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if u, ok := uuidParam(q.Get("userId")); ok {
 		query.UserID = &u
 	}
+	if id := q.Get("requestId"); id != "" {
+		query.RequestID = &id
+	}
 	since, ok := parseTimeParam(q.Get("since"))
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid 'since' timestamp (RFC3339 expected).")

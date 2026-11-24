@@ -495,10 +495,10 @@ func (p *Postgres) InsertAuditBatch(ctx context.Context, entries []AuditEntry) e
 	for _, e := range entries {
 		batch.Queue(`
 			INSERT INTO vault.audit_log (event_type, outcome, user_id, tenant_id, access_key_id, access_key_prefix, access_key_name,
-				source_ip, headers, target_kind, target_provider, target_account, target_name, transport, method, detail, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::inet,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+				source_ip, headers, target_kind, target_provider, target_account, target_name, transport, method, detail, created_at, request_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::inet,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 			e.EventType, e.Outcome, e.UserID, e.TenantID, e.AccessKeyID, e.AccessKeyPrefix, e.AccessKeyName,
-			e.SourceIP, e.Headers, e.TargetKind, e.TargetProvider, e.TargetAccount, e.TargetName, e.Transport, e.Method, e.Detail, e.CreatedAt)
+			e.SourceIP, e.Headers, e.TargetKind, e.TargetProvider, e.TargetAccount, e.TargetName, e.Transport, e.Method, e.Detail, e.CreatedAt, e.RequestID)
 	}
 	br := p.pool.SendBatch(ctx, batch)
 	defer func() { _ = br.Close() }()
@@ -533,15 +533,16 @@ func (p *Postgres) QueryAudit(ctx context.Context, f AuditFilter) ([]AuditEntry,
 	if f.Until != nil {
 		add(` AND created_at<$%d`, *f.Until)
 	}
+	if f.RequestID != nil {
+		add(` AND request_id=$%d`, *f.RequestID)
+	}
 
 	var total int
 	if err := p.pool.QueryRow(ctx, `SELECT count(*) FROM vault.audit_log`+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	q := `SELECT id, event_type, outcome, user_id, tenant_id, access_key_prefix, access_key_name, host(source_ip),
-		target_kind, target_provider, target_account, target_name, transport, method, detail, created_at
-		FROM vault.audit_log` + where + fmt.Sprintf(` ORDER BY created_at DESC OFFSET $%d LIMIT $%d`, len(args)+1, len(args)+2)
+	q := `SELECT ` + auditCols + ` FROM vault.audit_log` + where + fmt.Sprintf(` ORDER BY created_at DESC OFFSET $%d LIMIT $%d`, len(args)+1, len(args)+2)
 	args = append(args, f.Offset, f.Limit)
 
 	rows, err := p.pool.Query(ctx, q, args...)
@@ -549,16 +550,38 @@ func (p *Postgres) QueryAudit(ctx context.Context, f AuditFilter) ([]AuditEntry,
 		return nil, 0, err
 	}
 	defer rows.Close()
+	out, err := scanAudit(rows)
+	return out, total, err
+}
+
+// auditCols is what a listing reads of an audit row: everything but the stored headers.
+const auditCols = `id, event_type, outcome, user_id, tenant_id, access_key_prefix, access_key_name, host(source_ip),
+	target_kind, target_provider, target_account, target_name, transport, method, detail, created_at, request_id`
+
+func scanAudit(rows pgx.Rows) ([]AuditEntry, error) {
 	var out []AuditEntry
 	for rows.Next() {
 		var e AuditEntry
 		if err := rows.Scan(&e.ID, &e.EventType, &e.Outcome, &e.UserID, &e.TenantID, &e.AccessKeyPrefix, &e.AccessKeyName,
-			&e.SourceIP, &e.TargetKind, &e.TargetProvider, &e.TargetAccount, &e.TargetName, &e.Transport, &e.Method, &e.Detail, &e.CreatedAt); err != nil {
-			return nil, 0, err
+			&e.SourceIP, &e.TargetKind, &e.TargetProvider, &e.TargetAccount, &e.TargetName, &e.Transport, &e.Method, &e.Detail, &e.CreatedAt, &e.RequestID); err != nil {
+			return nil, err
 		}
 		out = append(out, e)
 	}
-	return out, total, rows.Err()
+	return out, rows.Err()
+}
+
+// AuditByRequestID returns the rows written for one gateway request, oldest first, whoever owns them.
+func (p *Postgres) AuditByRequestID(ctx context.Context, requestID string, limit int) ([]AuditEntry, error) {
+	if requestID == "" {
+		return nil, nil
+	}
+	rows, err := p.pool.Query(ctx, `SELECT `+auditCols+` FROM vault.audit_log WHERE request_id=$1 ORDER BY created_at LIMIT $2`, requestID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAudit(rows)
 }
 
 // DeleteAuditOlderThan deletes up to batchSize audit rows older than cutoff, returning the count.

@@ -245,6 +245,34 @@ type E2EInput struct {
 	Task bool `json:"task,omitempty"`
 }
 
+// KeyringAuditDTO is the keyring's audit rows of one gateway request.
+type KeyringAuditDTO struct {
+	// RequestID is the id both trails carry for the request. The keyring's
+	// own audit API filters on it too (?requestId=).
+	RequestID string               `json:"requestId"`
+	Items     []KeyringAuditRowDTO `json:"items"`
+}
+
+// KeyringAuditRowDTO is one keyring audit row: which credential was read or
+// refreshed, for whom. Names only.
+type KeyringAuditRowDTO struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Outcome string `json:"outcome"`
+	// Owner is the keyring user the credential belongs to. HeldByGateway is
+	// set when that is the gateway's own space: a credential the server
+	// owns, which appears in no person's keyring trail.
+	Owner          string    `json:"owner"`
+	HeldByGateway  bool      `json:"heldByGateway"`
+	TargetKind     string    `json:"targetKind,omitempty"`
+	TargetProvider string    `json:"targetProvider,omitempty"`
+	TargetAccount  string    `json:"targetAccount,omitempty"`
+	TargetName     string    `json:"targetName,omitempty"`
+	Method         string    `json:"method,omitempty"`
+	Detail         string    `json:"detail,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
 // AuditTraceDTO is one exchange as a trace: the inbound root (absent for
 // API-initiated hops) and its upstream spans in start order.
 type AuditTraceDTO struct {

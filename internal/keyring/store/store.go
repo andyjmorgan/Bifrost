@@ -61,5 +61,9 @@ type Store interface {
 	// --- audit ---
 	InsertAuditBatch(ctx context.Context, entries []AuditEntry) error
 	QueryAudit(ctx context.Context, f AuditFilter) (items []AuditEntry, total int, err error)
+	// AuditByRequestID returns the rows written for one gateway request, oldest first, whoever owns
+	// them. It bypasses user scoping on purpose and is for the gateway alone, which shows an
+	// operator the credentials one of its own requests used; the HTTP API never calls it.
+	AuditByRequestID(ctx context.Context, requestID string, limit int) ([]AuditEntry, error)
 	DeleteAuditOlderThan(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
 }

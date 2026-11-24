@@ -79,6 +79,11 @@ func (r Ref) String() string {
 type Use struct {
 	ServerID string
 	Slug     string
+	// RequestID is the gateway's id for the forwarded request the
+	// credential is fetched for: the id its own audit events of that request
+	// carry. The keyring writes it on its audit row, which ties the two
+	// trails together. Empty when there is no such request.
+	RequestID string
 	// Actor is the gateway user who asked for a change to a credential the
 	// gateway holds: the person who typed in a server's password, or
 	// deleted the server. Empty for a fetch, which nobody asked for.
@@ -270,6 +275,26 @@ type Keyring interface {
 	SecretHeader(ctx context.Context, ref Ref, use Use) (Header, error)
 }
 
+// AuditRecord is one row of the keyring's audit trail, as the gateway shows
+// it beside the request it was written for. It names a credential and never
+// carries one.
+type AuditRecord struct {
+	ID string
+	// Type and Outcome are the keyring's names: "TokenAccessed", "Success".
+	Type    string
+	Outcome string
+	// Owner is the keyring user the credential belongs to.
+	Owner          string
+	TargetKind     string
+	TargetProvider string
+	TargetAccount  string
+	TargetName     string
+	Method         string
+	Detail         string
+	RequestID      string
+	CreatedAt      time.Time
+}
+
 // Holder is everything the gateway may ask of the keyring: what Keyring
 // lends, and the keeping of the credentials servers own themselves. The
 // servers API is handed this.
@@ -301,6 +326,12 @@ type Holder interface {
 
 	// AbandonServerOAuth ends a round trip the authorization server refused.
 	AbandonServerOAuth(ctx context.Context, state, reason string) error
+
+	// AuditForRequest returns the keyring's audit rows written for one
+	// gateway request, oldest first: the credentials that request used,
+	// whoever owns them. It is how a gateway audit event is traced to the
+	// keyring's trail; Use.RequestID is what put the id there.
+	AuditForRequest(ctx context.Context, requestID string) ([]AuditRecord, error)
 
 	// PutServerSecret stores the static credential of the server use names
 	// in the gateway's own keyring space, replacing the one it had, and

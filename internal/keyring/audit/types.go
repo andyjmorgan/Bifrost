@@ -124,6 +124,9 @@ type Event struct {
 	Method          *string
 	Detail          *string
 	CreatedAt       time.Time
+	// RequestID is the gateway's request id, when the event was recorded for a request the gateway
+	// forwarded to an MCP server.
+	RequestID *string
 }
 
 // RequestInfo is the per-request audit metadata resolved by the transport and read by the emitter.
@@ -135,6 +138,8 @@ type RequestInfo struct {
 	AccessKeyName   *string
 	Transport       string
 	Method          *string
+	// RequestID is the gateway's request id; see Event.RequestID.
+	RequestID *string
 }
 
 type reqInfoKey struct{}

@@ -138,6 +138,9 @@ type AuditEntry struct {
 	Method          *string
 	Detail          *string
 	CreatedAt       time.Time
+	// RequestID is the gateway's request id, on a row written for a request the gateway forwarded to
+	// an MCP server. It is the id the gateway's own audit events of that request carry.
+	RequestID *string
 }
 
 // AuditFilter is the parameter set for an audit query (already clamped by the caller).
@@ -151,4 +154,6 @@ type AuditFilter struct {
 	FilterUserID *uuid.UUID
 	Since        *time.Time
 	Until        *time.Time
+	// RequestID narrows the page to the rows written for one gateway request.
+	RequestID *string
 }

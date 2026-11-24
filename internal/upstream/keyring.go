@@ -30,9 +30,11 @@ type keyringMemo struct {
 	header *keyringref.Header
 }
 
-// use is how the keyring is told which server a fetch is for.
-func (t *credentialTransport) use() keyringref.Use {
-	return keyringref.Use{ServerID: t.srv.ID.String(), Slug: t.srv.Slug}
+// use is how the keyring is told which server a fetch is for, and which of
+// the gateway's requests: the request id is the one the gateway's own audit
+// events carry, so the keyring's row can be found from them and back.
+func (t *credentialTransport) use(ctx context.Context) keyringref.Use {
+	return keyringref.Use{ServerID: t.srv.ID.String(), Slug: t.srv.Slug, RequestID: audit.RequestID(ctx)}
 }
 
 // keyringToken returns the access token for this client's OAuth account. A
@@ -55,7 +57,7 @@ func (t *credentialTransport) keyringToken(req *http.Request, rejected string) (
 	// refresh token may already be spent.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), t.c.timeout)
 	defer cancel()
-	tok, err := t.c.keyring.OAuthToken(ctx, t.cred.KeyringRef(), t.use(), rejected)
+	tok, err := t.c.keyring.OAuthToken(ctx, t.cred.KeyringRef(), t.use(ctx), rejected)
 	if err != nil {
 		return keyringref.Token{}, err
 	}
@@ -111,7 +113,7 @@ func (t *credentialTransport) keyringSecret(req *http.Request) (*http.Response, 
 	t.kr.mu.Lock()
 	h := t.kr.header
 	if h == nil {
-		got, err := t.c.keyring.SecretHeader(req.Context(), t.cred.KeyringRef(), t.use())
+		got, err := t.c.keyring.SecretHeader(req.Context(), t.cred.KeyringRef(), t.use(req.Context()))
 		if err != nil {
 			t.kr.mu.Unlock()
 			return nil, t.keyringErr(err)

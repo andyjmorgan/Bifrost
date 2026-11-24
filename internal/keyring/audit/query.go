@@ -22,6 +22,8 @@ type Query struct {
 	UserID  *uuid.UUID
 	Since   *time.Time
 	Until   *time.Time
+	// RequestID narrows the page to the rows written for one gateway request.
+	RequestID *string
 }
 
 // Result is a page of audit rows plus the total matching count.
@@ -68,6 +70,7 @@ func (q *QueryService) Query(ctx context.Context, query Query) (Result, error) {
 		FilterUserID: query.UserID,
 		Since:        query.Since,
 		Until:        query.Until,
+		RequestID:    query.RequestID,
 	}
 	if query.Type != nil {
 		v := int(*query.Type)

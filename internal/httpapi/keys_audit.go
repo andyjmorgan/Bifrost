@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"net/http"
 	"strconv"
 
@@ -128,6 +129,41 @@ func (a *API) getAudit(w http.ResponseWriter, r *http.Request) {
 	out := AuditDetailDTO{Event: auditDTO(e)}
 	if p != nil {
 		out.Payload = &AuditPayloadDTO{RequestHeaders: p.RequestHeaders, RequestBody: p.RequestBody, ResponseHeaders: p.ResponseHeaders, ResponseBody: p.ResponseBody}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// getAuditKeyring returns the keyring's audit rows written for the request
+// an audit event belongs to: the credentials the gateway fetched to forward
+// it. The two trails stay two tables; the request id is on both. With the
+// keyring off, or for a request that used no keyring credential, the list
+// is empty.
+func (a *API) getAuditKeyring(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	e, _, err := a.store.GetAuditEvent(r.Context(), id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	out := KeyringAuditDTO{RequestID: e.RequestID, Items: []KeyringAuditRowDTO{}}
+	if a.keyring != nil && e.RequestID != "" {
+		rows, err := a.keyring.AuditForRequest(r.Context(), e.RequestID)
+		if err != nil {
+			a.log.Error("keyring audit lookup failed", "requestId", e.RequestID, "err", err)
+			writeErr(w, http.StatusBadGateway, "the keyring's audit trail could not be read")
+			return
+		}
+		for _, row := range rows {
+			out.Items = append(out.Items, KeyringAuditRowDTO{
+				ID: row.ID, Type: row.Type, Outcome: row.Outcome, Owner: row.Owner, HeldByGateway: row.Owner == keyringref.GatewayOwner,
+				TargetKind: row.TargetKind, TargetProvider: row.TargetProvider, TargetAccount: row.TargetAccount, TargetName: row.TargetName,
+				Method: row.Method, Detail: row.Detail, CreatedAt: row.CreatedAt,
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

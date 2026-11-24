@@ -412,7 +412,36 @@ func asGateway(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use)
 		method += " by " + use.Actor
 	}
 	ctx = contracts.WithCaller(ctx, contracts.Caller{UserID: owner, TenantID: tenant})
-	return audit.WithRequestInfo(ctx, audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}})
+	info := audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}}
+	if use.RequestID != "" {
+		info.RequestID = &use.RequestID
+	}
+	return audit.WithRequestInfo(ctx, info)
+}
+
+// maxAuditForRequest bounds how many rows one request's lookup returns. A forwarded request fetches
+// one credential, and a refresh adds a row or two.
+const maxAuditForRequest = 50
+
+// AuditForRequest implements keyringref.Holder. The rows are read across owners: the gateway shows
+// an operator which credentials one of its own requests used, and an operator sees every request.
+func (s *Source) AuditForRequest(ctx context.Context, requestID string) ([]keyringref.AuditRecord, error) {
+	if requestID == "" {
+		return []keyringref.AuditRecord{}, nil
+	}
+	rows, err := s.store.AuditByRequestID(ctx, requestID, maxAuditForRequest)
+	if err != nil {
+		return nil, fmt.Errorf("keyring: audit rows of request %s: %w", requestID, err)
+	}
+	out := make([]keyringref.AuditRecord, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, keyringref.AuditRecord{
+			ID: e.ID.String(), Type: audit.EventType(e.EventType).String(), Outcome: audit.Outcome(e.Outcome).String(), Owner: e.UserID.String(),
+			TargetKind: deref(e.TargetKind), TargetProvider: deref(e.TargetProvider), TargetAccount: deref(e.TargetAccount), TargetName: deref(e.TargetName),
+			Method: deref(e.Method), Detail: deref(e.Detail), RequestID: deref(e.RequestID), CreatedAt: e.CreatedAt,
+		})
+	}
+	return out, nil
 }
 
 // gatewayOwnerID is keyringref.GatewayOwner as the keyring's stores take it.

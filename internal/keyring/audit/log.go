@@ -113,6 +113,7 @@ func (l *Log) Emit(ctx context.Context, p EmitParams) {
 		Method:          info.Method,
 		Detail:          strPtr(p.Detail),
 		CreatedAt:       time.Now().UTC(),
+		RequestID:       info.RequestID,
 	}
 
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {

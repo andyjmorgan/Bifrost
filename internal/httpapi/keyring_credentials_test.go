@@ -124,6 +124,10 @@ func (k keyringStub) AbandonServerOAuth(context.Context, string, string) error {
 	return keyringref.ErrNoState
 }
 
+func (k keyringStub) AuditForRequest(context.Context, string) ([]keyringref.AuditRecord, error) {
+	return nil, nil
+}
+
 func (k keyringStub) PutServerSecret(_ context.Context, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error) {
 	k.gateway.mu.Lock()
 	defer k.gateway.mu.Unlock()

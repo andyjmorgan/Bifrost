@@ -112,6 +112,7 @@ func (a *API) Router() http.Handler {
 			r.Get("/audit", a.listAudit)
 			r.Get("/audit/{id}", a.getAudit)
 			r.Get("/audit/{id}/trace", a.getAuditTrace)
+			r.Get("/audit/{id}/keyring", a.getAuditKeyring)
 			r.Get("/portal", a.listPortal)
 			r.Get("/users", a.listUsers)
 			r.Get("/servers", a.listServers)
