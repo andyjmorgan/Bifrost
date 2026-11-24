@@ -203,7 +203,9 @@ export function ServersPage() {
                     </Badge>
                   </Cell>
                   <Cell label="Credential">
-                    <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                    <StatusPill tone={status.tone}>
+                      <span title={status.title}>{status.label}</span>
+                    </StatusPill>
                   </Cell>
                   <Cell label="Enabled">
                     <span className="inline-flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>

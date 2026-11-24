@@ -21,6 +21,7 @@ import { SearchBox } from '../components/SearchBox'
 import { ProviderIcon } from '../components/keyring/ProviderIcon'
 import { RevealButton } from '../components/keyring/RevealButton'
 import { CONNECT_ROUTE, OAUTH_ACCOUNTS_ROUTE, shortScope, useOAuthOutcome } from '../components/keyring/oauth'
+import { NOT_MOVED, notMoved } from '../components/servers/credential'
 import { api, errorMessage, type CredentialDTO, type ServerDTO } from '../api'
 import { useMe } from '../me'
 import { keyring, type OAuthAccount, type OAuthProvider, type SaveSecretInput, type Secret, type SecretKind } from '../api/keyring'
@@ -93,17 +94,19 @@ const SECRET_COLS = 'minmax(0,1.7fr) 170px minmax(0,1.1fr) minmax(0,1.1fr) 108px
 const ACCOUNT_COLS = 'minmax(0,1.4fr) 112px minmax(0,1.3fr) 132px 190px 72px'
 
 /**
- * A row of the OAuth accounts page. Two different things hold OAuth tokens: the keyring, for an
- * account a person connected through a provider, and the gateway, for an MCP server it signed in to
- * itself. They are listed together and each row says which it is.
+ * A row of the OAuth accounts page. The keyring holds two kinds of OAuth tokens: an account a person
+ * connected through a provider, in that person's keyring, and the connection of an MCP server the
+ * gateway signed in to, held for the server in nobody's keyring. They are listed together and each
+ * row says which it is. A server's connection comes from the servers API and is never revealable.
  */
 type OAuthRow = { kind: 'account'; account: OAuthAccount } | { kind: 'server'; server: ServerDTO; cred: CredentialDTO }
 
-/** The state of the OAuth connection the gateway holds for an MCP server. */
+/** The state of the OAuth connection held for an MCP server. */
 function serverTokenStatus(cred: CredentialDTO, expired: boolean): { tone: 'success' | 'warning' | 'danger'; label: string; title?: string } {
+  if (notMoved(cred)) return { tone: 'danger', label: 'Not moved', title: cred.stateReason || NOT_MOVED }
   if (cred.state === 'pending') return { tone: 'warning', label: 'Awaiting consent', title: 'Consent was started and has not been completed.' }
   if (cred.state === 'broken') return { tone: 'danger', label: 'Broken', title: cred.stateReason || cred.lastError || 'The server needs to be re-authorized.' }
-  if (expired && cred.oauthHasRefreshToken) return { tone: 'warning', label: 'Refresh due', title: 'The access token has expired. The gateway refreshes it on the next request.' }
+  if (expired && cred.oauthHasRefreshToken) return { tone: 'warning', label: 'Refresh due', title: 'The access token has expired. The keyring refreshes it the next time the server is called.' }
   if (expired) return { tone: 'danger', label: 'Expired', title: 'The access token has expired and there is no refresh token. Re-authorize the server.' }
   return { tone: 'success', label: 'Connected' }
 }
@@ -199,8 +202,8 @@ function CredentialList({ view }: { view: View }) {
     () => accounts.filter((a) => matchesSearch(a, search, [providers.find((p) => p.key === a.provider)?.name ?? ''])),
     [accounts, providers, search],
   )
-  // The OAuth connections the gateway holds for its MCP servers. Only what the servers API
-  // returns: issuer, scopes, expiry. The token itself never leaves the gateway.
+  // The OAuth connections the keyring holds for the gateway's MCP servers. Only what the servers
+  // API returns: issuer, scopes, expiry. The token is in nobody's keyring and is never returned.
   const serverTokens = useMemo(
     () => servers.flatMap((s): OAuthRow[] => (s.credential?.kind === 'oauth' ? [{ kind: 'server', server: s, cred: s.credential }] : [])),
     [servers],
@@ -277,7 +280,7 @@ function CredentialList({ view }: { view: View }) {
         description={
           tab === 'secrets'
             ? 'Stored API keys, passwords, SSH keys and connection strings that agents fetch by name. Each one describes itself, so an agent knows where and how to send it.'
-            : 'Accounts connected through an OAuth provider: the keyring holds the refresh token and hands agents a fresh access token on request. The OAuth connections the gateway holds for its MCP servers are listed too; those tokens never leave the gateway.'
+            : "Accounts connected through an OAuth provider: the keyring holds the refresh token and hands agents a fresh access token on request. The OAuth connections of the gateway's MCP servers are kept here too, held for the server: they are in nobody's own keyring and cannot be revealed."
         }
         actions={
           tab === 'secrets' ? (
@@ -455,7 +458,7 @@ function CredentialList({ view }: { view: View }) {
                             <Primary title={srv.name} subtitle={<span title={cred.oauthIssuer || srv.url}>{hostOf(cred.oauthIssuer) || hostOf(srv.url)}</span>} />
                           </div>
                           <Cell label="Held for">
-                            <Badge variant="plum" title="The gateway signed in to this MCP server itself and holds the token. It is used only to call the server.">
+                            <Badge variant="plum" title="Held in the keyring for this MCP server, in nobody's own keyring. It is used only to call the server and cannot be revealed.">
                               MCP server
                             </Badge>
                           </Cell>
@@ -472,11 +475,19 @@ function CredentialList({ view }: { view: View }) {
                               className={cn('block truncate font-mono text-xs', expired ? 'text-warning' : 'text-muted-foreground')}
                               title={absoluteTime(cred.oauthExpiresAt)}
                             >
-                              {cred.state === 'pending' ? 'not issued yet' : cred.oauthExpiresAt ? `${expired ? 'expired' : 'expires'} ${relativeTime(cred.oauthExpiresAt)}` : 'no expiry'}
+                              {notMoved(cred)
+                                ? 'not in the keyring yet'
+                                : cred.state === 'pending'
+                                  ? 'not issued yet'
+                                  : cred.oauthExpiresAt
+                                    ? `${expired ? 'expired' : 'expires'} ${relativeTime(cred.oauthExpiresAt)}`
+                                    : 'no expiry'}
                             </span>
-                            <span className="mt-0.5 block truncate font-mono text-[11px] text-faint-foreground" title={absoluteTime(cred.lastRefreshedAt)}>
-                              {cred.lastRefreshedAt ? `refreshed ${relativeTime(cred.lastRefreshedAt)}` : cred.oauthHasRefreshToken ? 'never refreshed' : 'no refresh token'}
-                            </span>
+                            {!notMoved(cred) && (
+                              <span className="mt-0.5 block truncate font-mono text-[11px] text-faint-foreground" title={absoluteTime(cred.lastRefreshedAt)}>
+                                {cred.lastRefreshedAt ? `refreshed ${relativeTime(cred.lastRefreshedAt)}` : cred.oauthHasRefreshToken ? 'never refreshed' : 'no refresh token'}
+                              </span>
+                            )}
                           </Cell>
                           <RowActions>
                             <Button variant="ghost" size="iconSm" asChild>

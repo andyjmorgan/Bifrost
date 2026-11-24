@@ -17,7 +17,18 @@ import { GrantsEditor } from '../components/servers/GrantsEditor'
 import { KindSection } from '../components/servers/SelectionEditor'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
-import { authKindBadge, authKindLabel, credentialStatus, isKeyringKind, keyringCredentialName, keyringOwnerPhrase } from '../components/servers/credential'
+import {
+  NOT_MOVED,
+  authKindBadge,
+  authKindLabel,
+  credentialStatus,
+  heldEntryName,
+  heldForServer,
+  isKeyringKind,
+  keyringCredentialName,
+  keyringOwnerPhrase,
+  notMoved,
+} from '../components/servers/credential'
 import { useMe } from '../me'
 import { HookRules, type RuleText } from '../components/rules/HookRules'
 import { KINDS, selectionDetail, selectionSummary } from '../components/rules/selection'
@@ -501,6 +512,13 @@ export function ServerDetailPage() {
 
       {tab === 'overview' && (
         <TabPanel tabKey="overview" className="space-y-6">
+          {notMoved(cred) && (
+            <Callout tone="danger">
+              <span className="font-medium">Credential not moved to the keyring.</span> It is still in the gateway's old store, which is no longer read, so requests to{' '}
+              {server.name} fail. An operator moves it with <code className="break-words font-mono text-xs">gateway migrate-credentials</code>. Replacing the credential
+              here works too.
+            </Callout>
+          )}
           {cred?.lastError && (
             <Callout tone="danger">
               <span className="font-medium">Credential error</span>
@@ -536,7 +554,9 @@ export function ServerDetailPage() {
                 <Badge mono variant={authKindBadge[server.authKind]}>
                   {authKindLabel(server.authKind)}
                 </Badge>
-                <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                <StatusPill tone={status.tone}>
+                  <span title={status.title}>{status.label}</span>
+                </StatusPill>
                 <CredentialSummary cred={cred} keyringOwner={keyringOwner} />
                 <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
                   <KeyRound /> {server.authKind === 'none' ? 'Set credential' : 'Replace'}
@@ -568,6 +588,19 @@ export function ServerDetailPage() {
               Details
             </summary>
             <DefinitionList className="mt-3">
+              {cred && !isKeyringKind(cred.kind) && heldForServer(cred) && (
+                <Definition label="Kept in">
+                  <span>The keyring</span>
+                  {heldEntryName(cred) && <span className="ml-2 break-all font-mono text-xs text-muted-foreground">{heldEntryName(cred)}</span>}
+                  <span className="mt-0.5 block text-faint-foreground">Held for this server, in nobody's own keyring. It cannot be revealed.</span>
+                </Definition>
+              )}
+              {notMoved(cred) && (
+                <Definition label="Kept in">
+                  <span>The gateway's old store</span>
+                  <span className="mt-0.5 block text-faint-foreground">Not read any more. The credential works once it is in the keyring.</span>
+                </Definition>
+              )}
               {cred && isKeyringKind(cred.kind) && (
                 <>
                   <Definition label="Keyring credential" mono>
@@ -579,7 +612,8 @@ export function ServerDetailPage() {
                   </Definition>
                 </>
               )}
-              {cred?.kind === 'oauth' && (
+              {/* The API says nothing about an OAuth connection that is not in the keyring. */}
+              {cred?.kind === 'oauth' && !notMoved(cred) && (
                 <>
                   <Definition label="Registration" mono>
                     {cred.oauthRegistrationKind ? cred.oauthRegistrationKind.toUpperCase() : '—'}
@@ -726,13 +760,14 @@ function CredentialSummary({ cred, keyringOwner }: { cred?: ServerDTO['credentia
   if (cred.kind === 'header' && cred.headerName) parts.push(cred.headerName)
   if (cred.kind === 'oauth') {
     if (cred.oauthScopes.length) parts.push(cred.oauthScopes.join(' '))
-    if (cred.oauthExpiresAt) parts.push(`expires ${relativeTime(cred.oauthExpiresAt)}`)
+    if (cred.oauthExpiresAt) parts.push(`${new Date(cred.oauthExpiresAt).getTime() < Date.now() ? 'expired' : 'expires'} ${relativeTime(cred.oauthExpiresAt)}`)
     if (!cred.oauthHasRefreshToken && cred.state === 'ok') parts.push('no refresh token')
   }
   // A credential the server owns itself says where it is kept; one lent from a keyring already does.
   if (!isKeyringKind(cred.kind) && cred.store === 'keyring') parts.push('kept in the keyring')
-  if (!isKeyringKind(cred.kind) && cred.store === 'gateway') parts.push('kept by the gateway, not yet moved to the keyring')
+  // The API's reason for an unmoved credential already says so; the fallback covers a missing one.
   if (cred.stateReason) parts.push(cred.stateReason)
+  else if (notMoved(cred)) parts.push(NOT_MOVED)
   if (!parts.length) return null
   return <span className="font-mono text-xs text-muted-foreground">{parts.join(' · ')}</span>
 }

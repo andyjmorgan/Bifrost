@@ -2,21 +2,28 @@ import type { AuthInput, AuthKind, CredentialDTO, ServerDTO, UserDTO } from '../
 import type { OAuthAccount, Secret } from '../../api/keyring'
 import type { Tone } from '../StatusPill'
 
-/** The kinds whose secret the gateway stores itself. */
+/**
+ * The keyring space that holds the credentials servers own themselves (Basic, header, OAuth). It is
+ * the gateway's, not a person's: nobody signs in as it and nothing in it can be revealed.
+ */
+export const GATEWAY_KEYRING_OWNER = 'b1f405c7-0000-4000-8000-000000000001'
+
+/** The kinds a server owns itself. The gateway keeps the secret in the keyring, held for the server. */
 export const AUTH_KINDS: { value: AuthKind; label: string; hint: string }[] = [
   { value: 'none', label: 'None', hint: 'The upstream accepts anonymous requests.' },
-  { value: 'oauth', label: 'OAuth 2.1', hint: 'Discovery, client registration (CIMD or DCR) and consent are handled by the gateway.' },
-  { value: 'basic', label: 'HTTP Basic', hint: 'A username and password sent on every request.' },
-  { value: 'header', label: 'Header', hint: 'A static header such as X-Api-Key, stored encrypted.' },
+  { value: 'oauth', label: 'OAuth 2.1', hint: 'Discovery, client registration (CIMD or DCR) and consent are handled by the gateway. The tokens are kept in the keyring for this server.' },
+  { value: 'basic', label: 'HTTP Basic', hint: 'A username and password sent on every request, kept in the keyring for this server.' },
+  { value: 'header', label: 'Header', hint: 'A static header such as X-Api-Key, kept in the keyring for this server.' },
 ]
 
 /**
  * The fifth choice in the authentication select, shown only when the keyring is enabled. It stands
- * for both keyring kinds: which one is decided by what is picked from the keyring.
+ * for both keyring kinds: which one is decided by what is picked from the keyring. The other kinds
+ * are kept in the keyring too, for the server; this one lends a credential a person already has.
  */
 export const KEYRING_CHOICE = {
   value: 'keyring',
-  label: 'From the keyring',
+  label: 'From your keyring',
   hint: 'An OAuth account or a secret from your keyring. The gateway stores its name and fetches the value for each request.',
 } as const
 
@@ -48,9 +55,11 @@ export const authKindBadge: Record<AuthKind, 'muted' | 'plum' | 'info' | 'warnin
 }
 
 /** The credential pill: state for authenticated kinds, "No auth" when the server has none. */
-export function credentialStatus(server: Pick<ServerDTO, 'authKind' | 'credential'>): { tone: Tone; label: string } {
+export function credentialStatus(server: Pick<ServerDTO, 'authKind' | 'credential'>): { tone: Tone; label: string; title?: string } {
   if (server.authKind === 'none') return { tone: 'muted', label: 'No auth' }
   const state = server.credential?.state
+  // Still in the gateway's old store: not used until `gateway migrate-credentials` moves it.
+  if (notMoved(server.credential)) return { tone: 'danger', label: 'Not moved', title: server.credential?.stateReason || NOT_MOVED }
   // A keyring credential is a reference: whether it resolves is only known when it is used.
   if (state === 'ok' && isKeyringKind(server.authKind)) return { tone: 'success', label: 'Linked' }
   switch (state) {
@@ -59,10 +68,28 @@ export function credentialStatus(server: Pick<ServerDTO, 'authKind' | 'credentia
     case 'pending':
       return { tone: 'warning', label: 'Awaiting consent' }
     case 'broken':
-      return { tone: 'danger', label: 'Broken' }
+      return { tone: 'danger', label: 'Broken', title: server.credential?.stateReason || undefined }
     default:
       return { tone: 'muted', label: 'No credential' }
   }
+}
+
+export const NOT_MOVED = 'not moved to the keyring yet'
+
+/** A credential still in the gateway's old store. The gateway no longer reads it, so the server cannot be called. */
+export function notMoved(c?: CredentialDTO | null): boolean {
+  return c?.store === 'gateway'
+}
+
+/** A credential the keyring holds for the server itself, in no person's keyring. */
+export function heldForServer(c?: CredentialDTO | null): boolean {
+  return !!c && c.store === 'keyring' && (!isKeyringKind(c.kind) || c.keyringOwner === GATEWAY_KEYRING_OWNER)
+}
+
+/** The keyring entry behind a credential held for the server: "mcp-grafana" or "mcp-linear · default". */
+export function heldEntryName(c?: CredentialDTO | null): string {
+  if (!c) return ''
+  return c.keyringSecretName || [c.keyringProvider, c.keyringAccount].filter(Boolean).join(' · ')
 }
 
 export function isOAuth(c?: CredentialDTO | null): boolean {
@@ -121,7 +148,8 @@ export function keyringCredentialName(c?: CredentialDTO | null): string {
 /** Whose keyring a credential is in, as a phrase: "your keyring" or "Dana's keyring". */
 export function keyringOwnerPhrase(c: CredentialDTO | null | undefined, meId: string | undefined, users: UserDTO[]): string {
   const owner = c?.keyringOwner
-  if (!owner) return 'the keyring'
+  // The gateway's own space is nobody's: never "another user's keyring".
+  if (!owner || owner === GATEWAY_KEYRING_OWNER) return 'the keyring'
   if (owner === meId) return 'your keyring'
   const u = users.find((x) => x.id === owner)
   const name = u?.name || u?.email

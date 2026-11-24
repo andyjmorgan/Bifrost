@@ -57,7 +57,10 @@ export interface CredentialDTO {
   oauthScopes: string[]
   oauthExpiresAt?: string
   oauthHasRefreshToken: boolean
-  /** Keyring kinds: the user whose keyring holds the credential (the person who set it). */
+  /**
+   * Keyring kinds: the user whose keyring holds the credential (the person who set it). For basic,
+   * header and oauth kept in the keyring it is the gateway's own fixed id, which is no person.
+   */
   keyringOwner?: string
   /** keyring_oauth: the provider and account. Names only; the token is never returned. */
   keyringProvider?: string

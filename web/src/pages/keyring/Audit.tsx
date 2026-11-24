@@ -14,7 +14,8 @@ import { absoluteTime, cn, relativeTime } from '../../lib'
 
 const PAGE = 25
 const ALL = '__all__'
-const COLS = '130px minmax(0,1.2fr) 110px minmax(0,1.4fr) 170px minmax(0,1.3fr)'
+// The target gets the most room: a credential held for a server is named mcp-<slug>, an OAuth one "mcp-<slug> · default".
+const COLS = '120px minmax(0,1.1fr) 104px minmax(0,1.9fr) minmax(0,1.4fr) minmax(0,0.9fr)'
 
 // The event types the keyring records, as they appear on the wire.
 const TYPES = ['TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'TokenRemoved', 'CredentialCreated', 'CredentialChanged', 'CredentialRemoved', 'AuthSucceeded', 'AuthFailed', 'AuditAccessed'] as const
@@ -24,7 +25,8 @@ const prettyType = (t: string) => t.replace(/([a-z])([A-Z])/g, (_, a: string, b:
 
 /** One line naming what was acted on, from whichever target fields are present. */
 function target(e: KeyringAuditEvent): string {
-  const parts = [e.targetKind, e.targetProvider, e.targetAccount, e.targetName].filter(Boolean)
+  // A provider row carries its key as both provider and name: say it once.
+  const parts = [e.targetKind, e.targetProvider, e.targetAccount, e.targetName].filter((p, i, all) => p && all.indexOf(p) === i)
   return parts.length ? parts.join(' · ') : '—'
 }
 
@@ -93,7 +95,7 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
       <PageHeader
         eyebrow="Observe"
         title="Audit"
-        description="Every secret read, token refresh and sign-in on the keyring, newest first. Each entry names the access key or user and where the request came from. No entry ever carries a secret."
+        description="Every secret read, token refresh, change, removal and sign-in on the keyring, newest first. Each entry names the access key or user and where the request came from. No entry ever carries a secret."
         actions={
           <Button variant="secondary" onClick={load} disabled={busy}>
             <RotateCw className={cn(busy && 'animate-spin')} /> Refresh

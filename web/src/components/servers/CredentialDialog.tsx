@@ -4,8 +4,8 @@ import { Button } from '../../ui/components/button'
 import { Callout } from '../Callout'
 import { api, errorMessage, type CreateServerResult, type ServerDTO, type UserDTO } from '../../api'
 import { useMe } from '../../me'
-import { AuthFields, emptyAuthDraft, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
-import { isKeyringKind, keyringCredentialName, keyringOwnerPhrase, pickOfCredential } from './credential'
+import { AuthFields, emptyAuthDraft, keyringOffBlocks, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
+import { heldForServer, isKeyringKind, keyringCredentialName, keyringOwnerPhrase, pickOfCredential } from './credential'
 
 /** Set or replace a server's credential, possibly switching the auth kind. */
 export function CredentialDialog({
@@ -30,7 +30,8 @@ export function CredentialDialog({
   const cred = server.credential
   const fresh = server.authKind === 'none'
   // A keyring credential in somebody else's keyring is not in the caller's list, so say what it is.
-  const othersKeyring = !!cred && isKeyringKind(cred.kind) && cred.keyringOwner !== userId
+  // One the keyring holds for the server itself is nobody's, and gets no such note.
+  const othersKeyring = !!cred && isKeyringKind(cred.kind) && !heldForServer(cred) && cred.keyringOwner !== userId
   const keyringNote = othersKeyring
     ? `This server uses ${keyringCredentialName(cred)} from ${keyringOwnerPhrase(cred, userId, users)}. Saving points it at a credential from yours instead.`
     : undefined
@@ -84,7 +85,7 @@ export function CredentialDialog({
             <Button variant="outline" type="button" disabled={busy} onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={busy}>
+            <Button variant="primary" type="submit" disabled={busy || keyringOffBlocks(draft)}>
               {busy ? 'Saving…' : draft.kind === 'oauth' ? 'Save and authorize' : 'Save credential'}
             </Button>
           </DialogFooter>

@@ -1,5 +1,6 @@
 import type { AuthInput, AuthKind } from '../../api'
 import { FormField } from '../FormField'
+import { Callout } from '../Callout'
 import { Input } from '../../ui/components/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/components/select'
 import { keyringEnabled } from '../../keyring'
@@ -55,6 +56,14 @@ export function validateAuth(d: AuthDraft): string | undefined {
 }
 
 /**
+ * Every credential is kept in the keyring, so a gateway without one can only save "None"; the API
+ * refuses the rest. The dialogs use this to say so and to keep the save button off.
+ */
+export function keyringOffBlocks(d: AuthDraft): boolean {
+  return d.kind !== 'none' && !keyringEnabled()
+}
+
+/**
  * The auth kind select plus its conditional fields; shared by create and replace-credential.
  *
  * "From the keyring" is one choice for both keyring kinds, offered when the keyring is enabled (or
@@ -99,6 +108,12 @@ export function AuthFields({
           </SelectContent>
         </Select>
       </FormField>
+
+      {keyringOffBlocks(value) && (
+        <Callout tone="warning">
+          The keyring is not enabled on this gateway, so it has nowhere to keep this credential. Only None can be saved until the keyring is turned on.
+        </Callout>
+      )}
 
       {value.kind === 'basic' && (
         <div className="grid gap-4 sm:grid-cols-2">

@@ -6,7 +6,7 @@ import { Textarea } from '../../ui/components/textarea'
 import { FormField, FormSection } from '../FormField'
 import { Callout } from '../Callout'
 import { api, errorMessage, type CreateServerResult, type ServerDTO, type UpdateServerInput } from '../../api'
-import { AuthFields, emptyAuthDraft, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
+import { AuthFields, emptyAuthDraft, keyringOffBlocks, toAuthInput, validateAuth, type AuthDraft } from './AuthFields'
 import { SLUG_MAX, slugBase, slugProblem } from '../rules/selection'
 
 interface Draft {
@@ -159,7 +159,7 @@ export function ServerDialog({
             <Button variant="outline" type="button" disabled={busy} onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" disabled={busy}>
+            <Button variant="primary" type="submit" disabled={busy || (!editing && keyringOffBlocks(draft.auth))}>
               {busy ? 'Saving…' : editing ? 'Save changes' : draft.auth.kind === 'oauth' ? 'Create and authorize' : 'Create server'}
             </Button>
           </DialogFooter>
