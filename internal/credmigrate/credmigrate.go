@@ -159,7 +159,8 @@ func (r row) use() keyringref.Use {
 	return keyringref.Use{ServerID: r.serverID.String(), Slug: r.slug, Actor: actor}
 }
 
-// secret is the decrypted content of a sealed blob (store.Secret).
+// secret is the decrypted content of a sealed blob, as the gateway wrote it
+// when it sealed credentials itself.
 type secret struct {
 	Password     string `json:"password,omitempty"`
 	HeaderValue  string `json:"headerValue,omitempty"`

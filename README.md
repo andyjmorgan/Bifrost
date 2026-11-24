@@ -64,8 +64,8 @@ Postgres needs pg_cron for the cache sweep in production; without it the worker'
 | `MCPGW_OIDC_WEB_CLIENT_ID` | `mcp-gateway-web` | SPA client id |
 | `MCPGW_OIDC_REQUIRED_ROLE` | `mcp-gateway-operator` | realm role required to sign in |
 | `MCPGW_TOOLS_CACHE_TTL` | `5m` | tools and initialize cache lifetime; `0` disables |
-| `MCPGW_REFRESH_INTERVAL` | `4h` | worker cadence |
-| `MCPGW_REFRESH_LEEWAY` | `10m` | refresh tokens expiring within this window (capped at half the token lifetime) |
+| `MCPGW_REFRESH_INTERVAL` | `4h` | worker cadence: the cache sweep and the audit retention purge. The keyring refreshes OAuth tokens, not the worker |
+| `MCPGW_REFRESH_LEEWAY` | `10m` | no longer used; still read, so a deployment that sets it keeps starting |
 | `MCPGW_AUDIT_RETENTION` | `720h` | |
 | `MCPGW_UPSTREAM_TIMEOUT` | `60s` | |
 | `MCPGW_RULE_HEADERS` | empty | HTTP request headers rules may read as `request.headers`, comma separated. Headers that carry credentials are never shown |

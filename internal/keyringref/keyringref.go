@@ -1,9 +1,9 @@
 // Package keyringref is the one door between the gateway and the keyring.
 //
-// An MCP server may authenticate upstream with a credential that lives in
-// the keyring instead of one the gateway stores itself. The gateway holds
-// only a reference (Ref) and asks for the credential through Keyring each
-// time it needs it. Nothing in the gateway imports the keyring's services,
+// An MCP server authenticates upstream with a credential that lives in the
+// keyring: the gateway stores none itself. The gateway holds only a
+// reference (Ref) and asks for the credential through Keyring each time it
+// needs it. Nothing in the gateway imports the keyring's services,
 // store or cipher: the keyring implements this interface (keyring.Source)
 // and the gateway is handed it at start, or nil when the keyring is off.
 //

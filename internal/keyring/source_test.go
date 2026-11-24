@@ -19,7 +19,6 @@ import (
 	"github.com/google/uuid"
 
 	gwaudit "github.com/andyjmorgan/Bifrost/internal/audit"
-	gwcrypto "github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/audit"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/contracts"
 	"github.com/andyjmorgan/Bifrost/internal/keyring/crypto"
@@ -429,10 +428,6 @@ func (s oneCredential) GetCredential(context.Context, uuid.UUID) (*gwstore.Crede
 	return &c, nil
 }
 
-func (oneCredential) UpdateOAuthTokens(context.Context, uuid.UUID, []byte, string, *time.Time, bool, []string) error {
-	return nil
-}
-
 func (oneCredential) SetCredentialState(context.Context, uuid.UUID, gwstore.CredentialState, string) error {
 	return nil
 }
@@ -483,14 +478,10 @@ func TestGatewayReachesAServerWithAKeyringCredential(t *testing.T) {
 	logs := &lockedBuffer{}
 	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	sink := &gatewayAudit{}
-	sealer, err := gwcrypto.New(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
 	connect := func(cred gwstore.Credential) (*http.Client, error) {
 		srv := &gwstore.Server{ID: uuid.MustParse(gatewayUse.ServerID), Slug: gatewayUse.Slug, URL: mcpServer.URL, AuthKind: cred.Kind, Enabled: true}
 		cred.ServerID, cred.State = srv.ID, gwstore.StateOK
-		conn := upstream.New(oneCredential{cred: cred}, sealer, nil, r.src, gwaudit.NewRecorder(ctx, sink, log), log, 5*time.Second, time.Minute, "test")
+		conn := upstream.New(oneCredential{cred: cred}, r.src, gwaudit.NewRecorder(ctx, sink, log), log, 5*time.Second, "test")
 		return conn.HTTPClient(ctx, srv)
 	}
 	send := func(hc *http.Client) (int, error) {

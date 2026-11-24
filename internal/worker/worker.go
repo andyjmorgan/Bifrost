@@ -1,44 +1,38 @@
-// Package worker runs the periodic jobs: OAuth token refresh and audit
+// Package worker runs the gateway's periodic jobs: the cache sweep and audit
 // retention.
+//
+// It refreshes no tokens. Every OAuth token a server uses lives in the
+// keyring, which refreshes one when it is asked for it close to its expiry.
 package worker
 
 import (
 	"context"
 	"log/slog"
 	"time"
-
-	"github.com/google/uuid"
-
-	"github.com/andyjmorgan/Bifrost/internal/store"
-	"github.com/andyjmorgan/Bifrost/internal/upstream"
 )
 
 // Store is the slice of persistence the worker uses.
 type Store interface {
-	ExpiringOAuthCredentials(ctx context.Context, before time.Time) ([]*store.Credential, error)
-	GetServer(ctx context.Context, id uuid.UUID) (*store.Server, error)
 	PurgeAuditBefore(ctx context.Context, t time.Time) (int64, error)
-	PurgeExpiredOAuthStates(ctx context.Context) error
 	PurgeExpiredCache(ctx context.Context) (int64, error)
 }
 
-// Worker owns the tickers.
+// Worker owns the ticker.
 type Worker struct {
 	store     Store
-	conn      *upstream.Connector
 	log       *slog.Logger
 	interval  time.Duration
-	leeway    time.Duration
 	retention time.Duration
 }
 
-// New builds a worker.
-func New(s Store, conn *upstream.Connector, log *slog.Logger, interval, leeway, retention time.Duration) *Worker {
-	return &Worker{store: s, conn: conn, log: log, interval: interval, leeway: leeway, retention: retention}
+// New builds a worker that sweeps every interval and keeps audit events for
+// retention.
+func New(s Store, log *slog.Logger, interval, retention time.Duration) *Worker {
+	return &Worker{store: s, log: log, interval: interval, retention: retention}
 }
 
 // Run blocks until ctx ends. The first pass runs shortly after start so a
-// restart never leaves tokens stale for a whole interval.
+// restart never leaves expired rows lying for a whole interval.
 func (w *Worker) Run(ctx context.Context) {
 	first := time.NewTimer(30 * time.Second)
 	defer first.Stop()
@@ -62,32 +56,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 // Tick performs one pass of every job.
 func (w *Worker) Tick(ctx context.Context) {
-	w.refreshTokens(ctx)
 	w.purge(ctx)
-}
-
-// refreshTokens renews anything that would expire before the next pass.
-func (w *Worker) refreshTokens(ctx context.Context) {
-	deadline := time.Now().Add(w.interval + w.leeway)
-	creds, err := w.store.ExpiringOAuthCredentials(ctx, deadline)
-	if err != nil {
-		w.log.Error("worker: list expiring credentials", "err", err)
-		return
-	}
-	for _, c := range creds {
-		srv, err := w.store.GetServer(ctx, c.ServerID)
-		if err != nil {
-			continue
-		}
-		rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		if err := w.conn.Refresh(rctx, srv, c); err != nil {
-			w.log.Warn("worker: refresh failed", "slug", srv.Slug, "err", err)
-		}
-		cancel()
-	}
-	if len(creds) > 0 {
-		w.log.Info("worker: refresh pass", "candidates", len(creds))
-	}
 }
 
 func (w *Worker) purge(ctx context.Context) {
@@ -100,8 +69,5 @@ func (w *Worker) purge(ctx context.Context) {
 		w.log.Error("worker: audit purge", "err", err)
 	} else if n > 0 {
 		w.log.Info("worker: audit purged", "rows", n)
-	}
-	if err := w.store.PurgeExpiredOAuthStates(ctx); err != nil {
-		w.log.Error("worker: oauth state purge", "err", err)
 	}
 }

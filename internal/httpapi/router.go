@@ -30,8 +30,8 @@ type API struct {
 	conn       *upstream.Connector
 	cache      *cache.Writer
 	toolsTTL   time.Duration
-	oauth      *oauthclient.Client
-	keyring    keyringref.Holder // nil when the keyring is off
+	oauth      *oauthclient.Client // the client metadata document only
+	keyring    keyringref.Holder   // nil when the keyring is off
 	gw         *gateway.Gateway
 	rec        *audit.Recorder
 	log        *slog.Logger
@@ -49,11 +49,14 @@ type Deps struct {
 	Conn     *upstream.Connector
 	Cache    *cache.Writer
 	ToolsTTL time.Duration
-	OAuth    *oauthclient.Client
+	// OAuth is the gateway's identity as an OAuth client. The API serves its
+	// client metadata document from it and does nothing else with it: the
+	// keyring runs every authorization round trip.
+	OAuth *oauthclient.Client
 	// Keyring validates the keyring references servers are given, and holds
 	// the credentials servers own themselves. Nil when the keyring is off:
-	// the keyring credential kinds are then refused, and a Basic or header
-	// credential is sealed in the gateway's own store.
+	// a server can then be given no credential at all, because the gateway
+	// has no store of its own for one.
 	Keyring    keyringref.Holder
 	Gateway    *gateway.Gateway
 	Recorder   *audit.Recorder

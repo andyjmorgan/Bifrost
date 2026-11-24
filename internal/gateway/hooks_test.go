@@ -23,8 +23,8 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
-	"github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
@@ -158,10 +158,6 @@ func (m *memStore) GetCredential(_ context.Context, id uuid.UUID) (*store.Creden
 	return nil, store.ErrNotFound
 }
 
-func (m *memStore) UpdateOAuthTokens(context.Context, uuid.UUID, []byte, string, *time.Time, bool, []string) error {
-	return nil
-}
-
 func (m *memStore) SetCredentialState(context.Context, uuid.UUID, store.CredentialState, string) error {
 	return nil
 }
@@ -262,11 +258,7 @@ func newRig(t *testing.T) *rig {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	rec := audit.NewRecorder(ctx, ms, log)
-	sealer, err := crypto.New(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
-	conn := upstream.New(ms, sealer, nil, nil, rec, log, 10*time.Second, time.Minute, "test")
+	conn := upstream.New(ms, nil, rec, log, 10*time.Second, "test")
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		b, _ := json.Marshal(gateway.InitFrom(ir))
 		_ = ms.CacheSet(ctx, cache.NSInit, srv.ID.String(), nil, time.Time{}, b, time.Minute)
@@ -921,7 +913,10 @@ func TestACredentialTheOperatorMustFixIsSaidPlainly(t *testing.T) {
 	s := r.serve("a", u)
 	harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "tools/list"}) // warm the catalog
 	r.store.mu.Lock()
-	r.store.creds[s.ID] = &store.Credential{ServerID: s.ID, Kind: store.AuthOAuth, State: store.StateBroken, StateReason: "invalid_grant"}
+	// The server's own OAuth connection, held in the keyring, which its token
+	// endpoint has refused.
+	r.store.creds[s.ID] = &store.Credential{ServerID: s.ID, Kind: store.AuthKeyringOAuth, State: store.StateBroken, StateReason: "invalid_grant",
+		KeyringOwner: keyringref.GatewayOwner, KeyringProvider: keyringref.ServerCredentialName("a"), KeyringAccount: keyringref.ServerAccount}
 	r.store.mu.Unlock()
 	rep := harness.Raw(t, r.direct("a"), call("t", nil))
 	if code(rep) != -32011 {

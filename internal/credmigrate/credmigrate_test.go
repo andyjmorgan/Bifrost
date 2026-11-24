@@ -83,9 +83,62 @@ func newRig(t *testing.T) *rig {
 	return &rig{t: t, pool: pool, st: store.NewPostgres(pool), sealer: sealer, kr: kr, ms: ms, tag: "m" + uuid.NewString()[:6]}
 }
 
+// credRow is a server's credential row with every column: the kind, state
+// and keyring reference the gateway reads, and the columns an older gateway
+// sealed a credential in, which only this command still reads and writes.
+// The gateway's store has no fields for those any more, so the tests seed
+// and read them with SQL.
+type credRow struct {
+	Kind        store.AuthKind
+	State       store.CredentialState
+	StateReason string
+
+	BasicUsername string
+	HeaderName    string
+
+	OAuthIssuer                string
+	OAuthAuthorizationEndpoint string
+	OAuthTokenEndpoint         string
+	OAuthRegistrationKind      string // cimd | dcr
+	OAuthClientID              string
+	OAuthResource              string
+	OAuthScopes                []string
+	OAuthTokenType             string
+	OAuthExpiresAt             *time.Time
+	OAuthHasRefreshToken       bool
+
+	KeyringOwner      string
+	KeyringProvider   string
+	KeyringAccount    string
+	KeyringSecretName string
+
+	SecretBlob      []byte
+	LastRefreshedAt *time.Time
+}
+
+// KeyringRef is the keyring credential the row points at, when it is a
+// reference.
+func (c *credRow) KeyringRef() keyringref.Ref {
+	if c.Kind == store.AuthKeyringOAuth {
+		return keyringref.Ref{Owner: c.KeyringOwner, Kind: keyringref.KindOAuth, Provider: c.KeyringProvider, Account: c.KeyringAccount}
+	}
+	return keyringref.Ref{Owner: c.KeyringOwner, Kind: keyringref.KindSecret, Secret: c.KeyringSecretName}
+}
+
+// sealed is what an older gateway sealed into a row's blob, under its master
+// key and with the server's id as additional data (credmigrate's secret).
+type sealed struct {
+	Password     string `json:"password,omitempty"`
+	HeaderValue  string `json:"headerValue,omitempty"`
+	AccessToken  string `json:"accessToken,omitempty"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+}
+
 // server registers a server whose credential is cred, sealing sec into it
-// when given, and removes it when the test ends.
-func (r *rig) server(name string, cred store.Credential, sec *store.Secret) uuid.UUID {
+// when given, and removes it when the test ends. The row is written as an
+// older gateway wrote it, state ok.
+func (r *rig) server(name string, cred credRow, sec *sealed) uuid.UUID {
 	r.t.Helper()
 	ctx := context.Background()
 	now := time.Now()
@@ -95,16 +148,29 @@ func (r *rig) server(name string, cred store.Credential, sec *store.Secret) uuid
 	}
 	r.t.Cleanup(func() { _ = r.st.DeleteServer(context.Background(), s.ID) })
 	r.slugs = append(r.slugs, s.Slug)
-	cred.ServerID, cred.State, cred.OAuthScopes = s.ID, store.StateOK, []string{}
+	var blob []byte
 	if sec != nil {
 		b, _ := json.Marshal(sec)
-		blob, err := r.sealer.Seal(b, s.ID[:])
-		if err != nil {
+		var err error
+		if blob, err = r.sealer.Seal(b, s.ID[:]); err != nil {
 			r.t.Fatal(err)
 		}
-		cred.SecretBlob = blob
 	}
-	if err := r.st.UpsertCredential(ctx, &cred); err != nil {
+	scopes := cred.OAuthScopes
+	if scopes == nil {
+		scopes = []string{}
+	}
+	_, err := r.pool.Exec(ctx, `insert into credentials (server_id, kind, state, basic_username, header_name,
+		oauth_issuer, oauth_authorization_endpoint, oauth_token_endpoint, oauth_registration_kind, oauth_client_id, oauth_resource,
+		oauth_scopes, oauth_token_type, oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at,
+		keyring_owner, keyring_provider, keyring_account, keyring_secret_name)
+		values ($1,$2,'ok',nullif($3,''),nullif($4,''),nullif($5,''),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),nullif($10,''),
+		$11,nullif($12,''),$13,$14,$15,$16,nullif($17,''),nullif($18,''),nullif($19,''),nullif($20,''))`,
+		s.ID, string(cred.Kind), cred.BasicUsername, cred.HeaderName,
+		cred.OAuthIssuer, cred.OAuthAuthorizationEndpoint, cred.OAuthTokenEndpoint, cred.OAuthRegistrationKind, cred.OAuthClientID, cred.OAuthResource,
+		scopes, cred.OAuthTokenType, cred.OAuthExpiresAt, cred.OAuthHasRefreshToken, blob, cred.LastRefreshedAt,
+		cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount, cred.KeyringSecretName)
+	if err != nil {
 		r.t.Fatal(err)
 	}
 	return s.ID
@@ -138,13 +204,23 @@ func (r *rig) run(o credmigrate.Options, v credmigrate.Vault) (string, credmigra
 	return out.String(), sum, err
 }
 
-func (r *rig) cred(id uuid.UUID) *store.Credential {
+// cred reads a server's whole credential row.
+func (r *rig) cred(id uuid.UUID) *credRow {
 	r.t.Helper()
-	c, err := r.st.GetCredential(context.Background(), id)
+	var c credRow
+	err := r.pool.QueryRow(context.Background(), `select kind, state, coalesce(state_reason,''), coalesce(basic_username,''), coalesce(header_name,''),
+		coalesce(oauth_issuer,''), coalesce(oauth_authorization_endpoint,''), coalesce(oauth_token_endpoint,''), coalesce(oauth_registration_kind,''),
+		coalesce(oauth_client_id,''), coalesce(oauth_resource,''), oauth_scopes, coalesce(oauth_token_type,''), oauth_expires_at, oauth_has_refresh_token,
+		secret_blob, last_refreshed_at, coalesce(keyring_owner,''), coalesce(keyring_provider,''), coalesce(keyring_account,''), coalesce(keyring_secret_name,'')
+		from credentials where server_id=$1`, id).
+		Scan(&c.Kind, &c.State, &c.StateReason, &c.BasicUsername, &c.HeaderName,
+			&c.OAuthIssuer, &c.OAuthAuthorizationEndpoint, &c.OAuthTokenEndpoint, &c.OAuthRegistrationKind,
+			&c.OAuthClientID, &c.OAuthResource, &c.OAuthScopes, &c.OAuthTokenType, &c.OAuthExpiresAt, &c.OAuthHasRefreshToken,
+			&c.SecretBlob, &c.LastRefreshedAt, &c.KeyringOwner, &c.KeyringProvider, &c.KeyringAccount, &c.KeyringSecretName)
 	if err != nil {
 		r.t.Fatal(err)
 	}
-	return c
+	return &c
 }
 
 func (r *rig) authKind(id uuid.UUID) store.AuthKind {
@@ -169,13 +245,13 @@ func (r *rig) migratedFrom(id uuid.UUID) string {
 }
 
 // opened unseals a server's blob.
-func (r *rig) opened(id uuid.UUID) store.Secret {
+func (r *rig) opened(id uuid.UUID) sealed {
 	r.t.Helper()
 	pt, err := r.sealer.Open(r.cred(id).SecretBlob, id[:])
 	if err != nil {
 		r.t.Fatalf("the blob does not open: %v", err)
 	}
-	var s store.Secret
+	var s sealed
 	if err := json.Unmarshal(pt, &s); err != nil {
 		r.t.Fatal(err)
 	}
@@ -190,11 +266,11 @@ func (r *rig) held(owner, name string) (keyringref.Header, error) {
 // everyKind seeds one server of each kind and returns their ids by name.
 func (r *rig) everyKind() map[string]uuid.UUID {
 	return map[string]uuid.UUID{
-		"basic":  r.server("basic", store.Credential{Kind: store.AuthBasic, BasicUsername: "svc"}, &store.Secret{Password: password}),
-		"header": r.server("header", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue}),
-		"oauth": r.server("oauth", store.Credential{Kind: store.AuthOAuth, OAuthTokenEndpoint: "https://as.example/token", OAuthClientID: "c"},
-			&store.Secret{AccessToken: "a", RefreshToken: "r"}),
-		"lent": r.server("lent", store.Credential{Kind: store.AuthKeyringSecret, KeyringOwner: alice, KeyringSecretName: "atlas"}, nil),
+		"basic":  r.server("basic", credRow{Kind: store.AuthBasic, BasicUsername: "svc"}, &sealed{Password: password}),
+		"header": r.server("header", credRow{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &sealed{HeaderValue: headerValue}),
+		"oauth": r.server("oauth", credRow{Kind: store.AuthOAuth, OAuthTokenEndpoint: "https://as.example/token", OAuthClientID: "c"},
+			&sealed{AccessToken: "a", RefreshToken: "r"}),
+		"lent": r.server("lent", credRow{Kind: store.AuthKeyringSecret, KeyringOwner: alice, KeyringSecretName: "atlas"}, nil),
 	}
 }
 
@@ -436,7 +512,7 @@ func TestRollbackTakesNewCredentialsOnlyWhenAsked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := r.server("fresh", store.Credential{Kind: store.AuthKeyringSecret, KeyringOwner: ref.Owner, KeyringSecretName: ref.Secret}, nil)
+	id := r.server("fresh", credRow{Kind: store.AuthKeyringSecret, KeyringOwner: ref.Owner, KeyringSecretName: ref.Secret}, nil)
 
 	if report, sum, err := r.run(credmigrate.Options{Kind: credmigrate.KindStatic, Rollback: true}, nil); err != nil || sum.Moved != 0 || sum.Skipped != 1 {
 		t.Fatalf("%v %+v\n%s", err, sum, report)
@@ -453,9 +529,9 @@ func TestRollbackTakesNewCredentialsOnlyWhenAsked(t *testing.T) {
 // names no server stops it before anything is moved.
 func TestARunLimitedToSomeServers(t *testing.T) {
 	r := newRig(t)
-	first := r.server("first", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
-	second := r.server("second", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
-	third := r.server("third", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
+	first := r.server("first", credRow{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &sealed{HeaderValue: headerValue})
+	second := r.server("second", credRow{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &sealed{HeaderValue: headerValue})
+	third := r.server("third", credRow{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &sealed{HeaderValue: headerValue})
 
 	report, sum, err := r.run(credmigrate.Options{Kind: credmigrate.KindStatic, Servers: []string{r.slug("first"), r.slug("second")}}, nil)
 	if err != nil || sum.Moved != 2 || sum.Already+sum.Skipped+sum.Failed != 0 {

@@ -19,16 +19,6 @@ var (
 	basicInput  = AuthInput{Kind: store.AuthBasic, Username: stubUser, Password: stubSecret}
 )
 
-// sealedBlob reads the column the gateway used to seal credentials in.
-func (r *apiRig) sealedBlob(id string) []byte {
-	r.t.Helper()
-	c, err := r.store.GetCredential(context.Background(), uuid.MustParse(id))
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	return c.SecretBlob
-}
-
 func (r *apiRig) pings(id string) bool {
 	r.t.Helper()
 	status, body := r.do(http.MethodPost, "/servers/"+id+"/ping", alice, "", nil)
@@ -76,7 +66,7 @@ func TestAStaticCredentialIsStoredInTheKeyring(t *testing.T) {
 			if row.Kind != store.AuthKeyringSecret || row.KeyringRef() != want {
 				t.Fatalf("stored as %s %+v, want a keyring secret %+v", row.Kind, row.KeyringRef(), want)
 			}
-			if len(row.SecretBlob) != 0 || row.BasicUsername != "" || row.HeaderName != "" {
+			if r.oldStore(s.ID).any() {
 				t.Fatal("the gateway kept part of the credential in its own store")
 			}
 			held, ok := kr.gateway.secret(want.Secret)
@@ -172,23 +162,56 @@ func TestAServersOwnCredentialIsNotOnePersons(t *testing.T) {
 	}
 }
 
-// With the keyring off a static credential is sealed in the gateway's own
-// store, and the API says so.
-func TestKeyringOffAStaticCredentialStaysInTheGateway(t *testing.T) {
+// With the keyring off a server cannot be given a credential of its own: the
+// gateway has nowhere to keep one. Basic, header and OAuth are refused before
+// anything is stored, so a refused create leaves no server behind. A server
+// without a credential still works.
+func TestKeyringOffAServersOwnCredentialIsRefused(t *testing.T) {
 	r := newAPIRig(t, nil)
-	s := r.server()
-	status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", headerInput)
+	s := r.server() // no credential: accepted
+	ctx := context.Background()
+
+	for name, in := range map[string]AuthInput{"basic": basicInput, "header": headerInput, "oauth": {Kind: store.AuthOAuth}} {
+		status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", in)
+		if status != http.StatusBadRequest || !strings.Contains(body, keyringref.ErrOff.Error()) {
+			t.Fatalf("%s: put credential: %d %s", name, status, body)
+		}
+		noCredentialIn(t, "the refusal", body)
+
+		slug := "k" + uuid.NewString()[:8]
+		status, body = r.do(http.MethodPost, "/servers", alice, "", CreateServerInput{Name: "refused " + slug, Slug: slug, URL: r.mcpURL, Auth: in})
+		if status != http.StatusBadRequest || !strings.Contains(body, keyringref.ErrOff.Error()) {
+			t.Fatalf("%s: create: %d %s", name, status, body)
+		}
+		noCredentialIn(t, "the refusal", body)
+		var left int
+		if err := r.pool.QueryRow(ctx, `select count(*) from servers where slug=$1`, slug).Scan(&left); err != nil {
+			t.Fatal(err)
+		}
+		if left != 0 {
+			t.Fatalf("%s: a refused create left a server behind", name)
+		}
+	}
+
+	// The refused changes left the server as it was, with nothing sealed.
+	id := uuid.MustParse(s.ID)
+	if got, err := r.store.GetServer(ctx, id); err != nil || got.AuthKind != store.AuthNone {
+		t.Fatalf("a refused change switched the server to %s (%v)", got.AuthKind, err)
+	}
+	if row, err := r.store.GetCredential(ctx, id); err != nil || row.Kind != store.AuthNone || row.State != store.StateOK {
+		t.Fatalf("a refused change wrote the credential row: %+v (%v)", row, err)
+	}
+	if r.oldStore(s.ID).any() {
+		t.Fatal("a refused change sealed something in the gateway's own store")
+	}
+
+	// No credential is still a credential the gateway can set.
+	status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", AuthInput{Kind: store.AuthNone})
 	if status != http.StatusOK {
-		t.Fatalf("header: %d %s", status, body)
+		t.Fatalf("none: %d %s", status, body)
 	}
-	got := decodeServer(t, body)
-	if got.AuthKind != store.AuthHeader || got.Credential.Store != "gateway" || got.Credential.HeaderName != stubHeader {
-		t.Fatalf("not shown as a header credential in the gateway's store: %s", body)
+	if got := decodeServer(t, body); got.AuthKind != store.AuthNone || got.Credential == nil || got.Credential.Store != "" || got.Credential.State != store.StateOK {
+		t.Fatalf("a server without a credential is shown as %s: %s", got.AuthKind, body)
 	}
-	if len(r.sealedBlob(s.ID)) == 0 {
-		t.Fatal("nothing was sealed")
-	}
-	if strings.Contains(body, stubSecret) {
-		t.Fatal("the response carries the credential")
-	}
+	noCredentialIn(t, "the gateway's logs", r.logs.String())
 }

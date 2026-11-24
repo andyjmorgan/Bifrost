@@ -26,8 +26,15 @@ type Config struct {
 	OIDCScope        string // scope advertised for MCP clients, e.g. mcp:gateway
 	DevOwner         string
 
-	RefreshInterval time.Duration // background token refresh cadence
-	RefreshLeeway   time.Duration // refresh tokens expiring within this window
+	// RefreshInterval is how often the worker runs (MCPGW_REFRESH_INTERVAL).
+	// The name is from when the worker refreshed OAuth tokens. The keyring
+	// refreshes them now, so this only paces the cache sweep and the audit
+	// retention purge.
+	RefreshInterval time.Duration
+	// RefreshLeeway is no longer used (MCPGW_REFRESH_LEEWAY). It was how
+	// close to its expiry the gateway refreshed a token it held itself. It
+	// is still parsed, so a deployment that sets it keeps starting.
+	RefreshLeeway   time.Duration
 	AuditRetention  time.Duration
 	UpstreamTimeout time.Duration
 	ToolsCacheTTL   time.Duration // how long a server's tools/list is served from cache; 0 disables
@@ -80,6 +87,7 @@ func FromEnv() (Config, error) {
 	if c.RefreshInterval, err = durationEnv("MCPGW_REFRESH_INTERVAL", 4*time.Hour); err != nil {
 		return c, err
 	}
+	// Read and validated although nothing uses it: see Config.RefreshLeeway.
 	if c.RefreshLeeway, err = durationEnv("MCPGW_REFRESH_LEEWAY", 10*time.Minute); err != nil {
 		return c, err
 	}

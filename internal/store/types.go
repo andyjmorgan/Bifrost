@@ -24,6 +24,12 @@ var (
 type AuthKind string
 
 // Auth kinds.
+//
+// AuthOAuth, AuthBasic and AuthHeader are what the API calls a credential a
+// server owns itself. Such a credential is stored in the keyring, as
+// AuthKeyringOAuth or AuthKeyringSecret owned by keyringref.GatewayOwner. A
+// stored row of one of these three kinds is one from before that, which
+// `gateway migrate-credentials` has not moved yet (see AuthKind.Unmigrated).
 const (
 	AuthNone   AuthKind = "none"
 	AuthOAuth  AuthKind = "oauth"
@@ -37,9 +43,14 @@ const (
 	AuthKeyringSecret AuthKind = "keyring_secret"
 )
 
-// FromKeyring reports whether the credential lives in the keyring rather
-// than in the gateway's own store.
+// FromKeyring reports whether a stored credential row is a reference into
+// the keyring.
 func (k AuthKind) FromKeyring() bool { return k == AuthKeyringOAuth || k == AuthKeyringSecret }
+
+// Unmigrated reports whether k, as the kind of a stored credential row, is
+// one the gateway sealed in its own store and has not moved to the keyring.
+// This gateway cannot send such a credential.
+func (k AuthKind) Unmigrated() bool { return k == AuthOAuth || k == AuthBasic || k == AuthHeader }
 
 // CredentialState tracks whether a credential is usable.
 type CredentialState string
@@ -72,42 +83,33 @@ type Server struct {
 	Grants     []Grant // filled by GetServer and ListServers only
 }
 
-// Credential is the non-secret view of a server's credential plus the
-// sealed secret envelope.
+// Credential is a server's credential row. The gateway holds no secret of
+// its own: a credential is nothing (none) or a reference into the keyring,
+// and the row carries the reference and its state.
+//
+// A row whose Kind is still basic, header or oauth is one the gateway sealed
+// in its own columns before the keyring held everything. Nothing here reads
+// those columns, so such a row cannot be sent until `gateway
+// migrate-credentials` has moved it. internal/credmigrate is the only code
+// that still reads and writes them.
 type Credential struct {
 	ServerID    uuid.UUID
 	Kind        AuthKind
 	State       CredentialState
 	StateReason string
 
-	BasicUsername string
-	HeaderName    string
-
-	OAuthIssuer                string
-	OAuthAuthorizationEndpoint string
-	OAuthTokenEndpoint         string
-	OAuthRegistrationEndpoint  string
-	OAuthRegistrationKind      string // cimd | dcr
-	OAuthClientID              string
-	OAuthResource              string
-	OAuthScopes                []string
-	OAuthTokenType             string
-	OAuthExpiresAt             *time.Time
-	OAuthHasRefreshToken       bool
-
 	// The keyring reference of the kinds keyring_oauth and keyring_secret.
 	// KeyringOwner is the user whose keyring holds the credential: the
-	// person who pointed the server at it. Lookups never leave that user's
+	// person who pointed the server at it, or keyringref.GatewayOwner for a
+	// credential the server owns itself. Lookups never leave that user's
 	// space. These are names, not secrets.
 	KeyringOwner      string
 	KeyringProvider   string // keyring_oauth
 	KeyringAccount    string // keyring_oauth
 	KeyringSecretName string // keyring_secret
 
-	SecretBlob      []byte
-	LastRefreshedAt *time.Time
-	LastError       string
-	UpdatedAt       time.Time
+	LastError string
+	UpdatedAt time.Time
 }
 
 // KeyringRef is the keyring credential c points at. It is meaningful only
@@ -118,24 +120,6 @@ func (c *Credential) KeyringRef() keyringref.Ref {
 		ref = keyringref.Ref{Owner: c.KeyringOwner, Kind: keyringref.KindOAuth, Provider: c.KeyringProvider, Account: c.KeyringAccount}
 	}
 	return ref
-}
-
-// Secret is the decrypted content of Credential.SecretBlob.
-type Secret struct {
-	Password     string `json:"password,omitempty"`
-	HeaderValue  string `json:"headerValue,omitempty"`
-	AccessToken  string `json:"accessToken,omitempty"`
-	RefreshToken string `json:"refreshToken,omitempty"`
-	ClientSecret string `json:"clientSecret,omitempty"`
-}
-
-// OAuthState is a pending authorization-code round trip.
-type OAuthState struct {
-	State        string
-	ServerID     uuid.UUID
-	CodeVerifier string
-	ReturnTo     string
-	ExpiresAt    time.Time
 }
 
 // APIKey is a gateway access key. The secret is kept hashed for lookup and

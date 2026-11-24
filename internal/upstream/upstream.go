@@ -1,11 +1,17 @@
 // Package upstream opens MCP client sessions to registered servers. The
 // credential for a server is applied by an http.RoundTripper middleware on
-// the client, which also refreshes expiring OAuth tokens inline, retries
-// once after a 401, and marks a credential broken when refresh fails.
+// the client.
 //
-// A server's credential is either the gateway's own (sealed in its store)
-// or a reference into the keyring, fetched through keyringref.Keyring for
-// each session (see keyring.go).
+// The gateway stores no credential of its own. A server's credential is a
+// reference into the keyring, fetched through keyringref.Keyring for each
+// session (see keyring.go): the keyring keeps the secret, refreshes an OAuth
+// token that is close to expiry or that the server has just refused, and
+// says when an account is broken. The connector sends what it is handed,
+// retries once after a 401, and records a broken credential.
+//
+// A credential row from before that, which the gateway sealed in its own
+// store and `gateway migrate-credentials` has not moved yet, cannot be sent:
+// the server fails with ErrNotMigrated and nothing goes upstream.
 package upstream
 
 import (
@@ -19,7 +25,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,16 +32,13 @@ import (
 
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/auth"
-	"github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
-	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
 
 // Store is the slice of persistence the connector needs.
 type Store interface {
 	GetCredential(ctx context.Context, serverID uuid.UUID) (*store.Credential, error)
-	UpdateOAuthTokens(ctx context.Context, serverID uuid.UUID, blob []byte, tokenType string, expiresAt *time.Time, hasRefresh bool, scopes []string) error
 	SetCredentialState(ctx context.Context, serverID uuid.UUID, state store.CredentialState, reason string) error
 }
 
@@ -47,48 +49,30 @@ var (
 	// ErrKeyringOff is a server whose credential lives in the keyring on a
 	// gateway that runs without one.
 	ErrKeyringOff = errors.New("upstream: the server uses a keyring credential, and the keyring is not enabled on this gateway")
+	// ErrNotMigrated is a server whose credential row is still of a kind the
+	// gateway used to seal in its own store (basic, header or oauth). The
+	// gateway no longer reads that store, so it has nothing to send until the
+	// one-off command has moved the row into the keyring.
+	ErrNotMigrated = errors.New("upstream: this server's credential is still in the gateway's old store; run `gateway migrate-credentials`")
 )
 
 // Connector builds authenticated MCP sessions.
 type Connector struct {
 	store    Store
-	sealer   *crypto.Sealer
-	oauth    *oauthclient.Client
 	keyring  keyringref.Keyring // nil when the keyring is off
 	recorder *audit.Recorder
 	log      *slog.Logger
 	timeout  time.Duration
-	leeway   time.Duration
 	// OnInit is called after each successful connect with the initialize result.
 	OnInit  func(srv *store.Server, ir *mcp.InitializeResult)
 	version string
-	locks   sync.Map // serverID -> *sync.Mutex guarding refresh
-	guard   RefreshGuard
 }
 
-// RefreshGuard is held, shared, for as long as a refresh talks to the token
-// endpoint and stores the result. `gateway migrate-credentials` holds it
-// exclusively while it moves credentials into the keyring, so no token
-// rotates under a row that is being copied (refreshguard.Guard).
-type RefreshGuard interface {
-	Shared(ctx context.Context) (release func(), err error)
-}
-
-// SetRefreshGuard makes every refresh of a credential the gateway stores
-// itself hold g. Without one, refreshes are unguarded, which is right only
-// where nothing else can move the credentials.
-func (c *Connector) SetRefreshGuard(g RefreshGuard) { c.guard = g }
-
-// errMoved is a credential that stopped being the gateway's own while a
-// request was using it: `gateway migrate-credentials` moved it into the
-// keyring. The request carries on with the keyring's copy.
-var errMoved = errors.New("upstream: the credential was moved to the keyring")
-
-// New builds a connector. kr is the keyring that servers with a keyring
-// credential are resolved through; nil means the keyring is off, and such
-// a server then fails to connect with ErrKeyringOff.
-func New(s Store, sealer *crypto.Sealer, oauth *oauthclient.Client, kr keyringref.Keyring, rec *audit.Recorder, log *slog.Logger, timeout, leeway time.Duration, version string) *Connector {
-	return &Connector{store: s, sealer: sealer, oauth: oauth, keyring: kr, recorder: rec, log: log, timeout: timeout, leeway: leeway, version: version}
+// New builds a connector. kr is the keyring that servers with a credential
+// are resolved through; nil means the keyring is off, and such a server then
+// fails to connect with ErrKeyringOff.
+func New(s Store, kr keyringref.Keyring, rec *audit.Recorder, log *slog.Logger, timeout time.Duration, version string) *Connector {
+	return &Connector{store: s, keyring: kr, recorder: rec, log: log, timeout: timeout, version: version}
 }
 
 // Timeout is the per-call upstream budget.
@@ -115,10 +99,15 @@ func (c *Connector) HTTPClient(ctx context.Context, srv *store.Server) (*http.Cl
 	} else if err != nil {
 		return nil, err
 	}
-	// Fail fast with a clear reason instead of letting the dial wrap it. A
-	// server's own connection held in the keyring has the same two states:
-	// waiting for consent, and refused by its token endpoint.
-	if cred.Kind == store.AuthOAuth || cred.Kind == store.AuthKeyringOAuth {
+	// A row the gateway sealed itself and nobody has moved: there is no
+	// credential to send, and the server must not be called without one.
+	if cred.Kind.Unmigrated() {
+		c.log.Warn("upstream: credential not moved to the keyring yet; run `gateway migrate-credentials`", "slug", srv.Slug, "kind", cred.Kind)
+		return nil, ErrNotMigrated
+	}
+	// Fail fast with a clear reason instead of letting the dial wrap it: an
+	// OAuth account waiting for consent, or one its token endpoint refused.
+	if cred.Kind == store.AuthKeyringOAuth {
 		switch cred.State {
 		case store.StateBroken:
 			return nil, fmt.Errorf("%w (%s)", ErrCredentialBroken, cred.StateReason)
@@ -131,8 +120,9 @@ func (c *Connector) HTTPClient(ctx context.Context, srv *store.Server) (*http.Cl
 		return nil, ErrKeyringOff
 	}
 	ct := &credentialTransport{c: c, srv: srv, cred: cred}
-	var rt http.RoundTripper = c.recorder.Transport(baseTransport(), cred.HeaderName)
-	ct.next = rt
+	// The keyring names the header a secret travels in when it hands the
+	// secret out, and the audit trail is told then (keyringSecret).
+	ct.next = c.recorder.Transport(baseTransport(), "")
 	return &http.Client{Transport: sseErrors{next: ct}, Timeout: c.timeout}, nil
 }
 
@@ -361,81 +351,19 @@ type credentialTransport struct {
 }
 
 func (t *credentialTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ctx := req.Context()
-	cred := t.cred
-	switch cred.Kind {
+	switch t.cred.Kind {
 	case store.AuthNone:
 		return t.next.RoundTrip(req)
-	case store.AuthBasic:
-		sec, err := t.c.openSecret(cred)
-		if err != nil {
-			return nil, err
-		}
-		req = cloneWithBody(req)
-		req.SetBasicAuth(cred.BasicUsername, sec.Password)
-		return t.next.RoundTrip(req)
-	case store.AuthHeader:
-		sec, err := t.c.openSecret(cred)
-		if err != nil {
-			return nil, err
-		}
-		req = cloneWithBody(req)
-		req.Header.Set(cred.HeaderName, sec.HeaderValue)
-		return t.next.RoundTrip(req)
-	case store.AuthOAuth:
-		switch cred.State {
-		case store.StateBroken:
-			return nil, ErrCredentialBroken
-		case store.StatePending:
-			return nil, ErrCredentialPending
-		}
-		sec, err := t.c.openSecret(cred)
-		if err != nil {
-			return nil, err
-		}
-		refreshed := false
-		if t.c.needsRefresh(cred) && sec.RefreshToken != "" {
-			if sec, err = t.c.refresh(ctx, t.srv, cred, sec); errors.Is(err, errMoved) {
-				return t.keyringOAuth(req)
-			} else if err != nil {
-				return nil, err
-			}
-			refreshed = true
-		}
-		req = cloneWithBody(req)
-		req.Header.Set("Authorization", bearer(cred, sec))
-		resp, err := t.next.RoundTrip(req)
-		if err != nil {
-			return nil, err
-		}
-		if resp.StatusCode != http.StatusUnauthorized || refreshed || sec.RefreshToken == "" {
-			return resp, nil
-		}
-		// The token was rejected before its expiry: refresh once and retry.
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16)) //nolint:errcheck
-		resp.Body.Close()
-		if sec, err = t.c.refresh(ctx, t.srv, cred, sec); errors.Is(err, errMoved) {
-			return t.keyringOAuth(req)
-		} else if err != nil {
-			return nil, err
-		}
-		retry := cloneWithBody(req)
-		retry.Header.Set("Authorization", bearer(cred, sec))
-		return t.next.RoundTrip(retry)
 	case store.AuthKeyringOAuth:
 		return t.keyringOAuth(req)
 	case store.AuthKeyringSecret:
 		return t.keyringSecret(req)
+	case store.AuthBasic, store.AuthHeader, store.AuthOAuth:
+		// HTTPClient refuses these before a client exists; this keeps a
+		// transport built any other way from sending a bare request.
+		return nil, ErrNotMigrated
 	}
-	return nil, fmt.Errorf("upstream: unknown credential kind %q", cred.Kind)
-}
-
-func bearer(cred *store.Credential, sec *store.Secret) string {
-	typ := cred.OAuthTokenType
-	if typ == "" || typ == "bearer" {
-		typ = "Bearer"
-	}
-	return typ + " " + sec.AccessToken
+	return nil, fmt.Errorf("upstream: unknown credential kind %q", t.cred.Kind)
 }
 
 // cloneWithBody makes the request replayable so a retry can resend it.
@@ -457,137 +385,4 @@ func cloneWithBody(req *http.Request) *http.Request {
 	r.Body = io.NopCloser(bytes.NewReader(buf))
 	r.GetBody = req.GetBody
 	return r
-}
-
-func (c *Connector) openSecret(cred *store.Credential) (*store.Secret, error) {
-	if len(cred.SecretBlob) == 0 {
-		return &store.Secret{}, nil
-	}
-	pt, err := c.sealer.Open(cred.SecretBlob, cred.ServerID[:])
-	if err != nil {
-		return nil, fmt.Errorf("upstream: unseal: %w", err)
-	}
-	var s store.Secret
-	if err := json.Unmarshal(pt, &s); err != nil {
-		return nil, fmt.Errorf("upstream: secret: %w", err)
-	}
-	return &s, nil
-}
-
-// SealSecret encrypts a secret for storage against a server.
-func (c *Connector) SealSecret(serverID uuid.UUID, s *store.Secret) ([]byte, error) {
-	b, _ := json.Marshal(s)
-	return c.sealer.Seal(b, serverID[:])
-}
-
-// OpenSecret exposes decryption for the API layer (never returned to clients).
-func (c *Connector) OpenSecret(cred *store.Credential) (*store.Secret, error) {
-	return c.openSecret(cred)
-}
-
-// needsRefresh is true inside the leeway window before expiry. Short-lived
-// tokens (lifetime under twice the leeway) use half their lifetime instead,
-// so a 5-minute token with a 10-minute leeway is not refreshed on every call.
-func (c *Connector) needsRefresh(cred *store.Credential) bool {
-	if cred.OAuthExpiresAt == nil {
-		return false
-	}
-	leeway := c.leeway
-	if cred.LastRefreshedAt != nil {
-		if life := cred.OAuthExpiresAt.Sub(*cred.LastRefreshedAt); life > 0 && life < 2*leeway {
-			leeway = life / 2
-		}
-	}
-	return time.Now().Add(leeway).After(*cred.OAuthExpiresAt)
-}
-
-// NeedsRefresh reports whether a credential is due for a refresh.
-func (c *Connector) NeedsRefresh(cred *store.Credential) bool { return c.needsRefresh(cred) }
-
-// refresh serialises refreshes per server, re-reads the credential under
-// the lock (another request may have refreshed already), and persists the
-// new token set. A definitive token-endpoint rejection marks the credential broken.
-func (c *Connector) refresh(ctx context.Context, srv *store.Server, cred *store.Credential, sec *store.Secret) (*store.Secret, error) {
-	muI, _ := c.locks.LoadOrStore(srv.ID, &sync.Mutex{})
-	mu := muI.(*sync.Mutex)
-	mu.Lock()
-	defer mu.Unlock()
-
-	// A credential migration holds the guard while it moves rows. Waiting
-	// for it here and reading the row again means this refresh never
-	// rotates a token that is being copied. If the row has become a keyring
-	// reference in the meantime, refreshing it is the keyring's business.
-	if c.guard != nil {
-		release, err := c.guard.Shared(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("upstream: token refresh held off: %w", err)
-		}
-		defer release()
-	}
-	fresh, err := c.store.GetCredential(ctx, srv.ID)
-	if err == nil && fresh.Kind != store.AuthOAuth {
-		if fresh.Kind == store.AuthKeyringOAuth && c.keyring != nil {
-			*cred = *fresh
-			return nil, errMoved
-		}
-		return nil, fmt.Errorf("upstream: the credential changed to %s while it was being refreshed", fresh.Kind)
-	}
-	if err == nil && fresh.LastRefreshedAt != nil &&
-		(cred.LastRefreshedAt == nil || fresh.LastRefreshedAt.After(*cred.LastRefreshedAt)) {
-		*cred = *fresh
-		return c.openSecret(cred)
-	}
-	reg := &oauthclient.Registration{Kind: cred.OAuthRegistrationKind, ClientID: cred.OAuthClientID, ClientSecret: sec.ClientSecret}
-	// The refresh outlives the caller: a cancelled request must not abort a
-	// token rotation half-way (the old refresh token may already be spent).
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.timeout)
-	defer cancel()
-	ts, err := c.oauth.Refresh(rctx, cred.OAuthTokenEndpoint, reg, sec.RefreshToken, cred.OAuthResource, cred.OAuthScopes)
-	if err != nil {
-		// Only a definitive answer from the token endpoint (4xx such as
-		// invalid_grant) breaks the credential. Network errors, timeouts and
-		// 5xx are transient: fail this call and try again next time.
-		var te *oauthclient.TokenError
-		if !errors.As(err, &te) || te.Status >= 500 {
-			c.log.Warn("token refresh failed (transient)", "slug", srv.Slug, "err", err)
-			return nil, fmt.Errorf("upstream: token refresh failed: %w", err)
-		}
-		reason := te.Code + ": " + te.Description
-		if sErr := c.store.SetCredentialState(rctx, srv.ID, store.StateBroken, reason); sErr != nil {
-			c.log.Error("mark broken failed", "slug", srv.Slug, "err", sErr)
-		}
-		cred.State = store.StateBroken
-		c.log.Warn("token refresh failed; credential marked broken", "slug", srv.Slug, "reason", reason)
-		return nil, fmt.Errorf("%w: %s", ErrCredentialBroken, reason)
-	}
-	newSec := &store.Secret{AccessToken: ts.AccessToken, RefreshToken: ts.RefreshToken, ClientSecret: sec.ClientSecret}
-	blob, err := c.SealSecret(srv.ID, newSec)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.store.UpdateOAuthTokens(rctx, srv.ID, blob, ts.TokenType, ts.ExpiresAt, ts.RefreshToken != "", ts.Scope); err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	cred.SecretBlob, cred.OAuthExpiresAt, cred.LastRefreshedAt, cred.State = blob, ts.ExpiresAt, &now, store.StateOK
-	if ts.TokenType != "" {
-		cred.OAuthTokenType = ts.TokenType
-	}
-	c.log.Info("token refreshed", "slug", srv.Slug, "expiresAt", ts.ExpiresAt)
-	return newSec, nil
-}
-
-// Refresh is the worker entry point: refresh one credential now.
-func (c *Connector) Refresh(ctx context.Context, srv *store.Server, cred *store.Credential) error {
-	sec, err := c.openSecret(cred)
-	if err != nil {
-		return err
-	}
-	if sec.RefreshToken == "" {
-		return c.store.SetCredentialState(ctx, srv.ID, store.StateBroken, "no refresh token")
-	}
-	if _, err = c.refresh(ctx, srv, cred, sec); errors.Is(err, errMoved) {
-		return nil // the keyring refreshes it from here on
-	}
-	return err
 }

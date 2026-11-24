@@ -1,5 +1,9 @@
-// Command gateway runs Bifrost: MCP front door, REST API, SPA and
-// the token-refresh worker, all in one process.
+// Command gateway runs Bifrost: MCP front door, REST API, SPA, the keyring
+// and the housekeeping worker, all in one process.
+//
+// Every credential a server uses lives in the keyring, which also refreshes
+// the OAuth tokens among them. `gateway migrate-credentials` is the one-off
+// command that moves credentials an older gateway sealed in its own store.
 package main
 
 import (
@@ -59,6 +63,7 @@ func main() {
 	}
 	defer pool.Close()
 	st := store.NewPostgres(pool)
+	warnUnmigrated(ctx, st, log)
 
 	sealer, err := crypto.New(cfg.MasterKey)
 	if err != nil {
@@ -79,10 +84,10 @@ func main() {
 	}
 
 	// The keyring is nil, and Wrap a no-op, unless its KEKs are configured.
-	// It is built before the connector, which resolves the servers that
-	// reference a keyring credential through it.
-	// Every token refresh, the gateway's own and the keyring's, holds this
-	// guard shared; `gateway migrate-credentials` holds it exclusive.
+	// It is built before the connector, which resolves every server's
+	// credential through it.
+	// Every token refresh the keyring makes holds this guard shared;
+	// `gateway migrate-credentials` holds it exclusive while it moves rows.
 	guard := refreshguard.New(pool)
 	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
 		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
@@ -100,8 +105,7 @@ func main() {
 
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
-	conn := upstream.New(st, sealer, oauth, kr.Source(), rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
-	conn.SetRefreshGuard(guard)
+	conn := upstream.New(st, kr.Source(), rec, log, cfg.UpstreamTimeout, cfg.Version)
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		id := srv.ID
@@ -126,7 +130,7 @@ func main() {
 			PublicBaseURL: cfg.PublicBaseURL, Version: cfg.Version, MCPScope: cfg.OIDCScope, AllScopes: auth.AllScopes},
 	})
 
-	go worker.New(st, conn, log, cfg.RefreshInterval, cfg.RefreshLeeway, cfg.AuditRetention).Run(ctx)
+	go worker.New(st, log, cfg.RefreshInterval, cfg.AuditRetention).Run(ctx)
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: kr.Wrap(api.Router()), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -140,6 +144,29 @@ func main() {
 		log.Error("server", "err", err)
 		os.Exit(1)
 	}
+}
+
+// unmigratedLister is the one question warnUnmigrated asks of the store.
+type unmigratedLister interface {
+	UnmigratedCredentials(ctx context.Context) ([]string, error)
+}
+
+// warnUnmigrated says, once at start, which servers still have their
+// credential in the gateway's old store. This gateway does not read that
+// store, so each of them fails every request until the one-off command has
+// moved its row into the keyring. It logs nothing when there are none.
+func warnUnmigrated(ctx context.Context, st unmigratedLister, log *slog.Logger) {
+	slugs, err := st.UnmigratedCredentials(ctx)
+	if err != nil {
+		log.Error("could not check for credentials still in the gateway's old store", "err", err)
+		return
+	}
+	if len(slugs) == 0 {
+		return
+	}
+	log.Error("servers whose credential is still in the gateway's old store cannot be reached until it is moved to the keyring: "+
+		"run `gateway migrate-credentials -kind static` and `gateway migrate-credentials -kind oauth`",
+		"count", len(slugs), "servers", slugs)
 }
 
 // createKey is the bootstrap path: `gateway create-key -name <n> -user <subject> [-scopes a,b]`

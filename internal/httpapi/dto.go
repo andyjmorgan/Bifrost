@@ -42,23 +42,30 @@ type CredentialDTO struct {
 	// credential the gateway keeps in the keyring is still basic or header
 	// here; Store says where it lives.
 	Kind store.AuthKind `json:"kind"`
-	// Store is where the secret is held: "keyring", or "gateway" for a
-	// credential still sealed in the gateway's own store. Absent for none.
-	Store                 string                `json:"store,omitempty"`
-	State                 store.CredentialState `json:"state"`
-	StateReason           string                `json:"stateReason,omitempty"`
-	BasicUsername         string                `json:"basicUsername,omitempty"`
-	HeaderName            string                `json:"headerName,omitempty"`
-	OAuthIssuer           string                `json:"oauthIssuer,omitempty"`
-	OAuthClientID         string                `json:"oauthClientId,omitempty"`
-	OAuthRegistrationKind string                `json:"oauthRegistrationKind,omitempty"`
-	OAuthResource         string                `json:"oauthResource,omitempty"`
-	OAuthScopes           []string              `json:"oauthScopes"`
-	OAuthExpiresAt        *time.Time            `json:"oauthExpiresAt,omitempty"`
-	OAuthHasRefreshToken  bool                  `json:"oauthHasRefreshToken"`
+	// Store is where the secret is held: "keyring" for every credential that
+	// works. "gateway" is a credential still sealed in the gateway's old
+	// store, which `gateway migrate-credentials` has not moved: the gateway
+	// cannot send it, so it is shown as broken, with the reason. Absent for
+	// none.
+	Store       string                `json:"store,omitempty"`
+	State       store.CredentialState `json:"state"`
+	StateReason string                `json:"stateReason,omitempty"`
+	// BasicUsername, HeaderName, the OAuth fields and LastRefreshedAt are
+	// what the keyring says of a credential the gateway holds there for the
+	// server. They are empty for a reference into a person's keyring and for
+	// a credential that has not been moved.
+	BasicUsername         string     `json:"basicUsername,omitempty"`
+	HeaderName            string     `json:"headerName,omitempty"`
+	OAuthIssuer           string     `json:"oauthIssuer,omitempty"`
+	OAuthClientID         string     `json:"oauthClientId,omitempty"`
+	OAuthRegistrationKind string     `json:"oauthRegistrationKind,omitempty"`
+	OAuthResource         string     `json:"oauthResource,omitempty"`
+	OAuthScopes           []string   `json:"oauthScopes"`
+	OAuthExpiresAt        *time.Time `json:"oauthExpiresAt,omitempty"`
+	OAuthHasRefreshToken  bool       `json:"oauthHasRefreshToken"`
 	// The keyring reference of a keyring_oauth or keyring_secret credential:
 	// whose keyring, and the name of the entry. Names only; the gateway
-	// holds no secret for these kinds and never returns one.
+	// holds no secret and never returns one.
 	KeyringOwner      string     `json:"keyringOwner,omitempty"`
 	KeyringProvider   string     `json:"keyringProvider,omitempty"`
 	KeyringAccount    string     `json:"keyringAccount,omitempty"`
@@ -329,23 +336,35 @@ func presentedKind(c *store.Credential, held *keyringref.Description) store.Auth
 	return c.Kind
 }
 
+// notMovedReason is why a credential still in the gateway's old store does
+// not work, as the API says it.
+const notMovedReason = "not moved to the keyring yet; run gateway migrate-credentials"
+
+// credentialDTO is a credential as the API returns it. The row gives the
+// kind, the state and the keyring reference. Everything that describes the
+// credential itself (the user name, the header, the OAuth connection) comes
+// from held, which is what the keyring says of a credential the gateway
+// holds there, or nil.
 func credentialDTO(c *store.Credential, held *keyringref.Description) *CredentialDTO {
-	scopes := c.OAuthScopes
-	if scopes == nil {
-		scopes = []string{}
-	}
 	d := &CredentialDTO{
-		Kind: presentedKind(c, held), State: c.State, StateReason: c.StateReason, BasicUsername: c.BasicUsername, HeaderName: c.HeaderName,
-		OAuthIssuer: c.OAuthIssuer, OAuthClientID: c.OAuthClientID, OAuthRegistrationKind: c.OAuthRegistrationKind,
-		OAuthResource: c.OAuthResource, OAuthScopes: scopes, OAuthExpiresAt: c.OAuthExpiresAt, OAuthHasRefreshToken: c.OAuthHasRefreshToken,
+		Kind: presentedKind(c, held), State: c.State, StateReason: c.StateReason, OAuthScopes: []string{},
 		KeyringOwner: c.KeyringOwner, KeyringProvider: c.KeyringProvider, KeyringAccount: c.KeyringAccount, KeyringSecretName: c.KeyringSecretName,
-		LastRefreshedAt: c.LastRefreshedAt, LastError: c.LastError, UpdatedAt: c.UpdatedAt,
+		LastError: c.LastError, UpdatedAt: c.UpdatedAt,
 	}
 	switch {
 	case c.Kind.FromKeyring():
 		d.Store = "keyring"
-	case c.Kind != store.AuthNone:
-		d.Store = "gateway"
+	case c.Kind.Unmigrated():
+		// The gateway cannot send this credential whatever state its row is
+		// in, and a request through the server fails. Say so where the
+		// operator looks. What the row said of itself (awaiting consent, a
+		// refused refresh) still holds once it is moved, so it follows.
+		d.Store, d.State = "gateway", store.StateBroken
+		if d.StateReason == "" {
+			d.StateReason = notMovedReason
+		} else {
+			d.StateReason = notMovedReason + " (" + d.StateReason + ")"
+		}
 	}
 	if held != nil {
 		// How the secret is sent is the keyring's to say; these are names.

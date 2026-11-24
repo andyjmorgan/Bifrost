@@ -160,18 +160,18 @@ func (p *Postgres) DeleteServer(ctx context.Context, id uuid.UUID) error {
 
 // ---- credentials -------------------------------------------------------
 
-const credCols = `server_id, kind, state, coalesce(state_reason,''), coalesce(basic_username,''), coalesce(header_name,''),
-coalesce(oauth_issuer,''), coalesce(oauth_authorization_endpoint,''), coalesce(oauth_token_endpoint,''), coalesce(oauth_registration_endpoint,''),
-coalesce(oauth_registration_kind,''), coalesce(oauth_client_id,''), coalesce(oauth_resource,''), oauth_scopes, coalesce(oauth_token_type,''),
-oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, coalesce(last_error,''), updated_at,
+// credCols is what the gateway reads of a credential row: its kind, its
+// state and its keyring reference. The row has more columns, in which the
+// gateway used to seal a server's own credential (the sealed blob, the Basic
+// user name, the header name, the OAuth registration and expiry). They are
+// read and written only by internal/credmigrate, which moves them into the
+// keyring.
+const credCols = `server_id, kind, state, coalesce(state_reason,''), coalesce(last_error,''), updated_at,
 coalesce(keyring_owner,''), coalesce(keyring_provider,''), coalesce(keyring_account,''), coalesce(keyring_secret_name,'')`
 
 func scanCredential(row pgx.Row) (*Credential, error) {
 	var c Credential
-	err := row.Scan(&c.ServerID, &c.Kind, &c.State, &c.StateReason, &c.BasicUsername, &c.HeaderName,
-		&c.OAuthIssuer, &c.OAuthAuthorizationEndpoint, &c.OAuthTokenEndpoint, &c.OAuthRegistrationEndpoint,
-		&c.OAuthRegistrationKind, &c.OAuthClientID, &c.OAuthResource, &c.OAuthScopes, &c.OAuthTokenType,
-		&c.OAuthExpiresAt, &c.OAuthHasRefreshToken, &c.SecretBlob, &c.LastRefreshedAt, &c.LastError, &c.UpdatedAt,
+	err := row.Scan(&c.ServerID, &c.Kind, &c.State, &c.StateReason, &c.LastError, &c.UpdatedAt,
 		&c.KeyringOwner, &c.KeyringProvider, &c.KeyringAccount, &c.KeyringSecretName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -179,32 +179,31 @@ func scanCredential(row pgx.Row) (*Credential, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
-	if c.OAuthScopes == nil {
-		c.OAuthScopes = []string{}
-	}
 	return &c, nil
 }
 
 // UpsertCredential replaces the credential row for a server.
+//
+// It is called only when a server is given a new credential, which replaces
+// the one it had entirely. So where a row already exists, the columns the
+// gateway once sealed a credential in are cleared along with it: a replaced
+// credential must not leave a sealed blob, an OAuth registration or the mark
+// of a migration behind. A row nobody replaces is never touched here, so an
+// unmoved credential keeps its columns until `gateway migrate-credentials`
+// moves it.
 func (p *Postgres) UpsertCredential(ctx context.Context, c *Credential) error {
-	_, err := p.pool.Exec(ctx, `insert into credentials (server_id, kind, state, state_reason, basic_username, header_name,
-oauth_issuer, oauth_authorization_endpoint, oauth_token_endpoint, oauth_registration_endpoint, oauth_registration_kind, oauth_client_id,
-oauth_resource, oauth_scopes, oauth_token_type, oauth_expires_at, oauth_has_refresh_token, secret_blob, last_refreshed_at, last_error, updated_at,
+	_, err := p.pool.Exec(ctx, `insert into credentials (server_id, kind, state, state_reason, last_error, updated_at,
 keyring_owner, keyring_provider, keyring_account, keyring_secret_name)
-values ($1,$2,$3,nullif($4,''),nullif($5,''),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),nullif($10,''),nullif($11,''),nullif($12,''),nullif($13,''),$14,nullif($15,''),$16,$17,$18,$19,nullif($20,''),now(),
-nullif($21,''),nullif($22,''),nullif($23,''),nullif($24,''))
+values ($1,$2,$3,nullif($4,''),nullif($5,''),now(),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''))
 on conflict (server_id) do update set kind=excluded.kind, state=excluded.state, state_reason=excluded.state_reason,
-basic_username=excluded.basic_username, header_name=excluded.header_name, oauth_issuer=excluded.oauth_issuer,
-oauth_authorization_endpoint=excluded.oauth_authorization_endpoint, oauth_token_endpoint=excluded.oauth_token_endpoint,
-oauth_registration_endpoint=excluded.oauth_registration_endpoint, oauth_registration_kind=excluded.oauth_registration_kind,
-oauth_client_id=excluded.oauth_client_id, oauth_resource=excluded.oauth_resource, oauth_scopes=excluded.oauth_scopes,
-oauth_token_type=excluded.oauth_token_type, oauth_expires_at=excluded.oauth_expires_at, oauth_has_refresh_token=excluded.oauth_has_refresh_token,
-secret_blob=excluded.secret_blob, last_refreshed_at=excluded.last_refreshed_at, last_error=excluded.last_error, updated_at=now(),
+last_error=excluded.last_error, updated_at=now(),
 keyring_owner=excluded.keyring_owner, keyring_provider=excluded.keyring_provider, keyring_account=excluded.keyring_account,
-keyring_secret_name=excluded.keyring_secret_name`,
-		c.ServerID, c.Kind, c.State, c.StateReason, c.BasicUsername, c.HeaderName,
-		c.OAuthIssuer, c.OAuthAuthorizationEndpoint, c.OAuthTokenEndpoint, c.OAuthRegistrationEndpoint, c.OAuthRegistrationKind, c.OAuthClientID,
-		c.OAuthResource, c.OAuthScopes, c.OAuthTokenType, c.OAuthExpiresAt, c.OAuthHasRefreshToken, c.SecretBlob, c.LastRefreshedAt, c.LastError,
+keyring_secret_name=excluded.keyring_secret_name,
+secret_blob=null, basic_username=null, header_name=null, oauth_issuer=null, oauth_authorization_endpoint=null,
+oauth_token_endpoint=null, oauth_registration_endpoint=null, oauth_registration_kind=null, oauth_client_id=null,
+oauth_resource=null, oauth_scopes='{}', oauth_token_type=null, oauth_expires_at=null, oauth_has_refresh_token=false,
+last_refreshed_at=null, migrated_from=null`,
+		c.ServerID, c.Kind, c.State, c.StateReason, c.LastError,
 		c.KeyringOwner, c.KeyringProvider, c.KeyringAccount, c.KeyringSecretName)
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
@@ -232,17 +231,6 @@ func (p *Postgres) credentialChanged(ctx context.Context, serverID uuid.UUID, st
 // GetCredential fetches a server's credential.
 func (p *Postgres) GetCredential(ctx context.Context, serverID uuid.UUID) (*Credential, error) {
 	return scanCredential(p.pool.QueryRow(ctx, `select `+credCols+` from credentials where server_id=$1`, serverID))
-}
-
-// UpdateOAuthTokens stores a refreshed token set and clears any error.
-func (p *Postgres) UpdateOAuthTokens(ctx context.Context, serverID uuid.UUID, blob []byte, tokenType string, expiresAt *time.Time, hasRefresh bool, scopes []string) error {
-	_, err := p.pool.Exec(ctx, `update credentials set secret_blob=$2, oauth_token_type=nullif($3,''), oauth_expires_at=$4, oauth_has_refresh_token=$5,
-oauth_scopes=case when cardinality($6::text[])>0 then $6 else oauth_scopes end, state='ok', state_reason=null, last_error=null, last_refreshed_at=now(), updated_at=now() where server_id=$1`,
-		serverID, blob, tokenType, expiresAt, hasRefresh, scopes)
-	if err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	return nil
 }
 
 // FindServerByKeyringOAuth returns the server whose credential is the
@@ -273,52 +261,29 @@ func (p *Postgres) SetCredentialState(ctx context.Context, serverID uuid.UUID, s
 	return p.credentialChanged(ctx, serverID, state)
 }
 
-// ExpiringOAuthCredentials lists OAuth credentials with a refresh token that
-// expire before the deadline (or have no known expiry) and are not broken.
-func (p *Postgres) ExpiringOAuthCredentials(ctx context.Context, before time.Time) ([]*Credential, error) {
-	rows, err := p.pool.Query(ctx, `select `+credCols+` from credentials where kind='oauth' and state <> 'broken' and oauth_has_refresh_token and (oauth_expires_at is null or oauth_expires_at < $1)`, before)
+// UnmigratedCredentials returns the slugs of the servers whose credential is
+// still one the gateway sealed in its own store (kind basic, header or
+// oauth), in slug order. This gateway cannot send those: they wait for
+// `gateway migrate-credentials`.
+func (p *Postgres) UnmigratedCredentials(ctx context.Context) ([]string, error) {
+	rows, err := p.pool.Query(ctx, `select s.slug from servers s join credentials c on c.server_id = s.id
+where c.kind in ('basic','header','oauth') order by s.slug`)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
 	defer rows.Close()
-	var out []*Credential
+	var out []string
 	for rows.Next() {
-		c, err := scanCredential(rows)
-		if err != nil {
-			return nil, err
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, fmt.Errorf("store: %w", err)
 		}
-		out = append(out, c)
+		out = append(out, slug)
 	}
-	return out, rows.Err()
-}
-
-// ---- oauth states ------------------------------------------------------
-
-// PutOAuthState stores a pending authorization round trip.
-func (p *Postgres) PutOAuthState(ctx context.Context, s *OAuthState) error {
-	_, err := p.pool.Exec(ctx, `insert into oauth_states (state, server_id, code_verifier, return_to, expires_at) values ($1,$2,$3,$4,$5)`,
-		s.State, s.ServerID, s.CodeVerifier, s.ReturnTo, s.ExpiresAt)
-	if err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	return nil
-}
-
-// TakeOAuthState consumes a state, returning ErrNotFound if unknown or expired.
-func (p *Postgres) TakeOAuthState(ctx context.Context, state string) (*OAuthState, error) {
-	var s OAuthState
-	err := p.pool.QueryRow(ctx, `delete from oauth_states where state=$1 returning state, server_id, code_verifier, return_to, expires_at`, state).
-		Scan(&s.State, &s.ServerID, &s.CodeVerifier, &s.ReturnTo, &s.ExpiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
-	if time.Now().After(s.ExpiresAt) {
-		return nil, ErrNotFound
-	}
-	return &s, nil
+	return out, nil
 }
 
 // ---- api keys ----------------------------------------------------------
@@ -582,13 +547,4 @@ func (p *Postgres) PurgeAuditBefore(ctx context.Context, t time.Time) (int64, er
 		return 0, fmt.Errorf("store: %w", err)
 	}
 	return tag.RowsAffected(), nil
-}
-
-// PurgeExpiredOAuthStates removes stale consent round trips.
-func (p *Postgres) PurgeExpiredOAuthStates(ctx context.Context) error {
-	_, err := p.pool.Exec(ctx, `delete from oauth_states where expires_at < now()`)
-	if err != nil {
-		return fmt.Errorf("store: %w", err)
-	}
-	return nil
 }

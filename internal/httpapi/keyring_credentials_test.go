@@ -14,10 +14,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/andyjmorgan/Bifrost/internal/audit"
@@ -195,9 +197,13 @@ type apiRig struct {
 	t      *testing.T
 	h      http.Handler
 	store  *store.Postgres
+	pool   *pgxpool.Pool  // for what the store no longer reads: see old_store_test.go
+	sealer *crypto.Sealer // the gateway's master key, as an older gateway sealed with it
 	keys   *auth.Keys
 	logs   *logBuffer
 	mcpURL string // a real MCP server that wants the stub credential
+	// reached counts the requests that MCP server received, refused or not.
+	reached *atomic.Int64
 }
 
 // newAPIRig builds the API with kr as its keyring; nil is the keyring off.
@@ -226,7 +232,7 @@ func newAPIRig(t *testing.T, kr keyringref.Holder) *apiRig {
 	keys := auth.NewKeys(st, sealer)
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New("http://gateway.test", &http.Client{Timeout: 5 * time.Second})
-	conn := upstream.New(st, sealer, oauth, kr, rec, log, 5*time.Second, time.Minute, "test")
+	conn := upstream.New(st, kr, rec, log, 5*time.Second, "test")
 	cw := cache.NewWriter(ctx, st, log)
 	api := New(Deps{
 		Store: st, Keys: keys, Authn: &auth.Authenticator{Keys: keys, Users: st, DevOwner: alice, PublicBase: "http://gateway.test"},
@@ -241,7 +247,9 @@ func newAPIRig(t *testing.T, kr keyringref.Holder) *apiRig {
 	})
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	inner := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, Logger: quiet})
+	reached := &atomic.Int64{}
 	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
 		user, pass, _ := r.BasicAuth()
 		if r.Header.Get("Authorization") != "Bearer "+stubToken && r.Header.Get(stubHeader) != stubSecret && (user != stubUser || pass != stubSecret) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -251,7 +259,7 @@ func newAPIRig(t *testing.T, kr keyringref.Holder) *apiRig {
 	}))
 	t.Cleanup(mcpServer.Close)
 
-	return &apiRig{t: t, h: api.Router(), store: st, keys: keys, logs: logs, mcpURL: mcpServer.URL}
+	return &apiRig{t: t, h: api.Router(), store: st, pool: pool, sealer: sealer, keys: keys, logs: logs, mcpURL: mcpServer.URL, reached: reached}
 }
 
 // do calls the API as a user (or, when bearer is set, with that API key)
@@ -346,7 +354,7 @@ func TestServerUsesAKeyringCredential(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(row.SecretBlob) != 0 || row.KeyringOwner != alice {
+			if r.oldStore(s.ID).any() || row.KeyringOwner != alice {
 				t.Fatalf("stored %+v", row)
 			}
 
@@ -508,38 +516,34 @@ func TestOnlyTheOwnerRepointsAServerWithAKeyringCredential(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
-// With the keyring off the API is what it was: the keyring kinds are
-// refused, the other kinds work, and no response grows a keyring field.
-func TestKeyringOffTheAPIIsAsBefore(t *testing.T) {
+// With the keyring off a server cannot be pointed at a keyring credential,
+// and no response for a server without a credential grows a keyring field.
+// A credential of the server's own is refused the same way: see
+// TestKeyringOffAServersOwnCredentialIsRefused.
+func TestKeyringOffTheKeyringKindsAreRefused(t *testing.T) {
 	r := newAPIRig(t, nil)
 	s := r.server()
 
-	for name, in := range map[string]AuthInput{"oauth account": oauthInput, "secret": secretInput} {
+	for name, in := range map[string]AuthInput{"oauth account": oauthInput, "secret": secretInput, "header": {Kind: store.AuthHeader, HeaderName: stubHeader, HeaderValue: stubSecret}} {
 		status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", in)
 		if status != http.StatusBadRequest || !strings.Contains(body, keyringref.ErrOff.Error()) {
 			t.Fatalf("%s: %d %s", name, status, body)
 		}
+		noCredentialIn(t, "the refusal", body)
 		status, body = r.do(http.MethodPost, "/servers", alice, "", CreateServerInput{Name: "n", Slug: "k" + uuid.NewString()[:8], URL: r.mcpURL, Auth: in})
 		if status != http.StatusBadRequest || !strings.Contains(body, keyringref.ErrOff.Error()) {
 			t.Fatalf("%s: create: %d %s", name, status, body)
 		}
 	}
 
-	status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", AuthInput{Kind: store.AuthHeader, HeaderName: stubHeader, HeaderValue: stubSecret})
-	if status != http.StatusOK {
-		t.Fatalf("header credential: %d %s", status, body)
+	// The server is as it was, and nothing about it names the keyring.
+	status, body := r.do(http.MethodGet, "/servers/"+s.ID, alice, "", nil)
+	if status != http.StatusOK || strings.Contains(strings.ToLower(body), "keyring") {
+		t.Fatalf("a server without a keyring credential names the keyring: %d %s", status, body)
 	}
-	if strings.Contains(strings.ToLower(body), "keyring") {
-		t.Fatalf("a response without a keyring credential names the keyring: %s", body)
-	}
-	noCredentialIn(t, "the response to setting a header credential", body)
-	status, body = r.do(http.MethodPost, "/servers/"+s.ID+"/ping", alice, "", nil)
-	var ping PingResult
-	if err := json.Unmarshal([]byte(body), &ping); err != nil || status != http.StatusOK || !ping.OK {
-		t.Fatalf("the gateway's own header credential stopped working: %d %s", status, body)
-	}
-	if _, body = r.do(http.MethodGet, "/servers/"+s.ID, alice, "", nil); strings.Contains(strings.ToLower(body), "keyring") {
-		t.Fatalf("a server without a keyring credential names the keyring: %s", body)
+	var got ServerDTO
+	if err := json.Unmarshal([]byte(body), &got); err != nil || got.AuthKind != store.AuthNone {
+		t.Fatalf("a refused change switched the server to %s: %s", got.AuthKind, body)
 	}
 }
 
@@ -558,7 +562,7 @@ func TestKeyringOffAServerWithAKeyringCredentialFailsClearly(t *testing.T) {
 	if err := r.store.UpdateServer(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.store.UpsertCredential(ctx, &store.Credential{ServerID: id, Kind: store.AuthKeyringOAuth, State: store.StateOK, OAuthScopes: []string{},
+	if err := r.store.UpsertCredential(ctx, &store.Credential{ServerID: id, Kind: store.AuthKeyringOAuth, State: store.StateOK,
 		KeyringOwner: alice, KeyringProvider: "x", KeyringAccount: "alice"}); err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +589,7 @@ func TestAKeyringCredentialMustNameItsOwner(t *testing.T) {
 	r := newAPIRig(t, nil)
 	s := r.server()
 	err := r.store.UpsertCredential(context.Background(), &store.Credential{ServerID: uuid.MustParse(s.ID), Kind: store.AuthKeyringSecret,
-		State: store.StateOK, OAuthScopes: []string{}, KeyringSecretName: "atlas"})
+		State: store.StateOK, KeyringSecretName: "atlas"})
 	if err == nil {
 		t.Fatal("a keyring credential was stored without an owner")
 	}

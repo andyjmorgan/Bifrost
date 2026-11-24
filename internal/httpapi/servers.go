@@ -17,7 +17,6 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
-	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
 	"github.com/andyjmorgan/Bifrost/internal/slug"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -145,7 +144,7 @@ func (a *API) createServer(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	// A new server offers everything it has and is held by the person who
 	// added it.
-	s := &store.Server{ID: uuid.New(), Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: a.storedKind(in.Auth.Kind), Enabled: true,
+	s := &store.Server{ID: uuid.New(), Name: in.Name, URL: in.URL, Description: in.Description, AuthKind: storedKind(in.Auth.Kind), Enabled: true,
 		Selection: store.Selection{}, Grants: []store.Grant{{UserID: caller.UserID}}, CreatedAt: now, UpdatedAt: now}
 	if in.Slug != "" {
 		s.Slug = in.Slug
@@ -210,15 +209,18 @@ func validateAuth(in AuthInput) error {
 	return nil
 }
 
-// storedKind is the kind a credential is stored as. With the keyring on, a
-// server's own credential lives in the gateway's keyring space and the
-// gateway keeps the reference: a Basic or header credential as a secret, an
-// OAuth connection as an account. The API goes on calling them Basic,
-// header and OAuth (see presentedKind).
-func (a *API) storedKind(kind store.AuthKind) store.AuthKind {
-	if a.keyring == nil {
-		return kind
-	}
+// storedKind is the kind a credential is stored as. A server's own
+// credential lives in the gateway's keyring space and the gateway keeps the
+// reference: a Basic or header credential as a secret, an OAuth connection
+// as an account. The API goes on calling them Basic, header and OAuth (see
+// presentedKind).
+//
+// The gateway has no store of its own for a credential, so this does not
+// depend on whether the keyring is on. With the keyring off every kind but
+// none is refused before anything is stored (checkKeyringAuth), and a server
+// that already has a keyring credential fails to connect with
+// upstream.ErrKeyringOff.
+func storedKind(kind store.AuthKind) store.AuthKind {
 	switch kind {
 	case store.AuthBasic, store.AuthHeader:
 		return store.AuthKeyringSecret
@@ -229,33 +231,36 @@ func (a *API) storedKind(kind store.AuthKind) store.AuthKind {
 }
 
 // credentialFor is the credential row for in before any secret is stored:
-// the kind and, for a credential in the keyring, the reference. A reference
+// the kind and, for every kind but none, the keyring reference. A reference
 // into a person's keyring is owned by the caller who is setting it; the
 // credential a server owns itself is held by the gateway, under the
 // server's name.
 func (a *API) credentialFor(slug string, serverID uuid.UUID, in AuthInput, by *auth.Caller) *store.Credential {
-	cred := &store.Credential{ServerID: serverID, Kind: a.storedKind(in.Kind), State: store.StateOK, OAuthScopes: []string{}}
+	cred := &store.Credential{ServerID: serverID, Kind: storedKind(in.Kind), State: store.StateOK}
 	switch in.Kind {
 	case store.AuthKeyringOAuth:
 		cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount = by.UserID, strings.TrimSpace(in.KeyringProvider), strings.TrimSpace(in.KeyringAccount)
 	case store.AuthKeyringSecret:
 		cred.KeyringOwner, cred.KeyringSecretName = by.UserID, strings.TrimSpace(in.KeyringSecretName)
 	case store.AuthBasic, store.AuthHeader:
-		if cred.Kind == store.AuthKeyringSecret {
-			cred.KeyringOwner, cred.KeyringSecretName = keyringref.GatewayOwner, keyringref.ServerCredentialName(slug)
-		}
+		cred.KeyringOwner, cred.KeyringSecretName = keyringref.GatewayOwner, keyringref.ServerCredentialName(slug)
 	case store.AuthOAuth:
-		if cred.Kind == store.AuthKeyringOAuth {
-			cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount = keyringref.GatewayOwner, keyringref.ServerCredentialName(slug), keyringref.ServerAccount
-		}
+		cred.KeyringOwner, cred.KeyringProvider, cred.KeyringAccount = keyringref.GatewayOwner, keyringref.ServerCredentialName(slug), keyringref.ServerAccount
 	}
 	return cred
 }
 
-// checkKeyringAuth refuses a keyring credential the caller may not set,
-// with the status to answer with. Other kinds pass.
+// checkKeyringAuth refuses a credential the caller may not set, with the
+// status to answer with. It runs before anything is stored, so a refused
+// create leaves no server behind. No credential (none) always passes.
 //
-//   - The keyring must be on.
+//   - The keyring must be on. Every credential is kept there: the ones a
+//     server owns itself (basic, header, oauth) as much as the ones lent
+//     from a person's keyring.
+//
+// The rest applies to a reference into a person's keyring only. A server's
+// own credential belongs to the server, and an API key may set one.
+//
 //   - The caller must be a person. A gateway API key carries no right to
 //     read the keyring, and pointing a server at a keyring credential makes
 //     the gateway send that credential wherever the server's URL says.
@@ -263,11 +268,14 @@ func (a *API) credentialFor(slug string, serverID uuid.UUID, in AuthInput, by *a
 //     It is resolved there and nowhere else, so somebody else's credential
 //     is simply not found.
 func (a *API) checkKeyringAuth(ctx context.Context, by *auth.Caller, in AuthInput) (int, error) {
-	if !in.Kind.FromKeyring() {
+	if in.Kind == store.AuthNone {
 		return 0, nil
 	}
 	if a.keyring == nil {
 		return http.StatusBadRequest, keyringref.ErrOff
+	}
+	if !in.Kind.FromKeyring() {
+		return 0, nil
 	}
 	if by == nil || !ownsKeyring(by, by.UserID) {
 		return http.StatusForbidden, errors.New("a keyring credential is set by its owner, signed in; an API key cannot set one")
@@ -307,42 +315,34 @@ func (a *API) keyringOwnerOnly(ctx context.Context, by *auth.Caller, s *store.Se
 	return errors.New("this server uses a credential from another user's keyring; only its owner, signed in, can change the URL. Replace the credential first to take the server over")
 }
 
-// applyAuth stores a basic/header secret or a keyring reference, or runs
-// OAuth discovery and registration and returns the consent URL to open.
-// by is the caller, who becomes the owner of a reference into their keyring.
+// applyAuth gives a server the credential in: it stores a Basic or header
+// secret in the gateway's own keyring space, or takes a reference into the
+// caller's keyring, or starts an OAuth connection and returns the consent
+// URL to open. The gateway's row is the reference in every case; no secret
+// is kept beside it. by is the caller, who becomes the owner of a reference
+// into their keyring.
 //
-// With the keyring on, a Basic or header credential goes into the gateway's
-// own keyring space and the gateway keeps the reference to it. With the
-// keyring off it is sealed in the gateway's own store, as it always was.
+// The credential the server had is replaced whole, including one still in
+// the gateway's old store: its sealed columns are cleared with the row
+// (store.UpsertCredential).
 func (a *API) applyAuth(ctx context.Context, s *store.Server, in AuthInput, by *auth.Caller) (string, error) {
+	// checkKeyringAuth has refused this already; nothing below works without
+	// the keyring.
+	if in.Kind != store.AuthNone && a.keyring == nil {
+		return "", keyringref.ErrOff
+	}
 	cred := a.credentialFor(s.Slug, s.ID, in, by)
 	previous, _ := a.store.GetCredential(ctx, s.ID)
 	switch in.Kind {
 	case store.AuthNone, store.AuthKeyringOAuth, store.AuthKeyringSecret:
 	case store.AuthBasic:
-		if cred.Kind == store.AuthKeyringSecret {
-			if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeBasic, Username: in.Username, Value: in.Password, URL: s.URL}); err != nil {
-				return "", err
-			}
-			break
-		}
-		blob, err := a.conn.SealSecret(s.ID, &store.Secret{Password: in.Password})
-		if err != nil {
+		if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeBasic, Username: in.Username, Value: in.Password, URL: s.URL}); err != nil {
 			return "", err
 		}
-		cred.BasicUsername, cred.SecretBlob = in.Username, blob
 	case store.AuthHeader:
-		if cred.Kind == store.AuthKeyringSecret {
-			if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeHeader, HeaderName: in.HeaderName, Value: in.HeaderValue, URL: s.URL}); err != nil {
-				return "", err
-			}
-			break
-		}
-		blob, err := a.conn.SealSecret(s.ID, &store.Secret{HeaderValue: in.HeaderValue})
-		if err != nil {
+		if _, err := a.keyring.PutServerSecret(ctx, a.use(s, by), keyringref.ServerSecret{Scheme: keyringref.SchemeHeader, HeaderName: in.HeaderName, Value: in.HeaderValue, URL: s.URL}); err != nil {
 			return "", err
 		}
-		cred.HeaderName, cred.SecretBlob = in.HeaderName, blob
 	case store.AuthOAuth:
 		return a.startOAuth(ctx, s, in.Scopes, "", by)
 	}
@@ -402,69 +402,20 @@ func (a *API) warmTools(ctx context.Context, id uuid.UUID) {
 // startOAuth discovers, registers and prepares the consent redirect. The
 // credential is left pending until the callback lands.
 //
-// With the keyring on, the keyring does all of it and keeps the result: the
-// provider it discovered, the client it registered and, once consent has
-// finished, the tokens. The gateway's row is a reference to that connection.
-// With the keyring off the gateway does it and seals the result in its own
-// store, as it always did.
-func (a *API) startOAuth(ctx context.Context, s *store.Server, scopeOverride []string, returnTo string, by *auth.Caller) (string, error) {
-	if a.keyring != nil {
-		return a.startKeyringOAuth(ctx, s, scopeOverride, returnTo, by)
+// The keyring does all of it and keeps the result: the provider it
+// discovered, the client it registered and, once consent has finished, the
+// tokens. The gateway's row is a reference to that connection.
+func (a *API) startOAuth(ctx context.Context, s *store.Server, scopes []string, returnTo string, by *auth.Caller) (string, error) {
+	if a.keyring == nil {
+		return "", keyringref.ErrOff
 	}
-	d, err := a.oauth.Discover(ctx, s.URL)
-	if err != nil {
-		return "", err
-	}
-	scopes := scopeOverride
-	if len(scopes) == 0 {
-		scopes = d.ChallengeScopes
-	}
-	if len(scopes) == 0 {
-		scopes = d.ScopesSupported
-	}
-	reg, err := a.oauth.Register(ctx, d, scopes)
-	if err != nil {
-		return "", err
-	}
-	pkce, err := oauthclient.NewPKCE()
-	if err != nil {
-		return "", err
-	}
-	state, err := oauthclient.NewState()
-	if err != nil {
-		return "", err
-	}
-	blob, err := a.conn.SealSecret(s.ID, &store.Secret{ClientSecret: reg.ClientSecret})
-	if err != nil {
-		return "", err
-	}
-	cred := &store.Credential{
-		ServerID: s.ID, Kind: store.AuthOAuth, State: store.StatePending, StateReason: "awaiting consent",
-		OAuthIssuer: d.AuthorizationServer, OAuthAuthorizationEndpoint: d.AuthorizationEndpoint, OAuthTokenEndpoint: d.TokenEndpoint,
-		OAuthRegistrationEndpoint: d.RegistrationEndpoint, OAuthRegistrationKind: reg.Kind, OAuthClientID: reg.ClientID,
-		OAuthResource: d.Resource, OAuthScopes: scopes, SecretBlob: blob,
-	}
-	if cred.OAuthScopes == nil {
-		cred.OAuthScopes = []string{}
-	}
-	if err := a.store.UpsertCredential(ctx, cred); err != nil {
-		return "", err
-	}
-	if err := a.store.PutOAuthState(ctx, &store.OAuthState{State: state, ServerID: s.ID, CodeVerifier: pkce.Verifier, ReturnTo: returnTo, ExpiresAt: time.Now().Add(15 * time.Minute)}); err != nil {
-		return "", err
-	}
-	return a.oauth.AuthorizeURL(d, reg, scopes, state, pkce), nil
-}
-
-// startKeyringOAuth is startOAuth through the keyring.
-func (a *API) startKeyringOAuth(ctx context.Context, s *store.Server, scopes []string, returnTo string, by *auth.Caller) (string, error) {
 	previous, _ := a.store.GetCredential(ctx, s.ID)
 	authorizeURL, ref, err := a.keyring.BeginServerOAuth(ctx, a.use(s, by), keyringref.ServerOAuth{URL: s.URL, Name: s.Name, Scopes: scopes, ReturnTo: returnTo})
 	if err != nil {
 		return "", err
 	}
 	cred := &store.Credential{
-		ServerID: s.ID, Kind: store.AuthKeyringOAuth, State: store.StatePending, StateReason: "awaiting consent", OAuthScopes: []string{},
+		ServerID: s.ID, Kind: store.AuthKeyringOAuth, State: store.StatePending, StateReason: "awaiting consent",
 		KeyringOwner: ref.Owner, KeyringProvider: ref.Provider, KeyringAccount: ref.Account,
 	}
 	if err := a.store.UpsertCredential(ctx, cred); err != nil {
@@ -475,13 +426,10 @@ func (a *API) startKeyringOAuth(ctx context.Context, s *store.Server, scopes []s
 }
 
 // ownOAuth reports whether a server authenticates with an OAuth connection
-// of its own: one the gateway still seals itself, or one it holds in the
-// keyring. An account lent from a person's keyring is not the server's to
-// re-authorize.
-func ownOAuth(s *store.Server, c *store.Credential) bool {
-	if s.AuthKind == store.AuthOAuth {
-		return true
-	}
+// of its own: one the gateway holds for it in the keyring. An account lent
+// from a person's keyring is not the server's to re-authorize, and a
+// connection still in the gateway's old store has to be moved first.
+func ownOAuth(c *store.Credential) bool {
 	return c != nil && c.Kind == store.AuthKeyringOAuth && c.KeyringRef().HeldByGateway()
 }
 
@@ -584,7 +532,7 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err.Error())
 		return
 	}
-	if kind := a.storedKind(in.Kind); s.AuthKind != kind {
+	if kind := storedKind(in.Kind); s.AuthKind != kind {
 		s.AuthKind = kind
 		if err := a.store.UpdateServer(r.Context(), s); err != nil {
 			writeStoreErr(w, err)
@@ -599,15 +547,24 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, CreateServerResult{Server: a.withCredential(r, s), AuthorizeURL: authorizeURL})
 }
 
-// oauthStart (re)starts consent for an existing OAuth server.
+// oauthStart (re)starts consent for a server's own OAuth connection.
 func (a *API) oauthStart(w http.ResponseWriter, r *http.Request) {
 	s, ok := a.loadServer(w, r)
 	if !ok {
 		return
 	}
 	cred, _ := a.store.GetCredential(r.Context(), s.ID)
-	if !ownOAuth(s, cred) {
+	if cred != nil && cred.Kind == store.AuthOAuth {
+		// Consent cannot be restarted on a row this gateway cannot read.
+		writeErr(w, http.StatusBadRequest, "this server's OAuth connection is "+notMovedReason+", or replace the credential")
+		return
+	}
+	if !ownOAuth(cred) {
 		writeErr(w, http.StatusBadRequest, "server does not use oauth")
+		return
+	}
+	if a.keyring == nil {
+		writeErr(w, http.StatusBadRequest, keyringref.ErrOff.Error())
 		return
 	}
 	var in struct {
@@ -620,9 +577,8 @@ func (a *API) oauthStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if len(in.Scopes) == 0 && cred != nil {
+	if len(in.Scopes) == 0 {
 		// Ask again for what was granted last time.
-		in.Scopes = cred.OAuthScopes
 		if d := a.describe(r.Context(), s, cred); d != nil {
 			in.Scopes = d.Scopes
 		}
@@ -692,57 +648,23 @@ func consentReturn(publicBase, returnTo string, serverID uuid.UUID, status, reas
 
 // oauthCallback finishes the consent round trip and redirects to the UI.
 // The path is the redirect URI every MCP authorization server has on file
-// for the gateway, so it serves both kinds of round trip: one the keyring
-// started, and one the gateway started itself.
+// for the gateway, so it stays where it is, but the round trip is the
+// keyring's: it started it, and it redeems the code and keeps the tokens.
+// A state the keyring does not know, and any state at all with the keyring
+// off, is answered as unknown or expired.
 func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	state := r.URL.Query().Get("state")
 	if a.keyring != nil {
-		if st, err := a.keyring.OAuthState(r.Context(), q.Get("state")); err == nil {
+		st, err := a.keyring.OAuthState(r.Context(), state)
+		if err == nil {
 			a.keyringOAuthCallback(w, r, st)
 			return
 		}
+		if !errors.Is(err, keyringref.ErrNoState) {
+			a.log.Warn("the keyring could not look up an authorization state", "err", err)
+		}
 	}
-	st, err := a.store.TakeOAuthState(r.Context(), q.Get("state"))
-	if err != nil {
-		http.Redirect(w, r, a.publicBase+"/servers?oauth=error&reason="+url.QueryEscape("unknown or expired state"), http.StatusFound)
-		return
-	}
-	redirect := func(status, reason string) {
-		http.Redirect(w, r, consentReturn(a.publicBase, st.ReturnTo, st.ServerID, status, reason), http.StatusFound)
-	}
-	if e := q.Get("error"); e != "" {
-		_ = a.store.SetCredentialState(r.Context(), st.ServerID, store.StateBroken, e+": "+q.Get("error_description"))
-		redirect("error", e)
-		return
-	}
-	cred, err := a.store.GetCredential(r.Context(), st.ServerID)
-	if err != nil {
-		redirect("error", "credential missing")
-		return
-	}
-	sec, err := a.conn.OpenSecret(cred)
-	if err != nil {
-		redirect("error", err.Error())
-		return
-	}
-	reg := &oauthclient.Registration{Kind: cred.OAuthRegistrationKind, ClientID: cred.OAuthClientID, ClientSecret: sec.ClientSecret}
-	ts, err := a.oauth.Exchange(r.Context(), cred.OAuthTokenEndpoint, reg, q.Get("code"), st.CodeVerifier, cred.OAuthResource)
-	if err != nil {
-		_ = a.store.SetCredentialState(r.Context(), st.ServerID, store.StateBroken, err.Error())
-		redirect("error", err.Error())
-		return
-	}
-	blob, err := a.conn.SealSecret(st.ServerID, &store.Secret{AccessToken: ts.AccessToken, RefreshToken: ts.RefreshToken, ClientSecret: sec.ClientSecret})
-	if err != nil {
-		redirect("error", err.Error())
-		return
-	}
-	if err := a.store.UpdateOAuthTokens(r.Context(), st.ServerID, blob, ts.TokenType, ts.ExpiresAt, ts.RefreshToken != "", ts.Scope); err != nil {
-		redirect("error", err.Error())
-		return
-	}
-	a.warmTools(r.Context(), st.ServerID)
-	redirect("ok", "")
+	http.Redirect(w, r, a.publicBase+"/servers?oauth=error&reason="+url.QueryEscape("unknown or expired state"), http.StatusFound)
 }
 
 // discover opens a session and returns the initialize result as the server

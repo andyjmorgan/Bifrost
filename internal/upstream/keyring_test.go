@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/andyjmorgan/Bifrost/internal/audit"
-	"github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -96,10 +95,6 @@ func (s credStore) GetCredential(context.Context, uuid.UUID) (*store.Credential,
 	}
 	c := *s.cred
 	return &c, nil
-}
-
-func (credStore) UpdateOAuthTokens(context.Context, uuid.UUID, []byte, string, *time.Time, bool, []string) error {
-	return nil
 }
 
 func (credStore) SetCredentialState(context.Context, uuid.UUID, store.CredentialState, string) error {
@@ -212,14 +207,10 @@ func newKeyringRig(t *testing.T, kr keyringref.Keyring, cred *store.Credential) 
 	logs := &syncBuffer{}
 	log := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	sink := &auditSink{}
-	sealer, err := crypto.New(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
 	up := newFakeUpstream(t)
 	srv := &store.Server{ID: uuid.New(), Slug: "xmcp", Name: "X", URL: up.URL, AuthKind: cred.Kind, Enabled: true}
 	cred.ServerID = srv.ID
-	conn := New(credStore{cred: cred}, sealer, nil, kr, audit.NewRecorder(ctx, sink, log), log, 5*time.Second, time.Minute, "test")
+	conn := New(credStore{cred: cred}, kr, audit.NewRecorder(ctx, sink, log), log, 5*time.Second, "test")
 	return &rig{conn: conn, srv: srv, up: up, audit: sink, logs: logs}
 }
 
@@ -500,22 +491,65 @@ func TestKeyringOffRefusesAKeyringCredential(t *testing.T) {
 	}
 }
 
-// With the keyring off, the gateway's own credential kinds work as they
-// always did.
-func TestKeyringOffLeavesTheGatewaysOwnCredentialsAlone(t *testing.T) {
-	r := newKeyringRig(t, nil, &store.Credential{Kind: store.AuthHeader, State: store.StateOK, HeaderName: "X-Api-Key"})
-	blob, err := r.conn.SealSecret(r.srv.ID, &store.Secret{HeaderValue: secretOne})
-	if err != nil {
-		t.Fatal(err)
+// A credential row the gateway sealed in its own store, which `gateway
+// migrate-credentials` has not moved, is not sent and not guessed at: the
+// server fails with ErrNotMigrated, with or without a keyring, and nothing
+// goes upstream.
+func TestACredentialNotMovedToTheKeyringIsRefused(t *testing.T) {
+	for _, kind := range []store.AuthKind{store.AuthBasic, store.AuthHeader, store.AuthOAuth} {
+		for name, kr := range map[string]keyringref.Keyring{"keyring on": &fakeKeyring{token: keyringref.Token{AccessToken: tokenOne}}, "keyring off": nil} {
+			t.Run(string(kind)+", "+name, func(t *testing.T) {
+				// The state does not matter: a pending or broken OAuth row of
+				// the old kind is just as unmoved.
+				for _, state := range []store.CredentialState{store.StateOK, store.StatePending, store.StateBroken} {
+					r := newKeyringRig(t, kr, &store.Credential{Kind: kind, State: state})
+					_, err := r.conn.HTTPClient(context.Background(), r.srv)
+					if !errors.Is(err, ErrNotMigrated) {
+						t.Fatalf("%s: got %v, want ErrNotMigrated", state, err)
+					}
+					if !strings.Contains(err.Error(), "gateway migrate-credentials") {
+						t.Fatalf("the error does not name the command: %v", err)
+					}
+					if _, err := r.conn.Open(context.Background(), r.srv); !errors.Is(err, ErrNotMigrated) {
+						t.Fatalf("%s: opening a session: got %v, want ErrNotMigrated", state, err)
+					}
+					if n := len(r.up.requests()); n != 0 {
+						t.Fatalf("%s: the server saw %d requests, want none", state, n)
+					}
+					// The warning names the server and what its row still is.
+					logs := r.logs.String()
+					if !strings.Contains(logs, `"slug":"xmcp"`) || !strings.Contains(logs, `"kind":"`+string(kind)+`"`) || !strings.Contains(logs, `"level":"WARN"`) {
+						t.Fatalf("the refusal was not logged with the slug and kind: %s", logs)
+					}
+				}
+			})
+		}
 	}
-	r.conn.store = credStore{cred: &store.Credential{ServerID: r.srv.ID, Kind: store.AuthHeader, State: store.StateOK, HeaderName: "X-Api-Key", SecretBlob: blob}}
+}
 
-	drain(post(t, r.client(t), r.up.URL, `{}`))
-	if got := r.up.requests()[0].header.Get("X-Api-Key"); got != secretOne {
-		t.Fatalf("the header credential was sent as %q", got)
+// A transport that was handed such a row all the same sends nothing either.
+func TestTheCredentialMiddlewareSendsNothingForAnUnmovedRow(t *testing.T) {
+	for _, kind := range []store.AuthKind{store.AuthBasic, store.AuthHeader, store.AuthOAuth} {
+		r := newKeyringRig(t, nil, &store.Credential{Kind: store.AuthNone, State: store.StateOK})
+		ct := &credentialTransport{c: r.conn, srv: r.srv, cred: &store.Credential{ServerID: r.srv.ID, Kind: kind, State: store.StateOK}, next: http.DefaultTransport}
+		req, err := http.NewRequest(http.MethodPost, r.up.URL, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp, err := ct.RoundTrip(req); !errors.Is(err, ErrNotMigrated) {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			t.Fatalf("%s: got %v, want ErrNotMigrated", kind, err)
+		}
+		if n := len(r.up.requests()); n != 0 {
+			t.Fatalf("%s: the server saw %d requests, want none", kind, n)
+		}
 	}
-	r.noSecrets(t, r.audit.wait(t, 1))
+}
 
+// A server without a credential is sent none, keyring or no keyring.
+func TestAServerWithoutACredentialIsSentNone(t *testing.T) {
 	none := newKeyringRig(t, nil, &store.Credential{Kind: store.AuthNone, State: store.StateOK})
 	drain(post(t, none.client(t), none.up.URL, `{}`))
 	if got := none.up.requests()[0].header.Get("Authorization"); got != "" {

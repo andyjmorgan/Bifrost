@@ -319,8 +319,8 @@ func TestAServerIsConnectedThroughTheKeyring(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := keyringref.Ref{Owner: keyringref.GatewayOwner, Kind: keyringref.KindOAuth, Provider: keyringref.ServerCredentialName(s.Slug), Account: keyringref.ServerAccount}
-	if row.Kind != store.AuthKeyringOAuth || row.KeyringRef() != want || len(row.SecretBlob) != 0 || row.OAuthClientID != "" {
-		t.Fatalf("stored as %s %+v with %d sealed bytes, want only the reference %+v", row.Kind, row.KeyringRef(), len(row.SecretBlob), want)
+	if row.Kind != store.AuthKeyringOAuth || row.KeyringRef() != want || r.oldStore(s.ID).any() {
+		t.Fatalf("stored as %s %+v with something in the gateway's own columns, want only the reference %+v", row.Kind, row.KeyringRef(), want)
 	}
 	if ping := r.ping(s.ID); ping.OK || !strings.Contains(ping.Error, "pending authorization") {
 		t.Fatalf("a server awaiting consent answered: %+v", ping)
@@ -558,5 +558,34 @@ func TestSwitchingBetweenOAuthAndAStaticCredential(t *testing.T) {
 	r.callback(r.up.consent(out.AuthorizeURL))
 	if !r.ping(s.ID).OK {
 		t.Fatal("the server does not answer after going back to OAuth")
+	}
+}
+
+// The gateway's identity as an OAuth client does not move: every upstream
+// authorization server has the callback path on file as the redirect URI,
+// and fetches the client metadata document from its well-known path. Both
+// are served whether the keyring is on or off, and the callback answers a
+// state nobody started as unknown.
+func TestTheGatewaysOAuthClientRoutesStay(t *testing.T) {
+	const document = `{"client_id":"http://gateway.test/.well-known/mcp-client-metadata.json","client_name":"Bifrost","client_uri":"http://gateway.test",` +
+		`"grant_types":["authorization_code","refresh_token"],"redirect_uris":["http://gateway.test/oauth/callback"],"response_types":["code"],"token_endpoint_auth_method":"none"}` + "\n"
+	for name, kr := range map[string]keyringref.Holder{"keyring on": aliceHolds(), "keyring off": nil} {
+		t.Run(name, func(t *testing.T) {
+			r := newAPIRig(t, kr)
+
+			rec := httptest.NewRecorder()
+			r.h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/.well-known/mcp-client-metadata.json", nil))
+			if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" || rec.Body.String() != document {
+				t.Fatalf("the client metadata document changed: %d %q %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+			}
+
+			for _, query := range []string{"state=nobody-started-this&code=x", "state=nobody-started-this&error=access_denied", "code=x", ""} {
+				rec = httptest.NewRecorder()
+				r.h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth/callback?"+query, nil))
+				if to := rec.Header().Get("Location"); rec.Code != http.StatusFound || to != "http://gateway.test/servers?oauth=error&reason=unknown+or+expired+state" {
+					t.Fatalf("callback?%s: %d to %q", query, rec.Code, to)
+				}
+			}
+		})
 	}
 }

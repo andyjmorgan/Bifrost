@@ -22,8 +22,6 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/audit"
 	"github.com/andyjmorgan/Bifrost/internal/credmigrate"
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
-	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
-	"github.com/andyjmorgan/Bifrost/internal/refreshguard"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
 )
@@ -38,9 +36,7 @@ type authServer struct {
 	n         int
 	grants    map[string]*grant // by client id
 	refreshes int
-	replays   int           // refreshes made with a token that had been retired
-	delay     time.Duration // how long a refresh takes
-	inFlight  chan struct{} // receives when a refresh has reached the server
+	replays   int // refreshes made with a token that had been retired
 }
 
 type grant struct {
@@ -49,18 +45,10 @@ type grant struct {
 
 func newAuthServer(t *testing.T) *authServer {
 	t.Helper()
-	a := &authServer{grants: map[string]*grant{}, inFlight: make(chan struct{}, 16)}
+	a := &authServer{grants: map[string]*grant{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		a.mu.Lock()
-		delay := a.delay
-		a.mu.Unlock()
-		select {
-		case a.inFlight <- struct{}{}:
-		default:
-		}
-		time.Sleep(delay)
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		a.refreshes++
@@ -122,8 +110,8 @@ func (a *authServer) counts() (refreshes, replays int) {
 	return a.refreshes, a.replays
 }
 
-// oauthServer registers a server whose OAuth connection the gateway sealed
-// itself, with a live grant at as. expiry is when its access token ends.
+// oauthServer registers a server whose OAuth connection an older gateway
+// sealed itself, with a live grant at as. expiry is when its access token ends.
 func (r *rig) oauthServer(name string, as *authServer, clientSecret string, expiry time.Time) (uuid.UUID, string) {
 	r.t.Helper()
 	clientID := "client-" + r.tag + "-" + name
@@ -133,33 +121,26 @@ func (r *rig) oauthServer(name string, as *authServer, clientSecret string, expi
 		kind = "dcr"
 	}
 	refreshed := time.Now().Add(-time.Hour)
-	id := r.server(name, store.Credential{
+	id := r.server(name, credRow{
 		Kind: store.AuthOAuth, OAuthIssuer: as.srv.URL, OAuthAuthorizationEndpoint: as.srv.URL + "/authorize", OAuthTokenEndpoint: as.srv.URL + "/token",
-		OAuthRegistrationKind: kind, OAuthClientID: clientID, OAuthResource: as.srv.URL + "/mcp", OAuthTokenType: "Bearer",
+		OAuthRegistrationKind: kind, OAuthClientID: clientID, OAuthResource: as.srv.URL + "/mcp", OAuthScopes: []string{"mcp:tools"}, OAuthTokenType: "Bearer",
 		OAuthExpiresAt: &expiry, OAuthHasRefreshToken: true, LastRefreshedAt: &refreshed,
-	}, &store.Secret{AccessToken: access, RefreshToken: refresh, ClientSecret: clientSecret})
+	}, &sealed{AccessToken: access, RefreshToken: refresh, ClientSecret: clientSecret})
 	// The server's URL is the resource, so a request through the connector lands on the stub.
 	if _, err := r.pool.Exec(context.Background(), `update servers set url=$2 where id=$1`, id, as.srv.URL+"/mcp"); err != nil {
-		r.t.Fatal(err)
-	}
-	// oauth_scopes is set by the store only on a token update; give the row some.
-	if _, err := r.pool.Exec(context.Background(), `update credentials set oauth_scopes='{mcp:tools}' where server_id=$1`, id); err != nil {
 		r.t.Fatal(err)
 	}
 	return id, clientID
 }
 
 // connector is the gateway's upstream connector over this rig's database and
-// keyring, holding the refresh guard as a running gateway does.
+// keyring. It sends what the keyring hands it and refreshes nothing itself.
 func (r *rig) connector() *upstream.Connector {
 	r.t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	r.t.Cleanup(cancel)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	conn := upstream.New(r.st, r.sealer, oauthclient.New("https://gateway.test", &http.Client{Timeout: 10 * time.Second}), r.kr.Source(),
-		audit.NewRecorder(ctx, r.st, log), log, 10*time.Second, time.Minute, "test")
-	conn.SetRefreshGuard(refreshguard.New(r.pool))
-	return conn
+	return upstream.New(r.st, r.kr.Source(), audit.NewRecorder(ctx, r.st, log), log, 10*time.Second, "test")
 }
 
 // call makes one request to the server through the connector, as a forwarded
@@ -232,12 +213,12 @@ func TestOAuthConnectionsMoveAndComeBack(t *testing.T) {
 	if err := r.st.SetCredentialState(context.Background(), brokenID, store.StateBroken, "invalid_grant: revoked"); err != nil {
 		t.Fatal(err)
 	}
-	pendingID := r.server("pending", store.Credential{Kind: store.AuthOAuth, OAuthTokenEndpoint: as.srv.URL + "/token", OAuthRegistrationKind: "dcr",
-		OAuthClientID: "client-pending", OAuthResource: as.srv.URL + "/mcp"}, &store.Secret{ClientSecret: clientSecret})
+	pendingID := r.server("pending", credRow{Kind: store.AuthOAuth, OAuthTokenEndpoint: as.srv.URL + "/token", OAuthRegistrationKind: "dcr",
+		OAuthClientID: "client-pending", OAuthResource: as.srv.URL + "/mcp"}, &sealed{ClientSecret: clientSecret})
 	if err := r.st.SetCredentialState(context.Background(), pendingID, store.StatePending, "awaiting consent"); err != nil {
 		t.Fatal(err)
 	}
-	headerID := r.server("header", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
+	headerID := r.server("header", credRow{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &sealed{HeaderValue: headerValue})
 	conn := r.connector()
 
 	// Dry run.
@@ -338,121 +319,40 @@ func TestOAuthConnectionsMoveAndComeBack(t *testing.T) {
 	if _, err := r.kr.Migration().ExportOAuth(context.Background(), ref, keyringref.Use{}); !errors.Is(err, keyringref.ErrNotFound) {
 		t.Fatalf("the keyring still holds a connection after the rollback: %v", err)
 	}
-	// And the gateway refreshes it itself again, with a token that is live.
-	srv, _ := r.st.GetServer(context.Background(), dcrID)
-	if err := conn.Refresh(context.Background(), srv, r.cred(dcrID)); err != nil {
-		t.Fatalf("the gateway's own refresh after the rollback: %v", err)
-	}
-	if n, replays := as.counts(); n != 2 || replays != 0 {
-		t.Fatalf("%d refreshes, %d with a retired token", n, replays)
-	}
-	if status, err := r.call(conn, okID); err != nil || status != http.StatusOK {
-		t.Fatalf("the other server after the rollback: %d %v (client %s)", status, err, okClient)
-	}
-}
-
-// A refresh already in flight when the command starts finishes first, and
-// the command moves the rotated token, not the one it would have found.
-func TestARefreshInFlightFinishesBeforeTheMove(t *testing.T) {
-	r := newRig(t)
-	as := newAuthServer(t)
-	id, client := r.oauthServer("racing", as, "", time.Now().Add(-time.Minute)) // due for a refresh
-	conn := r.connector()
-	as.mu.Lock()
-	as.delay = 400 * time.Millisecond
-	as.mu.Unlock()
-
-	refreshed := make(chan error, 1)
-	go func() {
-		srv, _ := r.st.GetServer(context.Background(), id)
-		refreshed <- conn.Refresh(context.Background(), srv, r.cred(id))
-	}()
-	await(t, as.inFlight, "the refresh to reach the token endpoint") // the old refresh token is as good as spent
-
-	started := time.Now()
-	report, sum, err := r.run(credmigrate.Options{Kind: credmigrate.KindOAuth}, nil)
-	if err != nil || sum.Moved != 1 {
-		t.Fatalf("move: %v %+v\n%s", err, sum, report)
-	}
-	if waited := time.Since(started); waited < 200*time.Millisecond {
-		t.Fatalf("the command did not wait for the refresh in flight (it took %s)", waited)
-	}
-	if err := await(t, refreshed, "the refresh in flight to finish"); err != nil {
-		t.Fatalf("the refresh in flight: %v", err)
-	}
-	// The keyring has the token the refresh produced.
-	access, refresh := as.current(client)
-	if c := r.exported(r.slug("racing")); c.AccessToken != access || c.RefreshToken != refresh {
-		t.Fatal("the command moved a token the refresh had already retired")
-	}
-	as.mu.Lock()
-	as.delay = 0
-	as.mu.Unlock()
-	ref := keyringref.Ref{Owner: keyringref.GatewayOwner, Kind: keyringref.KindOAuth, Provider: "mcp-" + r.slug("racing"), Account: keyringref.ServerAccount}
-	if _, err := r.kr.Source().OAuthToken(context.Background(), ref, keyringref.Use{Slug: r.slug("racing")}, access); err != nil {
-		t.Fatalf("the next refresh, from the keyring: %v", err)
-	}
-	if n, replays := as.counts(); n != 2 || replays != 0 {
-		t.Fatalf("%d refreshes, %d with a retired token; want 2 and none", n, replays)
-	}
-}
-
-// slowVault makes the copy into the keyring take a while, and says when it
-// has started.
-type slowVault struct {
-	credmigrate.Vault
-	started chan struct{}
-	hold    time.Duration
-}
-
-func (v *slowVault) ImportOAuth(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use, c keyringref.ServerConnection) (keyringref.Ref, error) {
-	close(v.started)
-	time.Sleep(v.hold)
-	return v.Vault.ImportOAuth(ctx, owner, tenant, use, c)
-}
-
-// A request that needs a refresh while the command is moving its server
-// waits for the move, then carries on with the keyring's copy. The token is
-// refreshed once, by the keyring, and never by the gateway from the row
-// that was moved.
-func TestARefreshWaitsForTheMove(t *testing.T) {
-	r := newRig(t)
-	as := newAuthServer(t)
-	id, client := r.oauthServer("waiting", as, "", time.Now().Add(-time.Minute)) // due for a refresh
-	conn := r.connector()
-	v := &slowVault{Vault: r.kr.Migration(), started: make(chan struct{}), hold: 400 * time.Millisecond}
-
-	moved := make(chan error, 1)
-	go func() {
-		_, _, err := r.run(credmigrate.Options{Kind: credmigrate.KindOAuth}, v)
-		moved <- err
-	}()
-	await(t, v.started, "the command to start copying") // it holds the guard
-
-	started := time.Now()
-	status, err := r.call(conn, id)
-	if err != nil || status != http.StatusOK {
-		t.Fatalf("the request that raced the move: %d %v", status, err)
-	}
-	if waited := time.Since(started); waited < 200*time.Millisecond {
-		t.Fatalf("the refresh did not wait for the move (the request took %s)", waited)
-	}
-	if err := await(t, moved, "the move to finish"); err != nil {
-		t.Fatalf("move: %v", err)
+	// The other live server came back with the tokens its authorization
+	// server still honours: the rollback rotated nothing and lost nothing.
+	access, refresh = as.current(okClient)
+	if got := r.opened(okID); r.cred(okID).Kind != store.AuthOAuth || got.AccessToken != access || got.RefreshToken != refresh {
+		t.Fatal("the other connection did not come back with its live tokens")
 	}
 	if n, replays := as.counts(); n != 1 || replays != 0 {
-		t.Fatalf("%d refreshes, %d with a retired token; want 1 and none", n, replays)
+		t.Fatalf("%d refreshes, %d with a retired token; want the keyring's one and none", n, replays)
 	}
-	// The gateway's row is the reference, untouched by the refresh, and the
-	// keyring holds the rotated token.
-	if c := r.cred(id); c.Kind != store.AuthKeyringOAuth || len(c.SecretBlob) != 0 {
-		t.Fatalf("the refresh wrote back to the moved row: %s with %d sealed bytes", c.Kind, len(c.SecretBlob))
+	// This test used to end with the gateway refreshing the restored row
+	// itself and sending a request through it. The gateway no longer reads
+	// its own store, so there is nothing of that left to exercise: a restored
+	// row is what an older gateway uses, and this one refuses to send it.
+	for name, id := range map[string]uuid.UUID{"ok": okID, "dcr": dcrID} {
+		if _, err := r.call(conn, id); !errors.Is(err, upstream.ErrNotMigrated) {
+			t.Fatalf("%s after the rollback: %v, want ErrNotMigrated", name, err)
+		}
 	}
-	access, refresh := as.current(client)
-	if c := r.exported(r.slug("waiting")); c.AccessToken != access || c.RefreshToken != refresh {
-		t.Fatal("the keyring does not hold the token the refresh produced")
+	if n, _ := as.counts(); n != 1 {
+		t.Fatalf("a request through a restored row reached the token endpoint (%d refreshes)", n)
 	}
 }
+
+// Two tests stood here: a gateway refresh already in flight when the command
+// starts (TestARefreshInFlightFinishesBeforeTheMove), and a request that
+// needs a refresh while the command is moving its server
+// (TestARefreshWaitsForTheMove). Both raced the gateway's own token refresh
+// against the move. The gateway no longer refreshes a token itself, so that
+// race cannot happen in this binary and there is nothing to run them
+// against. The scenario was covered in the commit that introduced the
+// refresh guard, where the tests failed without it; an older gateway that
+// still refreshes is kept out by the session check
+// (TestOAuthMoveRefusesBesideAnOlderGateway). The keyring's refresh still
+// races a rollback, which the next test covers.
 
 // slowExport makes the read out of the keyring take a while, and says when
 // it has started.
@@ -469,15 +369,13 @@ func (v *slowExport) ExportOAuth(ctx context.Context, ref keyringref.Ref, use ke
 	return c, err
 }
 
-// The other direction: a rollback while the keyring is asked for a token
-// that is due. The keyring's refresh waits for the rollback, finds the
-// account gone and refreshes nothing; the gateway then refreshes its own
-// row, with a token that is still live.
+// A rollback while the keyring is asked for a token that is due. The
+// keyring's refresh waits for the rollback, finds the account gone and
+// refreshes nothing, so the restored row holds tokens that are still live.
 func TestAKeyringRefreshWaitsForTheRollback(t *testing.T) {
 	r := newRig(t)
 	as := newAuthServer(t)
-	id, _ := r.oauthServer("back", as, "", time.Now().Add(-time.Minute)) // due for a refresh
-	conn := r.connector()
+	id, client := r.oauthServer("back", as, "", time.Now().Add(-time.Minute)) // due for a refresh
 	if report, sum, err := r.run(credmigrate.Options{Kind: credmigrate.KindOAuth}, nil); err != nil || sum.Moved != 1 {
 		t.Fatalf("move: %v %+v\n%s", err, sum, report)
 	}
@@ -504,12 +402,16 @@ func TestAKeyringRefreshWaitsForTheRollback(t *testing.T) {
 	if n, _ := as.counts(); n != 0 {
 		t.Fatalf("%d refreshes during the rollback, want none", n)
 	}
-	// The gateway's own row is live: its refresh is accepted.
-	if status, err := r.call(conn, id); err != nil || status != http.StatusOK {
-		t.Fatalf("the server after the rollback: %d %v", status, err)
+	// The restored row is live: it seals the token pair the authorization
+	// server currently honours, which nothing has rotated. (This used to be
+	// shown by a request through the row, refreshed by the gateway itself;
+	// the gateway no longer reads its own store.)
+	access, refresh := as.current(client)
+	if got := r.opened(id); r.cred(id).Kind != store.AuthOAuth || got.AccessToken != access || got.RefreshToken != refresh {
+		t.Fatal("the restored row does not seal the tokens the authorization server honours")
 	}
-	if n, replays := as.counts(); n != 1 || replays != 0 {
-		t.Fatalf("%d refreshes, %d with a retired token; want 1 and none", n, replays)
+	if n, replays := as.counts(); n != 0 || replays != 0 {
+		t.Fatalf("%d refreshes, %d with a retired token; want none of either", n, replays)
 	}
 }
 
