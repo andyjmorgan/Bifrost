@@ -18,7 +18,6 @@ import { KindSection } from '../components/servers/SelectionEditor'
 import { ServerDialog } from '../components/servers/ServerDialog'
 import { CredentialDialog } from '../components/servers/CredentialDialog'
 import {
-  NOT_MOVED,
   authKindBadge,
   authKindLabel,
   credentialStatus,
@@ -28,6 +27,7 @@ import {
   keyringCredentialName,
   keyringOwnerPhrase,
   notMoved,
+  notMovedDetail,
 } from '../components/servers/credential'
 import { useMe } from '../me'
 import { HookRules, type RuleText } from '../components/rules/HookRules'
@@ -765,9 +765,9 @@ function CredentialSummary({ cred, keyringOwner }: { cred?: ServerDTO['credentia
   }
   // A credential the server owns itself says where it is kept; one lent from a keyring already does.
   if (!isKeyringKind(cred.kind) && cred.store === 'keyring') parts.push('kept in the keyring')
-  // The API's reason for an unmoved credential already says so; the fallback covers a missing one.
-  if (cred.stateReason) parts.push(cred.stateReason)
-  else if (notMoved(cred)) parts.push(NOT_MOVED)
+  // The notice and the pill already say an unmoved credential is not moved: keep only what the reason adds.
+  const reason = notMoved(cred) ? notMovedDetail(cred) : cred.stateReason
+  if (reason) parts.push(reason)
   if (!parts.length) return null
   return <span className="font-mono text-xs text-muted-foreground">{parts.join(' · ')}</span>
 }

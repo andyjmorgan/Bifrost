@@ -76,6 +76,19 @@ export function credentialStatus(server: Pick<ServerDTO, 'authKind' | 'credentia
 
 export const NOT_MOVED = 'not moved to the keyring yet'
 
+// The API's reason for an unmoved credential always opens with this sentence.
+const NOT_MOVED_REASON = 'not moved to the keyring yet; run gateway migrate-credentials'
+
+/**
+ * What the API's reason says beyond "not moved": what the old row said, which follows the sentence
+ * in brackets. Empty when it adds nothing.
+ */
+export function notMovedDetail(c?: CredentialDTO | null): string {
+  const reason = c?.stateReason ?? ''
+  if (!reason.startsWith(NOT_MOVED_REASON)) return reason
+  return reason.slice(NOT_MOVED_REASON.length).trim().replace(/^\((.*)\)$/, '$1')
+}
+
 /** A credential still in the gateway's old store. The gateway no longer reads it, so the server cannot be called. */
 export function notMoved(c?: CredentialDTO | null): boolean {
   return c?.store === 'gateway'

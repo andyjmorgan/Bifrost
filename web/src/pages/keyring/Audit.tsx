@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Activity, RotateCw, X } from 'lucide-react'
 import { Button } from '../../ui/components/button'
+import { Badge } from '../../ui/components/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/components/select'
 import { PageHeader } from '../../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListPager, ListRow, ListRows } from '../../components/ListCard'
@@ -21,10 +22,10 @@ const COLS = '120px minmax(0,1.1fr) 104px minmax(0,1.9fr) minmax(0,1.4fr) minmax
 const TYPES = ['TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'TokenRemoved', 'CredentialCreated', 'CredentialChanged', 'CredentialRemoved', 'AuthSucceeded', 'AuthFailed', 'AuditAccessed'] as const
 
 // "TokenAccessed" reads as "Token accessed" in the list; the raw type stays the filter value.
-const prettyType = (t: string) => t.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
+export const prettyType = (t: string) => t.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
 
 /** One line naming what was acted on, from whichever target fields are present. */
-function target(e: KeyringAuditEvent): string {
+export function target(e: Partial<Pick<KeyringAuditEvent, 'targetKind' | 'targetProvider' | 'targetAccount' | 'targetName'>>): string {
   // A provider row carries its key as both provider and name: say it once.
   const parts = [e.targetKind, e.targetProvider, e.targetAccount, e.targetName].filter((p, i, all) => p && all.indexOf(p) === i)
   return parts.length ? parts.join(' · ') : '—'
@@ -48,11 +49,16 @@ function accessKey(e: KeyringAuditEvent): string {
  * The keyring's audit trail: every credential read, token refresh and sign-in. The second tab of
  * the Audit page; `tabs` is that page's tab strip. Filters and paging live in the URL beside
  * `tab=keyring`, so a reload or a link lands on the same view.
+ *
+ * `requestId` narrows the list to the rows written for one gateway request; the gateway's trail
+ * links here with it. A person sees their own rows only, so a credential held for a server shows
+ * on the gateway's event and not here.
  */
 export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
   const [params, setParams] = useSearchParams()
   const type = params.get('type') ?? ''
   const outcome = params.get('outcome') ?? ''
+  const requestId = params.get('requestId') ?? ''
   const offset = Number(params.get('offset')) || 0
   const [items, setItems] = useState<KeyringAuditEvent[]>([])
   const [total, setTotal] = useState(0)
@@ -64,7 +70,7 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
     setBusy(true)
     setError(undefined)
     keyring.audit
-      .list({ limit: PAGE, offset, type: type || undefined, outcome: outcome || undefined })
+      .list({ limit: PAGE, offset, type: type || undefined, outcome: outcome || undefined, requestId: requestId || undefined })
       .then((p) => {
         setItems(p.items ?? [])
         setTotal(Number(p.total) || 0)
@@ -74,21 +80,23 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
         setBusy(false)
         setLoaded(true)
       })
-  }, [offset, type, outcome])
+  }, [offset, type, outcome, requestId])
   useEffect(() => {
     load()
   }, [load])
 
   // Changing a filter goes back to the first page.
-  const apply = (next: { type: string; outcome: string }, nextOffset = 0) => {
+  const filters = { type, outcome, requestId }
+  const apply = (next: typeof filters, nextOffset = 0) => {
     const p = new URLSearchParams({ tab: 'keyring' })
     if (next.type) p.set('type', next.type)
     if (next.outcome) p.set('outcome', next.outcome)
+    if (next.requestId) p.set('requestId', next.requestId)
     if (nextOffset > 0) p.set('offset', String(nextOffset))
     setParams(p)
   }
-  const hasFilters = !!type || !!outcome
-  const clear = () => apply({ type: '', outcome: '' })
+  const hasFilters = !!type || !!outcome || !!requestId
+  const clear = () => apply({ type: '', outcome: '', requestId: '' })
 
   return (
     <div className="space-y-6">
@@ -112,8 +120,21 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
           <span>
             {total.toLocaleString()} {total === 1 ? 'event' : 'events'}
           </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={type || ALL} onValueChange={(v) => apply({ type: v === ALL ? '' : v, outcome })}>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {requestId && (
+              <Badge mono variant="info" className="h-8 min-w-0 gap-1.5 pr-1" title={`Only the rows written for gateway request ${requestId}`}>
+                <span className="truncate">request {requestId}</span>
+                <button
+                  type="button"
+                  aria-label="Clear the request filter"
+                  className="shrink-0 rounded p-0.5 hover:bg-info/15"
+                  onClick={() => apply({ ...filters, requestId: '' })}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </Badge>
+            )}
+            <Select value={type || ALL} onValueChange={(v) => apply({ ...filters, type: v === ALL ? '' : v })}>
               <SelectTrigger className="h-8 w-44 text-xs" aria-label="Event type">
                 <SelectValue placeholder="Event type" />
               </SelectTrigger>
@@ -126,7 +147,7 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={outcome || ALL} onValueChange={(v) => apply({ type, outcome: v === ALL ? '' : v })}>
+            <Select value={outcome || ALL} onValueChange={(v) => apply({ ...filters, outcome: v === ALL ? '' : v })}>
               <SelectTrigger className="h-8 w-36 text-xs" aria-label="Outcome">
                 <SelectValue placeholder="Outcome" />
               </SelectTrigger>
@@ -198,6 +219,15 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
                       {source(e)}
                       {e.method && <span className="text-faint-foreground"> · {e.method}</span>}
                     </span>
+                    {e.requestId && (
+                      <Link
+                        to={`/audit?requestId=${encodeURIComponent(e.requestId)}`}
+                        className="mt-0.5 inline-block text-xs underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
+                        title={`The gateway request this was read for: ${e.requestId}`}
+                      >
+                        Gateway request
+                      </Link>
+                    )}
                   </Cell>
                   <Cell label="Access key" at="lg">
                     <span className="block truncate font-mono text-xs text-muted-foreground" title={accessKey(e)}>
@@ -216,8 +246,8 @@ export function KeyringAudit({ tabs }: { tabs: ReactNode }) {
           canPrev={offset > 0}
           canNext={offset + PAGE < total}
           busy={busy}
-          onPrev={() => apply({ type, outcome }, Math.max(0, offset - PAGE))}
-          onNext={() => apply({ type, outcome }, offset + PAGE)}
+          onPrev={() => apply(filters, Math.max(0, offset - PAGE))}
+          onNext={() => apply(filters, offset + PAGE)}
         />
       </ListCard>
     </div>

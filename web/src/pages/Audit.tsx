@@ -13,9 +13,22 @@ import { StatusPill, type Tone } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { BodyViewer, findUnavailable } from '../components/PayloadViewer'
 import { Tabs, tabPanelProps } from '../components/Tabs'
-import { KeyringAudit } from './keyring/Audit'
+import { KeyringAudit, prettyType, target as keyringTarget } from './keyring/Audit'
 import { keyringEnabled } from '../keyring'
-import { api, errorMessage, type AuditDetailDTO, type AuditEventDTO, type AuditTraceDTO, type RuleHitsDTO, type Hop, type Outcome } from '../api'
+import { useMe } from '../me'
+import {
+  api,
+  errorMessage,
+  type AuditDetailDTO,
+  type AuditEventDTO,
+  type AuditTraceDTO,
+  type KeyringAuditDTO,
+  type KeyringAuditRowDTO,
+  type RuleHitsDTO,
+  type UserDTO,
+  type Hop,
+  type Outcome,
+} from '../api'
 import { absoluteTime, cn, relativeTime } from '../lib'
 
 const PAGE = 25
@@ -378,6 +391,98 @@ function RuleHits({ rules }: { rules: RuleHitsDTO }) {
   )
 }
 
+/**
+ * The keyring credentials the gateway fetched to forward a request: the keyring's own audit rows
+ * for it, found by the request id both trails carry. Loaded when the detail opens. Nothing is
+ * shown for a request that used none, and a failed lookup is one muted line under the rest.
+ */
+function CredentialsUsed({ eventId }: { eventId: string }) {
+  const { userId } = useMe()
+  const [used, setUsed] = useState<KeyringAuditDTO>()
+  const [error, setError] = useState<string>()
+  const [users, setUsers] = useState<UserDTO[]>([])
+  useEffect(() => {
+    setUsed(undefined)
+    setError(undefined)
+    let cancelled = false
+    api.audit
+      .keyring(eventId)
+      .then((k) => !cancelled && setUsed(k))
+      .catch((e) => !cancelled && setError(errorMessage(e)))
+    return () => {
+      cancelled = true
+    }
+  }, [eventId])
+  const items = used?.items ?? []
+  // Names are only needed for a credential lent from somebody else's keyring.
+  const needNames = items.some((r) => !r.heldByGateway && r.owner !== userId)
+  useEffect(() => {
+    if (!needNames) return
+    let cancelled = false
+    api.users
+      .list()
+      .then((u) => !cancelled && setUsers(u ?? []))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [needNames])
+
+  if (error) return <p className="text-xs text-muted-foreground">The credentials this request used could not be loaded: {error}</p>
+  if (!used || items.length === 0) return null
+
+  const whose = (r: KeyringAuditRowDTO) => {
+    if (r.heldByGateway) return 'held for the server'
+    if (r.owner === userId) return 'your keyring'
+    const u = users.find((x) => x.id === r.owner)
+    const name = u?.name || u?.email
+    return name ? `${name}'s keyring` : "another user's keyring"
+  }
+  // My own rows are in the keyring's trail; the ones held for a server are in nobody's.
+  const mine = items.some((r) => !r.heldByGateway && r.owner === userId)
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Credentials used</h3>
+        {mine && (
+          <Link
+            to={`/audit?tab=keyring&requestId=${encodeURIComponent(used.requestId)}`}
+            className="text-xs underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
+          >
+            Open in the keyring trail
+          </Link>
+        )}
+      </div>
+      <div className="rounded-xl border border-border bg-background p-2">
+        {items.map((r) => {
+          const failed = r.outcome.toLowerCase() === 'failure'
+          return (
+            <div key={r.id} className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] gap-x-3 px-2 py-1 font-mono text-xs leading-5 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+              <span className="text-muted-foreground">{prettyType(r.type)}</span>
+              <span className="min-w-0 break-words">
+                <span className="text-foreground">{keyringTarget(r)}</span>
+                <span className="text-muted-foreground">
+                  {' · '}
+                  <span className="whitespace-nowrap">{whose(r)}</span>
+                  {' · '}
+                </span>
+                <span className={failed ? 'text-danger' : 'text-success'}>{failed ? 'Failure' : 'Success'}</span>
+                <span className="text-muted-foreground">
+                  {r.detail && ` · ${r.detail}`}
+                  {' · '}
+                  <span className="whitespace-nowrap" title={absoluteTime(r.createdAt)}>
+                    {relativeTime(r.createdAt)}
+                  </span>
+                </span>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function AuditDetailSheet({ event, onPick, onClose }: { event?: AuditEventDTO; onPick: (e: AuditEventDTO) => void; onClose: () => void }) {
   const [detail, setDetail] = useState<AuditDetailDTO>()
   const [error, setError] = useState<string>()
@@ -500,6 +605,7 @@ function AuditDetailSheet({ event, onPick, onClose }: { event?: AuditEventDTO; o
           )}
           {mode === 'detail' && error && <Callout tone="danger">{error}</Callout>}
           {mode === 'detail' && e?.rules && <RuleHits rules={e.rules} />}
+          {mode === 'detail' && event && keyringEnabled() && <CredentialsUsed eventId={event.id} />}
           {mode === 'detail' && e?.hasPayload && !payload && !error && <p className="text-xs text-muted-foreground">Loading exchange…</p>}
           {mode === 'detail' && e && !e.hasPayload && <p className="text-xs text-muted-foreground">No payload was recorded for this event.</p>}
           {mode === 'detail' && payload && (

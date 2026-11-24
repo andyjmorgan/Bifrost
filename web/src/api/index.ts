@@ -33,6 +33,7 @@ import type {
   HooksDTO,
   RulesCheck,
   HooksSchema,
+  KeyringAuditDTO,
   UpdateServerInput,
   UserDTO,
 } from './types'
@@ -121,6 +122,8 @@ export const api = {
     list: (q: AuditQuery) => http.get<PageDTO<AuditEventDTO>>(`/audit${qs(q as Record<string, string | number | undefined>)}`),
     get: (id: string) => http.get<AuditDetailDTO>(`/audit/${encodeURIComponent(id)}`),
     trace: (id: string) => http.get<AuditTraceDTO>(`/audit/${encodeURIComponent(id)}/trace`),
+    /** The keyring's audit rows for the request this event belongs to: the credentials it used. */
+    keyring: (id: string) => http.get<KeyringAuditDTO>(`/audit/${encodeURIComponent(id)}/keyring`),
   },
 
   /** Every server the caller has been granted. */

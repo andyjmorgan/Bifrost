@@ -39,7 +39,11 @@ export type AccessKeyScope = 'vault:read' | 'vault:readwrite' | 'vault:audit'
 export type CreateAccessKeyInput = Pick<S['CreateAccessKeyRequest'], 'name'> & { description?: string; scopes: AccessKeyScope[] }
 export type CreatedAccessKey = S['CreatedAccessKeyResponse']
 
-export type KeyringAuditEvent = S['AuditEventDto']
+/**
+ * `requestId` is added by hand (the schema file predates it): the gateway's request id, on a row
+ * written for a request the gateway forwarded to an MCP server. The gateway's trail has it too.
+ */
+export type KeyringAuditEvent = S['AuditEventDto'] & { requestId?: string | null }
 /** The generated page types its counters as `unknown` (int32 without a type), so narrow them here. */
 export interface KeyringAuditPage {
   items: KeyringAuditEvent[]
@@ -53,6 +57,7 @@ export interface KeyringAuditQuery {
   type?: string
   outcome?: string
   userId?: string
+  requestId?: string
   since?: string
   until?: string
 }

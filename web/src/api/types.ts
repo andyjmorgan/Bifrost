@@ -259,6 +259,34 @@ export interface AuditTraceDTO {
   spans: AuditEventDTO[]
 }
 
+/** The keyring's audit rows written for one gateway request: the credentials fetched to forward it. */
+export interface KeyringAuditDTO {
+  /** The id both trails carry for the request. The keyring's own audit list filters on it too. */
+  requestId: string
+  /** Empty when the request used no keyring credential, or the gateway has no keyring. */
+  items: KeyringAuditRowDTO[]
+}
+
+/** One keyring audit row: which credential was read or refreshed, and whose it is. Names only. */
+export interface KeyringAuditRowDTO {
+  id: string
+  /** As the keyring writes it: "TokenAccessed", "TokenRefreshed". */
+  type: string
+  /** "Success" or "Failure". */
+  outcome: string
+  /** The keyring user the credential belongs to. */
+  owner: string
+  /** The credential is the server's own: held in the keyring for the server, so it is in no person's keyring trail. */
+  heldByGateway: boolean
+  targetKind?: string
+  targetProvider?: string
+  targetAccount?: string
+  targetName?: string
+  method?: string
+  detail?: string
+  createdAt: string
+}
+
 export interface PageDTO<T> {
   items: T[]
   total: number
