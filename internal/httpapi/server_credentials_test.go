@@ -215,3 +215,66 @@ func TestKeyringOffAServersOwnCredentialIsRefused(t *testing.T) {
 	}
 	noCredentialIn(t, "the gateway's logs", r.logs.String())
 }
+
+// Every operator sees every server, and for a credential lent from
+// somebody's keyring they see whose it is and its name. What the keyring
+// says about that secret beyond its name, the user name it logs in with or
+// the header it travels in, is shown to its owner only.
+func TestALentSecretIsDescribedOnlyToItsOwner(t *testing.T) {
+	r := newAPIRig(t, aliceHolds())
+	s := r.server()
+	status, body := r.do(http.MethodPut, "/servers/"+s.ID+"/credential", alice, "", secretInput)
+	if status != http.StatusOK {
+		t.Fatalf("put credential: %d %s", status, body)
+	}
+	_, key, err := r.keys.Create(context.Background(), alice, "read "+uuid.NewString()[:8], auth.AllScopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	find := func(user, bearer string) (one, listed *CredentialDTO) {
+		t.Helper()
+		_, body := r.do(http.MethodGet, "/servers/"+s.ID, user, bearer, nil)
+		var got ServerDTO
+		if err := json.Unmarshal([]byte(body), &got); err != nil || got.Credential == nil {
+			t.Fatalf("get: %s", body)
+		}
+		_, body = r.do(http.MethodGet, "/servers", user, bearer, nil)
+		var all []ServerDTO
+		if err := json.Unmarshal([]byte(body), &all); err != nil {
+			t.Fatalf("list: %s", body)
+		}
+		for i := range all {
+			if all[i].ID == s.ID {
+				listed = all[i].Credential
+			}
+		}
+		if listed == nil {
+			t.Fatal("the server is not in the list")
+		}
+		return got.Credential, listed
+	}
+
+	// Alice, signed in, sees how her own secret is sent.
+	for _, c := range []*CredentialDTO{first(find(alice, "")), second(find(alice, ""))} {
+		if c.HeaderName != stubHeader || c.KeyringSecretName != "atlas" || c.KeyringOwner != alice {
+			t.Fatalf("Alice does not see her own secret described: %+v", c)
+		}
+	}
+	// Bob sees the reference and nothing of what the keyring says about it.
+	// So does a gateway API key, even Alice's: a key carries no right to
+	// read a keyring.
+	for who, creds := range map[string][2]*CredentialDTO{"Bob": pair(find(bob, "")), "an API key": pair(find("", key))} {
+		for _, c := range creds {
+			if c.HeaderName != "" || c.BasicUsername != "" {
+				t.Fatalf("%s is shown how Alice's secret is sent: header %q, username %q", who, c.HeaderName, c.BasicUsername)
+			}
+			if c.Kind != store.AuthKeyringSecret || c.KeyringSecretName != "atlas" || c.KeyringOwner != alice {
+				t.Fatalf("%s does not see the reference: %+v", who, c)
+			}
+		}
+	}
+}
+
+func first(a, _ *CredentialDTO) *CredentialDTO   { return a }
+func second(_, b *CredentialDTO) *CredentialDTO  { return b }
+func pair(a, b *CredentialDTO) [2]*CredentialDTO { return [2]*CredentialDTO{a, b} }

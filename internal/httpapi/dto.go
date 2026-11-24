@@ -52,8 +52,10 @@ type CredentialDTO struct {
 	StateReason string                `json:"stateReason,omitempty"`
 	// BasicUsername, HeaderName, the OAuth fields and LastRefreshedAt are
 	// what the keyring says of a credential the gateway holds there for the
-	// server. They are empty for a reference into a person's keyring and for
-	// a credential that has not been moved.
+	// server. For a secret lent from a person's keyring, BasicUsername and
+	// HeaderName are filled for that person only; everybody else sees the
+	// reference and no more. All are empty for a credential that has not
+	// been moved.
 	BasicUsername         string     `json:"basicUsername,omitempty"`
 	HeaderName            string     `json:"headerName,omitempty"`
 	OAuthIssuer           string     `json:"oauthIssuer,omitempty"`

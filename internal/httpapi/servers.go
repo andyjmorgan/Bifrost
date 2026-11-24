@@ -48,9 +48,18 @@ func (a *API) describe(ctx context.Context, s *store.Server, c *store.Credential
 	if c == nil || a.keyring == nil || !c.Kind.FromKeyring() {
 		return nil
 	}
-	// An account lent from a person's keyring is shown as the reference it is.
-	if c.Kind == store.AuthKeyringOAuth && !c.KeyringRef().HeldByGateway() {
-		return nil
+	// A credential lent from a person's keyring is shown to everybody as the
+	// reference it is: whose keyring, and the name. What the keyring says
+	// about it beyond that (the user name of a Basic secret, the header it
+	// travels in) is the owner's, and is shown to the owner alone, signed in
+	// as themselves. Every operator sees every server; they do not thereby
+	// see into each other's keyrings. A lent OAuth account has nothing more
+	// to say and is never described.
+	if !c.KeyringRef().HeldByGateway() {
+		by := auth.CallerFrom(ctx)
+		if c.Kind == store.AuthKeyringOAuth || !ownsKeyring(by, c.KeyringOwner) {
+			return nil
+		}
 	}
 	d, err := a.keyring.Describe(ctx, c.KeyringRef())
 	if err != nil {
