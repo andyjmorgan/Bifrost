@@ -63,7 +63,26 @@ type Connector struct {
 	OnInit  func(srv *store.Server, ir *mcp.InitializeResult)
 	version string
 	locks   sync.Map // serverID -> *sync.Mutex guarding refresh
+	guard   RefreshGuard
 }
+
+// RefreshGuard is held, shared, for as long as a refresh talks to the token
+// endpoint and stores the result. `gateway migrate-credentials` holds it
+// exclusively while it moves credentials into the keyring, so no token
+// rotates under a row that is being copied (refreshguard.Guard).
+type RefreshGuard interface {
+	Shared(ctx context.Context) (release func(), err error)
+}
+
+// SetRefreshGuard makes every refresh of a credential the gateway stores
+// itself hold g. Without one, refreshes are unguarded, which is right only
+// where nothing else can move the credentials.
+func (c *Connector) SetRefreshGuard(g RefreshGuard) { c.guard = g }
+
+// errMoved is a credential that stopped being the gateway's own while a
+// request was using it: `gateway migrate-credentials` moved it into the
+// keyring. The request carries on with the keyring's copy.
+var errMoved = errors.New("upstream: the credential was moved to the keyring")
 
 // New builds a connector. kr is the keyring that servers with a keyring
 // credential are resolved through; nil means the keyring is off, and such
@@ -376,7 +395,9 @@ func (t *credentialTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		}
 		refreshed := false
 		if t.c.needsRefresh(cred) && sec.RefreshToken != "" {
-			if sec, err = t.c.refresh(ctx, t.srv, cred, sec); err != nil {
+			if sec, err = t.c.refresh(ctx, t.srv, cred, sec); errors.Is(err, errMoved) {
+				return t.keyringOAuth(req)
+			} else if err != nil {
 				return nil, err
 			}
 			refreshed = true
@@ -393,7 +414,9 @@ func (t *credentialTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		// The token was rejected before its expiry: refresh once and retry.
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16)) //nolint:errcheck
 		resp.Body.Close()
-		if sec, err = t.c.refresh(ctx, t.srv, cred, sec); err != nil {
+		if sec, err = t.c.refresh(ctx, t.srv, cred, sec); errors.Is(err, errMoved) {
+			return t.keyringOAuth(req)
+		} else if err != nil {
 			return nil, err
 		}
 		retry := cloneWithBody(req)
@@ -490,7 +513,26 @@ func (c *Connector) refresh(ctx context.Context, srv *store.Server, cred *store.
 	mu.Lock()
 	defer mu.Unlock()
 
-	if fresh, err := c.store.GetCredential(ctx, srv.ID); err == nil && fresh.LastRefreshedAt != nil &&
+	// A credential migration holds the guard while it moves rows. Waiting
+	// for it here and reading the row again means this refresh never
+	// rotates a token that is being copied. If the row has become a keyring
+	// reference in the meantime, refreshing it is the keyring's business.
+	if c.guard != nil {
+		release, err := c.guard.Shared(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("upstream: token refresh held off: %w", err)
+		}
+		defer release()
+	}
+	fresh, err := c.store.GetCredential(ctx, srv.ID)
+	if err == nil && fresh.Kind != store.AuthOAuth {
+		if fresh.Kind == store.AuthKeyringOAuth && c.keyring != nil {
+			*cred = *fresh
+			return nil, errMoved
+		}
+		return nil, fmt.Errorf("upstream: the credential changed to %s while it was being refreshed", fresh.Kind)
+	}
+	if err == nil && fresh.LastRefreshedAt != nil &&
 		(cred.LastRefreshedAt == nil || fresh.LastRefreshedAt.After(*cred.LastRefreshedAt)) {
 		*cred = *fresh
 		return c.openSecret(cred)
@@ -544,6 +586,8 @@ func (c *Connector) Refresh(ctx context.Context, srv *store.Server, cred *store.
 	if sec.RefreshToken == "" {
 		return c.store.SetCredentialState(ctx, srv.ID, store.StateBroken, "no refresh token")
 	}
-	_, err = c.refresh(ctx, srv, cred, sec)
+	if _, err = c.refresh(ctx, srv, cred, sec); errors.Is(err, errMoved) {
+		return nil // the keyring refreshes it from here on
+	}
 	return err
 }

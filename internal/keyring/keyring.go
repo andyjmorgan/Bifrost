@@ -157,7 +157,7 @@ func build(ctx context.Context, cfg *Config, st store.Store, log *slog.Logger) (
 	return &Keyring{
 		cfg: cfg, log: log, api: srv.Handler(),
 		source: &Source{store: st, resolver: resolver, cipher: cipher, secrets: secrets, tokens: tokens, flow: flow,
-			providers: providers, audit: auditLog},
+			providers: providers, audit: auditLog, redirectURI: serverOAuth.RedirectURI},
 		auditLog: auditLog,
 		writer: audit.NewWriter(auditLog, st, log, metrics, audit.WriterOptions{
 			BatchSize: cfg.AuditBatchSize, FlushInterval: cfg.AuditFlushInterval}),

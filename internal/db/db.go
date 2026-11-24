@@ -15,6 +15,13 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+// ApplicationName is how the gateway's sessions name themselves to Postgres.
+// `gateway migrate-credentials` reads it back from pg_stat_activity: a
+// session on the gateway's database whose name does not start with
+// "bifrost-" may be a gateway from before the refresh guard, which must not
+// be running while OAuth credentials are moved.
+const ApplicationName = "bifrost-gateway"
+
 // Open connects to Postgres and runs any pending migrations.
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(dsn)
@@ -26,6 +33,9 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	// pgx's default of max(4, NumCPU) unless the DSN says otherwise.
 	if pc.MaxConns < 32 && !strings.Contains(dsn, "pool_max_conns") {
 		pc.MaxConns = 32
+	}
+	if pc.ConnConfig.RuntimeParams["application_name"] == "" {
+		pc.ConnConfig.RuntimeParams["application_name"] = ApplicationName
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {

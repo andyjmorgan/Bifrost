@@ -158,6 +158,9 @@ func mask(s string) string {
 	return string(r[:6]) + "…" + string(r[len(r)-4:])
 }
 
+// EncodeScopes is a list of scopes as a scopes_json column holds it.
+func EncodeScopes(scopes []string) string { return encodeScopes(scopes) }
+
 func encodeScopes(scopes []string) string {
 	if scopes == nil {
 		scopes = []string{}

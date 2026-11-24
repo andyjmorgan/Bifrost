@@ -25,6 +25,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/httpapi"
 	"github.com/andyjmorgan/Bifrost/internal/keyring"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/refreshguard"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
 	"github.com/andyjmorgan/Bifrost/internal/worker"
@@ -80,8 +81,12 @@ func main() {
 	// The keyring is nil, and Wrap a no-op, unless its KEKs are configured.
 	// It is built before the connector, which resolves the servers that
 	// reference a keyring credential through it.
+	// Every token refresh, the gateway's own and the keyring's, holds this
+	// guard shared; `gateway migrate-credentials` holds it exclusive.
+	guard := refreshguard.New(pool)
 	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
 		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
+		RefreshGuard: guard,
 	}, log)
 	if err != nil {
 		log.Error("keyring", "err", err)
@@ -96,6 +101,7 @@ func main() {
 	rec := audit.NewRecorder(ctx, st, log)
 	oauth := oauthclient.New(cfg.PublicBaseURL, &http.Client{Timeout: 20 * time.Second})
 	conn := upstream.New(st, sealer, oauth, kr.Source(), rec, log, cfg.UpstreamTimeout, cfg.RefreshLeeway, cfg.Version)
+	conn.SetRefreshGuard(guard)
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		id := srv.ID

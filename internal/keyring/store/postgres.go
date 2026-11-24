@@ -23,6 +23,11 @@ func NewPostgres(ctx context.Context, dsn string) (*Postgres, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
+	// Named so that `gateway migrate-credentials` can tell this version's sessions from an older
+	// gateway's (see db.ApplicationName in the gateway).
+	if cfg.ConnConfig.RuntimeParams["application_name"] == "" {
+		cfg.ConnConfig.RuntimeParams["application_name"] = "bifrost-keyring"
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open pool: %w", err)

@@ -161,6 +161,39 @@ type ServerOAuth struct {
 	ReturnTo string
 }
 
+// ServerConnection is a server's whole OAuth connection in the clear: what
+// discovery found, the client that was registered, and the tokens. It exists
+// only for `gateway migrate-credentials`, which carries a connection from
+// one store to the other inside one process. Nothing else builds one, and
+// nothing prints or logs one.
+type ServerConnection struct {
+	// ServerURL and Name are the server's, for the provider's own.
+	ServerURL string
+	Name      string
+
+	Issuer                string
+	AuthorizationEndpoint string
+	TokenEndpoint         string
+	RegistrationEndpoint  string
+	RegistrationKind      string // cimd | dcr
+	Resource              string
+	Scopes                []string
+
+	ClientID     string
+	ClientSecret string // empty for a public client
+
+	// Connected reports whether tokens were ever issued. A connection whose
+	// consent never finished has a client and no tokens.
+	Connected       bool
+	TokenType       string
+	AccessToken     string
+	RefreshToken    string
+	ExpiresAt       *time.Time
+	LastRefreshedAt *time.Time
+	// Broken is why the connection needs authorizing again, or empty.
+	Broken string
+}
+
 // OAuthState is what a consent round trip in flight is for.
 type OAuthState struct {
 	// Ref is the connection being authorized.

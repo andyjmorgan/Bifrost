@@ -36,8 +36,9 @@ func migrateCredentials(ctx context.Context, cfg config.Config, log *slog.Logger
 	owner := fs.String("owner", "gateway", `the keyring user that owns the moved credentials: "gateway" (the gateway's own space, which no person can read) or a user's id`)
 	includeNew := fs.Bool("include-new", false, "with -rollback: also take back credentials the gateway has stored in the keyring since the move")
 	servers := fs.String("server", "", "comma-separated slugs to limit the run to; empty means every server")
+	ignoreSessions := fs.Bool("ignore-other-sessions", false, "with -kind oauth: go ahead although sessions that are not this version of Bifrost are connected to the database (only when you know they are not an older gateway)")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: gateway migrate-credentials -kind static|oauth [-dry-run] [-rollback] [-owner gateway|<user id>] [-server slug,slug] [-include-new]")
+		fmt.Fprintln(fs.Output(), "usage: gateway migrate-credentials -kind static|oauth [-dry-run] [-rollback] [-owner gateway|<user id>] [-server slug,slug] [-include-new] [-ignore-other-sessions]")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
@@ -66,6 +67,7 @@ func migrateCredentials(ctx context.Context, cfg config.Config, log *slog.Logger
 		log.Error("crypto", "err", err)
 		os.Exit(2)
 	}
+	guard := refreshguard.New(pool)
 	kr, err := keyring.FromEnv(ctx, keyring.HostConfig{
 		DSN: cfg.DSN, PublicBaseURL: cfg.PublicBaseURL, OIDCIssuer: cfg.OIDCIssuer, OIDCWebClientID: cfg.OIDCWebClientID,
 	}, log)
@@ -87,8 +89,8 @@ func migrateCredentials(ctx context.Context, cfg config.Config, log *slog.Logger
 			slugs = append(slugs, s)
 		}
 	}
-	_, err = credmigrate.Run(ctx, credmigrate.Deps{Pool: pool, Sealer: sealer, Vault: kr.Migration(), Guard: refreshguard.New(pool)}, credmigrate.Options{
-		Kind: *kind, DryRun: *dryRun, Rollback: *rollback, Owner: ownerID, IncludeNew: *includeNew, Servers: slugs, Out: os.Stdout,
+	_, err = credmigrate.Run(ctx, credmigrate.Deps{Pool: pool, Sealer: sealer, Vault: kr.Migration(), Guard: guard}, credmigrate.Options{
+		Kind: *kind, DryRun: *dryRun, Rollback: *rollback, Owner: ownerID, IncludeNew: *includeNew, Servers: slugs, IgnoreOtherSessions: *ignoreSessions, Out: os.Stdout,
 	})
 	kr.Shutdown()
 	pool.Close()

@@ -47,6 +47,11 @@ type rig struct {
 	ms     *memstore.Mem
 	tag    string // prefix of this test's slugs
 	slugs  []string
+	// strictSessions makes OAuth runs refuse beside sessions that are not this
+	// version of Bifrost, as the command does. Off for every test but the one
+	// about that refusal: other packages' tests share the database and need
+	// not name their sessions.
+	strictSessions bool
 }
 
 func newRig(t *testing.T) *rig {
@@ -68,7 +73,9 @@ func newRig(t *testing.T) *rig {
 	ms := memstore.New()
 	kr, err := keyring.New(ctx, &keyring.Config{
 		ActiveKekID: "local:v1", Keks: map[string]string{"local:v1": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
-		OAuthRedirectBaseURL: "https://gateway.test/keyring", UIBaseURL: "https://gateway.test", AuditChannelCap: 10000,
+		OAuthRedirectBaseURL: "https://gateway.test/keyring", UIBaseURL: "https://gateway.test", GatewayBaseURL: "https://gateway.test", AuditChannelCap: 10000,
+		// As in a running gateway: the keyring's refreshes hold the same guard the command takes.
+		RefreshGuard: refreshguard.New(pool),
 	}, ms, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +122,13 @@ func (r *rig) run(o credmigrate.Options, v credmigrate.Vault) (string, credmigra
 	if o.Owner == uuid.Nil {
 		o.Owner = gatewayOwner
 	}
-	o.Out, o.Servers = &out, r.slugs
+	o.Out = &out
+	if o.Servers == nil {
+		o.Servers = r.slugs // other tests share the database: stay with this one's servers
+	}
+	if !r.strictSessions {
+		o.IgnoreOtherSessions = true
+	}
 	sum, err := credmigrate.Run(context.Background(), credmigrate.Deps{Pool: r.pool, Sealer: r.sealer, Vault: v, Guard: refreshguard.New(r.pool)}, o)
 	for _, secret := range []string{password, headerValue, replaced} {
 		if strings.Contains(out.String(), secret) {
@@ -433,5 +446,31 @@ func TestRollbackTakesNewCredentialsOnlyWhenAsked(t *testing.T) {
 	}
 	if c := r.cred(id); c.Kind != store.AuthHeader || r.opened(id).HeaderValue != headerValue {
 		t.Fatalf("the credential did not come back: %s", c.Kind)
+	}
+}
+
+// A run limited to some servers moves those and no others, and a slug that
+// names no server stops it before anything is moved.
+func TestARunLimitedToSomeServers(t *testing.T) {
+	r := newRig(t)
+	first := r.server("first", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
+	second := r.server("second", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
+	third := r.server("third", store.Credential{Kind: store.AuthHeader, HeaderName: "X-Api-Key"}, &store.Secret{HeaderValue: headerValue})
+
+	report, sum, err := r.run(credmigrate.Options{Kind: credmigrate.KindStatic, Servers: []string{r.slug("first"), r.slug("second")}}, nil)
+	if err != nil || sum.Moved != 2 || sum.Already+sum.Skipped+sum.Failed != 0 {
+		t.Fatalf("%v %+v\n%s", err, sum, report)
+	}
+	if strings.Contains(report, r.slug("third")) || r.cred(third).Kind != store.AuthHeader {
+		t.Fatalf("a server outside the run was touched:\n%s", report)
+	}
+	if r.cred(first).Kind != store.AuthKeyringSecret || r.cred(second).Kind != store.AuthKeyringSecret {
+		t.Fatal("the servers the run named were not moved")
+	}
+	if _, _, err := r.run(credmigrate.Options{Kind: credmigrate.KindStatic, Servers: []string{r.slug("third"), r.slug("nowhere")}}, nil); err == nil || !strings.Contains(err.Error(), r.slug("nowhere")) {
+		t.Fatalf("a slug that names no server was accepted: %v", err)
+	}
+	if r.cred(third).Kind != store.AuthHeader {
+		t.Fatal("a run with a wrong slug moved a server anyway")
 	}
 }

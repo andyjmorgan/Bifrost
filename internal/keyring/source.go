@@ -39,6 +39,9 @@ type Source struct {
 	flow      *service.OAuthFlowService
 	providers *service.ProviderService
 	audit     *audit.Log
+	// redirectURI is the gateway's OAuth callback: what every server connection's client is
+	// registered with.
+	redirectURI string
 }
 
 // Source returns the gateway's door into the keyring, or nil when the keyring is off. The nil is an

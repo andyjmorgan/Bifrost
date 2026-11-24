@@ -24,6 +24,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -56,6 +57,11 @@ type Vault interface {
 	ImportSecret(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use, in keyringref.ServerSecret) (keyringref.Ref, error)
 	ExportSecret(ctx context.Context, ref keyringref.Ref, use keyringref.Use) (keyringref.ServerSecret, error)
 	RemoveSecret(ctx context.Context, ref keyringref.Ref, use keyringref.Use) error
+
+	ProviderTaken(ctx context.Context, ref keyringref.Ref) (bool, error)
+	ImportOAuth(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use, c keyringref.ServerConnection) (keyringref.Ref, error)
+	ExportOAuth(ctx context.Context, ref keyringref.Ref, use keyringref.Use) (keyringref.ServerConnection, error)
+	RemoveOAuth(ctx context.Context, ref keyringref.Ref, use keyringref.Use) error
 }
 
 // Guard keeps token refreshes from running while credentials are moved
@@ -82,6 +88,10 @@ type Options struct {
 	IncludeNew bool
 	// Servers limits the run to these slugs. Empty means every server.
 	Servers []string
+	// IgnoreOtherSessions lets an OAuth run go ahead although other
+	// sessions that are not this version of Bifrost are connected to the
+	// database. See otherSessions.
+	IgnoreOtherSessions bool
 	// Out is where the report is printed. It never receives a secret.
 	Out io.Writer
 }
@@ -120,6 +130,16 @@ type row struct {
 	provider     string
 	account      string
 	migratedFrom string
+
+	state, stateReason     string
+	issuer, authzEndpoint  string
+	tokenEndpoint          string
+	registrationEndpoint   string
+	registrationKind       string
+	clientID, resource     string
+	scopes                 []string
+	tokenType              string
+	expiresAt, refreshedAt *time.Time
 }
 
 // was is the kind the operator set: for a row the command has moved, what
@@ -170,7 +190,25 @@ func Run(ctx context.Context, d Deps, o Options) (Summary, error) {
 	}
 	r := &runner{Deps: d, o: o}
 
-	// Hold refreshes off for the whole run, and keep a second run out.
+	// A gateway that does not hold the refresh guard could rotate a token
+	// while its row is being copied. Refuse to move OAuth rows beside one.
+	if o.Kind == KindOAuth {
+		others, err := otherSessions(ctx, d.Pool)
+		if err != nil {
+			return Summary{}, err
+		}
+		if others != "" {
+			fmt.Fprintf(o.Out, "other sessions on this database that are not this version of Bifrost: %s\n", others)
+			if !o.DryRun && !o.IgnoreOtherSessions {
+				return Summary{}, errors.New("credmigrate: refusing to move OAuth credentials while other sessions are connected. " +
+					"An older gateway does not hold off token refreshes during the move and could strand a refresh token: stop it first. " +
+					"If the sessions are something else (psql, a backup), run again with -ignore-other-sessions")
+			}
+		}
+	}
+
+	// Hold refreshes off for the whole run, and keep a second run out. The
+	// call waits for every refresh in flight to finish.
 	if !o.DryRun {
 		release, err := d.Guard.Exclusive(ctx)
 		if err != nil {
@@ -250,13 +288,17 @@ func (r *runner) fail(row row, err error) {
 // load reads every server's credential, in slug order.
 func (r *runner) load(ctx context.Context) ([]row, error) {
 	rows, err := r.Pool.Query(ctx, `select s.id, s.slug, s.name, s.url, c.kind, coalesce(c.basic_username,''), coalesce(c.header_name,''), c.secret_blob,
-		coalesce(c.keyring_owner,''), coalesce(c.keyring_secret_name,''), coalesce(c.keyring_provider,''), coalesce(c.keyring_account,''), coalesce(c.migrated_from,'')
+		coalesce(c.keyring_owner,''), coalesce(c.keyring_secret_name,''), coalesce(c.keyring_provider,''), coalesce(c.keyring_account,''), coalesce(c.migrated_from,''),
+		c.state, coalesce(c.state_reason,''), coalesce(c.oauth_issuer,''), coalesce(c.oauth_authorization_endpoint,''), coalesce(c.oauth_token_endpoint,''),
+		coalesce(c.oauth_registration_endpoint,''), coalesce(c.oauth_registration_kind,''), coalesce(c.oauth_client_id,''), coalesce(c.oauth_resource,''),
+		c.oauth_scopes, coalesce(c.oauth_token_type,''), c.oauth_expires_at, c.last_refreshed_at
 		from servers s join credentials c on c.server_id = s.id where c.kind <> 'none' order by s.slug`)
 	if err != nil {
 		return nil, fmt.Errorf("credmigrate: read credentials: %w", err)
 	}
 	defer rows.Close()
-	only := map[string]bool{}
+	// only is the slugs the run is limited to; found is the ones that exist.
+	only, found := map[string]bool{}, map[string]bool{}
 	for _, s := range r.o.Servers {
 		only[s] = true
 	}
@@ -264,21 +306,26 @@ func (r *runner) load(ctx context.Context) ([]row, error) {
 	for rows.Next() {
 		var x row
 		if err := rows.Scan(&x.serverID, &x.slug, &x.name, &x.url, &x.kind, &x.username, &x.header, &x.blob,
-			&x.owner, &x.secretName, &x.provider, &x.account, &x.migratedFrom); err != nil {
+			&x.owner, &x.secretName, &x.provider, &x.account, &x.migratedFrom,
+			&x.state, &x.stateReason, &x.issuer, &x.authzEndpoint, &x.tokenEndpoint,
+			&x.registrationEndpoint, &x.registrationKind, &x.clientID, &x.resource,
+			&x.scopes, &x.tokenType, &x.expiresAt, &x.refreshedAt); err != nil {
 			return nil, fmt.Errorf("credmigrate: read credentials: %w", err)
 		}
-		if len(only) == 0 || only[x.slug] {
+		if len(r.o.Servers) == 0 || only[x.slug] {
 			out = append(out, x)
-			delete(only, x.slug)
+			found[x.slug] = true
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("credmigrate: read credentials: %w", err)
 	}
-	if len(only) > 0 {
-		missing := make([]string, 0, len(only))
+	if len(found) < len(only) {
+		var missing []string
 		for s := range only {
-			missing = append(missing, s)
+			if !found[s] {
+				missing = append(missing, s)
+			}
 		}
 		sort.Strings(missing)
 		return nil, fmt.Errorf("credmigrate: no server with a credential has the slug %s", strings.Join(missing, ", "))
@@ -519,12 +566,177 @@ func (r *runner) flip(ctx context.Context, row row, newKind, set string, args ..
 
 // ---- OAuth credentials ----------------------------------------------------
 
-func (r *runner) moveOAuth(_ context.Context, row row) {
-	r.sum.Skipped++
-	r.say("skip", row, "OAuth credentials are not moved by this version")
+// otherSessions names the sessions on the gateway's database that are not a
+// Bifrost of this version, or "" when there are none. Every pool this
+// version opens names itself (db.ApplicationName and the keyring's); a
+// gateway from before the refresh guard does not, and it is the one thing
+// that must not be running while OAuth rows move, because it would refresh
+// a token without waiting for the move.
+func otherSessions(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var names *string
+	err := pool.QueryRow(ctx, `select string_agg(name || ' x' || n, ', ' order by name) from (
+		select coalesce(nullif(application_name,''),'(unnamed)') as name, count(*) as n from pg_stat_activity
+		where datname = current_database() and pid <> pg_backend_pid() and backend_type = 'client backend'
+		  and coalesce(application_name,'') not like 'bifrost-%' group by 1) s`).Scan(&names)
+	if err != nil {
+		return "", fmt.Errorf("credmigrate: list database sessions: %w", err)
+	}
+	if names == nil {
+		return "", nil
+	}
+	return *names, nil
 }
 
-func (r *runner) restoreOAuth(_ context.Context, row row) {
-	r.sum.Skipped++
-	r.say("skip", row, "OAuth credentials are not moved by this version")
+// connection is a sealed OAuth row as the keyring takes it.
+func (r *runner) connection(row row, s *secret) keyringref.ServerConnection {
+	c := keyringref.ServerConnection{
+		ServerURL: row.url, Name: row.name, Issuer: row.issuer, AuthorizationEndpoint: row.authzEndpoint, TokenEndpoint: row.tokenEndpoint,
+		RegistrationEndpoint: row.registrationEndpoint, RegistrationKind: row.registrationKind, Resource: row.resource, Scopes: row.scopes,
+		ClientID: row.clientID, ClientSecret: s.ClientSecret,
+		Connected: s.AccessToken != "", TokenType: row.tokenType, AccessToken: s.AccessToken, RefreshToken: s.RefreshToken,
+		ExpiresAt: row.expiresAt, LastRefreshedAt: row.refreshedAt,
+	}
+	if row.state == "broken" && c.Connected {
+		c.Broken = row.stateReason
+		if c.Broken == "" {
+			c.Broken = "refresh refused"
+		}
+	}
+	return c
+}
+
+func (r *runner) moveOAuth(ctx context.Context, row row) {
+	ref := keyringref.Ref{Owner: r.o.Owner.String(), Kind: keyringref.KindOAuth, Provider: keyringref.ServerCredentialName(row.slug), Account: keyringref.ServerAccount}
+	target := fmt.Sprintf("-> keyring account %s/%s", ref.Provider, ref.Account)
+	switch row.kind {
+	case "oauth":
+	case "keyring_oauth":
+		if row.migratedFrom != "" {
+			r.sum.Already++
+			r.say("already", row, fmt.Sprintf("keyring account %s/%s (moved earlier)", row.provider, row.account))
+			return
+		}
+		fallthrough
+	default:
+		r.sum.Skipped++
+		r.say("skip", row, "not an OAuth connection in the gateway's store")
+		return
+	}
+	// A person's keyring may already have a provider somebody wrote under
+	// the server's name. The gateway's own space cannot.
+	if taken, err := r.Vault.ProviderTaken(ctx, ref); err != nil {
+		r.fail(row, fmt.Errorf("read the keyring: %w", err))
+		return
+	} else if taken {
+		r.fail(row, fmt.Errorf("the owner's keyring already has a provider named %q that is not a server's connection; rename or delete it first", ref.Provider))
+		return
+	}
+	target += map[string]string{"ok": "", "pending": " (consent never finished: the registration only)", "broken": " (broken: it stays broken until re-authorized)"}[row.state]
+	if r.o.DryRun {
+		r.sum.Moved++
+		r.say("would move", row, target)
+		return
+	}
+
+	sec, err := r.open(row)
+	if err != nil {
+		r.fail(row, err)
+		return
+	}
+	if row.tokenEndpoint == "" || row.clientID == "" {
+		r.fail(row, errors.New("the row has no token endpoint or client id; re-authorize the server instead"))
+		return
+	}
+	in := r.connection(row, sec)
+	// 1. Copy. Refreshes are held off, so the tokens read above are the
+	// current ones until this run ends. The gateway's row still decides
+	// what is sent; a run that stops here is repeated from the top.
+	if _, err := r.Vault.ImportOAuth(ctx, r.o.Owner, r.tenant, row.use(), in); err != nil {
+		r.fail(row, fmt.Errorf("write the keyring: %w", err))
+		return
+	}
+	// 2. Read the copy back and compare everything a refresh needs.
+	back, err := r.Vault.ExportOAuth(ctx, ref, row.use())
+	if err != nil {
+		r.fail(row, fmt.Errorf("read the copy back: %w", err))
+		return
+	}
+	if back.TokenEndpoint != in.TokenEndpoint || back.Resource != in.Resource || back.RegistrationKind != in.RegistrationKind || back.ClientID != in.ClientID ||
+		!same(back.ClientSecret, in.ClientSecret) || back.Connected != in.Connected || !same(back.AccessToken, in.AccessToken) || !same(back.RefreshToken, in.RefreshToken) {
+		r.fail(row, errors.New("the keyring's copy does not match the original; the gateway's row is unchanged"))
+		return
+	}
+	// 3. Switch the gateway's row to the reference and clear what was
+	// copied. Its state is kept: ok, awaiting consent, or broken.
+	if err := r.flip(ctx, row, "keyring_oauth", `kind='keyring_oauth', keyring_owner=$2, keyring_provider=$3, keyring_account=$4, keyring_secret_name=null,
+		secret_blob=null, oauth_issuer=null, oauth_authorization_endpoint=null, oauth_token_endpoint=null, oauth_registration_endpoint=null,
+		oauth_registration_kind=null, oauth_client_id=null, oauth_resource=null, oauth_scopes='{}', oauth_token_type=null, oauth_expires_at=null,
+		oauth_has_refresh_token=false, last_refreshed_at=null, migrated_from='oauth'`,
+		ref.Owner, ref.Provider, ref.Account); err != nil {
+		r.fail(row, err)
+		return
+	}
+	r.sum.Moved++
+	r.say("moved", row, target)
+}
+
+func (r *runner) restoreOAuth(ctx context.Context, row row) {
+	ref := keyringref.Ref{Owner: row.owner, Kind: keyringref.KindOAuth, Provider: row.provider, Account: row.account}
+	source := fmt.Sprintf("<- keyring account %s/%s", row.provider, row.account)
+	switch {
+	case row.kind == "oauth":
+		r.sum.Already++
+		r.say("already", row, "in the gateway's store")
+		return
+	case row.kind != "keyring_oauth" || !r.mine(row, "oauth"):
+		r.sum.Skipped++
+		r.say("skip", row, "not a connection this command moved")
+		return
+	}
+	if r.o.DryRun {
+		r.sum.Moved++
+		r.say("would restore", row, source)
+		return
+	}
+	// The keyring's tokens are the truth: they have been refreshed since
+	// the move, and refreshes are held off while this runs.
+	held, err := r.Vault.ExportOAuth(ctx, ref, row.use())
+	if err != nil {
+		r.fail(row, fmt.Errorf("read the keyring: %w", err))
+		return
+	}
+	blob, err := r.seal(row, &secret{AccessToken: held.AccessToken, RefreshToken: held.RefreshToken, ClientSecret: held.ClientSecret})
+	if err != nil {
+		r.fail(row, errors.New("seal the connection for the gateway's store"))
+		return
+	}
+	state, reason := "ok", ""
+	switch {
+	case !held.Connected:
+		state, reason = "pending", "awaiting consent"
+	case held.Broken != "":
+		state, reason = "broken", held.Broken
+	case row.state == "broken":
+		state, reason = "broken", row.stateReason
+	}
+	scopes := held.Scopes
+	if scopes == nil {
+		scopes = []string{}
+	}
+	if err := r.flip(ctx, row, "oauth", `kind='oauth', secret_blob=$2, oauth_issuer=nullif($3,''), oauth_authorization_endpoint=nullif($4,''),
+		oauth_token_endpoint=nullif($5,''), oauth_registration_endpoint=nullif($6,''), oauth_registration_kind=nullif($7,''), oauth_client_id=nullif($8,''),
+		oauth_resource=nullif($9,''), oauth_scopes=$10, oauth_token_type=nullif($11,''), oauth_expires_at=$12, oauth_has_refresh_token=$13,
+		last_refreshed_at=$14, state=$15, state_reason=nullif($16,''),
+		keyring_owner=null, keyring_provider=null, keyring_account=null, keyring_secret_name=null, migrated_from=null`,
+		blob, held.Issuer, held.AuthorizationEndpoint, held.TokenEndpoint, held.RegistrationEndpoint, held.RegistrationKind, held.ClientID,
+		held.Resource, scopes, held.TokenType, held.ExpiresAt, held.RefreshToken != "", held.LastRefreshedAt, state, reason); err != nil {
+		r.fail(row, err)
+		return
+	}
+	// The gateway's row decides again. The keyring's copy is now nobody's.
+	if err := r.Vault.RemoveOAuth(ctx, ref, row.use()); err != nil {
+		fmt.Fprintf(r.o.Out, "%-13s %-7s %-24s restored, but the keyring account %s could not be deleted: %v\n", "note", "oauth", row.slug, row.provider, err)
+	}
+	r.sum.Moved++
+	r.say("restored", row, source)
 }
