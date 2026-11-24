@@ -64,7 +64,7 @@ The credential middleware (`internal/upstream/keyring.go`) asks the keyring once
 - Deletes and changes are audited like reads: `CredentialRemoved` and `CredentialChanged` for secrets, access keys, providers and their app credentials; `TokenRemoved` for an account. No row carries a value.
 - A fetch made for a forwarded request carries that request's id (`audit_log.request_id`). See "Tracing a credential's use" below.
 - The gateway's audit payloads mask the credential header.
-- The servers API returns names and never a value. Logs carry names only.
+- The servers API returns names and never a value. Logs carry names only. For a secret lent from a person's keyring, everybody sees whose it is and its name; the user name it logs in with and the header it travels in are shown to its owner only.
 
 ### Tracing a credential's use
 
@@ -73,7 +73,7 @@ The gateway's audit trail and the keyring's are two tables and stay two. The req
 - From a gateway audit event: `GET /api/v1/audit/{id}/keyring` lists the keyring rows written for that event's request, whoever owns the credential. `heldByGateway` marks a credential the server owns. Those rows are in no person's keyring trail, so this is where they are seen.
 - From a keyring row: `requestId` is on the row, the keyring's audit API filters on `?requestId=`, and `GET /api/v1/audit?requestId=` lists the gateway's events of that request.
 
-Every request to the gateway's API has a request id: the caller's `X-Request-Id`, or one made on arrival.
+Every request to the gateway's API has a request id: the caller's `X-Request-Id` when it is a plain token (1 to 64 ASCII letters, digits and `- _ . :`), and otherwise one made on arrival.
 
 ## Moving the credentials the gateway stored itself
 
@@ -88,13 +88,23 @@ For each server it copies the credential into the keyring, reads the copy back a
 
 - `-dry-run` prints what would be done and changes nothing.
 - `-owner` is the keyring user the moved credentials belong to: the gateway's own space, or a person's id. In a person's keyring an unrelated secret or provider that already has the server's name is never overwritten; that server is reported as failed.
-- `-rollback` moves back the rows this command moved (`credentials.migrated_from`), resealing the keyring's current value, which is the only right one once a token has been refreshed. `-include-new` also takes back credentials that were stored in the keyring from the start.
+- `-rollback` moves back the rows this command moved (`credentials.migrated_from`), resealing the keyring's current value, which is the only right one once a token has been refreshed. `-include-new` also takes back credentials the gateway stored in its own space from the start.
+
+A rollback takes back only what the command wrote. A row is the command's when its owner is the owner the run was given, its keyring name is `mcp-<slug>`, and it was moved (or, with `-include-new`, is held by the gateway). A server that was moved and later pointed at a secret in somebody's own keyring is skipped, with the reason on its line: that secret is theirs, and the command neither reads it out nor deletes it. When the run was given a person as owner, the rollback restores the gateway's row and leaves the secret in that person's keyring.
+
+### A credential that changes during the run
+
+Each server's row is read again at its turn, and the switch is made only if the row is still exactly that row (same kind, same `updated_at`). If somebody replaced the credential, a consent landed, or the server was deleted, the server's line says `changed during the run; run again`, nothing is switched, and the keyring is tidied: a copy nothing refers to is removed, and if the row now refers to the keyring entry the copy overwrote, what the keyring held before the copy is put back.
+
+One case is detected but not repaired: a gateway storing a new credential under the server's name in the few milliseconds between the run reading the keyring and writing its copy. The run cannot tell its copy from the new value. It does not switch, and says to set the server's credential again. Do not edit server credentials while the command runs.
 
 ### OAuth rows and token refresh
 
 Refresh tokens rotate. A token refreshed while its row was being copied would leave the copy with a retired token, and the server would need consent again. So the command holds off every refresh while it runs.
 
 `internal/refreshguard` is a Postgres advisory lock on the gateway's database. Every refresh holds it shared for as long as it talks to the token endpoint and stores the result. The command holds it exclusive: it waits for refreshes in flight and keeps new ones from starting. A refresh that waited reads its row again before doing anything.
+
+The lock lives in one database session. If that session is lost during a run (the database restarts, the connection is cut), the lock goes with it. The run asks the session before every server and before every switch, and stops with an error when it does not answer; the server in hand is left as it was, and the next run carries on.
 
 A gateway from before the guard takes no lock. The command reads `pg_stat_activity` and refuses to move OAuth rows while a session that does not name itself as this version of Bifrost is connected to the database. `-ignore-other-sessions` vouches for a `psql` or a backup.
 
