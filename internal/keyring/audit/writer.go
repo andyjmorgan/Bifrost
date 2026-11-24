@@ -121,9 +121,27 @@ func (w *Writer) persist(ctx context.Context, batch []Event) {
 			}
 			continue
 		}
+		// The batch will not go in whole. One row the database refuses (text it cannot store, a
+		// value too long for its column) fails the whole insert, and the rows beside it have done
+		// nothing wrong: write them one at a time, and give up only on the ones that fail alone.
+		lost := batch
+		if len(entries) > 1 && ctx.Err() == nil {
+			lost = lost[:0:0]
+			for i := range entries {
+				if serr := w.store.InsertAuditBatch(ctx, entries[i:i+1]); serr != nil {
+					lost = append(lost, batch[i])
+				}
+			}
+			if w.metrics != nil && len(lost) < len(batch) {
+				telemetry.Count(ctx, w.metrics.AuditWritten, int64(len(batch)-len(lost)))
+			}
+			if len(lost) == 0 {
+				return
+			}
+		}
 		// Last resort: emit the already-redacted events to the log so the trail is not silently lost.
-		w.logger.Error("audit batch insert failed permanently; dropping", "count", len(batch), "err", err)
-		for _, e := range batch {
+		w.logger.Error("audit rows could not be written; dropping", "count", len(lost), "of", len(batch), "err", err)
+		for _, e := range lost {
 			w.logger.Warn("AUDIT(unpersisted)",
 				slog.String("type", e.Type.String()),
 				slog.String("outcome", e.Outcome.String()),

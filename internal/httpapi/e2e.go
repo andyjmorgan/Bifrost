@@ -396,14 +396,41 @@ func (h *headerRT) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // requestIDMiddleware honours X-Request-Id so an e2e run can be found in the audit log.
+// maxRequestID is the longest request id taken from a caller. The keyring's
+// audit column for it is varchar(64).
+const maxRequestID = 64
+
+// validRequestID reports whether a caller's X-Request-Id is one the gateway
+// will use: 1 to 64 ASCII letters, digits, and - _ . : and nothing else.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > maxRequestID {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.', c == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Every request has an id, the caller's or one made here. Upstream
 		// calls the API starts itself (a ping, a discover, a catalogue
 		// refresh) are audited under it like forwarded ones, and the keyring
 		// writes it on the row of any credential it hands out for them.
+		//
+		// The caller's id is taken only when it is a plain token. It is
+		// written to both audit trails and into logs, so anything else (other
+		// bytes, text that is not UTF-8, something long) is replaced: a
+		// request id is a label, and the caller does not get to put arbitrary
+		// bytes into the trails with it.
 		id := r.Header.Get("X-Request-Id")
-		if id == "" || len(id) > 64 {
+		if !validRequestID(id) {
 			id = uuid.NewString()
 		}
 		next.ServeHTTP(w, r.WithContext(audit.WithRequestID(r.Context(), id)))

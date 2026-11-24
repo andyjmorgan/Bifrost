@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -413,11 +414,17 @@ func asGateway(ctx context.Context, owner, tenant uuid.UUID, use keyringref.Use)
 	}
 	ctx = contracts.WithCaller(ctx, contracts.Caller{UserID: owner, TenantID: tenant})
 	info := audit.RequestInfo{Transport: gatewayTransport, Method: &method, Headers: map[string]string{}}
-	if use.RequestID != "" {
-		info.RequestID = &use.RequestID
+	// The gateway only makes or accepts plain tokens as request ids. The
+	// keyring does not rely on that: an id that would not fit the column, or
+	// is not text, is left off the row rather than risked on it.
+	if id := use.RequestID; id != "" && len(id) <= maxRequestID && utf8.ValidString(id) && !strings.ContainsRune(id, 0) {
+		info.RequestID = &id
 	}
 	return audit.WithRequestInfo(ctx, info)
 }
+
+// maxRequestID is the width of vault.audit_log.request_id.
+const maxRequestID = 64
 
 // maxAuditForRequest bounds how many rows one request's lookup returns. A forwarded request fetches
 // one credential, and a refresh adds a row or two.
