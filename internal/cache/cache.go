@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/andyjmorgan/Bifrost/internal/store"
 )
@@ -29,11 +30,12 @@ const (
 // initialize on 2026-07-28 ones). It expires like any cache row, so an
 // upgraded server is re-discovered with the latest version at the next miss.
 type Init struct {
-	ProtocolVersion string `json:"protocolVersion"`
-	ServerName      string `json:"serverName,omitempty"`
-	ServerVersion   string `json:"serverVersion,omitempty"`
-	Title           string `json:"title,omitempty"`
-	Instructions    string `json:"instructions,omitempty"`
+	ProtocolVersion string     `json:"protocolVersion"`
+	ServerName      string     `json:"serverName,omitempty"`
+	ServerVersion   string     `json:"serverVersion,omitempty"`
+	Title           string     `json:"title,omitempty"`
+	Icons           []mcp.Icon `json:"icons,omitempty"`
+	Instructions    string     `json:"instructions,omitempty"`
 	// Caps records which surfaces the server declared, so listings skip
 	// servers without one instead of asking. nil means not recorded (an
 	// entry written before this field existed): ask.

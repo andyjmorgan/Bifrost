@@ -372,6 +372,7 @@ func (g *Gateway) expose(ctx context.Context, srv *store.Server, bundle store.Ca
 	x.init = in
 	hs.Info.Version, hs.Info.Title, hs.Info.Instructions, hs.Info.ProtocolVersion = in.ServerVersion, in.Title, in.Instructions, in.ProtocolVersion
 	hs.Info.Extensions = in.Extensions
+	hs.Info.Icons = in.Icons
 	cut := g.cutterFor(ctx, srv, in)
 	for _, n := range ns {
 		raw, err := g.listFor(ctx, srv, bundle, in, n)
@@ -414,6 +415,7 @@ func InitFrom(ir *mcp.InitializeResult) cache.Init {
 	}
 	if ir.ServerInfo != nil {
 		in.ServerName, in.ServerVersion, in.Title = ir.ServerInfo.Name, ir.ServerInfo.Version, ir.ServerInfo.Title
+		in.Icons = ir.ServerInfo.Icons
 	}
 	return in
 }

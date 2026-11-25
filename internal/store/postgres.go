@@ -29,10 +29,10 @@ func isUnique(err error) bool {
 
 // ---- servers -----------------------------------------------------------
 
-const serverCols = `id, slug, name, url, description, auth_kind, enabled, selection, hooks, generation, created_at, updated_at`
+const serverCols = `id, slug, name, url, description, auth_kind, enabled, selection, hooks, generation, created_at, updated_at, icons`
 
 // serverColsS is serverCols qualified for a query that aliases servers as s.
-const serverColsS = `s.id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.selection, s.hooks, s.generation, s.created_at, s.updated_at`
+const serverColsS = `s.id, s.slug, s.name, s.url, s.description, s.auth_kind, s.enabled, s.selection, s.hooks, s.generation, s.created_at, s.updated_at, s.icons`
 
 func scanServer(row pgx.Row) (*Server, error) { return scanServerInto(row) }
 
@@ -40,7 +40,7 @@ func scanServer(row pgx.Row) (*Server, error) { return scanServerInto(row) }
 func scanServerInto(row pgx.Row, extra ...any) (*Server, error) {
 	var s Server
 	var sel []byte
-	err := row.Scan(append([]any{&s.ID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &sel, &s.Hooks, &s.Generation, &s.CreatedAt, &s.UpdatedAt}, extra...)...)
+	err := row.Scan(append([]any{&s.ID, &s.Slug, &s.Name, &s.URL, &s.Description, &s.AuthKind, &s.Enabled, &sel, &s.Hooks, &s.Generation, &s.CreatedAt, &s.UpdatedAt, &s.Icons}, extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -130,8 +130,10 @@ func (p *Postgres) ListServers(ctx context.Context) ([]*Server, error) {
 // refreshes s.UpdatedAt, which conditional cache writes are checked against.
 // Disabling a server drops its cache rows: nothing should advertise its tools.
 func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
-	err := p.pool.QueryRow(ctx, `update servers set name=$2, url=$3, description=$4, enabled=$5, auth_kind=$6, updated_at=now() where id=$1 returning updated_at`,
-		s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt)
+	err := p.pool.QueryRow(ctx, `update servers set name=$2, url=$3, description=$4, enabled=$5, auth_kind=$6,
+		icons=case when url is distinct from $3 then '[]'::jsonb else icons end,
+		updated_at=now() where id=$1 returning updated_at, icons`,
+		s.ID, s.Name, s.URL, s.Description, s.Enabled, s.AuthKind).Scan(&s.UpdatedAt, &s.Icons)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -142,6 +144,21 @@ func (p *Postgres) UpdateServer(ctx context.Context, s *Server) error {
 		if _, err := p.pool.Exec(ctx, `delete from cache where server_id=$1`, s.ID); err != nil {
 			return fmt.Errorf("store: %w", err)
 		}
+	}
+	return nil
+}
+
+// ObserveServerIcons keeps display metadata without changing the server's
+// configuration generation or invalidating its caches. A discovery begun
+// before a configuration edit must not replace the new endpoint's icons.
+func (p *Postgres) ObserveServerIcons(ctx context.Context, s *Server, icons json.RawMessage) error {
+	if len(icons) == 0 || string(icons) == "null" {
+		icons = json.RawMessage(`[]`)
+	}
+	_, err := p.pool.Exec(ctx, `update servers set icons=$3
+		where id=$1 and updated_at=$2 and icons is distinct from $3::jsonb`, s.ID, s.UpdatedAt, icons)
+	if err != nil {
+		return fmt.Errorf("store: observe server icons: %w", err)
 	}
 	return nil
 }

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -43,4 +45,62 @@ func TestUpdateServerWritesEachField(t *testing.T) {
 	if got.Name != "after" || got.URL != "https://after.example/mcp" || got.Description != "changed" || got.Enabled || got.AuthKind != AuthHeader {
 		t.Fatalf("stored %+v", got)
 	}
+}
+
+func TestServerIconsSurviveCacheExpiryAndRejectStaleDiscovery(t *testing.T) {
+	p := testStore(t)
+	ctx := context.Background()
+	s := newTestServer(t, p, AuthNone)
+	// Read back Postgres' timestamp precision, as the connector does.
+	s, err := p.GetServer(ctx, s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	icons := json.RawMessage(`[{"src":"https://example.com/icon.svg","mimeType":"image/svg+xml","sizes":["any"],"theme":"dark"}]`)
+	check := func(want json.RawMessage) {
+		t.Helper()
+		got, err := p.GetServer(ctx, s.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a, b any
+		if json.Unmarshal(got.Icons, &a) != nil || json.Unmarshal(want, &b) != nil || !reflect.DeepEqual(a, b) {
+			t.Fatalf("icons = %s, want %s", got.Icons, want)
+		}
+		if !got.UpdatedAt.Equal(s.UpdatedAt) || got.Generation != s.Generation {
+			t.Fatal("observing icons changed the configuration version")
+		}
+	}
+	if err := p.ObserveServerIcons(ctx, s, icons); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CacheInvalidateServer(ctx, s.ID); err != nil {
+		t.Fatal(err)
+	}
+	check(icons)
+
+	// Re-discovery with no icons removes an old icon.
+	if err := p.ObserveServerIcons(ctx, s, nil); err != nil {
+		t.Fatal(err)
+	}
+	check(json.RawMessage(`[]`))
+	if err := p.ObserveServerIcons(ctx, s, icons); err != nil {
+		t.Fatal(err)
+	}
+	// Renaming retains the display metadata, changing endpoints clears it.
+	s.Name = "renamed"
+	if err := p.UpdateServer(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	check(icons)
+	old := *s
+	s.URL = "https://other.example/mcp"
+	if err := p.UpdateServer(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	check(json.RawMessage(`[]`))
+	if err := p.ObserveServerIcons(ctx, &old, icons); err != nil {
+		t.Fatal(err)
+	}
+	check(json.RawMessage(`[]`))
 }

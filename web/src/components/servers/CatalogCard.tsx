@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
-import { Telescope } from 'lucide-react'
+import { Telescope, Wrench } from 'lucide-react'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows } from '../ListCard'
 import type { CapabilityDTO } from '../../api'
 import { absoluteTime, relativeTime } from '../../lib'
 import { KINDS } from '../rules/selection'
 import { CapabilitySheet } from './CapabilitySheet'
+import { MCPIcon, definitionIcons } from '../MCPIcon'
 
 const COLS = 'minmax(0,1.6fr) 150px 150px'
 
@@ -65,9 +66,12 @@ export function CatalogCard({
                 <ListRows className="border-b border-border last:border-b-0">
                   {group.map((c) => (
                     <ListRow key={keyOf(c)} cols={COLS} className="py-3" onClick={() => setOpenKey(keyOf(c))}>
-                      <span className="block truncate font-mono text-xs" title={c.name}>
-                        {c.name}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        {c.kind === 'tool' && <MCPIcon icons={definitionIcons(c.definition)} icon={Wrench} tone="muted" />}
+                        <span className="block truncate font-mono text-xs" title={c.name}>
+                          {c.name}
+                        </span>
+                      </div>
                       <Cell label="First seen">
                         <Time value={c.firstSeenAt} />
                       </Cell>
