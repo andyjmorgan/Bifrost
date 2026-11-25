@@ -560,16 +560,11 @@ func upstreamError(srv *store.Server, err error) error {
 	return &jsonrpc.Error{Code: code, Message: fmt.Sprintf("upstream %s: %v", srv.Slug, err)}
 }
 
-// bifrostIcons identifies the mux; direct routes retain the upstream identity when enabled.
+// bifrostIcons is the gateway's display identity for discovery and SDK metadata.
+// One sharp image per theme also keeps per-result identity stamps compact.
 func bifrostIcons() []mcp.Icon {
-	var icons []mcp.Icon
-	for _, theme := range []mcp.IconTheme{"light", "dark"} {
-		for _, size := range []int{16, 32, 64, 128, 256, 512} {
-			icons = append(icons, mcp.Icon{
-				Source:   fmt.Sprintf("https://s3.donkeywork.dev/mcp-icons/bifrost-%s-v1-%d.png", theme, size),
-				MIMEType: "image/png", Sizes: []string{fmt.Sprintf("%dx%d", size, size)}, Theme: theme,
-			})
-		}
+	return []mcp.Icon{
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-light-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "light"},
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "dark"},
 	}
-	return icons
 }

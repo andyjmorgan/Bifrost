@@ -86,6 +86,7 @@ const nsConfirm = "confirm"
 func newEngine(g *Gateway, version string) *hooks.Engine {
 	return &hooks.Engine{
 		Version: version,
+		Icons:   bifrostIcons(),
 		States:  &cacheStates{g: g},
 		Tasks:   &cacheTasks{g: g},
 		OnFault: func(f hooks.Fault) {
