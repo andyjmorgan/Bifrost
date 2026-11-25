@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowUpRight, Database, KeyRound, Lock, Pencil, Plug, Plus, RotateCw, Server, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Database, KeyRound, Lock, Pencil, Plug, Plus, RefreshCw, RotateCw, Server, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Textarea } from '../ui/components/textarea'
@@ -166,6 +166,8 @@ function CredentialList({ view }: { view: View }) {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
   const [refreshing, setRefreshing] = useState(false)
+  // The row whose access token is being refreshed, keyed as the row's React key.
+  const [refreshingRow, setRefreshingRow] = useState<string>()
 
   const load = useCallback(
     () =>
@@ -197,6 +199,19 @@ function CredentialList({ view }: { view: View }) {
   const refresh = () => {
     setRefreshing(true)
     void load().finally(() => setRefreshing(false))
+  }
+  const refreshToken = async (key: string, label: string, run: () => Promise<unknown>) => {
+    setRefreshingRow(key)
+    try {
+      await run()
+      toast.success(`Refreshed ${label}`)
+    } catch (e) {
+      toast.error(`Could not refresh ${label}`, { description: errorMessage(e) })
+    } finally {
+      setRefreshingRow(undefined)
+      // A refused refresh can mark the connection broken: reload either way to show it.
+      void load()
+    }
   }
 
   const providerOf = (key: string) => providers.find((p) => p.key === key)
@@ -500,6 +515,13 @@ function CredentialList({ view }: { view: View }) {
                             )}
                           </Cell>
                           <RowActions>
+                            {cred.oauthHasRefreshToken && !notMoved(cred) && cred.state !== 'pending' && (
+                              <TokenRefreshButton
+                                label={srv.name}
+                                busy={refreshingRow === `server:${srv.id}`}
+                                onClick={() => refreshToken(`server:${srv.id}`, srv.name, () => api.servers.oauthRefresh(srv.id))}
+                              />
+                            )}
                             <Button variant="ghost" size="iconSm" asChild>
                               <Link to={to} aria-label={`Open ${srv.name}`} title="Open the server">
                                 <ArrowUpRight />
@@ -546,6 +568,11 @@ function CredentialList({ view }: { view: View }) {
                           </span>
                         </Cell>
                         <RowActions>
+                          <TokenRefreshButton
+                            label={title}
+                            busy={refreshingRow === `account:${a.id}`}
+                            onClick={() => refreshToken(`account:${a.id}`, title, () => keyring.oauth.refresh(a.id))}
+                          />
                           <RevealButton title={title} load={() => keyring.oauth.accessToken(a.provider, a.account || undefined).then((r) => r.accessToken)} />
                           <Button
                             variant="ghost"
@@ -828,5 +855,14 @@ function SecretForm({ initial, onClose, onStored }: { initial?: Secret; onClose:
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+/** A row action that has the keyring exchange the refresh token for a new access token now. */
+function TokenRefreshButton({ label, busy, onClick }: { label: string; busy: boolean; onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="iconSm" aria-label={`Refresh the access token of ${label}`} title="Refresh the access token now" disabled={busy} onClick={onClick}>
+      <RefreshCw className={cn(busy && 'animate-spin')} />
+    </Button>
   )
 }

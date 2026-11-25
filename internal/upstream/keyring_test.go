@@ -556,3 +556,44 @@ func TestAServerWithoutACredentialIsSentNone(t *testing.T) {
 		t.Fatalf("a server without a credential was sent %q", got)
 	}
 }
+
+// ---- refresh on request --------------------------------------------------------
+
+func TestRefreshOAuthHandsTheCurrentTokenBackAsRejected(t *testing.T) {
+	fresh := keyringref.Token{AccessToken: tokenTwo}
+	kr := &fakeKeyring{token: keyringref.Token{AccessToken: tokenOne}, onRetry: &fresh}
+	r := newKeyringRig(t, kr, oauthCred())
+
+	if err := r.conn.RefreshOAuth(context.Background(), r.srv, oauthCred()); err != nil {
+		t.Fatal(err)
+	}
+	if got := kr.asked(); len(got) != 2 || got[0] != "" || got[1] != tokenOne {
+		t.Fatalf("keyring asked with rejected %q, want [\"\" %q]", got, tokenOne)
+	}
+	if strings.Contains(r.logs.String(), tokenOne) || strings.Contains(r.logs.String(), tokenTwo) {
+		t.Errorf("the log holds a credential: %s", r.logs.String())
+	}
+}
+
+func TestRefreshOAuthWithoutARefreshToken(t *testing.T) {
+	kr := &fakeKeyring{token: keyringref.Token{AccessToken: tokenOne}} // onRetry nil: no refresh token
+	r := newKeyringRig(t, kr, oauthCred())
+	if err := r.conn.RefreshOAuth(context.Background(), r.srv, oauthCred()); !errors.Is(err, keyringref.ErrNoRefresh) {
+		t.Fatalf("err %v, want ErrNoRefresh", err)
+	}
+}
+
+func TestRefreshOAuthMarksABrokenAccount(t *testing.T) {
+	kr := &fakeKeyring{err: &keyringref.BrokenError{Reason: "invalid_grant"}}
+	r := newKeyringRig(t, kr, oauthCred())
+	if err := r.conn.RefreshOAuth(context.Background(), r.srv, oauthCred()); !errors.Is(err, ErrCredentialBroken) {
+		t.Fatalf("err %v, want ErrCredentialBroken", err)
+	}
+}
+
+func TestRefreshOAuthWithTheKeyringOff(t *testing.T) {
+	r := newKeyringRig(t, nil, oauthCred())
+	if err := r.conn.RefreshOAuth(context.Background(), r.srv, oauthCred()); !errors.Is(err, ErrKeyringOff) {
+		t.Fatalf("err %v, want ErrKeyringOff", err)
+	}
+}

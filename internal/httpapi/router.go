@@ -128,6 +128,7 @@ func (a *API) Router() http.Handler {
 			r.Delete("/servers/{id}", a.deleteServer)
 			r.Put("/servers/{id}/credential", a.putCredential)
 			r.Post("/servers/{id}/oauth/start", a.oauthStart)
+			r.Post("/servers/{id}/oauth/refresh", a.oauthRefresh)
 			r.Put("/servers/{id}/grants", a.putGrants)
 		})
 		r.Group(func(r chi.Router) {

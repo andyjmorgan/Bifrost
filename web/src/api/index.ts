@@ -92,6 +92,8 @@ export const api = {
     remove: (id: string) => http.delete(`/servers/${encodeURIComponent(id)}`),
     putCredential: (id: string, input: AuthInput) => http.put<CreateServerResult>(`/servers/${encodeURIComponent(id)}/credential`, input),
     oauthStart: (id: string, input: OAuthStartInput) => http.post<OAuthStartResult>(`/servers/${encodeURIComponent(id)}/oauth/start`, input),
+    /** Has the keyring replace the server's own OAuth access token now. */
+    oauthRefresh: (id: string) => http.post<ServerDTO>(`/servers/${encodeURIComponent(id)}/oauth/refresh`),
     ping: (id: string) => http.post<PingResult>(`/servers/${encodeURIComponent(id)}/ping`),
     discover: (id: string) => http.post<DiscoverResult>(`/servers/${encodeURIComponent(id)}/discover`),
     putGrants: (id: string, grants: GrantInput[]) => http.put<ServerDTO>(`/servers/${encodeURIComponent(id)}/grants`, { grants }),

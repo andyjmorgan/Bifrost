@@ -62,6 +62,7 @@ func (s *Server) router() chi.Router {
 
 				r.Get("/oauth/tokens", s.handleListTokens)
 				r.Delete("/oauth/tokens/{id}", s.handleDeleteToken)
+				r.Post("/oauth/tokens/{id}/refresh", s.handleRefreshToken)
 				r.Get("/oauth/{provider}/token", s.handleGetToken)
 				r.Get("/oauth/{provider}/connect", s.handleConnect)
 			})

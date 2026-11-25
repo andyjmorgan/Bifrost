@@ -310,6 +310,30 @@ func (s *Server) handleDeleteToken(w http.ResponseWriter, r *http.Request) {
 	noContentOrNotFound(w, deleted)
 }
 
+func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := uuidParam(chi.URLParam(r, "id"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id.")
+		return
+	}
+	token, err := s.deps.OAuthTokens.Refresh(r.Context(), id)
+	var broken *service.BrokenError
+	switch {
+	case errors.Is(err, service.ErrNotRefreshable):
+		writeError(w, http.StatusConflict, "this account cannot be refreshed: it holds no refresh token, or its provider or app credentials are gone. Connect it again.")
+		return
+	case errors.As(err, &broken):
+		writeError(w, http.StatusConflict, "this account is broken until it is connected again: "+broken.Reason)
+		return
+	case writeServiceError(w, err):
+		return
+	case token == nil:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTokenDTO(*token))
+}
+
 func (s *Server) handleGetToken(w http.ResponseWriter, r *http.Request) {
 	provider := chi.URLParam(r, "provider")
 	account := r.URL.Query().Get("account")
