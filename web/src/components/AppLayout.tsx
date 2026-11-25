@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
+  Rocket,
   Server,
   Sun,
   UserRound,
@@ -45,6 +46,7 @@ type NavGroup = { label?: string; items: NavItem[] }
 
 // Sidebar groups. Each icon carries its own hue so the rail reads at a glance when collapsed.
 const navigation: NavGroup[] = [
+  { items: [{ name: 'Get started', href: '/start', icon: Rocket, color: 'text-accent' }] },
   {
     label: 'MCP',
     items: [
@@ -72,9 +74,9 @@ const keyringGroup: NavGroup = {
   ],
 }
 
-/** MCP first, then the keyring beside it, then access and audit, which span both. */
+/** Get started, then MCP, then the keyring beside it, then access and audit, which span both. */
 function navGroups(): NavGroup[] {
-  return keyringEnabled() ? [navigation[0], keyringGroup, ...navigation.slice(1)] : navigation
+  return keyringEnabled() ? [...navigation.slice(0, 2), keyringGroup, ...navigation.slice(2)] : navigation
 }
 
 const COLLAPSED_KEY = 'mcpgw-sidebar-collapsed'

@@ -13,6 +13,7 @@ import { ServerDetailPage } from './pages/ServerDetail'
 import { ExplorerPage } from './pages/Explorer'
 import { ApiKeysPage } from './pages/ApiKeys'
 import { PortalPage } from './pages/Portal'
+import { GetStartedPage } from './pages/GetStarted'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 import { OAuthAccountsPage, SecretsPage } from './pages/Secrets'
@@ -80,6 +81,7 @@ export function App() {
         <Route path="/" element={<Root />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route element={<AppShell />}>
+          <Route path="/start" element={<GetStartedPage />} />
           <Route path="/portal" element={<PortalPage />} />
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:id" element={<ServerDetailPage />} />

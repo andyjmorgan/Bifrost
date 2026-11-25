@@ -49,6 +49,8 @@ export function PortalPage() {
 
       {error && <Callout tone="danger">{error}</Callout>}
 
+      <GroupUrl items={items} />
+
       <ListCard>
         <ListBar>
           <span>
@@ -120,7 +122,6 @@ export function PortalPage() {
         )}
       </ListCard>
 
-      <GroupUrl items={items} />
     </div>
   )
 }
