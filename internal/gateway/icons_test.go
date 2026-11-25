@@ -68,7 +68,7 @@ func assertBifrostIcons(t *testing.T, info map[string]any) {
 	}
 	for i, theme := range []string{"light", "dark"} {
 		icon := icons[i].(map[string]any)
-		if icon["theme"] != theme || icon["src"] != "https://s3.donkeywork.dev/mcp-icons/bifrost-"+theme+"-v1-64.png" {
+		if icon["theme"] != theme || icon["src"] != "https://s3.donkeywork.dev/mcp-icons/bifrost-"+theme+"-v2-64.png" {
 			t.Fatalf("unexpected gateway icon: %v", icon)
 		}
 	}

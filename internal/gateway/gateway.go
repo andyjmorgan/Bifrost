@@ -564,7 +564,7 @@ func upstreamError(srv *store.Server, err error) error {
 // One sharp image per theme also keeps per-result identity stamps compact.
 func bifrostIcons() []mcp.Icon {
 	return []mcp.Icon{
-		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-light-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "light"},
-		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "dark"},
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-light-v2-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "light"},
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v2-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "dark"},
 	}
 }

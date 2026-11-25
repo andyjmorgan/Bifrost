@@ -1185,7 +1185,7 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 		}
 	}
 	// Every result names the gateway, never the server behind it.
-	const us = `"io.modelcontextprotocol/serverInfo":{"icons":[{"mimeType":"image/png","sizes":["64x64"],"src":"https://s3.donkeywork.dev/mcp-icons/bifrost-light-v1-64.png","theme":"light"},{"mimeType":"image/png","sizes":["64x64"],"src":"https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v1-64.png","theme":"dark"}],"name":"bifrost","version":"test"}`
+	const us = `"io.modelcontextprotocol/serverInfo":{"icons":[{"mimeType":"image/png","sizes":["64x64"],"src":"https://s3.donkeywork.dev/mcp-icons/bifrost-light-v2-64.png","theme":"light"},{"mimeType":"image/png","sizes":["64x64"],"src":"https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v2-64.png","theme":"dark"}],"name":"bifrost","version":"test"}`
 	t.Run("no list: nothing of the server's passes", func(t *testing.T) { check(t, nil, "null", "{"+us+"}") })
 	t.Run("a list: only its keys pass", func(t *testing.T) {
 		check(t, []string{"vendor/tier", "vendor/trace"}, `{"vendor/tier":"gold"}`, "{"+us+`,"vendor/trace":"t-1"}`)
