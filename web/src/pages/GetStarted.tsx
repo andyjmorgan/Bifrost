@@ -1,163 +1,344 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { KeySquare, LayoutGrid, Terminal, Waypoints } from 'lucide-react'
+import { Activity, ArrowRight, Bot, Compass, KeySquare, LayoutGrid, Lock, Terminal, Waypoints, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
-import { PageHeader } from '../components/PageHeader'
 import { IconTile } from '../components/IconTile'
 import { CopyButton } from '../components/CopyButton'
+import { Logo } from '../components/Logo'
+import { Tabs } from '../components/Tabs'
+import { api, type PortalServerDTO } from '../api'
+import { useMe } from '../me'
 import { keyringEnabled } from '../keyring'
+import { cn } from '../lib'
 
 const INSTALL = 'curl -fsSL https://raw.githubusercontent.com/andyjmorgan/Bifrost/main/cli/install.sh | sh'
 // The CLI's built-in address; any other gateway has to be named with BIFROST_ADDR.
 const CLI_DEFAULT_ADDR = 'https://bifrost.donkeywork.dev/keyring'
+const KEY = 'mcpg_your_key'
+// How many of the caller's servers the hero's fan-out names before "+N more".
+const FAN_OUT = 4
+
+type ClientTab = 'claude' | 'json' | 'urls'
+/** A command or URL, and one line on what it does. */
+type Command = [code: string, what: string]
 
 /** Where a signed-in person lands: how to point an agent at the gateway, and how to install the CLI. */
 export function GetStartedPage() {
+  const { me } = useMe()
+  const [servers, setServers] = useState<PortalServerDTO[]>()
+  useEffect(() => {
+    api
+      .portal()
+      .then(setServers)
+      .catch(() => setServers([]))
+  }, [])
+
   // The SPA is served by the gateway itself, so its origin is the gateway's public base.
   const base = window.location.origin
   const mcpUrl = `${base}/mcp`
-  const keyringAddr = `${base}/keyring`
-  const key = 'mcpg_your_key'
-
-  const claudeCode = `claude mcp add --transport http bifrost ${mcpUrl} \\\n  --header "Authorization: Bearer ${key}"`
-  const jsonConfig = JSON.stringify({ mcpServers: { bifrost: { type: 'http', url: mcpUrl, headers: { Authorization: `Bearer ${key}` } } } }, null, 2)
+  const firstName = me?.name?.split(' ')[0]
+  const keyring = keyringEnabled()
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow="Welcome"
-        title="Get started"
-        description="Bifrost is one MCP connection to every MCP server you have been granted. Point an agent at it with an API key, and use the bifrost CLI to fetch the credentials the keyring holds for you."
-      />
+    <div className="space-y-6">
+      <Hero firstName={firstName} mcpUrl={mcpUrl} servers={servers} />
 
-      <Section
-        icon={Waypoints}
-        title="Connect an agent to the MCP server"
-        hint="Any MCP client that speaks Streamable HTTP can connect. The gateway sends each request on to the right server, with that server's credential."
-      >
-        <Step n={1} title="Create an API key">
-          <p>
-            Create a key with the <Code>mcp:execute</Code> scope. A key acts as you and reaches the servers you hold. The secret is shown once, so copy it
-            when it appears.
-          </p>
-          <Button variant="secondary" size="sm" asChild>
-            <Link to="/api-keys">
-              <KeySquare /> API keys
-            </Link>
-          </Button>
-        </Step>
+      <div className={cn('grid gap-6', keyring && 'lg:grid-cols-2')}>
+        <ConnectCard base={base} mcpUrl={mcpUrl} />
+        {keyring && <CliCard base={base} />}
+      </div>
 
-        <Step n={2} title="Pick a URL">
-          <p>
-            <Code>/mcp</Code> reaches every server you hold, with tool names prefixed by the server's slug, as in <Code>slug__tool</Code>. To reach one
-            server with its own tool names, use its URL, <Code>/&lt;slug&gt;/mcp</Code>. Add <Code>?slugs=a,b</Code> to narrow <Code>/mcp</Code> to a
-            few servers, and <Code>?search=true</Code> to offer the agent a small set of search tools in place of every tool.
-          </p>
-          <Snippet code={mcpUrl} />
-          <Button variant="secondary" size="sm" asChild>
-            <Link to="/portal">
-              <LayoutGrid /> My servers and their URLs
-            </Link>
-          </Button>
-        </Step>
-
-        <Step n={3} title="Add it to your client">
-          <p>For Claude Code, replace the key with your own:</p>
-          <Snippet code={claudeCode} />
-          <p>Most other clients take a JSON entry like this one:</p>
-          <Snippet code={jsonConfig} />
-          <p>
-            A client that supports MCP authorization can sign in with your account and needs no key. It finds the sign-in details from the URL when
-            the gateway answers its first request with a 401.
-          </p>
-        </Step>
-      </Section>
-
-      {keyringEnabled() && (
-        <Section
-          icon={Terminal}
-          title="Use the bifrost CLI"
-          hint="The bifrost CLI reads the secrets and OAuth tokens in your keyring, for shell scripts, CI jobs and agents that need a credential without keeping it in a file."
-        >
-          <Step n={1} title="Install it">
-            <p>
-              On Linux or macOS, amd64 or arm64, run the installer below. It downloads the newest release, checks it against the release's checksums,
-              and installs it in <Code>~/.local/bin</Code>.
-            </p>
-            <Snippet code={INSTALL} />
-            <p>
-              Check the install with <Code>bifrost version</Code>.
-            </p>
-          </Step>
-
-          <Step n={2} title="Sign in">
-            {keyringAddr !== CLI_DEFAULT_ADDR && (
-              <>
-                <p>Point the CLI at this gateway first. Add the line to your shell profile to keep it:</p>
-                <Snippet code={`export BIFROST_ADDR=${keyringAddr}`} />
-              </>
-            )}
-            <p>
-              Then sign in. The CLI shows a link to open in any browser, and it keeps the login and refreshes it for you. For automation, choose to
-              paste a keyring access key instead, or set <Code>VAULT_API_KEY</Code>.
-            </p>
-            <Snippet code="bifrost auth login" />
-          </Step>
-
-          <Step n={3} title="Fetch credentials">
-            <Snippet
-              code={[
-                'bifrost credentials list                 # what the keyring holds for you',
-                'bifrost credentials get grafana-prod     # one secret, to stdout',
-                'bifrost credentials header grafana-prod  # a ready "Name: value" header',
-                'bifrost oauth get microsoft              # a live OAuth access token',
-                'bifrost skill install                    # teach Claude to use the CLI',
-              ].join('\n')}
-            />
-            <p>
-              A header goes straight into curl, as in <Code>curl -H "$(bifrost credentials header grafana-prod)" …</Code>. Run{' '}
-              <Code>bifrost --help</Code> for every command.
-            </p>
-          </Step>
-        </Section>
-      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Shortcut to="/explorer" icon={Compass} tone="info" title="Explorer" hint="List and call tools through the front door, as you." />
+        <Shortcut to="/api-keys" icon={KeySquare} tone="accent" title="API keys" hint="Keys for agents and scripts. Each acts as you." />
+        {keyring ? (
+          <Shortcut to="/secrets" icon={Lock} tone="success" title="Secrets" hint="API keys and passwords that agents fetch by name." />
+        ) : (
+          <Shortcut to="/servers" icon={Waypoints} tone="success" title="Servers" hint="The upstream MCP servers behind the gateway." />
+        )}
+        <Shortcut to="/audit" icon={Activity} tone="warning" title="Audit" hint="Every request and the upstream hops it caused." />
+      </div>
     </div>
   )
 }
 
-function Section({ icon, title, hint, children }: { icon: typeof Terminal; title: string; hint: string; children: ReactNode }) {
+function Hero({ firstName, mcpUrl, servers }: { firstName?: string; mcpUrl: string; servers?: PortalServerDTO[] }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-start gap-3">
-        <IconTile icon={icon} tone="accent" />
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-          <p className="mt-0.5 max-w-2xl text-xs leading-5 text-muted-foreground">{hint}</p>
+    <section className="relative overflow-hidden rounded-3xl border border-border bg-card">
+      {/* A soft accent glow and a faint dot grid, all through theme tokens so both modes hold. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(60% 90% at 0% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), radial-gradient(50% 80% at 100% 100%, color-mix(in srgb, var(--plum) 12%, transparent), transparent 70%)',
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-40 [mask-image:linear-gradient(to_right,transparent,black_60%)]"
+        style={{ backgroundImage: 'radial-gradient(var(--border-strong) 1px, transparent 1px)', backgroundSize: '18px 18px' }}
+      />
+
+      <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-center lg:p-10">
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <Logo compact imageClassName="size-11" />
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{firstName ? `Welcome, ${firstName}` : 'Welcome to Bifrost'}</h1>
+            <p className="max-w-xl text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
+              One MCP connection to every server you hold. Point an agent at the URL below with an API key, and the gateway sends each call to the right
+              server with that server's credential.
+            </p>
+          </div>
+
+          <div className="flex max-w-xl items-center gap-2 rounded-xl border border-border-strong bg-background/70 py-1.5 pl-4 pr-1.5 backdrop-blur">
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">MCP</span>
+            <code className="min-w-0 flex-1 truncate font-mono text-sm" title={mcpUrl}>
+              {mcpUrl}
+            </code>
+            <CopyButton value={mcpUrl} label="Copy MCP URL" />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" asChild>
+              <Link to="/api-keys">
+                <KeySquare /> Create an API key
+              </Link>
+            </Button>
+            <Button variant="secondary" asChild>
+              <Link to="/portal">
+                <LayoutGrid /> My servers
+              </Link>
+            </Button>
+          </div>
         </div>
+
+        <FanOut servers={servers} />
       </div>
-      <ol className="divide-y divide-border rounded-2xl border border-border bg-card">{children}</ol>
     </section>
   )
 }
 
-function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+/** The hero's picture: your agent, one connection to the gateway, and the servers it reaches. */
+function FanOut({ servers }: { servers?: PortalServerDTO[] }) {
+  const shown = (servers ?? []).slice(0, FAN_OUT)
+  const more = (servers?.length ?? 0) - shown.length
   return (
-    <li className="flex gap-4 p-5">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-xs font-semibold text-accent">{n}</span>
-      <div className="min-w-0 flex-1 space-y-3 text-sm leading-6">
-        <h3 className="font-medium">{title}</h3>
-        {children}
+    <div className="flex items-center gap-3 sm:gap-4" aria-label="Your agent reaches your servers through Bifrost">
+      <Node icon={Bot} label="Your agent" />
+      <Wire />
+      <Node icon={Waypoints} label="Bifrost" strong />
+      <Wire />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {servers === undefined ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : shown.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border-strong p-3 text-xs leading-5 text-muted-foreground">
+            No servers granted yet. Grant yourself one from{' '}
+            <Link to="/servers" className="text-accent hover:underline">
+              Servers
+            </Link>
+            .
+          </div>
+        ) : (
+          <>
+            {shown.map((s) => (
+              <div
+                key={s.slug}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg border border-border bg-background/70 px-2.5 py-1.5 backdrop-blur',
+                  !s.enabled && 'opacity-60',
+                )}
+                title={s.name}
+              >
+                <span className={cn('size-1.5 shrink-0 rounded-full', s.enabled ? 'bg-success' : 'bg-faint-foreground')} />
+                <span className="truncate font-mono text-xs">{s.slug}</span>
+              </div>
+            ))}
+            {more > 0 && (
+              <Link to="/portal" className="block px-2.5 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+                +{more} more
+              </Link>
+            )}
+          </>
+        )}
       </div>
+    </div>
+  )
+}
+
+function Node({ icon: Icon, label, strong }: { icon: LucideIcon; label: string; strong?: boolean }) {
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1.5">
+      <div
+        className={cn(
+          'grid size-12 place-items-center rounded-2xl border sm:size-14',
+          strong ? 'border-accent/30 bg-accent/10 text-accent shadow-sm' : 'border-border bg-background/70 text-muted-foreground',
+        )}
+      >
+        <Icon className="size-5 sm:size-6" />
+      </div>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+    </div>
+  )
+}
+
+function Wire() {
+  return <div aria-hidden className="mb-5 h-px w-4 shrink-0 bg-gradient-to-r from-border-strong to-accent/60 sm:w-8" />
+}
+
+function ConnectCard({ base, mcpUrl }: { base: string; mcpUrl: string }) {
+  const [tab, setTab] = useState<ClientTab>('claude')
+  const claudeCode = `claude mcp add --transport http bifrost ${mcpUrl} \\\n  --header "Authorization: Bearer ${KEY}"`
+  const jsonConfig = JSON.stringify({ mcpServers: { bifrost: { type: 'http', url: mcpUrl, headers: { Authorization: `Bearer ${KEY}` } } } }, null, 2)
+  const urls: Command[] = [
+    [`${base}/mcp`, 'Every server you hold, tools named slug__tool.'],
+    [`${base}/<slug>/mcp`, 'One server, with its own tool names.'],
+    [`${base}/mcp?slugs=a,b`, 'Just the servers you name.'],
+    [`${base}/mcp?search=true`, 'A few search tools in place of every tool.'],
+  ]
+
+  return (
+    <Card icon={Bot} tone="accent" title="Connect an agent" hint="Any MCP client that speaks Streamable HTTP.">
+      <ol className="space-y-2.5 text-sm leading-6">
+        <Numbered n={1}>
+          Create an API key with the <Code>mcp:execute</Code> scope. The secret is shown once.
+        </Numbered>
+        <Numbered n={2}>Add the gateway to your client with the key in place of the placeholder.</Numbered>
+      </ol>
+      <div className="space-y-3">
+        <Tabs<ClientTab>
+          label="Client configuration"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'claude', label: 'Claude Code' },
+            { key: 'json', label: 'JSON config' },
+            { key: 'urls', label: 'URLs' },
+          ]}
+        />
+        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+          {tab === 'urls' ? <Commands items={urls} /> : <Snippet code={tab === 'claude' ? claudeCode : jsonConfig} />}
+        </div>
+      </div>
+      <p className="text-xs leading-5 text-muted-foreground">
+        A client that supports MCP authorization can sign in with your account instead of a key. It finds the sign-in details from the URL.
+      </p>
+    </Card>
+  )
+}
+
+function CliCard({ base }: { base: string }) {
+  const addr = `${base}/keyring`
+  const setup = [...(addr !== CLI_DEFAULT_ADDR ? [`export BIFROST_ADDR=${addr}`] : []), 'bifrost auth login'].join('\n')
+  const examples: Command[] = [
+    ['bifrost credentials list', 'What your keyring holds.'],
+    ['bifrost credentials get grafana-prod', 'One secret, to stdout.'],
+    ['bifrost credentials header grafana-prod', 'A ready "Name: value" header for curl.'],
+    ['bifrost oauth get microsoft', 'A live OAuth access token.'],
+    ['bifrost skill install', 'Teach Claude to use the CLI.'],
+  ]
+
+  return (
+    <Card icon={Terminal} tone="info" title="The bifrost CLI" hint="Secrets and OAuth tokens from your keyring, for scripts, CI and agents.">
+      <Labeled n={1} label="Install on Linux or macOS">
+        <Snippet code={INSTALL} />
+      </Labeled>
+      <Labeled n={2} label="Sign in from a browser link">
+        <Snippet code={setup} />
+      </Labeled>
+      <Labeled n={3} label="Fetch credentials">
+        <Commands items={examples} />
+      </Labeled>
+    </Card>
+  )
+}
+
+function Card({ icon, tone, title, hint, children }: { icon: LucideIcon; tone: 'accent' | 'info'; title: string; hint: string; children: ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-5 rounded-2xl border border-border bg-card p-5 sm:p-6">
+      <div className="flex items-start gap-3">
+        <IconTile icon={icon} tone={tone} />
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{hint}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Numbered({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <Badge n={n} />
+      <span className="min-w-0">{children}</span>
     </li>
+  )
+}
+
+function Labeled({ n, label, children }: { n: number; label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 text-sm font-medium">
+        <Badge n={n} />
+        {label}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Badge({ n }: { n: number }) {
+  return (
+    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-[11px] font-semibold text-accent">
+      {n}
+    </span>
+  )
+}
+
+function Shortcut({ to, icon, tone, title, hint }: { to: string; icon: LucideIcon; tone: 'accent' | 'info' | 'success' | 'warning'; title: string; hint: string }) {
+  return (
+    <Link
+      to={to}
+      className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-elevated/50"
+    >
+      <IconTile icon={icon} tone={tone} />
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1 text-sm font-medium">
+          {title}
+          <ArrowRight className="size-3.5 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
+        </p>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{hint}</p>
+      </div>
+    </Link>
   )
 }
 
 function Snippet({ code }: { code: string }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border bg-code p-3">
-      <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-xs leading-5 text-code-foreground">{code}</pre>
+      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs leading-5 text-code-foreground">{code}</pre>
       <CopyButton value={code} label="Copy" />
     </div>
+  )
+}
+
+/** Commands one to a row, each with what it does and its own copy button. */
+function Commands({ items }: { items: Command[] }) {
+  return (
+    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-code">
+      {items.map(([code, what]) => (
+        <li key={code} className="flex items-center gap-2 py-2 pl-3 pr-2">
+          <div className="min-w-0 flex-1">
+            <code className="block break-all font-mono text-xs leading-5 text-code-foreground">{code}</code>
+            <p className="text-[11px] leading-4 text-muted-foreground">{what}</p>
+          </div>
+          <CopyButton value={code} label={`Copy ${code}`} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
