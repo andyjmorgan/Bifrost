@@ -149,3 +149,42 @@ func (t *credentialTransport) keyringErr(err error) error {
 	}
 	return fmt.Errorf("upstream: keyring credential unavailable: %w", err)
 }
+
+// RefreshOAuth has the keyring replace the access token of srv's OAuth
+// account now, however far off its expiry. The keyring only replaces a live
+// token it is told was rejected, so the current one is fetched first and
+// handed back as rejected. A refusal from the token endpoint marks the
+// credential broken, as it does when a forwarded request hits one; a
+// success clears an earlier broken mark.
+func (c *Connector) RefreshOAuth(ctx context.Context, srv *store.Server, cred *store.Credential) error {
+	if c.keyring == nil {
+		return ErrKeyringOff
+	}
+	// A refresh outlives the caller: a cancelled request must not abort a
+	// rotation half-way.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.timeout)
+	defer cancel()
+	use := keyringref.Use{ServerID: srv.ID.String(), Slug: srv.Slug, RequestID: audit.RequestID(ctx)}
+	ref := cred.KeyringRef()
+	cur, err := c.keyring.OAuthToken(ctx, ref, use, "")
+	if err == nil {
+		_, err = c.keyring.OAuthToken(ctx, ref, use, cur.AccessToken)
+	}
+	var broken *keyringref.BrokenError
+	switch {
+	case errors.As(err, &broken):
+		if sErr := c.store.SetCredentialState(ctx, srv.ID, store.StateBroken, broken.Reason); sErr != nil {
+			c.log.Error("mark broken failed", "slug", srv.Slug, "err", sErr)
+		}
+		return fmt.Errorf("%w: %s", ErrCredentialBroken, broken.Reason)
+	case err != nil:
+		return err
+	}
+	if cred.State != store.StateOK {
+		if sErr := c.store.SetCredentialState(ctx, srv.ID, store.StateOK, ""); sErr != nil {
+			c.log.Error("clear broken failed", "slug", srv.Slug, "err", sErr)
+		}
+	}
+	c.log.Info("upstream: keyring token refreshed on request", "slug", srv.Slug)
+	return nil
+}

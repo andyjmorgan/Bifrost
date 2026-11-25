@@ -113,6 +113,8 @@ export const keyring = {
   oauth: {
     accounts: () => get<OAuthAccount[]>('/oauth/tokens'),
     disconnect: (id: string) => send<void>('DELETE', `/oauth/tokens/${enc(id)}`),
+    /** Exchanges the account's refresh token for a new access token now, however far off its expiry. */
+    refresh: (id: string) => send<OAuthAccount>('POST', `/oauth/tokens/${enc(id)}/refresh`),
     /** A fresh access token for the account; the server refreshes it first when it has expired. */
     accessToken: (provider: string, account?: string) => get<OAuthAccessToken>(`/oauth/${enc(provider)}/token${qs({ account })}`),
     appConfigs: () => get<OAuthAppConfig[]>('/oauth/configs'),

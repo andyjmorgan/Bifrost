@@ -106,6 +106,52 @@ func (s *OAuthTokenService) Delete(ctx context.Context, id uuid.UUID) (bool, err
 	return true, nil
 }
 
+// Refresh exchanges the refresh token of one of the caller's connected accounts for a new token
+// set now, however far off its expiry. Returns nil when the account is not found, ErrNotRefreshable
+// when it holds no refresh token or its provider or app credentials are gone, and a *BrokenError
+// when the account is broken.
+func (s *OAuthTokenService) Refresh(ctx context.Context, id uuid.UUID) (*OAuthTokenSummary, error) {
+	ctx, span := startSpan(ctx, "oauthtoken.force_refresh")
+	defer span.End()
+	caller := contracts.CallerFrom(ctx)
+	token, err := s.store.GetOAuthTokenByID(ctx, caller.UserID, id)
+	if err != nil || token == nil {
+		return nil, err
+	}
+	if token.BrokenAt != nil {
+		return nil, &BrokenError{Reason: deref(token.BrokenReason)}
+	}
+	manifest, err := s.resolver.GetOAuth(ctx, token.ProviderKey, token.UserID)
+	if err != nil {
+		return nil, err
+	}
+	config, err := s.store.GetOAuthConfigByProvider(ctx, token.UserID, token.ProviderID)
+	if err != nil {
+		return nil, err
+	}
+	if manifest == nil || config == nil || len(token.RefreshTokenCipher) == 0 {
+		return nil, ErrNotRefreshable
+	}
+	// The current access token passed as rejected is what makes refresh replace a live token.
+	// If a sibling refreshes first, refresh keeps the sibling's token instead.
+	current, err := s.cipher.DecryptToString(token.AccessTokenCipher)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := s.refresh(ctx, manifest, config, token, current)
+	if err != nil || tok == nil {
+		return nil, err
+	}
+	fresh, err := s.store.GetOAuthTokenByID(ctx, caller.UserID, id)
+	if err != nil || fresh == nil {
+		return nil, err
+	}
+	return &OAuthTokenSummary{
+		ID: fresh.ID, Provider: fresh.ProviderKey, Account: fresh.Account,
+		ExpiresAt: fresh.ExpiresAt, LastRefreshedAt: fresh.LastRefreshedAt, Scopes: decodeScopes(fresh.ScopesJSON),
+	}, nil
+}
+
 // GetAccessToken returns a live access token for the provider (optionally a specific account),
 // refreshing it server-to-server when within the refresh window. Returns nil when none is found.
 func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, account string) (*OAuthAccessToken, error) {

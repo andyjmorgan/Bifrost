@@ -1635,6 +1635,45 @@
         ]
       }
     },
+    "/api/v1/oauth/tokens/{id}/refresh": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthTokenDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          }
+        },
+        "tags": [
+          "DonkeyWork Vault"
+        ]
+      }
+    },
     "/api/v1/oauth/{provider}/connect": {
       "get": {
         "parameters": [

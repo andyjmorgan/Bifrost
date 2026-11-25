@@ -19,6 +19,7 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/keyringref"
 	"github.com/andyjmorgan/Bifrost/internal/slug"
 	"github.com/andyjmorgan/Bifrost/internal/store"
+	"github.com/andyjmorgan/Bifrost/internal/upstream"
 )
 
 func (a *API) withCredential(r *http.Request, s *store.Server) ServerDTO {
@@ -554,6 +555,39 @@ func (a *API) putCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, CreateServerResult{Server: a.withCredential(r, s), AuthorizeURL: authorizeURL})
+}
+
+// oauthRefresh has the keyring replace the server's OAuth access token now,
+// rather than when it next nears expiry or is rejected.
+func (a *API) oauthRefresh(w http.ResponseWriter, r *http.Request) {
+	s, ok := a.loadServer(w, r)
+	if !ok {
+		return
+	}
+	cred, _ := a.store.GetCredential(r.Context(), s.ID)
+	if !ownOAuth(cred) {
+		writeErr(w, http.StatusBadRequest, "server does not hold its own oauth connection")
+		return
+	}
+	err := a.conn.RefreshOAuth(r.Context(), s, cred)
+	switch {
+	case errors.Is(err, upstream.ErrKeyringOff):
+		writeErr(w, http.StatusBadRequest, keyringref.ErrOff.Error())
+		return
+	case errors.Is(err, keyringref.ErrNoRefresh):
+		writeErr(w, http.StatusConflict, "no refresh token is held for this server; re-authorize it instead")
+		return
+	case errors.Is(err, keyringref.ErrNotFound):
+		writeErr(w, http.StatusConflict, "the keyring holds no token for this server yet; authorize it first")
+		return
+	case errors.Is(err, upstream.ErrCredentialBroken):
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, a.withCredential(r, s))
 }
 
 // oauthStart (re)starts consent for a server's own OAuth connection.
