@@ -372,6 +372,34 @@ func (a *API) oauthStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"authorizeUrl": u})
 }
 
+// oauthRefresh exchanges the stored refresh token for a new token set now,
+// rather than waiting for the worker's next pass.
+func (a *API) oauthRefresh(w http.ResponseWriter, r *http.Request) {
+	s, ok := a.loadServer(w, r)
+	if !ok {
+		return
+	}
+	if s.AuthKind != store.AuthOAuth {
+		writeErr(w, http.StatusBadRequest, "server does not use oauth")
+		return
+	}
+	cred, err := a.store.GetCredential(r.Context(), s.ID)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	// Checked here so a manual click never marks a working credential broken.
+	if !cred.OAuthHasRefreshToken {
+		writeErr(w, http.StatusConflict, "no refresh token stored; re-authorize instead")
+		return
+	}
+	if err := a.conn.Refresh(r.Context(), s, cred); err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, a.withCredential(r.Context(), s))
+}
+
 // oauthCallback finishes the consent round trip and redirects to the UI.
 func (a *API) oauthCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()

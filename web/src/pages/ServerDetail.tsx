@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, KeyRound, ListTree, Pencil, Plus, RefreshCw, Telescope, Ticket, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, KeyRound, ListTree, Pencil, Plus, RefreshCw, RotateCw, Telescope, Ticket, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Badge } from '../ui/components/badge'
 import { Switch } from '../ui/components/switch'
@@ -22,7 +22,7 @@ import { CredentialDialog } from '../components/servers/CredentialDialog'
 import { authKindBadge, authKindLabel, credentialStatus } from '../components/servers/credential'
 import { api, errorMessage, type CapabilityDTO, type CreateServerResult, type DiscoverResult, type EntitlementDTO, type PingResult, type ServerDTO, type UpdateServerInput } from '../api'
 import { JsonTree, type Json } from '../components/PayloadViewer'
-import { absoluteTime, relativeTime } from '../lib'
+import { absoluteTime, cn, relativeTime } from '../lib'
 
 function Time({ value }: { value?: string | null }) {
   if (!value) return <span className="text-muted-foreground">—</span>
@@ -50,6 +50,7 @@ export function ServerDetailPage() {
   const [discovering, setDiscovering] = useState(false)
   const [discovery, setDiscovery] = useState<DiscoverResult>()
   const [reauthBusy, setReauthBusy] = useState(false)
+  const [refreshBusy, setRefreshBusy] = useState(false)
   const [entitlements, setEntitlements] = useState<EntitlementDTO[]>([])
   const [entLoaded, setEntLoaded] = useState(false)
   const [caps, setCaps] = useState<CapabilityDTO[]>([])
@@ -184,6 +185,21 @@ export function ServerDetailPage() {
     }
   }
 
+  const refreshToken = async () => {
+    if (!server) return
+    setRefreshBusy(true)
+    try {
+      setServer(await api.servers.oauthRefresh(server.id))
+      toast.success('Token refreshed')
+    } catch (e) {
+      toast.error('Could not refresh the token', { description: errorMessage(e) })
+      // A rejected refresh can mark the credential broken: show that state.
+      void load()
+    } finally {
+      setRefreshBusy(false)
+    }
+  }
+
   const remove = async () => {
     if (!server) return
     setDeleteBusy(true)
@@ -279,6 +295,11 @@ export function ServerDetailPage() {
             {server.authKind !== 'none' && (
               <Button variant="link" size="sm" onClick={() => setReplacing(true)}>
                 <KeyRound /> Replace
+              </Button>
+            )}
+            {oauth && cred?.oauthHasRefreshToken && (
+              <Button variant="link" size="sm" onClick={refreshToken} disabled={refreshBusy}>
+                <RotateCw className={cn(refreshBusy && 'animate-spin')} /> {refreshBusy ? 'Refreshing…' : 'Refresh token'}
               </Button>
             )}
             {oauth && (
