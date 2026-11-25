@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 916 883" role="img" aria-label="Bifrost — light icon">
+  <defs>
+    <linearGradient id="chip" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#456677"/><stop offset="1" stop-color="#69899A"/>
+    </linearGradient>
+    <linearGradient id="network" gradientUnits="userSpaceOnUse" x1="175" y1="680" x2="741" y2="250">
+      <stop offset="0" stop-color="#456677"/><stop offset="1" stop-color="#69899A"/>
+    </linearGradient>
+  </defs>
+  <rect width="916" height="883" rx="182" fill="#FAFAF9"/>
+  <path d="M305 0 H622 V46 C622 77 597 102 566 102 H361 C330 102 305 77 305 46 Z" fill="url(#chip)"/>
+  <g fill="none" stroke="url(#network)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M220 465 H696 M330 300 C330 365 337 387 390 397 S458 443 458 465 M586 300 C586 365 579 387 526 397 S458 443 458 465 M330 630 C330 565 337 543 390 533 S458 487 458 465 M586 630 C586 565 579 543 526 533 S458 487 458 465"/>
+    <g fill="#FAFAF9">
+      <circle cx="220" cy="465" r="39"/><circle cx="696" cy="465" r="39"/>
+      <circle cx="330" cy="300" r="39"/><circle cx="586" cy="300" r="39"/>
+      <circle cx="330" cy="630" r="39"/><circle cx="586" cy="630" r="39"/>
+      <circle cx="458" cy="465" r="39"/>
+    </g>
+  </g>
+</svg>

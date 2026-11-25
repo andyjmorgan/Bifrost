@@ -14,8 +14,8 @@ export function Logo({
   const mark = cn('size-8 shrink-0 rounded-[21%] drop-shadow-sm dark:drop-shadow-none', imageClassName)
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
-      <img src="/brand/bifrost-light.svg" alt="Bifrost" className={cn(mark, 'dark:hidden')} />
-      <img src="/brand/bifrost-dark.svg" alt="Bifrost" className={cn(mark, 'hidden dark:block')} />
+      <img src="/brand/bifrost-light-v2.svg" alt="Bifrost" className={cn(mark, 'dark:hidden')} />
+      <img src="/brand/bifrost-dark-v2.svg" alt="Bifrost" className={cn(mark, 'hidden dark:block')} />
       {!compact && (
         <span className="text-lg font-semibold leading-none tracking-tight">Bifrost</span>
       )}
