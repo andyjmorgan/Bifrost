@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, ArrowRight, Bot, Compass, KeySquare, LayoutGrid, Lock, Terminal, Waypoints, type LucideIcon } from 'lucide-react'
+import { Bot, KeySquare, LayoutGrid, Terminal, Waypoints, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { IconTile } from '../components/IconTile'
 import { CopyButton } from '../components/CopyButton'
@@ -48,16 +48,6 @@ export function GetStartedPage() {
         {keyring && <CliCard base={base} />}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Shortcut to="/explorer" icon={Compass} tone="info" title="Explorer" hint="List and call tools through the front door, as you." />
-        <Shortcut to="/api-keys" icon={KeySquare} tone="accent" title="API keys" hint="Keys for agents and scripts. Each acts as you." />
-        {keyring ? (
-          <Shortcut to="/secrets" icon={Lock} tone="success" title="Secrets" hint="API keys and passwords that agents fetch by name." />
-        ) : (
-          <Shortcut to="/servers" icon={Waypoints} tone="success" title="Servers" hint="The upstream MCP servers behind the gateway." />
-        )}
-        <Shortcut to="/audit" icon={Activity} tone="warning" title="Audit" hint="Every request and the upstream hops it caused." />
-      </div>
     </div>
   )
 }
@@ -231,13 +221,6 @@ function ConnectCard({ base, mcpUrl }: { base: string; mcpUrl: string }) {
 function CliCard({ base }: { base: string }) {
   const addr = `${base}/keyring`
   const setup = [...(addr !== CLI_DEFAULT_ADDR ? [`export BIFROST_ADDR=${addr}`] : []), 'bifrost auth login'].join('\n')
-  const examples: Command[] = [
-    ['bifrost credentials list', 'What your keyring holds.'],
-    ['bifrost credentials get grafana-prod', 'One secret, to stdout.'],
-    ['bifrost credentials header grafana-prod', 'A ready "Name: value" header for curl.'],
-    ['bifrost oauth get microsoft', 'A live OAuth access token.'],
-    ['bifrost skill install', 'Teach Claude to use the CLI.'],
-  ]
 
   return (
     <Card icon={Terminal} tone="info" title="The bifrost CLI" hint="Secrets and OAuth tokens from your keyring, for scripts, CI and agents.">
@@ -246,9 +229,6 @@ function CliCard({ base }: { base: string }) {
       </Labeled>
       <Labeled n={2} label="Sign in from a browser link">
         <Snippet code={setup} />
-      </Labeled>
-      <Labeled n={3} label="Fetch credentials">
-        <Commands items={examples} />
       </Labeled>
     </Card>
   )
@@ -295,24 +275,6 @@ function Badge({ n }: { n: number }) {
     <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-[11px] font-semibold text-accent">
       {n}
     </span>
-  )
-}
-
-function Shortcut({ to, icon, tone, title, hint }: { to: string; icon: LucideIcon; tone: 'accent' | 'info' | 'success' | 'warning'; title: string; hint: string }) {
-  return (
-    <Link
-      to={to}
-      className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-elevated/50"
-    >
-      <IconTile icon={icon} tone={tone} />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1 text-sm font-medium">
-          {title}
-          <ArrowRight className="size-3.5 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
-        </p>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{hint}</p>
-      </div>
-    </Link>
   )
 }
 
