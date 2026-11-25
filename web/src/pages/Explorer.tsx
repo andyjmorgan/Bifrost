@@ -8,7 +8,7 @@ import { Switch } from '../ui/components/switch'
 import { Badge } from '../ui/components/badge'
 import { PageHeader } from '../components/PageHeader'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../components/ListCard'
-import { IconTile } from '../components/IconTile'
+import { MCPIcon } from '../components/MCPIcon'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { JsonTree, type Json } from '../components/PayloadViewer'
@@ -313,7 +313,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
               return (
                 <ListRow key={t.name} cols="minmax(0,1fr) auto" onClick={() => pick(t)} className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={Wrench} tone="muted" />
+                    <MCPIcon icons={t.icons} icon={Wrench} tone="muted" />
                     <Primary
                       title={
                         <span className="font-mono text-xs">

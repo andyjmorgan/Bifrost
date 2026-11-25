@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { cn } from '../lib'
 import type { Tone } from './StatusPill'
 
@@ -12,10 +13,10 @@ const tones: Record<Tone, string> = {
 }
 
 /** The leading icon box on a list row. */
-export function IconTile({ icon: Icon, tone = 'accent', className }: { icon: LucideIcon; tone?: Tone; className?: string }) {
+export function IconTile({ icon: Icon, tone = 'accent', className, children }: { icon: LucideIcon; tone?: Tone; className?: string; children?: ReactNode }) {
   return (
     <div className={cn('grid size-9 shrink-0 place-items-center rounded-xl', tones[tone], className)}>
-      <Icon className="size-4" />
+      {children ?? <Icon className="size-4" />}
     </div>
   )
 }

@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -109,7 +111,26 @@ func main() {
 	cw := cache.NewWriter(ctx, st, log)
 	conn.OnInit = func(srv *store.Server, ir *mcp.InitializeResult) {
 		id := srv.ID
-		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, gateway.InitFrom(ir), cfg.ToolsCacheTTL)
+		in := gateway.InitFrom(ir)
+		cw.Put(cache.NSInit, id.String(), &id, srv.UpdatedAt, in, cfg.ToolsCacheTTL)
+		// The server is read from Postgres for each request. Compare its
+		// existing display metadata before adding a write to the call path.
+		var saved []mcp.Icon
+		if json.Unmarshal(srv.Icons, &saved) == nil && slices.EqualFunc(saved, in.Icons, func(a, b mcp.Icon) bool {
+			return a.Source == b.Source && a.MIMEType == b.MIMEType && a.Theme == b.Theme && slices.Equal(a.Sizes, b.Sizes)
+		}) {
+			return
+		}
+		icons, err := json.Marshal(in.Icons)
+		if err != nil {
+			log.Warn("server icons could not be encoded", "slug", srv.Slug, "err", err)
+			return
+		}
+		wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := st.ObserveServerIcons(wctx, srv, icons); err != nil {
+			log.Warn("server icons could not be saved", "slug", srv.Slug, "err", err)
+		}
 	}
 	gw := gateway.New(st, conn, rec, cw, cfg.ToolsCacheTTL, log, cfg.Version)
 	gw.SetMetaAllow(cfg.MetaAllowIn, cfg.MetaAllowOut)

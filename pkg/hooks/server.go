@@ -264,6 +264,9 @@ func (e *Engine) Discover(parent context.Context, r Request, version string) (re
 		}
 		if sw["serverInfo"] {
 			info = map[string]any{"name": s.Info.Name, "version": s.Info.Version}
+			if len(s.Info.Icons) > 0 {
+				info["icons"] = s.Info.Icons
+			}
 		}
 		if meta.Title != "" {
 			info["title"] = meta.Title

@@ -7,7 +7,7 @@ import { Badge } from '../ui/components/badge'
 import { Switch } from '../ui/components/switch'
 import { PageHeader } from '../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary, RowActions } from '../components/ListCard'
-import { IconTile } from '../components/IconTile'
+import { MCPIcon } from '../components/MCPIcon'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -76,6 +76,7 @@ export function ServersPage() {
     try {
       const r = await api.servers.ping(s.id)
       if (r.ok) {
+        await load()
         toast.success(`${s.name} responded in ${r.latencyMs} ms`, {
           description: [r.serverName && `${r.serverName}${r.serverVersion ? ` ${r.serverVersion}` : ''}`, `${r.toolCount} tools`].filter(Boolean).join(' · '),
         })
@@ -170,7 +171,7 @@ export function ServersPage() {
               return (
                 <ListRow key={s.id} cols={COLS} onClick={() => navigate(`/servers/${s.id}`)} className={cn(!s.enabled && 'opacity-70')}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={Server} tone={s.enabled ? 'accent' : 'muted'} />
+                    <MCPIcon icons={s.icons} icon={Server} tone={s.enabled ? 'accent' : 'muted'} />
                     <Primary
                       title={
                         <span className="flex min-w-0 items-center gap-2">

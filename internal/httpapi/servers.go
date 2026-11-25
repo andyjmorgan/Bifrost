@@ -500,6 +500,11 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request) {
 		// delete would send every concurrent caller upstream at once, and a
 		// failed refetch should not take a working catalogue down with it.
 		a.warmTools(r.Context(), s.ID)
+		// Discovery during the refresh may have replaced the display icons.
+		// Return that metadata now so the edited row need not be reloaded.
+		if refreshed, err := a.store.GetServer(r.Context(), s.ID); err == nil {
+			s = refreshed
+		}
 	}
 	writeJSON(w, http.StatusOK, a.withCredential(r, s))
 }

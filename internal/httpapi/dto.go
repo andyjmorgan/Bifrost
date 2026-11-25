@@ -17,6 +17,7 @@ type ServerDTO struct {
 	Name        string          `json:"name"`
 	URL         string          `json:"url"`
 	Description string          `json:"description"`
+	Icons       json.RawMessage `json:"icons,omitempty"`
 	AuthKind    store.AuthKind  `json:"authKind"`
 	Enabled     bool            `json:"enabled"`
 	Seen        int             `json:"seen"` // capabilities the gateway has seen on it
@@ -325,7 +326,7 @@ type ConfigDTO struct {
 // says about a credential it keeps for the server, or nil.
 func serverDTO(base string, s *store.Server, c *store.Credential, held *keyringref.Description, users map[string]*store.User, seen int) ServerDTO {
 	d := ServerDTO{
-		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description,
+		ID: s.ID.String(), Slug: s.Slug, Name: s.Name, URL: s.URL, Description: s.Description, Icons: s.Icons,
 		AuthKind: s.AuthKind, Enabled: s.Enabled, Seen: seen, MCPURL: base + "/" + s.Slug + "/mcp",
 		Selection: s.Selection, Generation: s.Generation, Grants: grantDTOs(s.Grants, users),
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,

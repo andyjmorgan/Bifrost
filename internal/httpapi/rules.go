@@ -55,6 +55,7 @@ type CapabilityDTO struct {
 // PortalServerDTO is one server the caller holds: what the member portal
 // shows.
 type PortalServerDTO struct {
+	Icons        json.RawMessage `json:"icons,omitempty"`
 	ID           string          `json:"id"`
 	Slug         string          `json:"slug"`
 	Name         string          `json:"name"`
@@ -205,7 +206,7 @@ func (a *API) listPortal(w http.ResponseWriter, r *http.Request) {
 	out := make([]PortalServerDTO, 0, len(held))
 	for _, s := range held {
 		d := PortalServerDTO{ID: s.ID.String(), Slug: s.Slug, Name: s.Name, Description: s.Description, MCPURL: a.publicBase + "/" + s.Slug + "/mcp", URL: s.URL,
-			Enabled: s.Enabled, Selection: s.Selection, Capabilities: []string{}}
+			Enabled: s.Enabled, Selection: s.Selection, Capabilities: []string{}, Icons: s.Icons}
 		if hs, err := ruletext.ParseStored(s.Hooks); err != nil || !hs.Empty() {
 			d.HasRules = true
 		}

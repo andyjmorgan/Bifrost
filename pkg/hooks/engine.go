@@ -55,13 +55,14 @@ func gateHit(hook, slug, field, reason string) Hit {
 
 // ServerInfo is what discover said about the upstream.
 type ServerInfo struct {
-	Name            string `json:"name,omitempty"`
-	Version         string `json:"version,omitempty"`
-	Title           string `json:"title,omitempty"`
-	Description     string `json:"description,omitempty"`
-	Instructions    string `json:"instructions,omitempty"`
-	URL             string `json:"url,omitempty"`
-	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	Icons           []mcp.Icon `json:"icons,omitempty"`
+	Name            string     `json:"name,omitempty"`
+	Version         string     `json:"version,omitempty"`
+	Title           string     `json:"title,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	Instructions    string     `json:"instructions,omitempty"`
+	URL             string     `json:"url,omitempty"`
+	ProtocolVersion string     `json:"protocolVersion,omitempty"`
 	// Extensions are the extensions the server advertises, by name, with
 	// the server's settings for each.
 	Extensions map[string]any `json:"extensions,omitempty"`

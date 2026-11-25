@@ -68,6 +68,7 @@ type Server struct {
 	Name        string
 	URL         string
 	Description string
+	Icons       json.RawMessage // icons from the last successful upstream discovery
 	AuthKind    AuthKind
 	Enabled     bool
 	CreatedAt   time.Time

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, LayoutGrid, Server } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows, Primary } from '../components/ListCard'
-import { IconTile } from '../components/IconTile'
+import { MCPIcon } from '../components/MCPIcon'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
 import { CopyButton } from '../components/CopyButton'
@@ -78,7 +78,7 @@ export function PortalPage() {
                   <div key={x.slug}>
                       <ListRow cols={COLS} onClick={() => toggle(x.slug)} className={cn(!usable && 'opacity-70')}>
                         <div className="flex min-w-0 items-center gap-3">
-                          <IconTile icon={Server} tone={usable ? 'accent' : 'muted'} />
+                          <MCPIcon icons={x.icons} icon={Server} tone={usable ? 'accent' : 'muted'} />
                           <Primary
                             title={
                               <span className="flex min-w-0 items-center gap-2">

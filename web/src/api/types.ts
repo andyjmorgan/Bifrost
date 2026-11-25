@@ -73,6 +73,7 @@ export interface CredentialDTO {
 }
 
 export interface ServerDTO {
+  icons?: MCPIcon[]
   id: string
   /** The route (/{slug}/mcp) and the mux prefix (slug__tool). Fixed at creation. */
   slug: string
@@ -147,7 +148,7 @@ export interface DiscoverResult {
   ok: boolean
   latencyMs: number
   protocolVersion?: string
-  serverInfo?: { name: string; title?: string; description?: string; version: string; websiteUrl?: string; icons?: unknown[] }
+  serverInfo?: { name: string; title?: string; description?: string; version: string; websiteUrl?: string; icons?: MCPIcon[] }
   capabilities?: Record<string, unknown>
   instructions?: string
   _meta?: Record<string, unknown>
@@ -357,6 +358,7 @@ export interface MCPToolAnnotations {
 }
 
 export interface MCPTool {
+  icons?: MCPIcon[]
   name: string
   title?: string
   description?: string
@@ -388,6 +390,7 @@ export interface MCPIcon {
   src: string
   mimeType?: string
   sizes?: string[]
+  theme?: 'light' | 'dark'
   [key: string]: unknown
 }
 
@@ -643,6 +646,7 @@ export interface HookSet {
 
 /** GET /portal: one server the caller holds. */
 export interface PortalServerDTO {
+  icons?: MCPIcon[]
   id: string
   slug: string
   name: string
