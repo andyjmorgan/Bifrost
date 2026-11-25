@@ -13,7 +13,7 @@ let mgr: UserManager | null = null
 let current: User | null = null
 
 const RETURN_TO_KEY = 'mcpgw.returnTo'
-export const DEFAULT_ROUTE = '/servers'
+export const DEFAULT_ROUTE = '/start'
 
 const listeners = new Set<() => void>()
 function notify() {
