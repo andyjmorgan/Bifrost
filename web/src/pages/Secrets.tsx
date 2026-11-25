@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowUpRight, Database, KeyRound, Lock, Pencil, Plug, Plus, Server, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Database, KeyRound, Lock, Pencil, Plug, Plus, RotateCw, Server, ShieldCheck, Terminal, Trash2, UserRound, type LucideIcon } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Textarea } from '../ui/components/textarea'
@@ -165,6 +165,7 @@ function CredentialList({ view }: { view: View }) {
   const [deleting, setDeleting] = useState<Deleting>()
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
+  const [refreshing, setRefreshing] = useState(false)
 
   const load = useCallback(
     () =>
@@ -193,6 +194,10 @@ function CredentialList({ view }: { view: View }) {
   useEffect(() => {
     void load()
   }, [load])
+  const refresh = () => {
+    setRefreshing(true)
+    void load().finally(() => setRefreshing(false))
+  }
 
   const providerOf = (key: string) => providers.find((p) => p.key === key)
   const providerName = (key: string) => providerOf(key)?.name || key
@@ -288,11 +293,16 @@ function CredentialList({ view }: { view: View }) {
               <Plus /> New secret
             </Button>
           ) : (
-            <Button variant="primary" asChild>
-              <Link to={CONNECT_ROUTE}>
-                <Plug /> Connect account
-              </Link>
-            </Button>
+            <>
+              <Button variant="secondary" onClick={refresh} disabled={refreshing}>
+                <RotateCw className={cn(refreshing && 'animate-spin')} /> Refresh
+              </Button>
+              <Button variant="primary" asChild>
+                <Link to={CONNECT_ROUTE}>
+                  <Plug /> Connect account
+                </Link>
+              </Button>
+            </>
           )
         }
       />
