@@ -1,4 +1,5 @@
-import { Plus, Wrench, X } from 'lucide-react'
+import { useId, useState } from 'react'
+import { Plus, X } from 'lucide-react'
 import { Button } from '../../ui/components/button'
 import { Input } from '../../ui/components/input'
 import { Checkbox } from '../../ui/components/checkbox'
@@ -7,7 +8,7 @@ import { ListBar, ListCard, ListRows } from '../ListCard'
 import { KINDS } from '../rules/selection'
 import type { CapabilityDTO } from '../../api'
 import { cn } from '../../lib'
-import { MCPIcon, definitionIcons } from '../MCPIcon'
+import { CapabilityInfo, CapabilitySummary, matchesCapability } from './CapabilitySummary'
 
 // One kind of a server's selection: everything of that kind, or only what is ticked. Resources
 // also take URI patterns.
@@ -23,6 +24,7 @@ export function KindSection({
   caps: CapabilityDTO[]
   onChange: (list: string[] | null) => void
 }) {
+  const [filter, setFilter] = useState('')
   const only = list !== null
   const seen = caps.map((c) => c.name)
   const resources = k.kind === 'resource'
@@ -62,10 +64,16 @@ export function KindSection({
           ))}
         </div>
       </ListBar>
+      <div className="border-b border-border px-5 py-3">
+        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Search ${k.many}`} aria-label={`Search ${k.many} selection`} className="h-8 text-xs" />
+      </div>
       {!only ? (
-        <p className="px-5 py-4 text-xs text-muted-foreground">
-          Every {k.one} the server offers is exposed{seen.length ? ` (${seen.length} seen)` : ''}, including ones it adds later.
-        </p>
+        <>
+          <p className="px-5 py-4 text-xs text-muted-foreground">
+            Every {k.one} the server offers is exposed{seen.length ? ` (${seen.length} seen)` : ''}, including ones it adds later.
+          </p>
+          <CapabilityChecks items={caps} selected={seen} extra={[]} onToggle={toggle} filter={filter} readOnly empty={`No ${k.many} seen on this server.`} />
+        </>
       ) : (
         <>
           {count === 0 && (
@@ -74,6 +82,7 @@ export function KindSection({
             </div>
           )}
           <CapabilityChecks
+            filter={filter}
             items={caps}
             selected={list}
             extra={resources ? [] : others}
@@ -116,6 +125,8 @@ function CapabilityChecks({
   extra,
   onToggle,
   empty,
+  filter,
+  readOnly = false,
 }: {
   items: CapabilityDTO[]
   selected: string[]
@@ -123,23 +134,29 @@ function CapabilityChecks({
   extra: string[]
   onToggle: (name: string, on: boolean) => void
   empty?: string
+  filter: string
+  readOnly?: boolean
 }) {
+  const prefix = useId()
+  const visible = items.filter((c) => matchesCapability(c, filter))
+  const visibleExtra = extra.filter((n) => n.toLowerCase().includes(filter.trim().toLowerCase()))
+  if (filter.trim() && !visible.length && !visibleExtra.length) return <p className="px-5 py-6 text-center text-xs text-muted-foreground">No capabilities match.</p>
   if (!items.length && !extra.length) return empty ? <p className="px-5 py-6 text-center text-xs text-muted-foreground">{empty}</p> : null
   return (
     <ListRows>
-      {items.map((c) => {
-        const id = `cap-${c.kind}-${c.name}`
+      {visible.map((c) => {
+        const id = `${prefix}-${c.kind}-${c.name}`
         return (
-          <label key={c.name} htmlFor={id} className="flex cursor-pointer items-center gap-3 px-5 py-2.5 hover:bg-elevated/45">
-            <Checkbox id={id} checked={selected.includes(c.name)} onCheckedChange={(v) => onToggle(c.name, v === true)} />
-            {c.kind === 'tool' && <MCPIcon icons={definitionIcons(c.definition)} icon={Wrench} tone="muted" />}
-            <span className="min-w-0 flex-1 truncate font-mono text-xs" title={c.name}>
-              {c.name}
-            </span>
-          </label>
+          <div key={c.name} className="flex items-center gap-3 px-5 py-2.5 hover:bg-elevated/45">
+            <label htmlFor={id} className={cn('flex min-w-0 flex-1 items-center gap-3', !readOnly && 'cursor-pointer')}>
+              <Checkbox id={id} checked={selected.includes(c.name)} disabled={readOnly} onCheckedChange={(v) => onToggle(c.name, v === true)} aria-label={c.name} />
+              <CapabilitySummary cap={c} />
+            </label>
+            <CapabilityInfo cap={c} />
+          </div>
         )
       })}
-      {extra.map((n) => (
+      {visibleExtra.map((n) => (
         <label key={n} className="flex cursor-pointer items-center gap-3 px-5 py-2.5 hover:bg-elevated/45">
           <Checkbox checked onCheckedChange={(v) => onToggle(n, v === true)} aria-label={n} />
           <span className="min-w-0 flex-1 truncate font-mono text-xs">{n}</span>

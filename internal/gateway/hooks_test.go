@@ -1177,6 +1177,13 @@ func TestUpstreamMetaPassesOnlyThroughTheAllowlist(t *testing.T) {
 			t.Fatalf("the listed tool carries _meta %s, want %s", got, wantTool)
 		}
 		res := harness.Raw(t, r.direct("a"), call("t", nil)).Result()
+		// Branding is gateway-owned presentation metadata. This check is about
+		// which upstream metadata passes, and still verifies the gateway identity.
+		if meta, ok := res["_meta"].(map[string]any); ok {
+			if identity, ok := meta["io.modelcontextprotocol/serverInfo"].(map[string]any); ok {
+				delete(identity, "icons")
+			}
+		}
 		if got := dump(res["_meta"]); got != wantResult {
 			t.Fatalf("the result carries _meta %s, want %s", got, wantResult)
 		}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Activity, Pencil, Plus, Server, Trash2 } from 'lucide-react'
+import { Activity, Pencil, Plus, Server, Telescope, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Badge } from '../ui/components/badge'
 import { Switch } from '../ui/components/switch'
@@ -17,7 +17,9 @@ import { authKindBadge, authKindLabel, authKindTag, credentialStatus } from '../
 import { api, errorMessage, type CreateServerResult, type ServerDTO } from '../api'
 import { cn } from '../lib'
 
-const COLS = 'minmax(0,1.5fr) minmax(0,1.5fr) 96px 150px 80px 120px'
+import { ServerProbeSheet, type ServerProbe } from '../components/servers/ServerProbeSheet'
+
+const COLS = 'minmax(0,1.5fr) minmax(0,1.5fr) 96px 150px 80px 144px'
 
 export function ServersPage() {
   const navigate = useNavigate()
@@ -30,7 +32,7 @@ export function ServersPage() {
   const [deleting, setDeleting] = useState<ServerDTO>()
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
-  const [pinging, setPinging] = useState<string>()
+  const [probe, setProbe] = useState<ServerProbe>()
 
   const load = useCallback(
     () =>
@@ -68,25 +70,6 @@ export function ServersPage() {
       toast.success(`${updated.enabled ? 'Enabled' : 'Disabled'} ${s.name}`)
     } catch (e) {
       toast.error('Could not update server', { description: errorMessage(e) })
-    }
-  }
-
-  const ping = async (s: ServerDTO) => {
-    setPinging(s.id)
-    try {
-      const r = await api.servers.ping(s.id)
-      if (r.ok) {
-        await load()
-        toast.success(`${s.name} responded in ${r.latencyMs} ms`, {
-          description: [r.serverName && `${r.serverName}${r.serverVersion ? ` ${r.serverVersion}` : ''}`, `${r.toolCount} tools`].filter(Boolean).join(' · '),
-        })
-      } else {
-        toast.error(`${s.name} did not respond`, { description: r.error })
-      }
-    } catch (e) {
-      toast.error('Ping failed', { description: errorMessage(e) })
-    } finally {
-      setPinging(undefined)
     }
   }
 
@@ -142,7 +125,7 @@ export function ServersPage() {
           </span>
         </ListBar>
         {servers.length > 0 && (
-          <ListHead cols={COLS}>
+          <ListHead cols={COLS} at="lg">
             <span>Server</span>
             <span>MCP URL</span>
             <span>Auth</span>
@@ -169,7 +152,7 @@ export function ServersPage() {
             {servers.map((s) => {
               const status = credentialStatus(s)
               return (
-                <ListRow key={s.id} cols={COLS} onClick={() => navigate(`/servers/${s.id}`)} className={cn(!s.enabled && 'opacity-70')}>
+                <ListRow key={s.id} cols={COLS} at="lg" onClick={() => navigate(`/servers/${s.id}`)} className={cn(!s.enabled && 'opacity-70')}>
                   <div className="flex min-w-0 items-center gap-3">
                     <MCPIcon icons={s.icons} icon={Server} tone={s.enabled ? 'accent' : 'muted'} />
                     <Primary
@@ -187,7 +170,7 @@ export function ServersPage() {
                       mono
                     />
                   </div>
-                  <Cell label="MCP URL">
+                  <Cell at="lg" label="MCP URL">
                     <span className="flex min-w-0 items-center gap-1">
                       <span className="min-w-0">
                         <span className="block truncate font-mono text-xs">{s.slug}</span>
@@ -198,24 +181,27 @@ export function ServersPage() {
                       <CopyButton value={s.mcpUrl} label="Copy MCP URL" />
                     </span>
                   </Cell>
-                  <Cell label="Auth">
+                  <Cell at="lg" label="Auth">
                     <Badge mono variant={authKindBadge[s.authKind]} title={authKindLabel(s.authKind)}>
                       {authKindTag(s.authKind)}
                     </Badge>
                   </Cell>
-                  <Cell label="Credential">
+                  <Cell at="lg" label="Credential">
                     <StatusPill tone={status.tone}>
                       <span title={status.title}>{status.label}</span>
                     </StatusPill>
                   </Cell>
-                  <Cell label="Enabled">
+                  <Cell at="lg" label="Enabled">
                     <span className="inline-flex" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                       <Switch checked={s.enabled} onCheckedChange={() => toggleEnabled(s)} aria-label={`${s.name} enabled`} />
                     </span>
                   </Cell>
-                  <RowActions>
-                    <Button variant="ghost" size="iconSm" aria-label="Ping" title="Ping" disabled={pinging === s.id} onClick={() => ping(s)}>
-                      <Activity className={cn(pinging === s.id && 'animate-pulse')} />
+                  <RowActions at="lg">
+                    <Button variant="ghost" size="iconSm" aria-label="Ping" title="Ping" onClick={() => setProbe({ server: s, kind: 'ping' })}>
+                      <Activity />
+                    </Button>
+                    <Button variant="ghost" size="iconSm" aria-label="Discover" title="Discover" onClick={() => setProbe({ server: s, kind: 'discover' })}>
+                      <Telescope />
                     </Button>
                     <Button variant="ghost" size="iconSm" aria-label="Edit" title="Edit" onClick={() => setEditing(s)}>
                       <Pencil />
@@ -231,6 +217,7 @@ export function ServersPage() {
         )}
       </ListCard>
 
+      <ServerProbeSheet probe={probe} onClose={() => setProbe(undefined)} onComplete={() => void load()} />
       <ServerDialog open={creating} onClose={() => setCreating(false)} onCreated={onCreated} />
       <ServerDialog
         open={!!editing}

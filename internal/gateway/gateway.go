@@ -172,7 +172,7 @@ func (g *Gateway) DirectHandler() http.Handler { return g.handler("direct") }
 
 func (g *Gateway) handler(route string) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version}, &mcp.ServerOptions{
+		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version, Icons: bifrostIcons()}, &mcp.ServerOptions{
 			SupportedProtocolVersions: g.protocolVersions(),
 			Logger:                    g.log,
 			// Advertise the surfaces the middleware forwards; nothing is
@@ -558,4 +558,18 @@ func upstreamError(srv *store.Server, err error) error {
 		code = -32012
 	}
 	return &jsonrpc.Error{Code: code, Message: fmt.Sprintf("upstream %s: %v", srv.Slug, err)}
+}
+
+// bifrostIcons identifies the mux; direct routes retain the upstream identity when enabled.
+func bifrostIcons() []mcp.Icon {
+	var icons []mcp.Icon
+	for _, theme := range []mcp.IconTheme{"light", "dark"} {
+		for _, size := range []int{16, 32, 64, 128, 256, 512} {
+			icons = append(icons, mcp.Icon{
+				Source:   fmt.Sprintf("https://s3.donkeywork.dev/mcp-icons/bifrost-%s-v1-%d.png", theme, size),
+				MIMEType: "image/png", Sizes: []string{fmt.Sprintf("%dx%d", size, size)}, Theme: theme,
+			})
+		}
+	}
+	return icons
 }

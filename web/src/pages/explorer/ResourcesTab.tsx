@@ -5,7 +5,8 @@ import { Button } from '../../ui/components/button'
 import { Input } from '../../ui/components/input'
 import { Badge } from '../../ui/components/badge'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../../components/ListCard'
-import { IconTile } from '../../components/IconTile'
+import { MCPIcon, definitionIcons } from '../../components/MCPIcon'
+import { CapabilityInfo } from '../../components/servers/CapabilitySummary'
 import { Callout } from '../../components/Callout'
 import { FormField } from '../../components/FormField'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
@@ -170,26 +171,34 @@ export function ResourcesTab({ route, keyId, fields }: TabProps) {
           <>
             <Section title="Resources" count={visibleResources.length} empty={q ? 'No resources match.' : 'No resources returned.'}>
               {visibleResources.map((r) => (
-                <ListRow key={r.uri} cols="minmax(0,1fr) auto" onClick={() => open({ kind: 'resource', resource: r }, r.uri)} className="p-4">
+                <ListRow key={r.uri} cols="minmax(0,1fr) auto" className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={FileText} tone="muted" />
-                    <Primary title={<span className="break-all font-mono text-xs">{r.uri}</span>} subtitle={r.title || r.name} />
+                    <MCPIcon icons={definitionIcons(r)} icon={FileText} tone="muted" />
+                    <Primary title={<span className="break-all font-mono text-xs">{r.uri}</span>} subtitle={[r.title || r.name, r.description].filter(Boolean).join(' · ')} />
                   </div>
-                  <Meta mimeType={r.mimeType} size={r.size} server={route === MUX ? ownerOf(r._meta) : undefined} />
+                  <div className="flex items-center gap-2">
+                    <Meta mimeType={r.mimeType} size={r.size} server={route === MUX ? ownerOf(r._meta) : undefined} />
+                    <CapabilityInfo cap={{ kind: 'resource', name: r.uri, definition: r }} />
+                    <Button variant="ghost" size="sm" onClick={() => open({ kind: 'resource', resource: r }, r.uri)} aria-label={`Read ${r.uri}`}><BookOpen /> Read</Button>
+                  </div>
                 </ListRow>
               ))}
             </Section>
             <Section title="Templates" count={visibleTemplates.length} empty={q ? 'No templates match.' : 'No templates returned.'}>
               {visibleTemplates.map((t) => (
-                <ListRow key={t.uriTemplate} cols="minmax(0,1fr) auto" onClick={() => open({ kind: 'template', template: t }, t.uriTemplate)} className="p-4">
+                <ListRow key={t.uriTemplate} cols="minmax(0,1fr) auto" className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={Variable} tone="muted" />
+                    <MCPIcon icons={definitionIcons(t)} icon={Variable} tone="muted" />
                     <Primary
                       title={<span className="break-all font-mono text-xs">{t.uriTemplate}</span>}
                       subtitle={[t.title || t.name, t.description?.split('\n')[0]].filter(Boolean).join(' · ') || undefined}
                     />
                   </div>
-                  <Meta mimeType={t.mimeType} server={route === MUX ? ownerOf(t._meta) : undefined} />
+                  <div className="flex items-center gap-2">
+                    <Meta mimeType={t.mimeType} server={route === MUX ? ownerOf(t._meta) : undefined} />
+                    <CapabilityInfo cap={{ kind: 'template', name: t.uriTemplate, definition: t }} />
+                    <Button variant="ghost" size="sm" onClick={() => open({ kind: 'template', template: t }, t.uriTemplate)} aria-label={`Read ${t.uriTemplate}`}><BookOpen /> Read</Button>
+                  </div>
                 </ListRow>
               ))}
             </Section>
