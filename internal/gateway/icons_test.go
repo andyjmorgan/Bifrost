@@ -45,9 +45,31 @@ func TestIconsSurviveDiscoveryCacheAndToolListings(t *testing.T) {
 				}
 			}
 			res := harness.Raw(t, r.mux(), harness.RawRequest{Method: "server/discover"}).Result()
-			if _, ok := res["_meta"].(map[string]any)[hooks.MetaServerInfo].(map[string]any)["icons"]; ok {
-				t.Fatal("the mux borrowed one server's icon")
-			}
+			assertBifrostIcons(t, res["_meta"].(map[string]any)[hooks.MetaServerInfo].(map[string]any))
 		})
+	}
+}
+
+// Default direct discovery uses the gateway identity too, until serverInfo is enabled.
+func TestDefaultDirectDiscoveryAdvertisesGatewayIcons(t *testing.T) {
+	r := newRig(t)
+	u := harness.NewUpstream(t, harness.V2026)
+	u.Tool(`{"name":"t","inputSchema":{"type":"object"}}`, nil)
+	r.serve("a", u)
+	res := harness.Raw(t, r.direct("a"), harness.RawRequest{Method: "server/discover"}).Result()
+	assertBifrostIcons(t, res["_meta"].(map[string]any)[hooks.MetaServerInfo].(map[string]any))
+}
+
+func assertBifrostIcons(t *testing.T, info map[string]any) {
+	t.Helper()
+	icons, ok := info["icons"].([]any)
+	if info["name"] != "bifrost" || !ok || len(icons) != 2 {
+		t.Fatalf("expected Bifrost identity with two theme icons, got %v", info)
+	}
+	for i, theme := range []string{"light", "dark"} {
+		icon := icons[i].(map[string]any)
+		if icon["theme"] != theme || icon["src"] != "https://s3.donkeywork.dev/mcp-icons/bifrost-"+theme+"-v1-64.png" {
+			t.Fatalf("unexpected gateway icon: %v", icon)
+		}
 	}
 }

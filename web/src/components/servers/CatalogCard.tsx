@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from 'react'
-import { Telescope, Wrench } from 'lucide-react'
+import { Telescope } from 'lucide-react'
 import { Cell, ListBar, ListCard, ListEmpty, ListHead, ListRow, ListRows } from '../ListCard'
 import type { CapabilityDTO } from '../../api'
 import { absoluteTime, relativeTime } from '../../lib'
 import { KINDS } from '../rules/selection'
-import { CapabilitySheet } from './CapabilitySheet'
-import { MCPIcon, definitionIcons } from '../MCPIcon'
+import { CapabilityInfo, CapabilitySummary, matchesCapability } from './CapabilitySummary'
+import { Input } from '../../ui/components/input'
 
-const COLS = 'minmax(0,1.6fr) 150px 150px'
+const COLS = 'minmax(0,1.6fr) 150px 150px 32px'
 
 function Time({ value }: { value: string }) {
   return (
@@ -31,15 +31,16 @@ export function CatalogCard({
   /** Ping / list actions offered in the empty state. */
   seedActions?: ReactNode
 }) {
-  const [openKey, setOpenKey] = useState<string>()
+  const [filter, setFilter] = useState('')
+  const visible = caps.filter((c) => matchesCapability(c, filter))
   const keyOf = (c: CapabilityDTO) => `${c.kind}:${c.name}`
-  const open = caps.find((c) => keyOf(c) === openKey)
   return (
     <ListCard>
       <ListBar>
         <span>
-          {caps.length} {caps.length === 1 ? 'capability' : 'capabilities'} seen
+          {filter.trim() ? `${visible.length} of ${caps.length}` : caps.length} {caps.length === 1 ? 'capability' : 'capabilities'} seen
         </span>
+        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search catalog" aria-label="Search catalog" className="h-8 w-full text-xs sm:w-64" />
       </ListBar>
       {caps.length === 0 ? (
         <ListEmpty
@@ -48,15 +49,16 @@ export function CatalogCard({
           hint={loaded ? 'Nothing seen yet. Ping or list the server to populate the catalog.' : undefined}
           action={loaded ? seedActions : undefined}
         />
-      ) : (
+      ) : visible.length === 0 ? <ListEmpty icon={Telescope} title="No capabilities match" hint="Try a different name, description or URI." /> : (
         <>
           <ListHead cols={COLS}>
             <span>Capability</span>
             <span>First seen</span>
             <span>Last seen</span>
+            <span className="sr-only">Info</span>
           </ListHead>
           {KINDS.map((k) => {
-            const group = caps.filter((c) => c.kind === k.kind)
+            const group = visible.filter((c) => c.kind === k.kind)
             if (!group.length) return null
             return (
               <div key={k.kind}>
@@ -65,19 +67,15 @@ export function CatalogCard({
                 </div>
                 <ListRows className="border-b border-border last:border-b-0">
                   {group.map((c) => (
-                    <ListRow key={keyOf(c)} cols={COLS} className="py-3" onClick={() => setOpenKey(keyOf(c))}>
-                      <div className="flex min-w-0 items-center gap-3">
-                        {c.kind === 'tool' && <MCPIcon icons={definitionIcons(c.definition)} icon={Wrench} tone="muted" />}
-                        <span className="block truncate font-mono text-xs" title={c.name}>
-                          {c.name}
-                        </span>
-                      </div>
+                    <ListRow key={keyOf(c)} cols={COLS} className="py-3">
+                      <CapabilitySummary cap={c} />
                       <Cell label="First seen">
                         <Time value={c.firstSeenAt} />
                       </Cell>
                       <Cell label="Last seen">
                         <Time value={c.lastSeenAt} />
                       </Cell>
+                      <CapabilityInfo cap={c} />
                     </ListRow>
                   ))}
                 </ListRows>
@@ -86,7 +84,6 @@ export function CatalogCard({
           })}
         </>
       )}
-      <CapabilitySheet cap={open} onClose={() => setOpenKey(undefined)} />
     </ListCard>
   )
 }

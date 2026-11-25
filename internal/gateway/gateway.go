@@ -172,7 +172,7 @@ func (g *Gateway) DirectHandler() http.Handler { return g.handler("direct") }
 
 func (g *Gateway) handler(route string) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version}, &mcp.ServerOptions{
+		srv := mcp.NewServer(&mcp.Implementation{Name: "bifrost", Version: g.version, Icons: bifrostIcons()}, &mcp.ServerOptions{
 			SupportedProtocolVersions: g.protocolVersions(),
 			Logger:                    g.log,
 			// Advertise the surfaces the middleware forwards; nothing is
@@ -558,4 +558,13 @@ func upstreamError(srv *store.Server, err error) error {
 		code = -32012
 	}
 	return &jsonrpc.Error{Code: code, Message: fmt.Sprintf("upstream %s: %v", srv.Slug, err)}
+}
+
+// bifrostIcons is the gateway's display identity for discovery and SDK metadata.
+// One sharp image per theme also keeps per-result identity stamps compact.
+func bifrostIcons() []mcp.Icon {
+	return []mcp.Icon{
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-light-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "light"},
+		{Source: "https://s3.donkeywork.dev/mcp-icons/bifrost-dark-v1-64.png", MIMEType: "image/png", Sizes: []string{"64x64"}, Theme: "dark"},
+	}
 }

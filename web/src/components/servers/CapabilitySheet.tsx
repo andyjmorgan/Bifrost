@@ -8,6 +8,12 @@ import type { CapabilityDTO } from '../../api'
 import { absoluteTime, cn, relativeTime } from '../../lib'
 import { KINDS } from '../rules/selection'
 
+export type InspectableCapability = Pick<CapabilityDTO, 'name' | 'definition'> & {
+  kind: CapabilityDTO['kind'] | 'skill'
+  firstSeenAt?: string
+  lastSeenAt?: string
+}
+
 type Obj = Record<string, unknown>
 
 const asObj = (v: unknown): Obj | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined)
@@ -25,31 +31,31 @@ const HINTS: { key: string; label: string; fallback: boolean }[] = [
  * A read-only view of one catalog entry: the definition exactly as the server last sent it. Tools
  * show their hints and schemas, prompts their arguments, resources and templates their address.
  */
-export function CapabilitySheet({ cap, onClose }: { cap?: CapabilityDTO; onClose: () => void }) {
+export function CapabilitySheet({ cap, onClose }: { cap?: InspectableCapability; onClose: () => void }) {
   return (
     <Sheet open={!!cap} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent onOpenAutoFocus={(ev) => ev.preventDefault()}>{cap && <Body cap={cap} />}</SheetContent>
+      <SheetContent>{cap && <Body cap={cap} />}</SheetContent>
     </Sheet>
   )
 }
 
-function Body({ cap }: { cap: CapabilityDTO }) {
+function Body({ cap }: { cap: InspectableCapability }) {
   const def = asObj(cap.definition)
   const kind = KINDS.find((k) => k.kind === cap.kind)
   const title = asStr(def?.title) ?? asStr(asObj(def?.annotations)?.title)
   return (
     <>
       <SheetHeader>
-        <SheetTitle className="break-all font-mono text-base">{cap.name}</SheetTitle>
+        <SheetTitle className="whitespace-normal break-all font-mono text-base">{cap.name}</SheetTitle>
         <SheetDescription asChild>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Badge variant="muted">{kind ? kind.one.charAt(0).toUpperCase() + kind.one.slice(1) : cap.kind}</Badge>
-            <span className="font-mono" title={absoluteTime(cap.firstSeenAt)}>
+            <Badge variant="muted">{kind ? kind.one.charAt(0).toUpperCase() + kind.one.slice(1) : cap.kind.charAt(0).toUpperCase() + cap.kind.slice(1)}</Badge>
+            {cap.firstSeenAt && <span className="font-mono" title={absoluteTime(cap.firstSeenAt)}>
               first seen {relativeTime(cap.firstSeenAt)}
-            </span>
-            <span className="font-mono" title={absoluteTime(cap.lastSeenAt)}>
+            </span>}
+            {cap.lastSeenAt && <span className="font-mono" title={absoluteTime(cap.lastSeenAt)}>
               last seen {relativeTime(cap.lastSeenAt)}
-            </span>
+            </span>}
           </div>
         </SheetDescription>
       </SheetHeader>
@@ -59,11 +65,11 @@ function Body({ cap }: { cap: CapabilityDTO }) {
         ) : (
           <>
             <Fields>
-              {cap.kind === 'resource' && <Field label="URI" mono value={asStr(def.uri)} />}
+              {(cap.kind === 'resource' || cap.kind === 'skill') && <Field label="URI" mono value={asStr(def.uri)} />}
               {cap.kind === 'template' && <Field label="URI template" mono value={asStr(def.uriTemplate)} />}
-              <Field label="Name" mono value={asStr(def.name)} />
+              <Field label="Name" mono value={asStr(def.name) ?? asStr(asObj(def.frontmatter)?.name)} />
               <Field label="Title" value={title} />
-              <Field label="Description" value={asStr(def.description)} pre />
+              <Field label="Description" value={asStr(def.description) ?? asStr(asObj(def.frontmatter)?.description)} pre />
               {(cap.kind === 'resource' || cap.kind === 'template') && <Field label="MIME type" mono value={asStr(def.mimeType)} />}
             </Fields>
             {cap.kind === 'tool' && <ToolDetail def={def} />}

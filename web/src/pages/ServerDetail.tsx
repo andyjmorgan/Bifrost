@@ -39,16 +39,14 @@ import {
   type CapabilityDTO,
   type CapabilityKind,
   type CreateServerResult,
-  type DiscoverResult,
   type GrantInput,
   type HooksSchema,
-  type PingResult,
   type RuleProblem,
   type Selection,
   type ServerDTO,
   type UserDTO,
 } from '../api'
-import { JsonTree, type Json } from '../components/PayloadViewer'
+import { ServerProbeSheet, type ServerProbe } from '../components/servers/ServerProbeSheet'
 import { absoluteTime, relativeTime } from '../lib'
 
 /** The page's tabs: the server itself, who holds it, one per kind of capability, then the rules. */
@@ -141,10 +139,8 @@ export function ServerDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
-  const [pinging, setPinging] = useState(false)
-  const [ping, setPing] = useState<PingResult>()
-  const [discovering, setDiscovering] = useState(false)
-  const [discovery, setDiscovery] = useState<DiscoverResult>()
+  const [probe, setProbe] = useState<ServerProbe>()
+  useEffect(() => setProbe(undefined), [id])
   const [reauthBusy, setReauthBusy] = useState(false)
   const [caps, setCaps] = useState<CapabilityDTO[]>([])
   const [capsLoaded, setCapsLoaded] = useState(false)
@@ -318,33 +314,8 @@ export function ServerDetailPage() {
     }
   }
 
-  const doDiscover = async () => {
-    if (!server) return
-    setDiscovering(true)
-    setDiscovery(undefined)
-    try {
-      setDiscovery(await api.servers.discover(server.id))
-    } catch (e) {
-      setDiscovery({ ok: false, latencyMs: 0, error: errorMessage(e) })
-    } finally {
-      setDiscovering(false)
-      afterProbe()
-    }
-  }
-
-  const doPing = async () => {
-    if (!server) return
-    setPinging(true)
-    setPing(undefined)
-    try {
-      setPing(await api.servers.ping(server.id))
-    } catch (e) {
-      setPing({ ok: false, latencyMs: 0, toolCount: 0, error: errorMessage(e) })
-    } finally {
-      setPinging(false)
-      afterProbe()
-    }
-  }
+  const doDiscover = () => server && setProbe({ server, kind: 'discover' })
+  const doPing = () => server && setProbe({ server, kind: 'ping' })
 
   const followAuthorize = (result: CreateServerResult) => {
     setReplacing(false)
@@ -481,11 +452,11 @@ export function ServerDetailPage() {
         description={server.description || 'No description.'}
         actions={
           <>
-            <Button variant="secondary" onClick={doPing} disabled={pinging}>
-              <Activity /> {pinging ? 'Pinging…' : 'Ping'}
+            <Button variant="secondary" onClick={doPing}>
+              <Activity /> Ping
             </Button>
-            <Button variant="secondary" onClick={doDiscover} disabled={discovering}>
-              <Telescope /> {discovering ? 'Discovering…' : 'Discover'}
+            <Button variant="secondary" onClick={doDiscover}>
+              <Telescope /> Discover
             </Button>
             <Button variant="secondary" asChild>
               <Link to={`/explorer?route=${encodeURIComponent(server.slug)}`}>
@@ -505,8 +476,7 @@ export function ServerDetailPage() {
 
       {error && <Callout tone="danger">{error}</Callout>}
       {saveError && <Callout tone="danger">{saveError}</Callout>}
-      {ping && <PingPanel ping={ping} />}
-      {discovery && <DiscoverPanel d={discovery} />}
+      <ServerProbeSheet probe={probe?.server.id === id ? probe : undefined} onClose={() => setProbe(undefined)} onComplete={afterProbe} />
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} label="Server" className="flex-wrap" />
 
@@ -576,8 +546,8 @@ export function ServerDetailPage() {
               caps={caps}
               loaded={capsLoaded}
               seedActions={
-                <Button variant="secondary" onClick={doPing} disabled={pinging}>
-                  <Activity /> {pinging ? 'Pinging…' : 'Ping'}
+                <Button variant="secondary" onClick={doPing}>
+                  <Activity /> Ping
                 </Button>
               }
             />
@@ -770,92 +740,4 @@ function CredentialSummary({ cred, keyringOwner }: { cred?: ServerDTO['credentia
   if (reason) parts.push(reason)
   if (!parts.length) return null
   return <span className="font-mono text-xs text-muted-foreground">{parts.join(' · ')}</span>
-}
-
-/** What the server said at initialize: identity, instructions, capabilities, verbatim. */
-function DiscoverPanel({ d }: { d: DiscoverResult }) {
-  if (!d.ok) {
-    return (
-      <Callout tone="danger">
-        <span className="font-medium">Discover failed</span>
-        {d.error && <span className="ml-2 break-words font-mono text-xs">{d.error}</span>}
-      </Callout>
-    )
-  }
-  const info = d.serverInfo
-  const items: [string, string][] = [
-    ['Latency', `${d.latencyMs} ms`],
-    ['Protocol', d.protocolVersion || '—'],
-    ['Server', info ? [info.title || info.name, info.version].filter(Boolean).join(' ') : '—'],
-    ['Website', info?.websiteUrl || '—'],
-  ]
-  const caps = Object.keys(d.capabilities ?? {})
-  const { ok: _ok, latencyMs: _ms, error: _err, ...raw } = d
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <StatusPill tone="success">Initialized</StatusPill>
-        <span className="text-xs text-muted-foreground">
-          {caps.length ? `Capabilities: ${caps.join(', ')}.` : 'No capabilities declared.'} The init cache was refreshed.
-        </span>
-      </div>
-      <dl className="grid gap-4 sm:grid-cols-4">
-        {items.map(([k, v]) => (
-          <div key={k} className="min-w-0">
-            <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{k}</dt>
-            <dd className="mt-1 truncate font-mono text-sm" title={v}>{v}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="mt-4">
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Instructions</p>
-        {d.instructions ? (
-          <p className="whitespace-pre-wrap rounded-lg border border-border bg-elevated p-3 text-sm leading-6">{d.instructions}</p>
-        ) : (
-          <p className="text-sm text-muted-foreground">None. The server sends no instructions at initialize.</p>
-        )}
-      </div>
-      <details className="group mt-4 text-sm">
-        <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground">
-          Initialize result
-        </summary>
-        <div className="mt-2 max-h-96 overflow-auto rounded-lg border border-border bg-code p-3">
-          <JsonTree value={raw as unknown as Json} />
-        </div>
-      </details>
-    </div>
-  )
-}
-
-function PingPanel({ ping }: { ping: PingResult }) {
-  if (!ping.ok) {
-    return (
-      <Callout tone="danger">
-        <span className="font-medium">Ping failed</span>
-        {ping.error && <span className="ml-2 break-words font-mono text-xs">{ping.error}</span>}
-      </Callout>
-    )
-  }
-  const items: [string, string][] = [
-    ['Latency', `${ping.latencyMs} ms`],
-    ['Protocol', ping.protocolVersion || '—'],
-    ['Server', [ping.serverName, ping.serverVersion].filter(Boolean).join(' ') || '—'],
-    ['Tools', String(ping.toolCount)],
-  ]
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <StatusPill tone="success">Reachable</StatusPill>
-        <span className="text-xs text-muted-foreground">Initialized and listed tools through the stored credential.</span>
-      </div>
-      <dl className="grid gap-4 sm:grid-cols-4">
-        {items.map(([k, v]) => (
-          <div key={k}>
-            <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{k}</dt>
-            <dd className="mt-1 font-mono text-sm">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
 }

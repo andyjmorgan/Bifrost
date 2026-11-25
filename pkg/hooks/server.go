@@ -224,6 +224,9 @@ func (e *Engine) Discover(parent context.Context, r Request, version string) (re
 	defer cancel()
 	var o Outcome
 	info := map[string]any{"name": "bifrost", "version": version}
+	if len(e.Icons) > 0 {
+		info["icons"] = e.Icons
+	}
 	res := DiscoverResult{SupportedVersions: []string{"2026-07-28"}, TTLMs: e.Limits.ttl(), CacheScope: "private", ResultType: "complete"}
 	caps := map[string]any{}
 	anyOn := func(kind string) bool {

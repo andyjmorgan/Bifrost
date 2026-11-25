@@ -8,6 +8,7 @@ import { Switch } from '../ui/components/switch'
 import { Badge } from '../ui/components/badge'
 import { PageHeader } from '../components/PageHeader'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../components/ListCard'
+import { CapabilityInfo } from '../components/servers/CapabilitySummary'
 import { MCPIcon } from '../components/MCPIcon'
 import { StatusPill } from '../components/StatusPill'
 import { Callout } from '../components/Callout'
@@ -311,7 +312,7 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
               const prefix = sep > 0 ? t.name.slice(0, sep) : undefined
               const name = sep > 0 ? t.name.slice(sep + 2) : t.name
               return (
-                <ListRow key={t.name} cols="minmax(0,1fr) auto" onClick={() => pick(t)} className="p-4">
+                <ListRow key={t.name} cols="minmax(0,1fr) auto" className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <MCPIcon icons={t.icons} icon={Wrench} tone="muted" />
                     <Primary
@@ -321,10 +322,13 @@ function ToolsTab({ route, keyId, fields }: TabProps) {
                           {name}
                         </span>
                       }
-                      subtitle={t.description?.split('\n')[0]}
+                      subtitle={t.description}
                     />
                   </div>
-                  <Play className="size-4 text-muted-foreground" aria-hidden />
+                  <div className="flex items-center gap-2">
+                    <CapabilityInfo cap={{ kind: 'tool', name: t.name, definition: t }} />
+                    <Button variant="ghost" size="sm" onClick={() => pick(t)} aria-label={`Call ${t.name}`}><Play /> Call</Button>
+                  </div>
                 </ListRow>
               )
             })}

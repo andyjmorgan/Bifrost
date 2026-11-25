@@ -133,6 +133,8 @@ type Engine struct {
 	Limits Limits
 	// Version is the gateway version sent upstream in clientInfo.
 	Version string
+	// Icons is the gateway artwork used when discovery keeps the gateway identity.
+	Icons []mcp.Icon
 	// OnFault, if set, is called once for every panic the engine catches.
 	// The same record is on the Outcome; the callback is for gateways that
 	// want one place to log from.

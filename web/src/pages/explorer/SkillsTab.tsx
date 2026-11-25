@@ -4,7 +4,8 @@ import { BookOpen, FileText, ListTree, Sparkles } from 'lucide-react'
 import { Button } from '../../ui/components/button'
 import { Input } from '../../ui/components/input'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../../components/ListCard'
-import { IconTile } from '../../components/IconTile'
+import { MCPIcon, definitionIcons } from '../../components/MCPIcon'
+import { CapabilityInfo } from '../../components/servers/CapabilitySummary'
 import { Callout } from '../../components/Callout'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
 import { api, errorMessage, type E2EResult, type ListSkillsResult, type MCPSkill, type MCPSkillFile, type ReadResourceResult } from '../../api'
@@ -111,12 +112,16 @@ export function SkillsTab({ route, keyId, fields }: TabProps) {
         ) : (
           <ListRows>
             {visible.map((s) => (
-              <ListRow key={s.uri} cols="minmax(0,1fr) auto" onClick={() => open(s)} className="p-4">
+              <ListRow key={s.uri} cols="minmax(0,1fr) auto" className="p-4">
                 <div className="flex min-w-0 items-center gap-3">
-                  <IconTile icon={Sparkles} tone="muted" />
+                  <MCPIcon icons={definitionIcons(s)} icon={Sparkles} tone="muted" />
                   <Primary title={<span className="font-mono text-xs">{skillName(s)}</span>} subtitle={s.frontmatter?.description?.split('\n')[0]} />
                 </div>
-                <span className="font-mono text-xs text-muted-foreground">{fileCount(s)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">{fileCount(s)}</span>
+                  <CapabilityInfo cap={{ kind: 'skill', name: skillName(s), definition: s }} />
+                  <Button variant="ghost" size="sm" onClick={() => open(s)} aria-label={`Read ${skillName(s)}`}><BookOpen /> Read</Button>
+                </div>
               </ListRow>
             ))}
           </ListRows>

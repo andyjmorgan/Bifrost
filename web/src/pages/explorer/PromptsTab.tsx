@@ -5,7 +5,8 @@ import { Button } from '../../ui/components/button'
 import { Input } from '../../ui/components/input'
 import { Badge } from '../../ui/components/badge'
 import { ListBar, ListCard, ListEmpty, ListRow, ListRows, Primary } from '../../components/ListCard'
-import { IconTile } from '../../components/IconTile'
+import { MCPIcon, definitionIcons } from '../../components/MCPIcon'
+import { CapabilityInfo } from '../../components/servers/CapabilitySummary'
 import { Callout } from '../../components/Callout'
 import { FormField, FormSection } from '../../components/FormField'
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../../ui/components/sheet'
@@ -123,9 +124,9 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
               const count = p.arguments?.length ?? 0
               const required = p.arguments?.filter((a) => a.required).length ?? 0
               return (
-                <ListRow key={p.name} cols="minmax(0,1fr) auto" onClick={() => pick(p)} className="p-4">
+                <ListRow key={p.name} cols="minmax(0,1fr) auto" className="p-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={MessageSquareText} tone="muted" />
+                    <MCPIcon icons={definitionIcons(p)} icon={MessageSquareText} tone="muted" />
                     <Primary
                       title={
                         <span className="font-mono text-xs">
@@ -136,9 +137,13 @@ export function PromptsTab({ route, keyId, fields }: TabProps) {
                       subtitle={[p.title, p.description?.split('\n')[0]].filter(Boolean).join(' · ') || undefined}
                     />
                   </div>
-                  <span className="font-mono text-xs text-muted-foreground" title={required ? `${required} required` : undefined}>
-                    {count} {count === 1 ? 'arg' : 'args'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <CapabilityInfo cap={{ kind: 'prompt', name: p.name, definition: p }} />
+                    <Button variant="ghost" size="sm" onClick={() => pick(p)} aria-label={`Get ${p.name}`}>Get</Button>
+                    <span className="font-mono text-xs text-muted-foreground" title={required ? `${required} required` : undefined}>
+                      {count} {count === 1 ? 'arg' : 'args'}
+                    </span>
+                  </div>
                 </ListRow>
               )
             })}
