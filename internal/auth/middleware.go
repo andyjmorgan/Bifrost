@@ -59,9 +59,9 @@ func (a *Authenticator) record(ctx context.Context, c *Caller) (*Caller, error) 
 // dev is the dev-mode caller: the dev owner, or the local user an
 // X-Dev-User header names, so two people can be tried without an identity
 // provider.
-func (a *Authenticator) dev(ctx context.Context, r *http.Request) (*Caller, error) {
+func (a *Authenticator) dev(ctx context.Context, h http.Header) (*Caller, error) {
 	id := a.DevOwner
-	if u := strings.TrimSpace(r.Header.Get("X-Dev-User")); u != "" {
+	if u := strings.TrimSpace(h.Get("X-Dev-User")); u != "" {
 		id = u
 	}
 	return a.record(ctx, &Caller{UserID: id, Subject: id, Type: ActorDev, Email: id + "@localhost", Name: strings.ToUpper(id[:1]) + id[1:]})
@@ -83,10 +83,16 @@ func (a *Authenticator) Resource(path string) string { return a.PublicBase + pat
 // Authenticate resolves the Authorization header. resource is accepted as an
 // extra audience for OIDC tokens (MCP clients get tokens for the exact URL).
 func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resource string) (*Caller, error) {
-	h := r.Header.Get("Authorization")
+	return a.AuthenticateHeader(ctx, r.Header, resource)
+}
+
+// AuthenticateHeader is Authenticate for callers that hold only the request
+// headers, such as a Connect handler.
+func (a *Authenticator) AuthenticateHeader(ctx context.Context, header http.Header, resource string) (*Caller, error) {
+	h := header.Get("Authorization")
 	if h == "" {
 		if a.OIDC == nil {
-			return a.dev(ctx, r)
+			return a.dev(ctx, header)
 		}
 		return nil, errors.New("auth: missing bearer token")
 	}
@@ -102,7 +108,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, r *http.Request, resou
 		return a.keyCaller(ctx, c)
 	}
 	if a.OIDC == nil {
-		return a.dev(ctx, r)
+		return a.dev(ctx, header)
 	}
 	c, err := a.OIDC.Verify(ctx, tok, resource)
 	if err != nil {
