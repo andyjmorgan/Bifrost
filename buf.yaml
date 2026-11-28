@@ -1,0 +1,12 @@
+# Protobuf for Bifrost's optional Connect API. `buf lint` and
+# `buf breaking --against '.git#branch=tasks'` check it; `buf generate`
+# writes the Go code under pkg/api (committed, so Go callers can import it).
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

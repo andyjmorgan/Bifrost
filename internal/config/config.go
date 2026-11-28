@@ -24,7 +24,12 @@ type Config struct {
 	OIDCWebClientID  string // SPA client id, accepted as audience for API calls
 	OIDCRequiredRole string // realm or client role the caller must hold
 	OIDCScope        string // scope advertised for MCP clients, e.g. mcp:gateway
-	DevOwner         string
+	// OIDCAudiences are further aud values a token may carry to be accepted
+	// (MCPGW_OIDC_AUDIENCES, comma separated), besides the web client id and
+	// {public base}/mcp: for example a token another service obtained by
+	// token exchange with this gateway as its audience.
+	OIDCAudiences []string
+	DevOwner      string
 
 	// RefreshInterval is how often the worker runs (MCPGW_REFRESH_INTERVAL).
 	// The name is from when the worker refreshed OAuth tokens. The keyring
@@ -53,21 +58,28 @@ type Config struct {
 	// separated, e.g. "2025-11-25,2025-06-18,2025-03-26"). Empty by default:
 	// the front door is 2026-07-28 only.
 	LegacyProtocolVersions []string
+	// ConnectEnabled turns on the Connect API (MCPGW_CONNECT_ENABLED). Off
+	// by default: nothing is mounted and nothing listens.
+	ConnectEnabled bool
+	// ConnectListenAddr is where the Connect API listens when it is on
+	// (MCPGW_CONNECT_LISTEN_ADDR), apart from ListenAddr.
+	ConnectListenAddr string
 }
 
 // FromEnv builds a Config from MCPGW_* variables, failing on anything unusable.
 func FromEnv() (Config, error) {
 	c := Config{
-		ListenAddr:       getenv("MCPGW_LISTEN_ADDR", ":8080"),
-		DSN:              os.Getenv("MCPGW_DSN"),
-		PublicBaseURL:    strings.TrimRight(getenv("MCPGW_PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
-		WebRoot:          os.Getenv("MCPGW_WEBROOT"),
-		OIDCIssuer:       os.Getenv("MCPGW_OIDC_ISSUER"),
-		OIDCWebClientID:  getenv("MCPGW_OIDC_WEB_CLIENT_ID", "mcp-gateway-web"),
-		OIDCRequiredRole: getenv("MCPGW_OIDC_REQUIRED_ROLE", "mcp-gateway-operator"),
-		OIDCScope:        getenv("MCPGW_OIDC_SCOPE", "mcp:gateway"),
-		DevOwner:         getenv("MCPGW_DEV_OWNER", "dev"),
-		Version:          getenv("MCPGW_VERSION", "dev"),
+		ListenAddr:        getenv("MCPGW_LISTEN_ADDR", ":8080"),
+		DSN:               os.Getenv("MCPGW_DSN"),
+		PublicBaseURL:     strings.TrimRight(getenv("MCPGW_PUBLIC_BASE_URL", "http://localhost:8080"), "/"),
+		WebRoot:           os.Getenv("MCPGW_WEBROOT"),
+		OIDCIssuer:        os.Getenv("MCPGW_OIDC_ISSUER"),
+		OIDCWebClientID:   getenv("MCPGW_OIDC_WEB_CLIENT_ID", "mcp-gateway-web"),
+		OIDCRequiredRole:  getenv("MCPGW_OIDC_REQUIRED_ROLE", "mcp-gateway-operator"),
+		OIDCScope:         getenv("MCPGW_OIDC_SCOPE", "mcp:gateway"),
+		DevOwner:          getenv("MCPGW_DEV_OWNER", "dev"),
+		ConnectListenAddr: getenv("MCPGW_CONNECT_LISTEN_ADDR", ":50051"),
+		Version:           getenv("MCPGW_VERSION", "dev"),
 	}
 	if c.DSN == "" {
 		return c, fmt.Errorf("MCPGW_DSN is required")
@@ -83,7 +95,11 @@ func FromEnv() (Config, error) {
 	c.MetaAllowIn, c.MetaAllowOut = list("MCPGW_META_ALLOW_IN"), list("MCPGW_META_ALLOW_OUT")
 	c.RuleHeaders = list("MCPGW_RULE_HEADERS")
 	c.LegacyProtocolVersions = list("MCPGW_LEGACY_PROTOCOL_VERSIONS")
+	c.OIDCAudiences = list("MCPGW_OIDC_AUDIENCES")
 	var err error
+	if c.ConnectEnabled, err = boolEnv("MCPGW_CONNECT_ENABLED", false); err != nil {
+		return c, err
+	}
 	if c.RefreshInterval, err = durationEnv("MCPGW_REFRESH_INTERVAL", 4*time.Hour); err != nil {
 		return c, err
 	}
@@ -120,6 +136,18 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func boolEnv(k string, def bool) (bool, error) {
+	v := os.Getenv(k)
+	if v == "" {
+		return def, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s: want true or false, got %q", k, v)
+	}
+	return b, nil
 }
 
 func durationEnv(k string, def time.Duration) (time.Duration, error) {

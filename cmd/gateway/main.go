@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,12 +24,14 @@ import (
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/cache"
 	"github.com/andyjmorgan/Bifrost/internal/config"
+	"github.com/andyjmorgan/Bifrost/internal/connectapi"
 	"github.com/andyjmorgan/Bifrost/internal/crypto"
 	"github.com/andyjmorgan/Bifrost/internal/db"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
 	"github.com/andyjmorgan/Bifrost/internal/httpapi"
 	"github.com/andyjmorgan/Bifrost/internal/keyring"
 	"github.com/andyjmorgan/Bifrost/internal/oauthclient"
+	"github.com/andyjmorgan/Bifrost/internal/portal"
 	"github.com/andyjmorgan/Bifrost/internal/refreshguard"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/internal/upstream"
@@ -75,7 +78,7 @@ func main() {
 	if cfg.DevMode() {
 		log.Warn("DEV MODE: front-door auth disabled; every request runs as owner " + cfg.DevOwner)
 	} else {
-		oidc, err := auth.NewOIDC(ctx, cfg.OIDCIssuer, []string{cfg.OIDCWebClientID, cfg.PublicBaseURL + "/mcp"}, cfg.OIDCRequiredRole)
+		oidc, err := auth.NewOIDC(ctx, cfg.OIDCIssuer, append([]string{cfg.OIDCWebClientID, cfg.PublicBaseURL + "/mcp"}, cfg.OIDCAudiences...), cfg.OIDCRequiredRole)
 		if err != nil {
 			log.Error("oidc", "err", err)
 			os.Exit(1)
@@ -132,6 +135,11 @@ func main() {
 
 	go worker.New(st, log, cfg.RefreshInterval, cfg.AuditRetention).Run(ctx)
 
+	if _, err := startConnect(ctx, cfg, authn, st, log); err != nil {
+		log.Error("connect api", "err", err)
+		os.Exit(1)
+	}
+
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: kr.Wrap(api.Router()), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -144,6 +152,22 @@ func main() {
 		log.Error("server", "err", err)
 		os.Exit(1)
 	}
+}
+
+// startConnect serves the Connect API on its own listener when
+// MCPGW_CONNECT_ENABLED is set, until ctx is done. When it is not, nothing is
+// built, mounted or listening, and the address returned is nil.
+func startConnect(ctx context.Context, cfg config.Config, authn connectapi.Authenticator, st portal.Store, log *slog.Logger) (net.Addr, error) {
+	if !cfg.ConnectEnabled {
+		return nil, nil
+	}
+	api := connectapi.New(connectapi.Deps{Authn: authn, Store: st, PublicBase: cfg.PublicBaseURL, Log: log})
+	addr, err := connectapi.Serve(ctx, cfg.ConnectListenAddr, api.Handler(), log)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("connect api listening", "addr", addr.String())
+	return addr, nil
 }
 
 // unmigratedLister is the one question warnUnmigrated asks of the store.
