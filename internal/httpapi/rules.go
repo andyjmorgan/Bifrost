@@ -7,6 +7,7 @@ import (
 
 	"github.com/andyjmorgan/Bifrost/internal/auth"
 	"github.com/andyjmorgan/Bifrost/internal/gateway"
+	"github.com/andyjmorgan/Bifrost/internal/portal"
 	"github.com/andyjmorgan/Bifrost/internal/ruletext"
 	"github.com/andyjmorgan/Bifrost/internal/store"
 	"github.com/andyjmorgan/Bifrost/pkg/hooks"
@@ -53,20 +54,8 @@ type CapabilityDTO struct {
 }
 
 // PortalServerDTO is one server the caller holds: what the member portal
-// shows.
-type PortalServerDTO struct {
-	Icons        json.RawMessage `json:"icons,omitempty"`
-	ID           string          `json:"id"`
-	Slug         string          `json:"slug"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	MCPURL       string          `json:"mcpUrl"`
-	URL          string          `json:"url"`
-	Enabled      bool            `json:"enabled"`
-	Selection    store.Selection `json:"selection"`
-	Capabilities []string        `json:"capabilities"` // "kind:name" seen on the server and in the allow lists (rules not applied here)
-	HasRules     bool            `json:"hasRules"`     // the server has rules on some hook
-}
+// shows. The Connect API lists the same thing (internal/portal).
+type PortalServerDTO = portal.Server
 
 // rulesOf reads a server's stored hooks for the API: the text of each
 // hook's rules, and why they cannot be used if they cannot.
@@ -197,42 +186,10 @@ func (a *API) listCapabilities(w http.ResponseWriter, r *http.Request) {
 
 // listPortal returns the servers the caller holds, with what each exposes.
 func (a *API) listPortal(w http.ResponseWriter, r *http.Request) {
-	c := auth.CallerFrom(r.Context())
-	held, _, err := a.store.ListGrantedWithCache(r.Context(), c.UserID)
+	out, err := portal.List(r.Context(), a.store, a.publicBase, auth.CallerFrom(r.Context()).UserID)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	out := make([]PortalServerDTO, 0, len(held))
-	for _, s := range held {
-		d := PortalServerDTO{ID: s.ID.String(), Slug: s.Slug, Name: s.Name, Description: s.Description, MCPURL: a.publicBase + "/" + s.Slug + "/mcp", URL: s.URL,
-			Enabled: s.Enabled, Selection: s.Selection, Capabilities: []string{}, Icons: s.Icons}
-		if hs, err := ruletext.ParseStored(s.Hooks); err != nil || !hs.Empty() {
-			d.HasRules = true
-		}
-		if caps, err := a.store.ListCapabilities(r.Context(), s.ID); err == nil {
-			for _, cp := range caps {
-				if allowsKind(s, cp.Kind, cp.Name) {
-					d.Capabilities = append(d.Capabilities, cp.Kind+":"+cp.Name)
-				}
-			}
-		}
-		out = append(out, d)
-	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// allowsKind mirrors the gateway's cut for the portal listing (resources
-// by exact pattern match only; the gateway also matches globs).
-func allowsKind(s *store.Server, kind, name string) bool {
-	list, ok := s.Selection[store.SelectionKey(kind)]
-	if !ok {
-		return true
-	}
-	for _, x := range list {
-		if x == name {
-			return true
-		}
-	}
-	return false
 }

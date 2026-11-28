@@ -35,6 +35,7 @@ agent ──► https://bifrost.example/mcp ──┬──► obsidian   (OAuth
 | `GET /.well-known/mcp-client-metadata.json` | the gateway's own CIMD document for upstream registration |
 | `GET /oauth/callback` | consent callback for upstream OAuth |
 | `/api/v1/*` | REST API: servers with their rules and grants, the portal, users, API keys, audit, e2e |
+| `:50051 /bifrost.v1.*` | the optional [Connect API](#connect-api-optional), on its own listener, off by default |
 | `/keyring/api/*` | the keyring's API, when the keyring is on (see [Keyring](#keyring)) |
 | `/` | the SPA |
 
@@ -69,6 +70,9 @@ Postgres needs pg_cron for the cache sweep in production; without it the worker'
 | `MCPGW_AUDIT_RETENTION` | `720h` | |
 | `MCPGW_UPSTREAM_TIMEOUT` | `60s` | |
 | `MCPGW_RULE_HEADERS` | empty | HTTP request headers rules may read as `request.headers`, comma separated. Headers that carry credentials are never shown |
+| `MCPGW_OIDC_AUDIENCES` | empty | further `aud` values an OIDC token may carry, comma separated, besides the SPA client id and `{public base}/mcp` |
+| `MCPGW_CONNECT_ENABLED` | `false` | serve the [Connect API](#connect-api-optional) |
+| `MCPGW_CONNECT_LISTEN_ADDR` | `:50051` | where the Connect API listens, apart from `MCPGW_LISTEN_ADDR` |
 
 Dev mode (no `MCPGW_OIDC_ISSUER`) treats every request as the user `dev` (`MCPGW_DEV_OWNER`), so the UI and API work without a login. An `X-Dev-User: <name>` header makes the request come from another local user, which is enough to try grants with two people.
 
@@ -107,6 +111,41 @@ when tool.name.startsWith('delete_') && !(request.caller.?email.orValue('') in [
 ```
 
 `/mcp` is the union of every server the caller holds; `/mcp?slugs=a,b` narrows it to named slugs, and a slug the caller does not hold is an error. What a server has been seen to offer, with the definition it sent, is recorded under `/servers/{id}/capabilities` as governance data for the editor and the server page; it never filters.
+
+## Connect API (optional)
+
+Besides the REST API, the gateway can answer typed RPC with [Connect](https://connectrpc.com): one handler that speaks the Connect protocol, gRPC and gRPC-Web, with protobuf or JSON. It is off by default. Set `MCPGW_CONNECT_ENABLED=true` and it listens on `MCPGW_CONNECT_LISTEN_ADDR` (`:50051`), a listener of its own; left off, nothing is mounted and nothing listens. The listener speaks HTTP/1.1 and cleartext HTTP/2, so gRPC clients reach it without TLS; terminate TLS in front of it as you would for the main port.
+
+Callers authenticate as on the REST API, with an OIDC bearer token or a gateway API key, and need the same scopes. The services are in `proto/bifrost/v1`:
+
+| RPC | Scope | Answers |
+|---|---|---|
+| `bifrost.v1.PortalService/ListServers` | `api:read` | the servers the caller holds, each with its icons, allow lists, the capabilities they let through and whether it has rules: what `GET /api/v1/portal` lists |
+
+```sh
+curl -X POST http://localhost:50051/bifrost.v1.PortalService/ListServers \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{}'
+grpcurl -plaintext -H "Authorization: Bearer $KEY" -import-path proto -proto bifrost/v1/portal.proto \
+  localhost:50051 bifrost.v1.PortalService/ListServers
+```
+
+The generated Go code is committed under `pkg/api`, so a Go service can import the client:
+
+```go
+import (
+	bifrostv1 "github.com/andyjmorgan/Bifrost/pkg/api/bifrost/v1"
+	"github.com/andyjmorgan/Bifrost/pkg/api/bifrost/v1/bifrostv1connect"
+)
+
+c := bifrostv1connect.NewPortalServiceClient(http.DefaultClient, "http://bifrost:50051")
+req := connect.NewRequest(&bifrostv1.ListServersRequest{})
+req.Header().Set("Authorization", "Bearer "+token)
+res, err := c.ListServers(ctx, req)
+```
+
+**Service-to-service tokens.** A service that calls on a user's behalf usually exchanges the user's token (RFC 8693) for one whose audience is the gateway. That is configuration only: add the audience it asks for, for example `bifrost`, to `MCPGW_OIDC_AUDIENCES`. The token must still pass the issuer, signature, expiry and `MCPGW_OIDC_REQUIRED_ROLE` checks, and the caller is the token's subject, so they see exactly the servers granted to that user.
+
+**Changing the proto.** `buf lint` and `buf format` keep it tidy, `buf breaking --against '.git#branch=tasks'` refuses a breaking change, and `buf generate` rewrites `pkg/api` (commit the result). CI runs all four on a pull request that touches them.
 
 ## Keyring
 
@@ -234,6 +273,10 @@ internal/credmigrate the one-off move of the gateway's old sealed credentials in
 internal/refreshguard the lock that keeps token refreshes off while credentials are moved
 internal/oauthclient discovery, CIMD/DCR, PKCE, token exchange (used by the keyring)
 internal/auth        OIDC, API keys, scopes, RFC 9728 challenge
+internal/portal      the servers a caller holds, for the REST portal and the Connect API
+internal/connectapi  the optional Connect API and its listener
+proto/bifrost/v1     the Connect API's protobuf (buf.yaml, buf.gen.yaml at the root)
+pkg/api              Go code generated from proto/, for clients to import
 internal/audit       recorder, inbound middleware, upstream transport
 internal/cache       async cache writer
 internal/toolsearch  BM25

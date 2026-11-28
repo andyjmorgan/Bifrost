@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package bifrost.v1;
+
+// PortalService answers what the authenticated caller may reach through the
+// gateway. It lists the same thing as the REST API's GET /api/v1/portal.
+service PortalService {
+  // ListServers returns the MCP servers granted to the caller, ordered by
+  // slug, each with the allow lists and capabilities it exposes to them.
+  // An API key needs the api:read scope; an OIDC caller holds every scope.
+  rpc ListServers(ListServersRequest) returns (ListServersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// ListServersRequest has no fields: the caller is the one the credential
+// on the request names.
+message ListServersRequest {}
+
+// ListServersResponse is every server the caller holds.
+message ListServersResponse {
+  repeated Server servers = 1;
+}
+
+// Server is one MCP server the caller holds.
+message Server {
+  // The server's id, a UUID.
+  string id = 1;
+  // The server's slug: its path on the gateway, and the prefix of its
+  // capabilities on the multiplexed /mcp route ("slug__tool").
+  string slug = 2;
+  string name = 3;
+  string description = 4;
+  // The gateway URL that reaches this server alone: {public base}/{slug}/mcp.
+  string mcp_url = 5;
+  // The upstream URL the gateway forwards to.
+  string url = 6;
+  // A disabled server is listed but answers nothing.
+  bool enabled = 7;
+  // The allow lists the gateway cuts the server to, for listing and calling.
+  Selection selection = 8;
+  // What the server has been seen to offer that its allow lists let
+  // through. Rules are not applied here.
+  repeated Capability capabilities = 9;
+  // Whether the server has rules on some hook, which may refuse or change
+  // a request this listing does not show as refused.
+  bool has_rules = 10;
+  // The icons the server announced the last time it was discovered.
+  repeated Icon icons = 11;
+}
+
+// Icon is one MCP icon (the Icon object of the MCP specification).
+message Icon {
+  // A URL or data: URI.
+  string src = 1;
+  string mime_type = 2;
+  // Sizes such as "48x48" or "any".
+  repeated string sizes = 3;
+  // light or dark, when the icon is meant for one.
+  string theme = 4;
+}
+
+// Selection is a server's allow lists by kind. An unset list allows every
+// name of that kind; a set list allows only the names in it (none when it
+// is empty). Resource entries may be glob patterns.
+message Selection {
+  AllowList tools = 1;
+  AllowList prompts = 2;
+  AllowList resources = 3;
+  AllowList templates = 4;
+}
+
+// AllowList is the names one kind is cut to.
+message AllowList {
+  repeated string names = 1;
+}
+
+// Capability is one thing a server offers.
+message Capability {
+  // tool, prompt, resource or template.
+  string kind = 1;
+  string name = 2;
+}

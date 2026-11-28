@@ -1,0 +1,52 @@
+name: proto
+
+# Checks the Connect API's protobuf: lint, formatting, no breaking change
+# against the branch a pull request targets, and that the committed Go code
+# under pkg/api is what `buf generate` writes.
+on:
+  pull_request:
+    paths: ['proto/**', 'buf.yaml', 'buf.gen.yaml', 'pkg/api/**', '.github/workflows/proto.yml']
+  push:
+    branches: [tasks, main]
+    paths: ['proto/**', 'buf.yaml', 'buf.gen.yaml', 'pkg/api/**', '.github/workflows/proto.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  buf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # buf breaking reads the base branch from git
+
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Lint
+        run: buf lint
+
+      - name: Format
+        run: buf format --diff --exit-code
+
+      - name: Breaking changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if git ls-tree -d --name-only "origin/$BASE" proto | grep -q .; then
+            buf breaking --against ".git#branch=origin/$BASE"
+          else
+            echo "origin/$BASE has no proto/ yet: nothing to compare against"
+          fi
+
+      - name: Generated code is current
+        run: |
+          buf generate
+          if [ -n "$(git status --porcelain -- pkg/api)" ]; then
+            git status --porcelain -- pkg/api
+            echo "::error::pkg/api is out of date: run buf generate and commit the result"
+            exit 1
+          fi
